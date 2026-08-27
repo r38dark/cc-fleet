@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+# cc-switch — переключение аккаунтов Claude Code без /login.
+# Запуск: cc-switch list | save <N> | <N> | next   (N = 1..3 или имя accN)
+import json, os, shutil, sys, time
+
+HOME = "/root"
+LIVE_CREDS = os.path.join(HOME, ".claude", ".credentials.json")
+LIVE_CFG = os.path.join(HOME, ".claude.json")
+PROFILES = os.path.join(HOME, ".claude-profiles")
+
+
+def jload(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def jsave(path, data, mode=0o600):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+def name_of(arg):
+    return f"acc{arg}" if arg.isdigit() else arg
+
+
+def profile_dir(name):
+    return os.path.join(PROFILES, name)
+
+
+CC_LIMITS_SNAPSHOT = "/opt/cc-limits/snapshot.json"
+
+
+def known_plan(name):
+    # (free-guard 2026-07-21) план читаем из кэша cc-limits, не дёргаем API —
+    # цель: дешёвая проверка перед свитчем, не источник лишних 429.
+    try:
+        with open(CC_LIMITS_SNAPSHOT) as fh:
+            snap = json.load(fh)
+        return (snap.get("accounts", {}).get(name) or {}).get("plan")
+    except Exception:
+        return None
+
+
+def profiles():
+    if not os.path.isdir(PROFILES):
+        return []
+    out = []
+    for n in sorted(os.listdir(PROFILES)):
+        oa_path = os.path.join(PROFILES, n, "oauth_account.json")
+        if os.path.isfile(oa_path):
+            out.append((n, jload(oa_path)))
+    return out
+
+
+def current_uuid():
+    try:
+        return jload(LIVE_CFG).get("oauthAccount", {}).get("accountUuid")
+    except Exception:
+        return None
+
+
+def active_profile():
+    cur = current_uuid()
+    for n, oa in profiles():
+        if oa.get("accountUuid") == cur:
+            return n
+    return None
+
+
+def sync_back():
+    # Живой refresh-токен мог обновиться — вернуть его в профиль текущего аккаунта
+    act = active_profile()
+    if act and os.path.isfile(LIVE_CREDS):
+        shutil.copy2(LIVE_CREDS, os.path.join(profile_dir(act), "credentials.json"))
+        return act
+    return None
+
+
+def cmd_save(name):
+    d = profile_dir(name)
+    os.makedirs(d, exist_ok=True)
+    cfg = jload(LIVE_CFG)
+    if "oauthAccount" not in cfg:
+        sys.exit("Нет oauthAccount в ~/.claude.json — сначала /login")
+    shutil.copy2(LIVE_CREDS, os.path.join(d, "credentials.json"))
+    jsave(os.path.join(d, "oauth_account.json"), cfg["oauthAccount"])
+    print(f"Сохранён профиль {name}: {cfg['oauthAccount']['emailAddress']}")
+
+
+def cmd_list():
+    act = active_profile()
+    ps = profiles()
+    if not ps:
+        print("Профилей нет. Сохрани текущий: cc-switch save 1")
+        return
+    for n, oa in ps:
+        mark = " ← активный" if n == act else ""
+        print(f"{n}  {oa.get('emailAddress','?')}{mark}")
+    if act is None:
+        print("⚠️ Текущий аккаунт не совпадает ни с одним профилем — сохрани его: cc-switch save <N>")
+
+
+def cmd_switch(name, force=False):
+    d = profile_dir(name)
+    creds_src = os.path.join(d, "credentials.json")
+    oa_src = os.path.join(d, "oauth_account.json")
+    if not (os.path.isfile(creds_src) and os.path.isfile(oa_src)):
+        sys.exit(f"Профиль {name} не найден. Смотри: cc-switch list")
+    if active_profile() == name:
+        print(f"Уже на {name} ({jload(oa_src)['emailAddress']})")
+        return
+    # (free-guard 2026-07-21, инцидент на одном из аккаунтов) переключение живой сессии на
+    # аккаунт с истёкшим Pro валит её на месте ("organization has disabled Claude
+    # subscription access") — раньше cc-switch об этом вообще не знал. --force для
+    # случая, когда план в кэше устарел (например, только что продлили).
+    plan = known_plan(name)
+    if plan == "free" and not force:
+        email = jload(oa_src).get("emailAddress", name)
+        sys.exit(
+            f"⛔ {name} ({email}) сейчас FREE (по данным мониторинга cc-limits) — "
+            f"переключение живой сессии на него её сломает. Продли Pro, либо "
+            f"cc-switch {name} --force, если уверен что план уже актуализировался."
+        )
+    synced = sync_back()
+    if synced is None and current_uuid():
+        # Текущий аккаунт не сохранён ни в одном профиле — не дать потерять токены
+        bak = os.path.join(PROFILES, f"_unsaved_{int(time.time())}")
+        os.makedirs(bak, exist_ok=True)
+        shutil.copy2(LIVE_CREDS, os.path.join(bak, "credentials.json"))
+        cfg0 = jload(LIVE_CFG)
+        if "oauthAccount" in cfg0:
+            jsave(os.path.join(bak, "oauth_account.json"), cfg0["oauthAccount"])
+        print(f"⚠️ Текущий аккаунт не был сохранён как профиль — токены убраны в {bak}")
+    shutil.copy2(creds_src, LIVE_CREDS)
+    os.chmod(LIVE_CREDS, 0o600)
+    cfg = jload(LIVE_CFG)
+    cfg["oauthAccount"] = jload(oa_src)
+    jsave(LIVE_CFG, cfg, mode=0o644)
+    print(f"✅ Переключено на {name}: {cfg['oauthAccount']['emailAddress']}")
+    print("Живая сессия подхватит токены на лету — рестарт не нужен (проверено 11.07.26).")
+
+
+def cmd_next(force=False):
+    ps = [n for n, _ in profiles() if not n.startswith("_")]
+    if not ps:
+        sys.exit("Профилей нет")
+    act = active_profile()
+    idx = (ps.index(act) + 1) % len(ps) if act in ps else 0
+    cmd_switch(ps[idx], force=force)
+
+
+def main():
+    args = sys.argv[1:]
+    force = "--force" in args
+    args = [a for a in args if a != "--force"]
+    if not args or args[0] in ("list", "status"):
+        cmd_list()
+    elif args[0] == "save":
+        if len(args) < 2:
+            sys.exit("Использование: cc-switch save <N>")
+        cmd_save(name_of(args[1]))
+    elif args[0] == "next":
+        cmd_next(force=force)
+    else:
+        cmd_switch(name_of(args[0]), force=force)
+
+
+if __name__ == "__main__":
+    main()
