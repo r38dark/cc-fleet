@@ -1157,7 +1157,8 @@ PAGE = r"""<!doctype html>
 :root{--bg:#0f1115;--card:#181c24;--txt:#e8eaf0;--mut:#8b93a7;--ok:#34c07c;--warn:#e8b93e;--bad:#e05b5b;--acc:#7c9aff}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;max-width:640px;margin:0 auto}
-h1{font-size:19px;margin:4px 0 14px;display:flex;align-items:center;gap:8px}
+.hdr{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0 14px}
+h1{font-size:19px;margin:0}
 .card{background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:12px;border:1px solid #232a36}
 .card.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
@@ -1184,23 +1185,110 @@ button:disabled{opacity:.35;cursor:default}
 .termbox::-webkit-scrollbar-track{background:#14171c}
 .termbox::-webkit-scrollbar-thumb{background:#3a3f4b;border-radius:99px;border:2px solid #14171c;background-clip:padding-box}
 </style></head><body>
-<h1>⚡ Claude — лимиты аккаунтов</h1>
+<div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div></div>
 <div class="termwrap">
- <div class="termhead"><h2>🖥 Консоль (только чтение)</h2><span class="termdot" id="termDot"></span></div>
+ <div class="termhead"><h2 id="consoleTitle">🖥 Консоль (только чтение)</h2><span class="termdot" id="termDot"></span></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
 <span id="termCurrent">Загрузка…</span></pre>
 </div>
 <div class="switchrow">
- <input type="checkbox" id="auto"> <label for="auto">Авто-переключение при <span id="thrLbl">85</span>% сессии</label>
+ <input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label>
 </div>
 <div class="switchrow">
- <input type="checkbox" id="opt"> <label for="opt">Оптимизация переключений лимитов (рулит сервис, ручные кнопки блокируются)</label>
+ <input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов (рулит сервис, ручные кнопки блокируются)</label>
 </div>
 <div id="cards">Загрузка…</div>
 <div class="foot"><span id="upd"></span><button id="rf" style="margin-top:0">Обновить сейчас</button></div>
 <div id="msg"></div>
 <script>
 const $=s=>document.querySelector(s);const TOKEN='__TOKEN__';const API=location.origin+'/cc-hook/';
+const I18N={
+ ru:{
+  title:'Claude — лимиты аккаунтов',
+  h1:'⚡ Claude — лимиты аккаунтов',
+  console:'🖥 Консоль (только чтение)',
+  loading:'Загрузка…',
+  autoLbl:thr=>'Авто-переключение при <span id="thrLbl">'+thr+'</span>% сессии',
+  optLbl:'Оптимизация переключений лимитов (рулит сервис, ручные кнопки блокируются)',
+  optDisabledTitle:'Неактивно: включена оптимизация лимитов',
+  refresh:'Обновить сейчас',
+  updated:'Обновлено',
+  active:'АКТИВНЫЙ',
+  session5:'Сессия 5ч',
+  week:'Неделя',
+  resetIn:(h,mm,clock)=>`сброс через ${h?h+' ч ':''}${mm} мин (${clock})`,
+  usingNow:'Используется сейчас',
+  optimizeRules:'Рулит оптимизация',
+  switchTo:'Переключиться',
+  switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
+  extended:'✅ Я продлил',
+  relogin:'🔑 Войти заново',
+  relStarting:'Запускаю…',
+  relChecking:'Проверяю код…',
+  relPrompt:email=>`Открылась ссылка входа в новой вкладке.\nВойди под ${email} и вставь код авторизации сюда:`,
+  confirmSwitch:n=>`Переключить активный аккаунт на ${n}?`,
+  autoOn:'Авто-переключение включено',autoOff:'Авто-переключение выключено',
+  optOn:'Оптимизация лимитов включена — ручные переключения заблокированы',
+  optOff:'Оптимизация выключена — ручные переключения доступны',
+  checking:'Проверяю…',
+  checkErr:e=>`⚠ ошибка проверки: ${e}`,
+  staleAt:t=>` · ниже данные на ${t}`,
+ },
+ en:{
+  title:'Claude — Account Limits',
+  h1:'⚡ Claude — Account Limits',
+  console:'🖥 Console (read-only)',
+  loading:'Loading…',
+  autoLbl:thr=>'Auto-switch at <span id="thrLbl">'+thr+'</span>% of session',
+  optLbl:'Limit optimization (service decides, manual buttons blocked)',
+  optDisabledTitle:'Inactive: limit optimization is on',
+  refresh:'Refresh now',
+  updated:'Updated',
+  active:'ACTIVE',
+  session5:'Session 5h',
+  week:'Week',
+  resetIn:(h,mm,clock)=>`resets in ${h?h+'h ':''}${mm}m (${clock})`,
+  usingNow:'In use now',
+  optimizeRules:'Optimizer active',
+  switchTo:'Switch to this',
+  switchBlockedTitle:'Blocked: limit-switch optimization is on',
+  extended:'✅ I renewed',
+  relogin:'🔑 Log in again',
+  relStarting:'Starting…',
+  relChecking:'Checking code…',
+  relPrompt:email=>`A login link opened in a new tab.\nSign in as ${email} and paste the authorization code here:`,
+  confirmSwitch:n=>`Switch the active account to ${n}?`,
+  autoOn:'Auto-switch enabled',autoOff:'Auto-switch disabled',
+  optOn:'Limit optimization enabled — manual switching blocked',
+  optOff:'Optimization disabled — manual switching available',
+  checking:'Checking…',
+  checkErr:e=>`⚠ check failed: ${e}`,
+  staleAt:t=>` · data below from ${t}`,
+ },
+};
+let LANG='ru';
+try{LANG=localStorage.getItem('cc_lang')||'ru';}catch(e){}
+function tr(k,...a){const v=I18N[LANG][k];return typeof v==='function'?v(...a):v;}
+function setLang(l){LANG=l;try{localStorage.setItem('cc_lang',l);}catch(e){}applyI18n();}
+function renderLangSwitch(){
+ $('#langSwitch').innerHTML=LANG==='ru'
+  ?'<b style="color:var(--txt)">RU</b> · <span onclick="setLang(\'en\')" style="cursor:pointer;text-decoration:underline">EN</span>'
+  :'<span onclick="setLang(\'ru\')" style="cursor:pointer;text-decoration:underline">RU</span> · <b style="color:var(--txt)">EN</b>';
+}
+let THR=85,lastSnap=null;
+function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);}
+function applyI18n(){
+ document.title=tr('title');document.documentElement.lang=LANG;
+ $('#h1').textContent=tr('h1');$('#consoleTitle').textContent=tr('console');
+ $('#optLbl').textContent=tr('optLbl');$('#rf').textContent=tr('refresh');
+ renderAutoLbl();renderLangSwitch();
+ const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
+ $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
+ if(lastSnap){
+  renderCards(lastSnap);
+  $('#upd').textContent=tr('updated')+' '+new Date(lastSnap.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
+ }
+}
 async function ccConsoleHistory(){
  try{
   const r=await fetch(API+'console?token='+TOKEN+'&history=1');const d=await r.json();
@@ -1221,49 +1309,70 @@ async function ccConsole(){
 ccConsoleHistory();ccConsole();setInterval(ccConsole,2000);
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
 function rst(iso){if(!iso)return'';const d=new Date(iso),m=Math.max(0,Math.round((d-Date.now())/60000));
- const h=Math.floor(m/60),mm=m%60;return`сброс через ${h?h+' ч ':''}${mm} мин (${d.toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})})`}
-function bar(t,o){o=o||{};const p=o.pct;return`<div class="row"><div class="lbl"><span>${t}: <b style="color:${col(p)}">${p==null?'?':p+'%'}</b></span><span>${rst(o.resets_at)}</span></div>
+ const h=Math.floor(m/60),mm=m%60;return tr('resetIn',h,mm,d.toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'}))}
+function bar(lbl,o){o=o||{};const p=o.pct;return`<div class="row"><div class="lbl"><span>${lbl}: <b style="color:${col(p)}">${p==null?'?':p+'%'}</b></span><span>${rst(o.resets_at)}</span></div>
  <div class="bar"><div class="fill" style="width:${p||0}%;background:${col(p)}"></div></div></div>`}
+function renderCards(d){
+ const opt=!!(d.config&&d.config.optimize);
+ $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>`
+  <div class="card ${a.active?'active':''}">
+   <div class="top"><span class="email">${a.email}</span><span>${a.plan==='free'?'<span class="tag" style="background:#2c3547;color:var(--mut)">FREE</span> ':a.plan?'<span class="tag" style="background:var(--acc);color:#0f1115">'+a.plan.toUpperCase()+'</span> ':''}${a.active?'<span class="tag">'+tr('active')+'</span>':''}</span></div>
+   ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
+   <button onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
+   ${a.plan==='free'?`<button onclick="recheck('${n}',this)" style="margin-top:6px;background:var(--acc);color:#0f1115">${tr('extended')}</button>`:''}
+   <button onclick="relogin('${n}',this)" style="margin-top:6px;margin-left:8px;background:transparent;border:1px solid #333c4d;color:var(--mut)">${tr('relogin')}</button>
+  </div>`).join('');
+}
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
+ lastSnap=d;
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
  const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
  $('#auto').disabled=opt;$('#auto').parentElement.style.opacity=opt?'.5':'';
- $('#auto').parentElement.title=opt?'Неактивно: включена оптимизация лимитов':'';
- if(d.config&&d.config.threshold)$('#thrLbl').textContent=d.config.threshold;
- $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>`
-  <div class="card ${a.active?'active':''}">
-   <div class="top"><span class="email">${a.email}</span><span>${a.plan==='free'?'<span class="tag" style="background:#2c3547;color:var(--mut)">FREE</span> ':a.plan?'<span class="tag" style="background:var(--acc);color:#0f1115">'+a.plan.toUpperCase()+'</span> ':''}${a.active?'<span class="tag">АКТИВНЫЙ</span>':''}</span></div>
-   ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?' · ниже данные на '+new Date(a.stale_ts*1000).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):''}</div>`:''}${a.five_hour?bar('Сессия 5ч',a.five_hour)+bar('Неделя',a.seven_day):''}
-   <button onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="Заблокировано: включена оптимизация переключений лимитов"':''}>${a.active?'Используется сейчас':opt?'Рулит оптимизация':'Переключиться'}</button>
-   ${a.plan==='free'?`<button onclick="recheck('${n}',this)" style="margin-top:6px;background:var(--acc);color:#0f1115">✅ Я продлил</button>`:''}
-  </div>`).join('');
- $('#upd').textContent='Обновлено '+new Date(d.ts*1000).toLocaleTimeString('ru');
+ $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
+ if(d.config&&d.config.threshold)THR=d.config.threshold;
+ renderAutoLbl();renderCards(d);
+ $('#upd').textContent=tr('updated')+' '+new Date(d.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
 }
 function toast(t){const m=$('#msg');m.textContent=t;m.style.display='block';setTimeout(()=>m.style.display='none',4000)}
 async function sw(n){
- if(!confirm('Переключить активный аккаунт на '+n+'?'))return;
+ if(!confirm(tr('confirmSwitch',n)))return;
  const r=await fetch(API+'switch?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
  const d=await r.json();toast(d.ok?'✅ '+d.message.split('\n')[0]:'⚠ '+d.message);load();
 }
 $('#auto').addEventListener('change',async e=>{
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoswitch:e.target.checked})});
- toast(e.target.checked?'Авто-переключение включено':'Авто-переключение выключено');
+ toast(e.target.checked?tr('autoOn'):tr('autoOff'));
 });
 $('#opt').addEventListener('change',async e=>{
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({optimize:e.target.checked})});
- toast(e.target.checked?'Оптимизация лимитов включена — ручные переключения заблокированы':'Оптимизация выключена — ручные переключения доступны');load();
+ toast(e.target.checked?tr('optOn'):tr('optOff'));load();
 });
 async function recheck(n,btn){
- btn.disabled=true;const orig=btn.textContent;btn.textContent='Проверяю…';
+ btn.disabled=true;const orig=btn.textContent;btn.textContent=tr('checking');
  try{
   const r=await fetch(API+'recheck?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
   const d=await r.json();toast(d.message);
- }catch(e){toast('⚠ ошибка проверки: '+e);}
+ }catch(e){toast(tr('checkErr',e));}
+ finally{btn.disabled=false;btn.textContent=orig;load();}
+}
+async function relogin(n,btn){
+ btn.disabled=true;const orig=btn.textContent;btn.textContent=tr('relStarting');
+ try{
+  const r=await fetch(API+'relogin/start?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
+  const d=await r.json();
+  if(!d.ok){toast('⚠ '+d.message);return;}
+  window.open(d.url,'_blank');
+  const code=prompt(tr('relPrompt',d.email||n));
+  if(code==null)return;
+  btn.textContent=tr('relChecking');
+  const r2=await fetch(API+'relogin/submit?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n,code})});
+  const d2=await r2.json();toast(d2.ok?d2.message:'⚠ '+d2.message);
+ }catch(e){toast('⚠ '+e);}
  finally{btn.disabled=false;btn.textContent=orig;load();}
 }
 $('#rf').addEventListener('click',()=>{$('#rf').disabled=true;load(1).finally(()=>$('#rf').disabled=false)});
-load();setInterval(()=>load(),60000);
+applyI18n();load();setInterval(()=>load(),60000);
 </script></body></html>"""
 
 

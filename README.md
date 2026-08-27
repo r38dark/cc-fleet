@@ -1,5 +1,7 @@
 # ⚡ cc-fleet
 
+🇷🇺 Русский · [🇬🇧 English](README.en.md)
+
 **Self-host дашборд для ротации нескольких аккаунтов Claude Code по лимитам.**
 
 Мониторит лимиты (5 часов / неделя) сразу нескольких Pro/Max-аккаунтов на
@@ -130,7 +132,7 @@ cc-switch save 1   # сохраняет ТЕКУЩУЮ живую сессию �
 | `cc-switch list` | какие профили есть, какой активен |
 | `cc-switch <N>` / `cc-switch next` | переключить активную сессию вручную |
 | `/cc/` (или `curl 127.0.0.1:8877/api/limits?token=<hook_token>`) | лимиты, авто-переключение, зеркало консоли |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `chat_id`, `screen_session`, `port` |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `screen_session`, `port` |
 
 ## Telegram-уведомления (опционально)
 
