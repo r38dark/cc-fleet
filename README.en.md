@@ -62,6 +62,10 @@ there's something to say; in normal operation it isn't rendered at all
   nothing to switch to", "active account is full — background jobs paused",
   "paused, resuming at 16:03" with a countdown. In normal operation there is
   no banner.
+- 📨 **Telegram notifications** (optional): account switches, "nothing to
+  switch to", the pause going up and the alarm lifting it — so you don't have
+  to watch the panel. The bot token comes either from the Claude Code Telegram
+  channel file or straight from `config.json`.
 - 🔐 No OAuth tokens ever leave your machine — everything lives on your own
   server, under your own root.
 - 🧩 One install script, no web wizards or dependencies on someone else's
@@ -200,6 +204,13 @@ All of this is visible in the panel: `GET /api/pause` returns the very state
 `pause_ctl` computes — the banner, the gate and the alarm read the same
 files, so the page can't promise one thing while background jobs do another.
 
+With Telegram configured (see below), the pause going up and the wake-up both
+arrive as messages, so you don't have to keep the panel open. Silent alarm
+re-scheduling (the window hasn't let go yet) is deliberately not sent —
+otherwise the bot would write every few minutes; it stays in `pause_wake.log`
+and in the re-check counter. Turn the pause messages off with
+`"pause_notify": false` in `config.json`.
+
 ## Management
 
 | Command / URL | What it does |
@@ -210,7 +221,7 @@ files, so the page can't promise one thing while background jobs do another.
 | `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`), pause, nearest reset |
 | `python3 /opt/cc-limits/limits_gate.py` | may a background job start right now (rc `0`/`10`) |
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `screen_session`, `port`, `pause_wake_message` |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message` |
 
 ## Upgrading from a previous version
 
@@ -229,13 +240,29 @@ service.
 
 ## Telegram notifications (optional)
 
-The service reads the bot token from
-`/root/.claude/channels/telegram/.env` (`TELEGRAM_BOT_TOKEN=...`) — this is
-the file used by Claude Code's official Telegram channel. If the channel
-isn't set up yet — set it up (`claude channels` in the Claude Code docs) or
-write the line into that file by hand. The recipient's `chat_id` goes into
-`config.json`. Without a `chat_id`, notifications are just silently skipped
-— the service runs as usual.
+What the bot sends:
+
+- account auto-switches (and manual ones, including `cc-switch` from a shell);
+- "nothing to switch to" — every account above the threshold;
+- **the limit pause going up** (until when, window percentages, what was left
+  unfinished) and **the pause being lifted by the alarm** (how long it stood,
+  how many times the alarm was pushed back) — v1.2.1;
+- an account re-logged in through the web button;
+- an account dropping from Pro to Free, and coming back.
+
+Who to write to — the `chat_id` key in `config.json` (`install.sh` asks for
+it). The bot token is looked up in two places, in this order:
+
+1. `/root/.claude/channels/telegram/.env` (`TELEGRAM_BOT_TOKEN=...`) — the file
+   used by Claude Code's official Telegram channel;
+2. the `bot_token` key in `config.json` itself — for when that channel isn't
+   set up and you'd rather not set it up (a plain @BotFather token).
+
+Without a `chat_id`, notifications are silently skipped and the service runs
+as usual. If a `chat_id` is set but no token is found in either place, the
+service says so in its log (`journalctl -u cc-limits`), so a silent bot isn't
+a mystery. Pause messages can be turned off on their own with
+`"pause_notify": false` in `config.json` (the rest keep coming).
 
 ## Without nginx / without a domain
 
@@ -263,6 +290,11 @@ in front:
 
 ## Version history
 
+- **v1.2.1** — Telegram notifications when the pause goes up and when the
+  alarm lifts it; the bot token can now be set with the `bot_token` key in
+  `config.json` instead of only through the Claude Code Telegram channel file
+  (without that channel the bot used to stay silent with no explanation); a
+  `pause_notify` switch.
 - **v1.2.0** — limit gate for background jobs (`limits_gate.py`), a pause
   with an alarm that outlives the session (`pause_ctl.py` + cron), the state
   banner in the panel and `GET /api/pause`, idempotent re-runs of

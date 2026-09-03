@@ -62,16 +62,31 @@ def http_json(url, payload=None, headers=None, timeout=20):
         return json.loads(r.read())
 
 
+def tg_token():
+    """Токен бота: сначала файл телеграм-канала Claude Code, потом ключ "bot_token"
+    в config.json. Второй путь — для тех, у кого канал не настроен: без него
+    уведомления не уходили вообще, даже с заданным chat_id."""
+    try:
+        m = re.search(r"TELEGRAM_BOT_TOKEN=(\S+)", open(TG_ENV).read())
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return (cfg().get("bot_token") or "").strip()
+
+
 def tg_notify(text):
     chat_id = cfg().get("chat_id")
     if not chat_id:
         return  # телеграм-уведомления не настроены — тихо пропускаем
+    token = tg_token()
+    if not token:
+        # раньше здесь был молчаливый return — человек не понимал, почему тихо
+        print("tg_notify: chat_id задан, но токен бота не найден (ни в %s, "
+              "ни в ключе bot_token в config.json)" % TG_ENV, flush=True)
+        return
     try:
-        env = open(TG_ENV).read()
-        m = re.search(r"TELEGRAM_BOT_TOKEN=(\S+)", env)
-        if not m:
-            return
-        http_json(f"https://api.telegram.org/bot{m.group(1)}/sendMessage",
+        http_json(f"https://api.telegram.org/bot{token}/sendMessage",
                   {"chat_id": chat_id, "text": text})
     except Exception as e:
         print(f"tg_notify fail: {e}", flush=True)

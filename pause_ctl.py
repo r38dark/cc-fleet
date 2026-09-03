@@ -13,14 +13,19 @@
 #   pause_ctl.py clear                                                  — снять руками
 #   pause_ctl.py wake --if-due                                          — крон-тик
 #
+# При постановке паузы и при автоматическом подъёме уходит уведомление в Telegram —
+# если в config.json задан chat_id (отключается ключом "pause_notify": false).
+#
 # Cron (ставится install.sh):
 #   * * * * * root /usr/bin/python3 /opt/cc-limits/pause_ctl.py wake --if-due >> /opt/cc-limits/pause_wake.log 2>&1
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+import urllib.request
 from datetime import datetime
 
 BASE = os.environ.get("CC_LIMITS_BASE", os.path.dirname(os.path.abspath(__file__)))
@@ -28,6 +33,7 @@ STATE = os.path.join(BASE, "pause_state.json")
 SNAP = os.path.join(BASE, "snapshot.json")
 CONFIG = os.path.join(BASE, "config.json")
 GATE = os.path.join(BASE, "limits_gate.py")
+TG_ENV = "/root/.claude/channels/telegram/.env"
 GRACE = 180  # будим не в секунду сброса, а через 3 минуты — окно отпускает не мгновенно
 
 # Текст, который уходит в живую сессию при снятии паузы. СТРОГО ASCII: screen,
@@ -154,8 +160,47 @@ def gate():
         return False, "гейт недоступен (%s)" % e
 
 
+def _dur(sec):
+    """Длительность паузы человеческим текстом: «41 мин», «2 ч 05 мин»."""
+    sec = max(0, int(sec))
+    h, m = sec // 3600, (sec % 3600) // 60
+    return "%d ч %02d мин" % (h, m) if h else "%d мин" % m
+
+
 def _log(msg):
     print("%s %s" % (datetime.now().strftime("%d.%m %H:%M:%S"), msg), flush=True)
+
+
+def _tg(text):
+    """Уведомление в Telegram: chat_id из config.json, токен — из файла телеграм-канала
+    Claude Code либо из ключа "bot_token" там же. Отключается ключом "pause_notify": false.
+
+    Крон-скрипт сознательно не импортирует cc_limits (тот на верхнем уровне тянет
+    pyte/pexpect ради зеркала консоли — паузе они не нужны), поэтому логика продублирована
+    здесь в минимальном виде. Держать синхронно с tg_notify() в cc_limits.py.
+    """
+    c = _cfg()
+    chat_id = c.get("chat_id")
+    if not chat_id or not c.get("pause_notify", True):
+        return
+    token = ""
+    try:
+        m = re.search(r"TELEGRAM_BOT_TOKEN=(\S+)", open(TG_ENV).read())
+        token = m.group(1) if m else ""
+    except Exception:
+        pass
+    token = token or (c.get("bot_token") or "").strip()
+    if not token:
+        _log("телеграм: chat_id есть, токен бота не найден — уведомление пропущено")
+        return
+    try:
+        req = urllib.request.Request(
+            "https://api.telegram.org/bot%s/sendMessage" % token,
+            data=json.dumps({"chat_id": chat_id, "text": text}).encode(),
+            headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=20).read()
+    except Exception as e:
+        _log("телеграм: не отправилось (%s)" % e)
 
 
 def cmd_set(a):
@@ -178,8 +223,15 @@ def cmd_set(a):
         "checks": 0,
     }
     save(st)
-    _log("пауза поставлена, подъём в %s (%s)"
-         % (datetime.fromtimestamp(resume_ts).strftime("%H:%M"), st["reason"]))
+    when = datetime.fromtimestamp(resume_ts).strftime("%H:%M")
+    _log("пауза поставлена, подъём в %s (%s)" % (when, st["reason"]))
+    msg = "⏸ Claude: пауза по лимитам до %s — %s." % (when, st["reason"])
+    line = level_state().get("line") or ""
+    if line:
+        msg += "\nСессионные окна: %s." % line
+    if st["note"]:
+        msg += "\nНезакрытое: %s" % st["note"]
+    _tg(msg)
     return 0
 
 
@@ -234,6 +286,19 @@ def cmd_wake(a):
     st.update(active=False, resumed_at=_now(), last_gate=line)
     save(st)
     _log("пауза снята автоматически: %s" % line)
+    stood = _dur(_now() - float(st.get("since") or _now()))
+    msg = "▶️ Claude: пауза снята — окно отпустило."
+    pcts = level_state().get("line") or ""
+    if pcts:
+        msg += "\nСессионные окна: %s." % pcts
+    msg += "\nПростояли %s" % stood
+    checks = int(st.get("checks") or 0)
+    if checks:
+        msg += ", перепроверок будильника: %d" % checks
+    msg += ". Сессия разбужена, работа продолжается."
+    if st.get("note"):
+        msg += "\nБыло незакрыто: %s" % st["note"]
+    _tg(msg)
     # Будим живую сессию тем же способом, что и веб-кнопки панели — stuff в screen.
     tmpl = _cfg().get("pause_wake_message") or WAKE_MSG
     try:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet v1.2.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.2.1 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
 # (карточки аккаунтов + переключение), read-only зеркало консоли живой
 # screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
@@ -27,8 +27,10 @@ DOMAIN="${CC_FLEET_DOMAIN:-}"
 BASIC_USER="${CC_FLEET_BASIC_USER:-}"
 BASIC_PASS="${CC_FLEET_BASIC_PASS:-}"
 CHAT_ID="${CC_FLEET_CHAT_ID:-}"
+BOT_TOKEN="${CC_FLEET_BOT_TOKEN:-}"
 WANT_NGINX="${CC_FLEET_NGINX:-}"
 WANT_TG="${CC_FLEET_TG:-}"
+TG_ENV_FILE="/root/.claude/channels/telegram/.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log()  { echo -e "\033[1;36m==>\033[0m $*"; }
@@ -55,7 +57,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet v1.2.0 — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.2.1 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -80,12 +82,17 @@ if [ "$WANT_NGINX" = "y" ] || [ "$WANT_NGINX" = "Y" ]; then
   [ -n "$BASIC_PASS" ] || die "Пароль Basic Auth обязателен."
 fi
 
-ask_yn WANT_TG "Включить уведомления в Telegram (переключение аккаунта и т.п.)" "n"
+ask_yn WANT_TG "Включить уведомления в Telegram (переключение аккаунтов, пауза по лимитам)" "n"
 if [ "$WANT_TG" = "y" ] || [ "$WANT_TG" = "Y" ]; then
   ask CHAT_ID "Telegram chat_id получателя" "$CHAT_ID"
-  warn "Токен бота сервис читает из /root/.claude/channels/telegram/.env (TELEGRAM_BOT_TOKEN=...) —"
-  warn "это файл официального Telegram-канала Claude Code. Если его нет — заведи канал"
-  warn "(claude channels docs) или впиши TELEGRAM_BOT_TOKEN=... в этот файл вручную."
+  if grep -qs "TELEGRAM_BOT_TOKEN=" "$TG_ENV_FILE"; then
+    log "Токен бота найден в $TG_ENV_FILE — беру оттуда."
+  else
+    warn "Файла телеграм-канала Claude Code ($TG_ENV_FILE) нет или в нём нет токена."
+    warn "Укажи токен бота (@BotFather) здесь — он ляжет в config.json (chmod 600)."
+    warn "Пусто — уведомления просто не будут уходить, сервис от этого не сломается."
+    ask BOT_TOKEN "Токен Telegram-бота" "$BOT_TOKEN"
+  fi
 fi
 
 echo
@@ -144,9 +151,9 @@ else
   HOOK_TOKEN="$(openssl rand -hex 24)"
   log "Генерирую config.json (hook_token сгенерирован случайно, храни в секрете)"
 fi
-python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$CHAT_ID" "$PORT" <<'PYEOF'
+python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$CHAT_ID" "$PORT" "$BOT_TOKEN" <<'PYEOF'
 import json, os, sys
-path, token, threshold, screen, chat_id, port = sys.argv[1:7]
+path, token, threshold, screen, chat_id, port, bot_token = sys.argv[1:8]
 cfg = {
     "hook_token": token,
     "autoswitch": True,
@@ -167,6 +174,8 @@ if os.path.exists(path):
         pass
 if chat_id:
     cfg["chat_id"] = chat_id
+if bot_token:
+    cfg["bot_token"] = bot_token  # запасной путь, если файла телеграм-канала нет
 with open(path, "w") as f:
     json.dump(cfg, f, indent=1, ensure_ascii=False)
 PYEOF
