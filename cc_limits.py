@@ -998,6 +998,26 @@ def fmt_reset(iso):
     return iso or ""
 
 
+def pause_state():
+    """Состояние «упёрлись в лимиты / стоим на паузе» для баннера панели.
+
+    Логику НЕ дублируем: считает её pause_ctl.level_state() — тот же модуль, что
+    управляет паузой и будильником, и тот же порог, что у limits_gate.py. Иначе
+    страница будет обещать одно, а фоновые задачи вести себя иначе.
+    """
+    try:
+        import sys
+        if BASE not in sys.path:
+            sys.path.insert(0, BASE)
+        import pause_ctl  # данные модуль читает с диска на каждый вызов — кэш не мешает
+        d = pause_ctl.level_state()
+        d["ok"] = True
+        return d
+    except Exception as e:
+        # pause_ctl.py может отсутствовать (установка до v1.2.0) — баннер просто не покажется
+        return {"ok": False, "err": str(e)[:200], "level": "none", "pause": {"active": False}}
+
+
 class H(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
@@ -1038,6 +1058,10 @@ class H(BaseHTTPRequestHandler):
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
             snap["model"] = model_info()
             return self._send(200, snap)
+        if u.path == "/api/pause":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            return self._send(200, pause_state())
         if u.path == "/api/console":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -1184,8 +1208,31 @@ button:disabled{opacity:.35;cursor:default}
 .termbox::-webkit-scrollbar{width:9px}
 .termbox::-webkit-scrollbar-track{background:#14171c}
 .termbox::-webkit-scrollbar-thumb{background:#3a3f4b;border-radius:99px;border:2px solid #14171c;background-clip:padding-box}
+/* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
+.ccpause{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid #232a36;border-left:4px solid var(--ccp-accent,var(--mut))}
+.ccpause[hidden]{display:none}
+.ccpause.lvl-hard{--ccp-accent:#e05b5b;background:linear-gradient(90deg,rgba(224,91,91,.10),rgba(224,91,91,0) 55%),var(--card)}
+.ccpause.lvl-gate{--ccp-accent:#e8b93e;background:linear-gradient(90deg,rgba(232,185,62,.10),rgba(232,185,62,0) 55%),var(--card)}
+.ccpause.lvl-pause{--ccp-accent:#a78bfa;background:linear-gradient(90deg,rgba(167,139,250,.12),rgba(167,139,250,0) 55%),var(--card)}
+.ccp-dot{flex:none;width:10px;height:10px;margin-top:5px;border-radius:50%;background:var(--ccp-accent);box-shadow:0 0 0 0 var(--ccp-accent);animation:ccp-pulse 2.4s ease-out infinite}
+@keyframes ccp-pulse{70%{box-shadow:0 0 0 7px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+@media (prefers-reduced-motion:reduce){.ccp-dot{animation:none}}
+.ccp-body{min-width:0;flex:1 1 auto}
+.ccp-title{font-size:14px;font-weight:700;color:var(--txt);letter-spacing:.2px}
+.ccp-title b{color:var(--ccp-accent)}
+.ccp-sub{margin-top:3px;font-size:12.5px;line-height:1.5;color:#a7b0bd}
+.ccp-sub .num{font-variant-numeric:tabular-nums;color:var(--txt);font-weight:600}
+.ccp-meta{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
+.ccp-chip{font-size:11.5px;padding:2px 9px;border-radius:99px;background:#1b2029;border:1px solid #2a2f37;color:var(--mut);white-space:nowrap}
+.ccp-chip b{color:var(--txt);font-weight:600}
+.ccp-chip.hot{border-color:rgba(224,91,91,.45);color:#ffb1b1}
+.ccp-timer{flex:none;text-align:right}
+.ccp-timer .t{font-size:20px;font-weight:700;color:var(--ccp-accent);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ccp-timer .l{font-size:11px;color:var(--mut);margin-top:2px}
+@media (max-width:620px){.ccpause{flex-wrap:wrap}.ccp-timer{text-align:left}}
 </style></head><body>
 <div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div></div>
+<div class="ccpause" id="ccPause" hidden></div>
 <div class="termwrap">
  <div class="termhead"><h2 id="consoleTitle">🖥 Консоль (только чтение)</h2><span class="termdot" id="termDot"></span></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
@@ -1233,6 +1280,19 @@ const I18N={
   checking:'Проверяю…',
   checkErr:e=>`⚠ ошибка проверки: ${e}`,
   staleAt:t=>` · ниже данные на ${t}`,
+  ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
+  ccpDefReason:'лимиты сессионного окна',
+  ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
+  ccpHardTitle:'⛔ Уперлись в сессионные лимиты — <b>переключаться некуда</b>',
+  ccpHardSub:thr=>`Все аккаунты выше ${thr}%. Фоновые задачи не стартуют, чтобы не добить окно; балансер переключится, как только освободится ближайшее.`,
+  ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
+  ccpGateSub:(n,p,thr)=>`${n} на <span class="num">${p}</span> (порог ${thr}%). Свободный аккаунт есть — ждём переключения балансера, после него задачи пойдут сами.`,
+  ccpActive:' · активный',
+  ccpChecks:n=>`перепроверок окна: <b>${n}</b>`,
+  ccpTillWake:'до подъёма',
+  ccpTillNearest:'до ближайшего окна',
+  ccpTillReset:'до сброса окна',
+  ccpLeft:(h,m,s)=>h?`${h} ч ${m} мин`:`${m} мин ${s} с`,
  },
  en:{
   title:'Claude — Account Limits',
@@ -1264,6 +1324,19 @@ const I18N={
   checking:'Checking…',
   checkErr:e=>`⚠ check failed: ${e}`,
   staleAt:t=>` · data below from ${t}`,
+  ccpPauseTitle:'⏸ Claude is <b>paused on limits</b> — it resumes on its own',
+  ccpDefReason:'session window limits',
+  ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
+  ccpHardTitle:'⛔ Session limits reached — <b>nothing to switch to</b>',
+  ccpHardSub:thr=>`All accounts are above ${thr}%. Background jobs stay down so they don't burn the rest of the window; the balancer switches as soon as the nearest one resets.`,
+  ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
+  ccpGateSub:(n,p,thr)=>`${n} is at <span class="num">${p}</span> (threshold ${thr}%). A free account exists — waiting for the balancer to switch, after that jobs resume by themselves.`,
+  ccpActive:' · active',
+  ccpChecks:n=>`window re-checks: <b>${n}</b>`,
+  ccpTillWake:'until resume',
+  ccpTillNearest:'until nearest window',
+  ccpTillReset:'until window reset',
+  ccpLeft:(h,m,s)=>h?`${h}h ${m}m`:`${m}m ${s}s`,
  },
 };
 let LANG='ru';
@@ -1284,6 +1357,7 @@ function applyI18n(){
  renderAutoLbl();renderLangSwitch();
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
+ if(typeof ccpRender==='function')ccpRender();  // смена языка перерисовывает баннер без запроса
  if(lastSnap){
   renderCards(lastSnap);
   $('#upd').textContent=tr('updated')+' '+new Date(lastSnap.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
@@ -1372,7 +1446,65 @@ async function relogin(n,btn){
  finally{btn.disabled=false;btn.textContent=orig;load();}
 }
 $('#rf').addEventListener('click',()=>{$('#rf').disabled=true;load(1).finally(()=>$('#rf').disabled=false)});
+
+// ---- баннер лимитов/паузы ----
+// Данные тянем раз в 20 с, а обратный отсчёт тикает локально каждую секунду —
+// чтобы цифра жила, но сервер не дёргался лишний раз.
+let ccpData=null;
+const ccpEsc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function ccpLeft(untilMs){
+ const s=Math.max(0,Math.round((untilMs-Date.now())/1000));
+ const h=Math.floor(s/3600),m=Math.floor(s%3600/60);
+ return tr('ccpLeft',h,h?String(m).padStart(2,'0'):m,String(s%60).padStart(2,'0'));
+}
+function ccpAt(ms){return new Date(ms).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'});}
+function ccpRender(){
+ const el=$('#ccPause'),d=ccpData;if(!el)return;
+ const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
+ if(!d||d.stale||(lvl==='none'&&!pause.active)){el.hidden=true;return;}
+ // приоритет: пауза (в ней уже есть будильник) > переключаться некуда > активный забит
+ const mode=pause.active?'pause':lvl;
+ const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
+ const thr=Math.round(d.threshold||90);
+ let title,sub,timer=null,tlabel='';
+ if(mode==='pause'){
+  const upMs=(pause.resume_at||0)*1000;
+  title=tr('ccpPauseTitle');
+  sub=tr('ccpPauseSub',ccpEsc(pause.reason||tr('ccpDefReason')),upMs?ccpAt(upMs):'')
+    +(pause.note?'<br>'+ccpEsc(pause.note):'');
+  if(upMs){timer=upMs;tlabel=tr('ccpTillWake');}
+ }else if(mode==='hard'){
+  title=tr('ccpHardTitle');sub=tr('ccpHardSub',thr);
+  if(near){timer=near;tlabel=tr('ccpTillNearest');}
+ }else{
+  const a=(d.accounts||{})[d.active]||{};
+  title=tr('ccpGateTitle');
+  sub=tr('ccpGateSub',ccpEsc(d.active||'?'),a.pct==null?'?':a.pct+'%',thr);
+  if(a.resets_at){timer=new Date(a.resets_at).getTime();tlabel=tr('ccpTillReset');}
+ }
+ const chips=Object.entries(d.accounts||{}).map(([n,a])=>
+  '<span class="ccp-chip'+(a.pct!=null&&a.pct>thr?' hot':'')+'">'+ccpEsc(n)
+  +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b></span>').join('');
+ el.className='ccpause lvl-'+mode;el.hidden=false;
+ el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
+  +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
+  +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')
+  +'</div></div>'
+  +(timer?'<div class="ccp-timer" data-until="'+timer+'"><div class="t">'+ccpLeft(timer)+'</div>'
+    +'<div class="l">'+tlabel+'</div></div>':'');
+}
+function ccpTick(){
+ const t=$('#ccPause .ccp-timer');if(!t)return;
+ const until=+t.dataset.until;
+ t.querySelector('.t').textContent=ccpLeft(until);
+ if(Date.now()>until+60000)ccpLoad();  // окно должно было отпустить — перечитаем
+}
+async function ccpLoad(){
+ try{const r=await fetch(API+'pause?token='+TOKEN);ccpData=await r.json();}catch(e){ccpData=null;}
+ ccpRender();
+}
 applyI18n();load();setInterval(()=>load(),60000);
+ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
 </script></body></html>"""
 
 

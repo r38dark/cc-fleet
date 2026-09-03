@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# cc-fleet — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.2.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
-# (карточки аккаунтов + переключение) и read-only зеркало консоли живой
-# screen-сессии Claude Code.
+# (карточки аккаунтов + переключение), read-only зеркало консоли живой
+# screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
+# будильником (снимается системным cron на ближайшем сбросе окна).
 #
 # Ставится на СВОЙ VDS от root. Каждый пользователь — отдельная изолированная
 # инсталляция на своём сервере: чужие OAuth-токены нигде не хранятся и никуда
@@ -54,7 +55,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.2.0 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -111,6 +112,11 @@ mkdir -p "$BASE"
 cp "$SCRIPT_DIR/cc_limits.py" "$BASE/cc_limits.py"
 chmod 644 "$BASE/cc_limits.py"
 
+log "Копирую limits_gate.py и pause_ctl.py → $BASE (гейт фоновых задач + пауза с будильником)"
+cp "$SCRIPT_DIR/limits_gate.py" "$BASE/limits_gate.py"
+cp "$SCRIPT_DIR/pause_ctl.py" "$BASE/pause_ctl.py"
+chmod 755 "$BASE/limits_gate.py" "$BASE/pause_ctl.py"
+
 log "Ставлю cc-switch → /usr/local/bin/cc-switch"
 cp "$SCRIPT_DIR/cc-switch" /usr/local/bin/cc-switch
 chmod 755 /usr/local/bin/cc-switch
@@ -123,10 +129,23 @@ for i in $(seq 1 "$N_ACCOUNTS"); do
   [ -f "$d/oauth_account.json" ] || echo '{}' > "$d/oauth_account.json"
 done
 
-HOOK_TOKEN="$(openssl rand -hex 24)"
-log "Генерирую config.json (hook_token сгенерирован случайно, храни в секрете)"
+# При повторном запуске (обновление версии) config.json НЕ обнуляем: старый
+# hook_token и уже настроенные ключи сохраняются, ответы этого запуска ложатся сверху.
+EXIST_TOKEN=""
+if [ -f "$BASE/config.json" ]; then
+  EXIST_TOKEN="$(python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get("hook_token",""))
+except Exception: print("")' "$BASE/config.json" 2>/dev/null || true)"
+fi
+if [ -n "$EXIST_TOKEN" ]; then
+  HOOK_TOKEN="$EXIST_TOKEN"
+  log "config.json уже есть — обновляю его, hook_token оставляю прежним"
+else
+  HOOK_TOKEN="$(openssl rand -hex 24)"
+  log "Генерирую config.json (hook_token сгенерирован случайно, храни в секрете)"
+fi
 python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$CHAT_ID" "$PORT" <<'PYEOF'
-import json, sys
+import json, os, sys
 path, token, threshold, screen, chat_id, port = sys.argv[1:7]
 cfg = {
     "hook_token": token,
@@ -138,6 +157,14 @@ cfg = {
     "screen_session": screen,
     "port": int(port),
 }
+if os.path.exists(path):
+    try:
+        old = json.load(open(path))
+        if isinstance(old, dict):
+            old.update(cfg)   # свои ключи пользователя переживают обновление
+            cfg = old
+    except Exception:
+        pass
 if chat_id:
     cfg["chat_id"] = chat_id
 with open(path, "w") as f:
@@ -167,12 +194,30 @@ systemctl daemon-reload
 systemctl enable --now "$SERVICE_NAME"
 sleep 1
 
+# Будильник паузы: тик раз в минуту. Живёт в системном cron, а не внутри сессии
+# Claude Code — иначе умрёт вместе с ней (/clear, перезапуск, ребут).
+CRON_FILE="/etc/cron.d/$SERVICE_NAME-pause"
+log "Ставлю cron-будильник паузы ($CRON_FILE)"
+cat > "$CRON_FILE" <<CRON
+# cc-fleet: снятие паузы по лимитам, когда сессионное окно отпустило
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+* * * * * root CC_LIMITS_BASE=$BASE /usr/bin/python3 $BASE/pause_ctl.py wake --if-due >> $BASE/pause_wake.log 2>&1
+CRON
+chmod 644 "$CRON_FILE"
+
 log "Проверяю health-check (127.0.0.1:$PORT)…"
 HC="$(curl -fsS "http://127.0.0.1:$PORT/api/limits?token=$HOOK_TOKEN" || true)"
 if echo "$HC" | grep -q '"accounts"'; then
   echo "  OK: сервис отвечает, аккаунтов в снапшоте: $(echo "$HC" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("accounts",{})))')"
 else
   die "Сервис не ответил на 127.0.0.1:$PORT — смотри journalctl -u $SERVICE_NAME -n 50"
+fi
+
+PC="$(curl -fsS "http://127.0.0.1:$PORT/api/pause?token=$HOOK_TOKEN" || true)"
+if echo "$PC" | grep -q '"ok": *true'; then
+  echo "  OK: баннер лимитов/паузы подключён (/api/pause)"
+else
+  warn "/api/pause не ответил ok — баннер паузы работать не будет: $PC"
 fi
 
 # ---------- nginx (опционально) ----------
