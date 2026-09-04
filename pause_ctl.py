@@ -167,13 +167,27 @@ def _dur(sec):
     return "%d ч %02d мин" % (h, m) if h else "%d мин" % m
 
 
+def _queued():
+    """Сколько входящих сообщений легло в очередь, пока держалась пауза."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import tg_queue
+        return len(tg_queue._pending())
+    except Exception:
+        return 0
+
+
 def _log(msg):
     print("%s %s" % (datetime.now().strftime("%d.%m %H:%M:%S"), msg), flush=True)
 
 
-def _tg(text):
+def _tg(text, force=False):
     """Уведомление в Telegram: chat_id из config.json, токен — из файла телеграм-канала
     Claude Code либо из ключа "bot_token" там же. Отключается ключом "pause_notify": false.
+
+    force=True — отправить даже при выключенных уведомлениях о паузе. Так шлёт
+    подтверждение очередь (tg_queue.py): человек ждёт ответа на своё сообщение, это
+    не фоновое уведомление, и глушится оно отдельным ключом "queue_ack".
 
     Крон-скрипт сознательно не импортирует cc_limits (тот на верхнем уровне тянет
     pyte/pexpect ради зеркала консоли — паузе они не нужны), поэтому логика продублирована
@@ -181,7 +195,7 @@ def _tg(text):
     """
     c = _cfg()
     chat_id = c.get("chat_id")
-    if not chat_id or not c.get("pause_notify", True):
+    if not chat_id or (not force and not c.get("pause_notify", True)):
         return
     token = ""
     try:
@@ -305,6 +319,13 @@ def cmd_wake(a):
         msg = tmpl % (level_state().get("line") or "?")
     except TypeError:
         msg = tmpl  # в шаблоне нет %s — шлём как есть
+    # Пока держалась пауза, входящие сообщения копились в очереди (tg_queue.py).
+    # Разобрать их — первое дело после подъёма, иначе они молча потеряются.
+    n = _queued()
+    if n:
+        msg += (" %d incoming message(s) were queued while paused: run "
+                "`python3 %s take` and handle them oldest first."
+                % (n, os.path.join(BASE, "tg_queue.py")))
     msg = msg.encode("ascii", "ignore").decode()  # см. комментарий у WAKE_MSG
     try:
         subprocess.run(["screen", "-S", _screen(), "-X", "stuff", msg + "\r"],

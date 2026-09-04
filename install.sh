@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet v1.2.1 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.3.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
 # (карточки аккаунтов + переключение), read-only зеркало консоли живой
 # screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
@@ -57,7 +57,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet v1.2.1 — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.3.0 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -123,6 +123,12 @@ log "Копирую limits_gate.py и pause_ctl.py → $BASE (гейт фоно�
 cp "$SCRIPT_DIR/limits_gate.py" "$BASE/limits_gate.py"
 cp "$SCRIPT_DIR/pause_ctl.py" "$BASE/pause_ctl.py"
 chmod 755 "$BASE/limits_gate.py" "$BASE/pause_ctl.py"
+
+log "Копирую tg_queue.py и hooks/ → $BASE (очередь входящих на время лимитов)"
+cp "$SCRIPT_DIR/tg_queue.py" "$BASE/tg_queue.py"
+mkdir -p "$BASE/hooks"
+cp "$SCRIPT_DIR/hooks/queue_on_limits.py" "$BASE/hooks/queue_on_limits.py"
+chmod 755 "$BASE/tg_queue.py" "$BASE/hooks/queue_on_limits.py"
 
 log "Ставлю cc-switch → /usr/local/bin/cc-switch"
 cp "$SCRIPT_DIR/cc-switch" /usr/local/bin/cc-switch
@@ -213,6 +219,39 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 * * * * * root CC_LIMITS_BASE=$BASE /usr/bin/python3 $BASE/pause_ctl.py wake --if-due >> $BASE/pause_wake.log 2>&1
 CRON
 chmod 644 "$CRON_FILE"
+
+# Очередь входящих: хук UserPromptSubmit блокирует сообщение из чат-канала, пока все
+# окна сожжены. Правим чужой settings.json только с явного согласия — по умолчанию да,
+# без него очередь не работает вообще (сообщения продолжат будить сессию).
+ask_yn HOOK_QUEUE "Подключить хук очереди входящих (UserPromptSubmit) в settings.json Claude Code?" y
+if [ "$HOOK_QUEUE" = "y" ]; then
+  ask CLAUDE_SETTINGS "Путь к settings.json Claude Code" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+  mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+  [ -f "$CLAUDE_SETTINGS" ] || echo '{}' > "$CLAUDE_SETTINGS"
+  cp "$CLAUDE_SETTINGS" "$CLAUDE_SETTINGS.bak_$(date +%Y%m%d%H%M%S)"
+  CC_SETTINGS="$CLAUDE_SETTINGS" CC_HOOK_CMD="CC_LIMITS_DIR=$BASE /usr/bin/python3 $BASE/hooks/queue_on_limits.py" python3 <<'PY'
+import json, os
+p = os.environ["CC_SETTINGS"]
+cmd = os.environ["CC_HOOK_CMD"]
+try:
+    d = json.load(open(p))
+    if not isinstance(d, dict):
+        d = {}
+except Exception:
+    d = {}
+ups = d.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
+# идемпотентность: ищем наш скрипт, а не точную строку — путь мог поменяться
+if any("queue_on_limits.py" in json.dumps(x) for x in ups):
+    ups[:] = [x for x in ups if "queue_on_limits.py" not in json.dumps(x)]
+ups.append({"hooks": [{"type": "command", "command": cmd}]})
+json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+print("  OK: хук очереди прописан в %s" % p)
+PY
+  warn "Claude Code читает settings.json при старте — перезапусти сессию, чтобы хук заработал."
+else
+  log "Хук очереди не подключён. Вручную: hooks.UserPromptSubmit → команда"
+  echo "  CC_LIMITS_DIR=$BASE /usr/bin/python3 $BASE/hooks/queue_on_limits.py"
+fi
 
 log "Проверяю health-check (127.0.0.1:$PORT)…"
 HC="$(curl -fsS "http://127.0.0.1:$PORT/api/limits?token=$HOOK_TOKEN" || true)"

@@ -58,6 +58,13 @@ there's something to say; in normal operation it isn't rendered at all
   and a system cron lifts it at the nearest window reset and wakes the live
   session. Nothing lives inside the Claude Code session itself, so the pause
   survives a restart, `/clear` and a reboot.
+- 📥 **Incoming queue while limits are burnt** (`tg_queue.py` + a
+  `UserPromptSubmit` hook) — while the windows are burnt, a message from a
+  chat channel (Telegram and the like) never reaches the model: it goes into a
+  queue, the hook answers the sender itself ("got it, back around 16:03"), and
+  the queue is worked through after the wake-up. Without it every new message
+  wakes the session and burns what is left of the window, while the person in
+  the chat is sure their messages are piling up.
 - 🔔 **State banner** at the top of the panel (RU/EN): "limits reached —
   nothing to switch to", "active account is full — background jobs paused",
   "paused, resuming at 16:03" with a countdown. In normal operation there is
@@ -95,7 +102,8 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `limits_gate.py`, `pause_ctl.py` → `/opt/cc-limits`,
+2. copy `cc_limits.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+   `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
 4. generate `config.json` with a random `hook_token` (on a repeat run it
@@ -211,6 +219,52 @@ otherwise the bot would write every few minutes; it stays in `pause_wake.log`
 and in the re-check counter. Turn the pause messages off with
 `"pause_notify": false` in `config.json`.
 
+## Incoming queue while limits are burnt (v1.3.0)
+
+A chat with Claude Code has no queue: every incoming message wakes the
+session, and it starts working immediately — including when the windows are
+already burnt and there is nothing to work with. The person on the other side
+usually assumes their messages are piling up to be handled later. This version
+makes that assumption true.
+
+How it works: the `UserPromptSubmit` hook (`hooks/queue_on_limits.py`) looks at
+the incoming prompt **before** the model is called. If it is a chat-channel
+message (`<channel …>`) and the gate is red, the prompt is blocked (no tokens
+spent), the text goes into `tg_queue.jsonl`, the sender gets an
+acknowledgement over the Bot API, and the pause is raised automatically so the
+cron alarm wakes the session at the nearest window reset. The wake-up message
+then carries a line saying "N messages queued — handle them first".
+
+```bash
+python3 /opt/cc-limits/tg_queue.py count   # how many are waiting
+python3 /opt/cc-limits/tg_queue.py list    # look without marking them
+python3 /opt/cc-limits/tg_queue.py take    # hand them over and mark as taken
+python3 /opt/cc-limits/tg_queue.py clear   # emergency reset of the queue
+```
+
+Only the "there is genuinely nowhere to work" state blocks: every account
+above the threshold, or a pause already in place. If the active account is
+burnt but a free one exists, the message goes through as usual — the balancer
+will switch by itself. Plain terminal input (no `<channel>` tag) is never
+touched, and any error inside the hook also passes the prompt through
+(fail-open): the queue must not become the reason messages get lost.
+
+The acknowledgement text is overridden by the `queue_ack_message` key in
+`config.json` (placeholders `{n}`, `{line}`, `{when}`), and `"queue_ack":
+false` turns it off — the message then just lands in the queue silently.
+
+The hook is wired up by an installer question (it edits
+`hooks.UserPromptSubmit` in the Claude Code `settings.json`, keeping a backup
+next to it), or by hand:
+
+```json
+{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type": "command",
+  "command": "CC_LIMITS_DIR=/opt/cc-limits /usr/bin/python3 /opt/cc-limits/hooks/queue_on_limits.py" } ] } ] } }
+```
+
+⚠️ Claude Code reads `settings.json` at startup — restart the session after
+wiring the hook, otherwise it will not be called.
+
 ## Management
 
 | Command / URL | What it does |
@@ -221,7 +275,8 @@ and in the re-check counter. Turn the pause messages off with
 | `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`), pause, nearest reset |
 | `python3 /opt/cc-limits/limits_gate.py` | may a background job start right now (rc `0`/`10`) |
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message` |
+| `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | incoming messages queued while the limits held |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message` |
 
 ## Upgrading from a previous version
 
@@ -234,9 +289,9 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `limits_gate.py`, `pause_ctl.py` into
-`/opt/cc-limits`, add the cron line from `install.sh`, and restart the
-service.
+installer again — copy `cc_limits.py`, `limits_gate.py`, `pause_ctl.py`,
+`tg_queue.py` and `hooks/queue_on_limits.py` into `/opt/cc-limits`, add the
+cron line from `install.sh`, and restart the service.
 
 ## Telegram notifications (optional)
 
@@ -290,6 +345,10 @@ in front:
 
 ## Version history
 
+- **v1.3.0** — incoming queue while limits are burnt: a `UserPromptSubmit`
+  hook blocks a chat-channel message before it reaches the model, stores it in
+  `tg_queue.jsonl` and answers the sender itself; after the alarm wakes the
+  session the queue is worked through in order.
 - **v1.2.1** — Telegram notifications when the pause goes up and when the
   alarm lifts it; the bot token can now be set with the `bot_token` key in
   `config.json` instead of only through the Claude Code Telegram channel file
