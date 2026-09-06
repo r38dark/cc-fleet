@@ -357,6 +357,13 @@ in front:
 
 ## Version history
 
+- **v1.8.0** — after a 429 from Anthropic, any non-force request (a regular
+  panel poll) is now blocked for twice `poll_sec`, not just the background
+  poller's own timer. Previously the 30-second dedup in `collect()` only
+  guarded against simultaneous calls: if the panel polled `/api/limits` less
+  often than 30s but before the background poller had a chance to back off,
+  it would immediately repeat the very request that had just been
+  rate-limited.
 - **v1.7.0** — each account card now shows a countdown ring for the 5-hour
   window's reset (color signals urgency — green/yellow/red), and the active
   account's card gets two buttons right on it — compact the context
