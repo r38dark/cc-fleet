@@ -351,6 +351,7 @@ SETTINGS = "/root/.claude/settings.json"
 TRANSCRIPTS = "/root/.claude/projects/-root"
 MODELS = {  # id → короткое имя для UI
     "claude-fable-5": "Fable 5",
+    "claude-fable-5-1": "Fable 5.1",
     "claude-opus-5": "Opus 5",
     "claude-sonnet-5": "Sonnet 5",
     "claude-haiku-4-5-20251001": "Haiku 4.5",
@@ -649,9 +650,15 @@ def session_model():
 def model_info():
     dflt = (jload(SETTINGS, {}) or {}).get("model")
     sess = session_model()
+    c = cfg()
+    enabled = c.get("enabled_models") or list(MODELS.keys())  # ничего не скрыто, пока не сузили в панели
+    added_ts = c.get("model_added_ts") or {}
+    now = time.time()
     return {"session": sess, "session_name": MODELS.get(sess, sess),
             "default": dflt, "default_name": MODELS.get(dflt, dflt),
-            "available": [{"id": k, "name": v} for k, v in MODELS.items()]}
+            "available": [{"id": k, "name": v, "enabled": k in enabled,
+                           "new": now - added_ts.get(k, 0) < 14 * 86400}
+                          for k, v in MODELS.items()]}
 
 
 def _dialog_watchdog():
@@ -1197,9 +1204,16 @@ class H(BaseHTTPRequestHandler):
             for k in ("autoswitch", "threshold", "optimize"):
                 if k in body:
                     c[k] = body[k]
+            if "enabled_models" in body:
+                # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
+                # хотя бы одна модель должна остаться доступной для переключения
+                ids = [m for m in body["enabled_models"] if m in MODELS]
+                if ids:
+                    c["enabled_models"] = ids
             jsave(CONFIG, c)
             return self._send(200, {"ok": True, "autoswitch": c.get("autoswitch"),
-                                    "threshold": c.get("threshold"), "optimize": c.get("optimize")})
+                                    "threshold": c.get("threshold"), "optimize": c.get("optimize"),
+                                    "model": model_info()})
         if u.path == "/api/relogin/start":
             # без lock: только спавнит изолированный процесс в своём temp HOME,
             # общие файлы (снапшот/профили) не трогает — блокировать остальных на 15с смысла нет
@@ -1229,6 +1243,20 @@ PAGE = r"""<!doctype html>
 body{background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;max-width:640px;margin:0 auto}
 .hdr{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0 14px}
 h1{font-size:19px;margin:0}
+.hdrgear{background:transparent;border:1px solid #2a3140;color:var(--mut);width:28px;height:28px;padding:0;margin:0;border-radius:8px;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.mchip{margin:0;background:transparent;border:1px solid #2a3140;color:var(--txt);font-weight:600;padding:5px 12px;border-radius:99px;font-size:13px;cursor:pointer}
+.mchip.active{background:var(--acc);color:#0f1115;border-color:var(--acc)}
+.mrowslim{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.scrim{position:fixed;inset:0;background:rgba(6,8,12,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+.scrim[hidden]{display:none}
+.modal{background:var(--card);border:1px solid #2a3140;border-radius:16px;padding:18px 18px 14px;max-width:360px;width:100%}
+.modal h3{font-size:15px;margin-bottom:4px}
+.modalsub{font-size:12px;color:var(--mut);margin-bottom:12px}
+.poolrow{display:flex;align-items:center;gap:9px;font-size:14px;padding:7px 2px;border-bottom:1px solid #1e232c;cursor:pointer}
+.poolrow:last-of-type{border-bottom:none}
+.poolrow input{transform:scale(1.2)}
+.newbadge{font-size:10px;padding:1px 7px;border-radius:99px;background:rgba(124,154,255,.18);color:var(--acc);font-weight:700;margin-left:auto}
+.modalfoot{display:flex;justify-content:flex-end;margin-top:8px}
 .card{background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:12px;border:1px solid #232a36}
 .card.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
@@ -1279,7 +1307,7 @@ button:disabled{opacity:.35;cursor:default}
 .ccp-timer .l{font-size:11px;color:var(--mut);margin-top:2px}
 @media (max-width:620px){.ccpause{flex-wrap:wrap}.ccp-timer{text-align:left}}
 </style></head><body>
-<div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div></div>
+<div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="gear" class="hdrgear" title="Модели">⚙</button></div></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="termwrap">
  <div class="termhead"><h2 id="consoleTitle">🖥 Консоль (только чтение)</h2><span class="termdot" id="termDot"></span></div>
@@ -1293,9 +1321,18 @@ button:disabled{opacity:.35;cursor:default}
 <div class="switchrow">
  <input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов (рулит сервис, ручные кнопки блокируются)</label>
 </div>
+<div id="mrow" class="mrowslim"></div>
 <div id="cards">Загрузка…</div>
 <div class="foot"><span id="upd"></span><button id="rf" style="margin-top:0">Обновить сейчас</button></div>
 <div id="msg"></div>
+<div id="scrim" class="scrim" hidden>
+ <div class="modal">
+  <h3 id="modalTitle">Модели</h3>
+  <div class="modalsub" id="modalSub">Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»</div>
+  <div id="poolList"></div>
+  <div class="modalfoot"><button id="modalDone" style="margin-top:0">Готово</button></div>
+ </div>
+</div>
 <script>
 const $=s=>document.querySelector(s);const TOKEN='__TOKEN__';const API=location.origin+'/cc-hook/';
 const I18N={
@@ -1343,6 +1380,12 @@ const I18N={
   ccpTillNearest:'до ближайшего окна',
   ccpTillReset:'до сброса окна',
   ccpLeft:(h,m,s)=>h?`${h} ч ${m} мин`:`${m} мин ${s} с`,
+  modelsBtnTitle:'Модели',
+  modelsTitle:'Модели',
+  modelsSub:'Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»',
+  modelsDone:'Готово',
+  noModelsEnabled:'Ни одна модель не включена — открой ⚙',
+  newBadge:'новая',
  },
  en:{
   title:'Claude — Account Limits',
@@ -1388,6 +1431,12 @@ const I18N={
   ccpTillNearest:'until nearest window',
   ccpTillReset:'until window reset',
   ccpLeft:(h,m,s)=>h?`${h}h ${m}m`:`${m}m ${s}s`,
+  modelsBtnTitle:'Models',
+  modelsTitle:'Models',
+  modelsSub:'Pick which ones show as quick-switch buttons — applies instantly, no Save button',
+  modelsDone:'Done',
+  noModelsEnabled:'No models enabled — open ⚙',
+  newBadge:'new',
  },
 };
 let LANG='ru';
@@ -1399,13 +1448,15 @@ function renderLangSwitch(){
   ?'<b style="color:var(--txt)">RU</b> · <span onclick="setLang(\'en\')" style="cursor:pointer;text-decoration:underline">EN</span>'
   :'<span onclick="setLang(\'ru\')" style="cursor:pointer;text-decoration:underline">RU</span> · <b style="color:var(--txt)">EN</b>';
 }
-let THR=85,lastSnap=null;
+let THR=85,lastSnap=null,lastModel=null;
 function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);}
 function applyI18n(){
  document.title=tr('title');document.documentElement.lang=LANG;
  $('#h1').textContent=tr('h1');$('#consoleTitle').textContent=tr('console');
  $('#optLbl').textContent=tr('optLbl');$('#rf').textContent=tr('refresh');
  renderAutoLbl();renderLangSwitch();
+ $('#gear').title=tr('modelsBtnTitle');$('#modalTitle').textContent=tr('modelsTitle');
+ $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
  if(typeof ccpRender==='function')ccpRender();  // смена языка перерисовывает баннер без запроса
@@ -1413,6 +1464,7 @@ function applyI18n(){
   renderCards(lastSnap);
   $('#upd').textContent=tr('updated')+' '+new Date(lastSnap.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
  }
+ if(lastModel)renderModel(lastModel);
 }
 async function ccConsoleHistory(){
  try{
@@ -1458,7 +1510,29 @@ async function load(refresh){
  if(d.config&&d.config.threshold)THR=d.config.threshold;
  renderAutoLbl();renderCards(d);
  $('#upd').textContent=tr('updated')+' '+new Date(d.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
+ renderModel(d.model);
 }
+function renderModel(m){
+ if(!m)return;
+ lastModel=m;
+ const en=m.available.filter(x=>x.enabled);
+ $('#mrow').innerHTML=en.length?en.map(x=>`<button class="mchip ${x.id===m.default?'active':''}" onclick="pickModel('${x.id}')">${x.name}</button>`).join('')
+  :`<span style="color:var(--mut);font-size:12.5px">${tr('noModelsEnabled')}</span>`;
+ $('#poolList').innerHTML=m.available.map(x=>`<label class="poolrow"><input type="checkbox" data-id="${x.id}" ${x.enabled?'checked':''}> ${x.name}${x.new?' <span class="newbadge">'+tr('newBadge')+'</span>':''}</label>`).join('');
+}
+async function pickModel(id){
+ const r=await fetch(API+'model?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:id})});
+ const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+d.message);renderModel(d.model);
+}
+$('#poolList').addEventListener('change',async e=>{
+ if(e.target.tagName!=='INPUT')return;
+ const ids=[...document.querySelectorAll('#poolList input:checked')].map(i=>i.dataset.id);
+ const r=await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled_models:ids})});
+ const d=await r.json();if(d.model)renderModel(d.model);
+});
+$('#gear').addEventListener('click',()=>{$('#scrim').hidden=false});
+$('#modalDone').addEventListener('click',()=>{$('#scrim').hidden=true});
+$('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')$('#scrim').hidden=true});
 function toast(t){const m=$('#msg');m.textContent=t;m.style.display='block';setTimeout(()=>m.style.display='none',4000)}
 async function sw(n){
  if(!confirm(tr('confirmSwitch',n)))return;

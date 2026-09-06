@@ -73,6 +73,10 @@ there's something to say; in normal operation it isn't rendered at all
   switch to", the pause going up and the alarm lifting it — so you don't have
   to watch the panel. The bot token comes either from the Claude Code Telegram
   channel file or straight from `config.json`.
+- 🧠 **Model pool** (gear icon in the header) — check which models show up
+  as quick-switch buttons on the main screen; clicking a button switches the
+  default session model right away. A newly added model in the pool carries
+  a "new" badge for its first 14 days.
 - 🔐 No OAuth tokens ever leave your machine — everything lives on your own
   server, under your own root.
 - 🧩 One install script, no web wizards or dependencies on someone else's
@@ -346,6 +350,14 @@ in front:
 
 ## Version history
 
+- **v1.5.0** — model pool with checkboxes: the gear icon in the header opens
+  a modal listing every known model, and a checkbox enables/disables each one
+  in the quick-switch button row on the main screen — applies instantly, no
+  Save button. Clicking a model button switches the session default
+  (`POST /api/model` — the endpoint already existed, but the panel never
+  called it; switching a model used to mean typing `/model` by hand inside
+  the session itself). A newly added entry in `MODELS` gets a "new" badge
+  for 14 days (`model_added_ts` in `config.json`).
 - **v1.4.1** — the panel finally has a real threshold control (a "−"/"+"
   button pair next to the auto-switch checkbox, step 5%, range 50–99%): the
   README used to promise a "slider/field" for the threshold, but the panel
