@@ -381,6 +381,45 @@ MODELS = {  # id → короткое имя для UI
     "claude-haiku-4-5-20251001": "Haiku 4.5",
 }
 
+# Необязательный источник для кнопки "Проверить новые модели": если рядом крутится
+# свой скрипт-сторож CLI-релизов (см. model_version_watch.py в этом репозитории),
+# он копит сюда id новых моделей, найденных в бинарнике claude-code. Файла нет —
+# кандидатов просто не будет, ничего не ломается.
+MODEL_WATCH_STATE = "/root/.model_version_watch_state.json"
+
+
+def all_models():
+    # MODELS — базовый набор из кода; extra_models в config.json — то, что добавили
+    # через кнопку "Проверить новые модели", без правки исходника при каждом релизе
+    return {**MODELS, **(cfg().get("extra_models") or {})}
+
+
+def model_candidates():
+    # known_ids копится в model_version_watch.py при каждом изменении версии CLI —
+    # там вперемешку публичные релизы и internal/preview-варианты (-fast, -v1,
+    # датированные снапшоты). Отдаём то, чего ещё нет в текущем наборе и что не
+    # отклонили раньше — какой из них реальная модель, а какой мусор, решает
+    # человек в UI (чекбоксы), не автоматика.
+    known = (jload(MODEL_WATCH_STATE, {}) or {}).get("known_ids") or []
+    have = set(all_models().keys())
+    ignored = set(cfg().get("model_ignored_ids") or [])
+    cand_ids = sorted(m for m in known if m not in have and m not in ignored)
+
+    def guess_name(mid):
+        parts = mid.split("-")[1:]  # без "claude"
+        if not parts:
+            return mid
+        family = parts[0].capitalize()
+        nums = []
+        for p in parts[1:]:
+            if re.fullmatch(r"\d+[a-z]?", p) and not re.fullmatch(r"\d{8}", p):
+                nums.append(p)
+            else:
+                break
+        return family + (" " + ".".join(nums) if nums else "")
+
+    return [{"id": m, "guess_name": guess_name(m)} for m in cand_ids]
+
 
 def screen_hardcopy():
     # снять текущий экран живой сессии (read-only, ввод не трогаем).
@@ -645,7 +684,7 @@ def session_model():
     # рантайма (напр. safeguard'ы Fable→Opus), которых нет в settings.json.
     txt = screen_hardcopy()
     for line in txt.splitlines():
-        for mid, name in MODELS.items():
+        for mid, name in all_models().items():
             # имя модели в начале строки статуса + где-то дальше "root"
             if re.search(r"\b" + re.escape(name) + r"\b\s+\d+%\s+root", line):
                 return mid
@@ -675,14 +714,15 @@ def model_info():
     dflt = (jload(SETTINGS, {}) or {}).get("model")
     sess = session_model()
     c = cfg()
-    enabled = c.get("enabled_models") or list(MODELS.keys())  # ничего не скрыто, пока не сузили в панели
+    models = all_models()
+    enabled = c.get("enabled_models") or list(models.keys())  # ничего не скрыто, пока не сузили в панели
     added_ts = c.get("model_added_ts") or {}
     now = time.time()
-    return {"session": sess, "session_name": MODELS.get(sess, sess),
-            "default": dflt, "default_name": MODELS.get(dflt, dflt),
+    return {"session": sess, "session_name": models.get(sess, sess),
+            "default": dflt, "default_name": models.get(dflt, dflt),
             "available": [{"id": k, "name": v, "enabled": k in enabled,
                            "new": now - added_ts.get(k, 0) < 14 * 86400}
-                          for k, v in MODELS.items()]}
+                          for k, v in models.items()]}
 
 
 def _dialog_watchdog():
@@ -711,7 +751,8 @@ def _dialog_watchdog():
 
 
 def set_default_model(model_id):
-    if model_id not in MODELS:
+    models = all_models()
+    if model_id not in models:
         return False, "unknown model"
     s = jload(SETTINGS, {}) or {}
     s["model"] = model_id
@@ -734,7 +775,7 @@ def set_default_model(model_id):
         pass
     # live=True значит лишь что stuff прошёл технически — не гарантия, что TUI была
     # свободна и приняла команду. Честная формулировка без обещаний.
-    return True, MODELS[model_id] + (" — дефолт сохранён; в текущей сессии применится, если она сейчас свободна (иначе повтори)" if live else " — сохранён дефолт для новых сессий (живая недоступна)")
+    return True, models[model_id] + (" — дефолт сохранён; в текущей сессии применится, если она сейчас свободна (иначе повтори)" if live else " — сохранён дефолт для новых сессий (живая недоступна)")
 
 
 SESSION_COMMANDS = {  # ключ с сайта -> реальная slash-команда в живой сессии
@@ -1148,6 +1189,10 @@ class H(BaseHTTPRequestHandler):
             if history_html is not None:
                 resp["history"] = history_html
             return self._send(200, resp)
+        if u.path == "/api/models/candidates":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            return self._send(200, {"ok": True, "candidates": model_candidates()})
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -1231,13 +1276,40 @@ class H(BaseHTTPRequestHandler):
             if "enabled_models" in body:
                 # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
                 # хотя бы одна модель должна остаться доступной для переключения
-                ids = [m for m in body["enabled_models"] if m in MODELS]
+                ids = [m for m in body["enabled_models"] if m in all_models()]
                 if ids:
                     c["enabled_models"] = ids
             jsave(CONFIG, c)
             return self._send(200, {"ok": True, "autoswitch": c.get("autoswitch"),
                                     "threshold": c.get("threshold"), "optimize": c.get("optimize"),
                                     "model": model_info()})
+        if u.path == "/api/models/candidates":
+            # add: {id: показываемое_имя} — принять кандидата в оборот;
+            # ignore: [id, ...] — убрать из будущих подсказок (не мусорить исторический "-fast"/"-v1" повторно)
+            c = cfg()
+            extra = c.get("extra_models") or {}
+            added_ts = c.get("model_added_ts") or {}
+            enabled = c.get("enabled_models")
+            if enabled is None:
+                enabled = list(all_models().keys())
+            now = time.time()
+            for mid, name in (body.get("add") or {}).items():
+                if not isinstance(mid, str) or not isinstance(name, str) or not name.strip():
+                    continue
+                if mid in all_models():
+                    continue  # уже есть — не перетираем существующее отображаемое имя
+                extra[mid] = name.strip()
+                added_ts[mid] = now
+                if mid not in enabled:
+                    enabled.append(mid)
+            ignored = set(c.get("model_ignored_ids") or [])
+            ignored.update(i for i in (body.get("ignore") or []) if isinstance(i, str))
+            c["extra_models"] = extra
+            c["model_added_ts"] = added_ts
+            c["enabled_models"] = enabled
+            c["model_ignored_ids"] = sorted(ignored)
+            jsave(CONFIG, c)
+            return self._send(200, {"ok": True, "model": model_info()})
         if u.path == "/api/relogin/start":
             # без lock: только спавнит изолированный процесс в своём temp HOME,
             # общие файлы (снапшот/профили) не трогает — блокировать остальных на 15с смысла нет
@@ -1278,9 +1350,10 @@ h1{font-size:19px;margin:0}
 .modalsub{font-size:12px;color:var(--mut);margin-bottom:12px}
 .poolrow{display:flex;align-items:center;gap:9px;font-size:14px;padding:7px 2px;border-bottom:1px solid #1e232c;cursor:pointer}
 .poolrow:last-of-type{border-bottom:none}
-.poolrow input{transform:scale(1.2)}
+.poolrow input[type=checkbox]{transform:scale(1.2)}
 .newbadge{font-size:10px;padding:1px 7px;border-radius:99px;background:rgba(124,154,255,.18);color:var(--acc);font-weight:700;margin-left:auto}
-.modalfoot{display:flex;justify-content:flex-end;margin-top:8px}
+.modalfoot{display:flex;justify-content:flex-end;margin-top:8px;gap:8px}
+.ghostbtn{margin:0;background:transparent;border:1px solid #2a3140;color:var(--txt);font-weight:600;padding:8px 14px;border-radius:10px;font-size:13px;cursor:pointer}
 .card{position:relative;background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:12px;border:1px solid #232a36}
 .card.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
@@ -1363,7 +1436,7 @@ button:disabled{opacity:.35;cursor:default}
   <h3 id="modalTitle">Модели</h3>
   <div class="modalsub" id="modalSub">Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»</div>
   <div id="poolList"></div>
-  <div class="modalfoot"><button id="modalDone" style="margin-top:0">Готово</button></div>
+  <div class="modalfoot"><button id="checkNew" class="ghostbtn">🔄 Проверить новые модели</button><button id="modalDone" style="margin-top:0">Готово</button></div>
  </div>
 </div>
 <script>
@@ -1419,6 +1492,8 @@ const I18N={
   modelsDone:'Готово',
   noModelsEnabled:'Ни одна модель не включена — открой ⚙',
   newBadge:'новая',
+  checkNewModels:'🔄 Проверить новые модели',
+  candSearching:'Ищу…',
   compactTitle:'Сжать контекст (/compact)',
   newSessionTitle:'Новая сессия (/clear)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
@@ -1473,6 +1548,8 @@ const I18N={
   modelsDone:'Done',
   noModelsEnabled:'No models enabled — open ⚙',
   newBadge:'new',
+  checkNewModels:'🔄 Check for new models',
+  candSearching:'Searching…',
   compactTitle:'Compact context (/compact)',
   newSessionTitle:'New session (/clear)',
   confirmNewSession:'Start a new Claude session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the console. Continue?',
@@ -1495,7 +1572,7 @@ function applyI18n(){
  $('#optLbl').textContent=tr('optLbl');$('#rf').textContent=tr('refresh');
  renderAutoLbl();renderLangSwitch();
  $('#gear').title=tr('modelsBtnTitle');$('#modalTitle').textContent=tr('modelsTitle');
- $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');
+ $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
  if(typeof ccpRender==='function')ccpRender();  // смена языка перерисовывает баннер без запроса
@@ -1564,26 +1641,69 @@ async function load(refresh){
  $('#upd').textContent=tr('updated')+' '+new Date(d.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
  renderModel(d.model);
 }
+let lastCandidates=[];
+function familyOf(name){return (name||'').split(' ')[0].toLowerCase();}
+function familyRank(f){return f==='haiku'?1:0;}
+function unifiedRows(m,candidates){
+ const rows={};
+ ((m&&m.available)||[]).forEach(a=>{rows[a.id]={id:a.id,name:a.name,enabled:a.enabled!==false,isNew:!!a.new,known:true};});
+ (candidates||[]).forEach(c=>{if(!rows[c.id])rows[c.id]={id:c.id,name:c.guess_name,enabled:false,isNew:false,known:false};});
+ return Object.values(rows).sort((a,b)=>{
+  const fa=familyOf(a.name),fb=familyOf(b.name);
+  if(fa!==fb){const ra=familyRank(fa),rb=familyRank(fb);if(ra!==rb)return ra-rb;return fa<fb?-1:1;}
+  return a.id<b.id?1:(a.id>b.id?-1:0);
+ });
+}
+function renderPool(){
+ $('#poolList').innerHTML=unifiedRows(lastModel,lastCandidates).map(r=>
+  `<div class="poolrow" data-id="${r.id}" data-known="${r.known?1:0}" style="flex-direction:column;align-items:stretch;gap:5px;cursor:default">
+    <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;margin:0">
+     <input type="checkbox" class="poolchk" ${r.enabled?'checked':''}>
+     <span style="word-break:break-all">${r.id}</span>${r.isNew?' <span class="newbadge" style="margin-left:0">'+tr('newBadge')+'</span>':''}
+    </label>
+    <input type="text" class="poolname" value="${r.name}" style="width:100%;box-sizing:border-box;background:#0f1115;border:1px solid #2a3140;color:inherit;border-radius:6px;padding:5px 8px;font-size:13px">
+   </div>`
+ ).join('');
+}
 function renderModel(m){
  if(!m)return;
  lastModel=m;
  const en=m.available.filter(x=>x.enabled);
  $('#mrow').innerHTML=en.length?en.map(x=>`<button class="mchip ${x.id===m.default?'active':''}" onclick="pickModel('${x.id}')">${x.name}</button>`).join('')
   :`<span style="color:var(--mut);font-size:12.5px">${tr('noModelsEnabled')}</span>`;
- $('#poolList').innerHTML=m.available.map(x=>`<label class="poolrow"><input type="checkbox" data-id="${x.id}" ${x.enabled?'checked':''}> ${x.name}${x.new?' <span class="newbadge">'+tr('newBadge')+'</span>':''}</label>`).join('');
+ renderPool();
 }
 async function pickModel(id){
  const r=await fetch(API+'model?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:id})});
  const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+d.message);renderModel(d.model);
 }
 $('#poolList').addEventListener('change',async e=>{
- if(e.target.tagName!=='INPUT')return;
- const ids=[...document.querySelectorAll('#poolList input:checked')].map(i=>i.dataset.id);
- const r=await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled_models:ids})});
- const d=await r.json();if(d.model)renderModel(d.model);
+ if(!e.target.classList.contains('poolchk'))return;
+ const row=e.target.closest('[data-id]'),id=row.dataset.id,known=row.dataset.known==='1';
+ const name=row.querySelector('.poolname').value.trim()||id;
+ let d=null;
+ if(known){
+  const ids=[...document.querySelectorAll('#poolList [data-known="1"] .poolchk:checked')].map(i=>i.closest('[data-id]').dataset.id);
+  const r=await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled_models:ids})});
+  d=await r.json();
+ }else if(e.target.checked){
+  const r=await fetch(API+'models/candidates?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({add:{[id]:name},ignore:[]})});
+  d=await r.json();
+  lastCandidates=lastCandidates.filter(c=>c.id!==id);
+ }
+ if(d&&d.model)renderModel(d.model);
 });
+async function checkNewModels(){
+ $('#poolList').innerHTML='<div style="color:var(--mut);font-size:12.5px;padding:6px 2px">'+tr('candSearching')+'</div>';
+ try{
+  const r=await fetch(API+'models/candidates?token='+TOKEN);const d=await r.json();
+  lastCandidates=(d&&d.candidates)||[];
+ }catch(e){lastCandidates=[];}
+ renderPool();
+}
+$('#checkNew').addEventListener('click',checkNewModels);
 $('#gear').addEventListener('click',()=>{$('#scrim').hidden=false});
-$('#modalDone').addEventListener('click',()=>{$('#scrim').hidden=true});
+$('#modalDone').addEventListener('click',()=>{$('#scrim').hidden=true;});
 $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')$('#scrim').hidden=true});
 function toast(t){const m=$('#msg');m.textContent=t;m.style.display='block';setTimeout(()=>m.style.display='none',4000)}
 async function sw(n){

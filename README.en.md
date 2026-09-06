@@ -357,6 +357,13 @@ in front:
 
 ## Version history
 
+- **v1.9.0** — the model modal (⚙) is now a single list: known models and
+  discovered candidates (via "🔄 Check for new models") show together, each
+  row is one checkbox that applies immediately (a known model toggles
+  on/off, a candidate is added and enabled in the same click — no separate
+  "Add" step). Rows are grouped by model family (Fable/Opus/Sonnet/…), with
+  Haiku always sorted last as the lightest tier, and newer versions listed
+  above older ones within a family.
 - **v1.8.0** — after a 429 from Anthropic, any non-force request (a regular
   panel poll) is now blocked for twice `poll_sec`, not just the background
   poller's own timer. Previously the 30-second dedup in `collect()` only
