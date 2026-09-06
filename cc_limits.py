@@ -917,6 +917,41 @@ def _opt_score(row):
     return (100.0 - pct) / _hours_until(resets_at, 168.0)
 
 
+def _local_hm(iso):
+    # время сброса в локальной зоне сервера, коротко: «07:40»
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(iso).astimezone().strftime("%H:%M")
+    except Exception:
+        return "?"
+
+
+def _accs_line(accs):
+    out = []
+    for n, row in sorted(accs.items()):
+        fh = row.get("five_hour") or {}
+        r = fh.get("resets_at")
+        out.append("%s: сессия %s%%%s" % (n, fh.get("pct"),
+                                          (" (сброс %s)" % _local_hm(r)) if r else ""))
+    return "\n".join(out)
+
+
+def _nearest_reset(accs):
+    best = None
+    for n, row in accs.items():
+        iso = (row.get("five_hour") or {}).get("resets_at")
+        if not iso:
+            continue
+        try:
+            from datetime import datetime
+            ts = datetime.fromisoformat(iso).timestamp()
+        except Exception:
+            continue
+        if best is None or ts < best[0]:
+            best = (ts, n, iso)
+    return ("%s в %s" % (best[1], _local_hm(best[2]))) if best else "неизвестно"
+
+
 def _log_switch_event(event, **kw):
     # Аудит-лог forced-веток: state.json хранит только ПОСЛЕДНИЙ переключение
     # (last_switch_ts), поэтому разобрать задним числом "почему не переключилось
@@ -1025,7 +1060,16 @@ def optimize_check(snap):
         if forced:
             _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd)
         if forced and not st.get("all_high_notified"):
-            # (30.07.26) уведомление "некуда переключаться" убрано - спамило в чат.
+            # раньше уведомление отсюда убрали как спам, и «упёрлись ВСЕ аккаунты» стало
+            # происходить молча — пользователь может не понимать, почему сессия не работает,
+            # часами. Возвращаем ровно ОДНО сообщение на эпизод (флаг снимается только когда
+            # снова появился живой кандидат) и не чаще раза в 2 часа. Это не тот спам, что
+            # убирали: успешные переключения по-прежнему молчат.
+            if time.time() - st.get("all_high_notified_ts", 0) >= 7200:
+                tg_notify("⛔ Claude: все аккаунты упёрлись в лимит сессии — переключаться некуда.\n"
+                          + _accs_line(accs)
+                          + "\nБлижайшее окно: " + _nearest_reset(accs))
+                st["all_high_notified_ts"] = time.time()
             st["all_high_notified"] = True
             jsave(STATE, st)
         return
@@ -1102,7 +1146,14 @@ def poll_loop():
     while True:
         try:
             with lock:
-                snap = collect(force=True)
+                # collect(force=True) обходит и 30с-дедуп, и backoff_until — если звать
+                # его безусловно каждый тик, во время активного 429-бэкоффа фоновый поток
+                # продолжит долбить Anthropic и будет ловить 429 заново. Поэтому во время
+                # бэкоффа берём последний снапшот с диска вместо нового запроса.
+                if time.time() < backoff_until:
+                    snap = jload(SNAPSHOT) or snap_set_active()
+                else:
+                    snap = collect(force=True)
                 switch_policy_check(snap)
         except Exception as e:
             print(f"poll fail: {e}", flush=True)

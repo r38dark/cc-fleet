@@ -357,6 +357,17 @@ in front:
 
 ## Version history
 
+- **v1.9.1** — two background-polling fixes: (1) `poll_loop()` now
+  respects `backoff_until` itself after a caught 429 — it used to call
+  `collect(force=True)` unconditionally on every tick, and `force=True`
+  bypasses both the 30-second dedup and the backoff, so the background
+  poller kept hitting Anthropic and could get rate-limited again before
+  the backoff even expired (a regression against the v1.8.0 fix, which
+  only closed the non-force path from the panel); (2) when there is
+  nowhere left to switch to (every account's session is above threshold),
+  a single Telegram notification now fires per episode (at most once
+  every 2 hours) with each account's status and the nearest reset time,
+  instead of staying silent.
 - **v1.9.0** — the model modal (⚙) is now a single list: known models and
   discovered candidates (via "🔄 Check for new models") show together, each
   row is one checkbox that applies immediately (a known model toggles
