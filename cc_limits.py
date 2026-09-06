@@ -260,14 +260,20 @@ def fetch_plan(name, access):
 
 GOOD = os.path.join(BASE, "last_good.json")
 rate_limited = False  # был 429 в последнем сборе — poll_loop притормозит
+backoff_until = 0  # после 429: реальные запросы к Anthropic заблокированы до этого ts
 
 
 def collect(force=False, force_account=None):
-    global rate_limited
+    global rate_limited, backoff_until
     prev = jload(SNAPSHOT) or {}
     # дедуп: не дёргать Anthropic чаще раза в 30с (иначе 429 Too Many Requests),
-    # UI-запросы между опросами получают свежий снапшот с актуальным active
-    if not force and time.time() - prev.get("ts", 0) < 30:
+    # UI-запросы между опросами получают свежий снапшот с актуальным active.
+    # backoff_until — доп. защита: 30с-дедуп сам по себе не спасал, если UI
+    # опрашивает /api/limits НЕ через force чаще, чем poll_sec, но реже 30с —
+    # он проходит дедуп и сразу повторяет запрос, который поймал 429 только
+    # что, до того как poll_loop успеет притормозить свой ОТДЕЛЬНЫЙ таймер.
+    # backoff_until блокирует ЛЮБОЙ non-force путь на время бэкоффа.
+    if not force and (time.time() - prev.get("ts", 0) < 30 or time.time() < backoff_until):
         return snap_set_active()
     act = active_name()
     good = jload(GOOD, {})
@@ -331,6 +337,8 @@ def collect(force=False, force_account=None):
             row["stale_ts"] = old.get("ts")
         accounts[n] = row
     rate_limited = saw_429
+    if saw_429:
+        backoff_until = time.time() + cfg().get("poll_sec", 90) * 2
     jsave(GOOD, good)
     snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
     jsave(SNAPSHOT, snap)
