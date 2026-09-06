@@ -1240,6 +1240,8 @@ h1{font-size:19px;margin:0}
 .fill{height:100%;border-radius:99px;transition:width .5s}
 button{background:var(--acc);border:0;color:#0f1115;font-weight:700;padding:8px 14px;border-radius:10px;font-size:13.5px;cursor:pointer;margin-top:12px}
 button:disabled{opacity:.35;cursor:default}
+.thrbtn{background:var(--card);border:1px solid #2a3140;color:var(--txt);font-weight:700;padding:1px 9px;border-radius:6px;font-size:14px;line-height:1.6;margin:0}
+.thrbtn:hover{border-color:var(--acc)}
 .foot{display:flex;justify-content:space-between;align-items:center;color:var(--mut);font-size:12.5px;margin-top:6px;flex-wrap:wrap;gap:8px}
 .err{color:var(--bad);font-size:13px;margin-top:8px}
 .switchrow{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--mut);margin-bottom:14px}
@@ -1285,7 +1287,8 @@ button:disabled{opacity:.35;cursor:default}
 <span id="termCurrent">Загрузка…</span></pre>
 </div>
 <div class="switchrow">
- <input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label>
+ <span id="autoWrap"><input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label></span>
+ <button type="button" class="thrbtn" id="thrMinus">−</button><button type="button" class="thrbtn" id="thrPlus">+</button>
 </div>
 <div class="switchrow">
  <input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов (рулит сервис, ручные кнопки блокируются)</label>
@@ -1321,6 +1324,7 @@ const I18N={
   relPrompt:email=>`Открылась ссылка входа в новой вкладке.\nВойди под ${email} и вставь код авторизации сюда:`,
   confirmSwitch:n=>`Переключить активный аккаунт на ${n}?`,
   autoOn:'Авто-переключение включено',autoOff:'Авто-переключение выключено',
+  thrSet:v=>'Порог: '+v+'%',
   optOn:'Оптимизация лимитов включена — ручные переключения заблокированы',
   optOff:'Оптимизация выключена — ручные переключения доступны',
   checking:'Проверяю…',
@@ -1365,6 +1369,7 @@ const I18N={
   relPrompt:email=>`A login link opened in a new tab.\nSign in as ${email} and paste the authorization code here:`,
   confirmSwitch:n=>`Switch the active account to ${n}?`,
   autoOn:'Auto-switch enabled',autoOff:'Auto-switch disabled',
+  thrSet:v=>'Threshold: '+v+'%',
   optOn:'Limit optimization enabled — manual switching blocked',
   optOff:'Optimization disabled — manual switching available',
   checking:'Checking…',
@@ -1448,8 +1453,8 @@ async function load(refresh){
  lastSnap=d;
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
  const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
- $('#auto').disabled=opt;$('#auto').parentElement.style.opacity=opt?'.5':'';
- $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
+ $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';
+ $('#autoWrap').title=opt?tr('optDisabledTitle'):'';
  if(d.config&&d.config.threshold)THR=d.config.threshold;
  renderAutoLbl();renderCards(d);
  $('#upd').textContent=tr('updated')+' '+new Date(d.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
@@ -1464,6 +1469,15 @@ $('#auto').addEventListener('change',async e=>{
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoswitch:e.target.checked})});
  toast(e.target.checked?tr('autoOn'):tr('autoOff'));
 });
+async function setThr(v){
+ v=Math.max(50,Math.min(99,v));
+ if(v===THR)return;
+ THR=v;renderAutoLbl();
+ await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:THR})});
+ toast(tr('thrSet',THR));
+}
+$('#thrMinus').addEventListener('click',()=>setThr(THR-5));
+$('#thrPlus').addEventListener('click',()=>setThr(THR+5));
 $('#opt').addEventListener('change',async e=>{
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({optimize:e.target.checked})});
  toast(e.target.checked?tr('optOn'):tr('optOff'));load();

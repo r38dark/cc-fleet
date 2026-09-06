@@ -346,6 +346,13 @@ in front:
 
 ## Version history
 
+- **v1.4.1** — the panel finally has a real threshold control (a "−"/"+"
+  button pair next to the auto-switch checkbox, step 5%, range 50–99%): the
+  README used to promise a "slider/field" for the threshold, but the panel
+  only ever shipped a checkbox and a static number — changing it required
+  hand-editing `config.json` on the server. The backend (`/api/config`)
+  already accepted `threshold` before this — the UI control was the only
+  missing piece.
 - **v1.4.0** — in optimize mode, the emergency session ceiling (forced
   switch) now shares the same `threshold` field as regular auto-switch:
   it used to read a separate `opt_ses_ceil` key that nothing ever set
