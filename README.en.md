@@ -350,6 +350,16 @@ in front:
 
 ## Version history
 
+- **v1.6.0** — inactive accounts are no longer polled on every tick: if an
+  account already has a fresh cache (younger than `inactive_poll_sec`,
+  300s by default), the real Anthropic request is skipped and cached data
+  is reused, tagged with its age (`stale_ts`). The active account is still
+  polled fresh every tick — no slowdown in reacting to a forced switch.
+  Matters when `poll_sec` is set low for a snappier reaction — that used
+  to double the request rate to ALL accounts at once and could trip
+  `429 Too Many Requests` on the inactive ones. The "I renewed" button
+  (`/api/recheck`) explicitly bypasses the cache — it needs a guaranteed
+  fresh read.
 - **v1.5.0** — model pool with checkboxes: the gear icon in the header opens
   a modal listing every known model, and a checkbox enables/disables each one
   in the quick-switch button row on the main screen — applies instantly, no

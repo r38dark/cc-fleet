@@ -262,7 +262,7 @@ GOOD = os.path.join(BASE, "last_good.json")
 rate_limited = False  # был 429 в последнем сборе — poll_loop притормозит
 
 
-def collect(force=False):
+def collect(force=False, force_account=None):
     global rate_limited
     prev = jload(SNAPSHOT) or {}
     # дедуп: не дёргать Anthropic чаще раза в 30с (иначе 429 Too Many Requests),
@@ -278,6 +278,22 @@ def collect(force=False):
         row = {"email": oa.get("emailAddress", "?"), "active": n == act}
         errs = []
         access = None
+        # неактивный аккаунт не расходует свою квоту сам по себе — незачем
+        # дёргать его usage/profile так же часто, как активный. При poll_sec,
+        # выставленном пониже (быстрая реакция на форс-свитч), это удваивало
+        # частоту опроса ВСЕХ аккаунтов разом и ловило 429 на неактивных.
+        # force_account — явный обход для кнопки "Я продлил" (/api/recheck),
+        # там нужна гарантированная свежесть именно этого аккаунта.
+        old = good.get(n) or {}
+        stale_ok = (n != act and n != force_account and old.get("ts")
+                    and time.time() - old["ts"] < cfg().get("inactive_poll_sec", 300))
+        if stale_ok:
+            row["five_hour"] = old.get("five_hour")
+            row["seven_day"] = old.get("seven_day")
+            row["plan"] = old.get("plan")
+            row["stale_ts"] = old.get("ts")
+            accounts[n] = row
+            continue
         try:
             access = get_access(n, act)
         except Exception as e:
@@ -1181,7 +1197,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(400, {"ok": False, "message": "неизвестный аккаунт"})
             _plan_cache.pop(name, None)
             with lock:
-                snap = collect(force=True)
+                snap = collect(force=True, force_account=name)
             row = (snap.get("accounts") or {}).get(name, {})
             plan = row.get("plan")
             email = row.get("email", name)
