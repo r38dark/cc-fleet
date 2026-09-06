@@ -347,6 +347,11 @@ in front:
   `/api/` (access gated only by knowing `hook_token`). See the nginx block
   that `install.sh` generates for an example.
 
+## Error codes
+
+What `429`/`400`/`403` on an account card actually means, when each one
+really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
+
 ## What's NOT included in this package
 
 - A personal agents/supervisor dashboard — a separate layer on top of
