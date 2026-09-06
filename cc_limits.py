@@ -1273,11 +1273,20 @@ h1{font-size:19px;margin:0}
 .poolrow input{transform:scale(1.2)}
 .newbadge{font-size:10px;padding:1px 7px;border-radius:99px;background:rgba(124,154,255,.18);color:var(--acc);font-weight:700;margin-left:auto}
 .modalfoot{display:flex;justify-content:flex-end;margin-top:8px}
-.card{background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:12px;border:1px solid #232a36}
+.card{position:relative;background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:12px;border:1px solid #232a36}
 .card.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .email{font-weight:600;font-size:15px;word-break:break-all}
 .tag{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--acc);color:#0f1115;font-weight:700;white-space:nowrap}
+.tag.pin{position:absolute;top:0;right:14px;transform:translateY(-55%);background:#7c5cff;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4);z-index:3}
+.hdrright{display:flex;align-items:center;gap:8px;flex:none}
+.ring{position:relative;flex:none}
+.ring svg{display:block}
+.ringtxt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--txt);font-weight:700}
+.iconrow{display:flex;gap:6px;flex:none}
+.iconbtn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;background:var(--card);border:1px solid #2a3140;border-radius:7px;color:var(--mut);cursor:pointer;padding:0;margin:0;flex:none}
+.iconbtn:hover{border-color:var(--acc);color:var(--txt)}
+.iconbtn svg{width:14px;height:14px}
 .row{margin-top:10px}
 .lbl{display:flex;justify-content:space-between;font-size:12.5px;color:var(--mut);margin-bottom:4px}
 .bar{height:10px;border-radius:99px;background:#242b38;overflow:hidden}
@@ -1402,6 +1411,9 @@ const I18N={
   modelsDone:'Готово',
   noModelsEnabled:'Ни одна модель не включена — открой ⚙',
   newBadge:'новая',
+  compactTitle:'Сжать контекст (/compact)',
+  newSessionTitle:'Новая сессия (/clear)',
+  confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
  },
  en:{
   title:'Claude — Account Limits',
@@ -1453,6 +1465,9 @@ const I18N={
   modelsDone:'Done',
   noModelsEnabled:'No models enabled — open ⚙',
   newBadge:'new',
+  compactTitle:'Compact context (/compact)',
+  newSessionTitle:'New session (/clear)',
+  confirmNewSession:'Start a new Claude session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the console. Continue?',
  },
 };
 let LANG='ru';
@@ -1505,16 +1520,29 @@ function rst(iso){if(!iso)return'';const d=new Date(iso),m=Math.max(0,Math.round
  const h=Math.floor(m/60),mm=m%60;return tr('resetIn',h,mm,d.toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'}))}
 function bar(lbl,o){o=o||{};const p=o.pct;return`<div class="row"><div class="lbl"><span>${lbl}: <b style="color:${col(p)}">${p==null?'?':p+'%'}</b></span><span>${rst(o.resets_at)}</span></div>
  <div class="bar"><div class="fill" style="width:${p||0}%;background:${col(p)}"></div></div></div>`}
+function urgCol(f){return f>.5?'var(--bad)':f>.2?'var(--warn)':'var(--ok)'}
+function frac(iso,windowSec){if(!iso)return 0;const remain=(new Date(iso)-Date.now())/1000;return Math.max(0,Math.min(1,remain/windowSec))}
+function ring(o,windowSec,size){o=o||{};size=size||34;const sw=Math.max(3,Math.round(size*.1));const rad=size/2-sw/2;const circ=2*Math.PI*rad;const f=frac(o.resets_at,windowSec);const uc=urgCol(f);const dash=(f*circ).toFixed(1);const c=size/2;
+ return `<div class="ring" style="width:${size}px;height:${size}px" title="${rst(o.resets_at)}"><svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"><circle cx="${c}" cy="${c}" r="${rad}" fill="none" stroke="#242b38" stroke-width="${sw}"/><circle cx="${c}" cy="${c}" r="${rad}" fill="none" stroke="${uc}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${dash} ${circ.toFixed(1)}" transform="rotate(-90 ${c} ${c})"/></svg><span class="ringtxt" style="font-size:${Math.round(size*.26)}px">${Math.round(f*100)}%</span></div>`}
 function renderCards(d){
  const opt=!!(d.config&&d.config.optimize);
- $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>`
+ $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>{
+  const plan=a.plan==='free'?'<span class="tag" style="background:#2c3547;color:var(--mut)">FREE</span> ':a.plan?'<span class="tag" style="background:var(--acc);color:#0f1115">'+a.plan.toUpperCase()+'</span> ':'';
+  const icons=a.active?`<div class="iconrow">
+    <button class="iconbtn" title="${tr('compactTitle')}" onclick="sessionCmd('compact')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button>
+    <button class="iconbtn" title="${tr('newSessionTitle')}" onclick="sessionCmd('new')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button>
+   </div>`:'';
+  const r=a.five_hour?ring(a.five_hour,18000):'';
+  return `
   <div class="card ${a.active?'active':''}">
-   <div class="top"><span class="email">${a.email}</span><span>${a.plan==='free'?'<span class="tag" style="background:#2c3547;color:var(--mut)">FREE</span> ':a.plan?'<span class="tag" style="background:var(--acc);color:#0f1115">'+a.plan.toUpperCase()+'</span> ':''}${a.active?'<span class="tag">'+tr('active')+'</span>':''}</span></div>
+   ${a.active?'<span class="tag pin">'+tr('active')+'</span>':''}
+   <div class="top"><span class="email">${a.email} ${plan}</span><div class="hdrright">${r}${icons}</div></div>
    ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <button onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button onclick="recheck('${n}',this)" style="margin-top:6px;background:var(--acc);color:#0f1115">${tr('extended')}</button>`:''}
    <button onclick="relogin('${n}',this)" style="margin-top:6px;margin-left:8px;background:transparent;border:1px solid #333c4d;color:var(--mut)">${tr('relogin')}</button>
-  </div>`).join('');
+  </div>`;
+ }).join('');
 }
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
@@ -1554,6 +1582,13 @@ async function sw(n){
  if(!confirm(tr('confirmSwitch',n)))return;
  const r=await fetch(API+'switch?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
  const d=await r.json();toast(d.ok?'✅ '+d.message.split('\n')[0]:'⚠ '+d.message);load();
+}
+async function sessionCmd(cmd){
+ if(cmd==='new'&&!confirm(tr('confirmNewSession')))return;
+ try{
+  const r=await fetch(API+'session?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd})});
+  const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+(d.message||''));
+ }catch(e){toast('⚠ '+e)}
 }
 $('#auto').addEventListener('change',async e=>{
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoswitch:e.target.checked})});

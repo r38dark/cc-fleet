@@ -77,6 +77,13 @@ there's something to say; in normal operation it isn't rendered at all
   as quick-switch buttons on the main screen; clicking a button switches the
   default session model right away. A newly added model in the pool carries
   a "new" badge for its first 14 days.
+- ⏱ **Countdown ring** on every account card, next to the email — its color
+  signals urgency (green → yellow → red as the 5-hour window's reset gets
+  close).
+- ⌨️ **`/compact` and new-session buttons** right on the active account's
+  card — no need to switch to the terminal: compact the context or start
+  `/clear` with one click (same `screen`-session injection the model buttons
+  use).
 - 🔐 No OAuth tokens ever leave your machine — everything lives on your own
   server, under your own root.
 - 🧩 One install script, no web wizards or dependencies on someone else's
@@ -350,6 +357,13 @@ in front:
 
 ## Version history
 
+- **v1.7.0** — each account card now shows a countdown ring for the 5-hour
+  window's reset (color signals urgency — green/yellow/red), and the active
+  account's card gets two buttons right on it — compact the context
+  (`/compact`) and start a new session (`/clear`) — no need to switch to the
+  terminal. The "ACTIVE" tag also moved from an inline badge next to the
+  email into a floating pill straddling the card's top border, so the active
+  account stands out at a glance.
 - **v1.6.0** — inactive accounts are no longer polled on every tick: if an
   account already has a fresh cache (younger than `inactive_poll_sec`,
   300s by default), the real Anthropic request is skipped and cached data
