@@ -18,6 +18,7 @@ TG_ENV = "/root/.claude/channels/telegram/.env"
 CONFIG = os.path.join(BASE, "config.json")
 SNAPSHOT = os.path.join(BASE, "snapshot.json")
 STATE = os.path.join(BASE, "state.json")
+SWITCH_LOG = os.path.join(BASE, "switch_log.jsonl")  # аудит forced-веток optimize_check
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"  # публичный client_id Claude Code
 # абсолютный путь: у systemd-сервиса нет ~/.bashrc с PATH — ищем claude в типичных местах,
 # в install.sh прописывается точный путь, найденный на конкретной машине
@@ -844,6 +845,21 @@ def _opt_score(row):
     return (100.0 - pct) / _hours_until(resets_at, 168.0)
 
 
+def _log_switch_event(event, **kw):
+    # Аудит-лог forced-веток: state.json хранит только ПОСЛЕДНИЙ переключение
+    # (last_switch_ts), поэтому разобрать задним числом "почему не переключилось
+    # раньше" (гейт-баннер против cooldown, отсутствие кандидата и т.п.) нечем.
+    # Пишем по строке на каждый forced-момент — для последующей диагностики
+    # тайминга, не для логики самого переключения.
+    try:
+        rec = {"ts": time.time(), "event": event}
+        rec.update(kw)
+        with open(SWITCH_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def optimize_check(snap):
     # Режим «оптимизация переключений лимитов»: сервис сам рулит и порогами —
     # настройки threshold/autoswitch здесь игнорируются (UI их гасит).
@@ -853,7 +869,11 @@ def optimize_check(snap):
     # при свежем кандидате, аварийный форс с opt_ses_ceil, кандидаты штрафуются
     # за забитую сессию. manual_hold игнорируем: ручные свитчи заблокированы.
     c = cfg()
-    ses_ceil = c.get("opt_ses_ceil", 90)      # аварийный уход
+    # аварийный уход: тот же порог, что и на слайдере/баннере (threshold), не
+    # отдельный ключ opt_ses_ceil — раньше он никогда не выставлялся install.sh
+    # и не был связан со слайдером, поэтому его правка ничего не меняла в режиме
+    # оптимизации, хотя визуально выглядела как рабочая настройка.
+    ses_ceil = c.get("threshold", c.get("opt_ses_ceil", 90))
     ses_soft = c.get("opt_ses_soft", 70)      # ранний уход при свежем кандидате
     ses_cand = c.get("opt_ses_cand_max", 85)  # кандидат: сессия не выше
     ses_fresh = c.get("opt_ses_fresh", 50)    # «свежая» сессия для раннего ухода
@@ -869,6 +889,8 @@ def optimize_check(snap):
     fh = (a.get("five_hour") or {}).get("pct")
     sd = (a.get("seven_day") or {}).get("pct")
     forced = act_free or (fh is not None and fh >= ses_ceil) or (sd is not None and sd >= cap)
+    if forced:
+        _log_switch_event("forced_true", active=act, fh=fh, sd=sd, act_free=act_free)
 
     def collect_cand(max_ses):
         out = []
@@ -916,6 +938,7 @@ def optimize_check(snap):
                     st["known_active"] = target
                 jsave(STATE, st)
                 email = trow.get("email", target)
+                _log_switch_event("extreme_switch", from_acc=act, to=target, fh=fh, target_fh=tfh, ok=ok)
                 if ok:
                     # (30.07.26) уведомление о крайнем случае убрано - спамило в чат.
                     # Переключение по-прежнему происходит, просто молча.
@@ -923,7 +946,12 @@ def optimize_check(snap):
                 else:
                     tg_notify("⚠️ Claude (оптимизация): переключение на %s не удалось: %s" % (target, out))
                 return
+            else:
+                _log_switch_event("extreme_blocked_cooldown", active=act, fh=fh,
+                                   remaining_sec=round(c.get("switch_cooldown_sec", 600) - (now - st.get("last_switch_ts", 0))))
     if not cand:
+        if forced:
+            _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd)
         if forced and not st.get("all_high_notified"):
             # (30.07.26) уведомление "некуда переключаться" убрано - спамило в чат.
             st["all_high_notified"] = True
@@ -941,6 +969,8 @@ def optimize_check(snap):
     my_eff = my_w * (100.0 - (fh or 0)) / 100.0
     if forced:
         if now - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
+            _log_switch_event("forced_blocked_cooldown", active=act, fh=fh, target=target,
+                               remaining_sec=round(c.get("switch_cooldown_sec", 600) - (now - st.get("last_switch_ts", 0))))
             return
         why = ("аккаунт %s слетел в Free" % act if act_free
                else "сессия %s дошла до %s%% (аварийный потолок %s%%)" % (act, fh, ses_ceil)
@@ -977,6 +1007,7 @@ def optimize_check(snap):
     if ok:
         st["known_active"] = target
     jsave(STATE, st)
+    _log_switch_event("switch", forced=forced, from_acc=act, to=target, fh=fh, why=why, ok=ok)
     if ok:
         # (04.08.26: "постоянно пишет переключился переключился переключился") —
         # уведомление об успешном плановом/оптимизационном переключении убрано, спамило.

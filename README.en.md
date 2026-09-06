@@ -277,6 +277,7 @@ wiring the hook, otherwise it will not be called.
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
 | `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | incoming messages queued while the limits held |
 | `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message` |
+| `/opt/cc-limits/switch_log.jsonl` | audit log: one line per forced-mode moment in optimize mode (threshold crossed, switch blocked by cooldown, no candidate, actual switch) — v1.4.0 |
 
 ## Upgrading from a previous version
 
@@ -345,6 +346,16 @@ in front:
 
 ## Version history
 
+- **v1.4.0** — in optimize mode, the emergency session ceiling (forced
+  switch) now shares the same `threshold` field as regular auto-switch:
+  it used to read a separate `opt_ses_ceil` key that nothing ever set
+  (not the installer, not the panel), so the slider looked like it was
+  wired up while the real emergency ceiling stayed untouched. Also a new
+  `switch_log.jsonl` audit log — one JSON line per forced-mode moment
+  (threshold crossed, switch blocked by cooldown, no suitable candidate,
+  actual switch performed) — so "why didn't it switch sooner" can be
+  answered from facts instead of the single last-switch timestamp that
+  used to be all that was kept.
 - **v1.3.0** — incoming queue while limits are burnt: a `UserPromptSubmit`
   hook blocks a chat-channel message before it reaches the model, stores it in
   `tg_queue.jsonl` and answers the sender itself; after the alarm wakes the
