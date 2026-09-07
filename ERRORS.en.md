@@ -14,6 +14,12 @@ covers what that documentation doesn't: the specifics of the Claude Code
 subscription OAuth flow, account rotation, and how these codes actually show
 up in practice in this project.
 
+**As of v1.9.2**, the account card in the panel shows a short plain-language
+version of these errors on its own (e.g. "Токен протух (400) — нажми «Войти
+заново»", Russian-only — see the version history note in the README). This
+document remains the place for the full root-cause breakdown and fix for
+each code.
+
 ---
 
 ## 429 — Too Many Requests

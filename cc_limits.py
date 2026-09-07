@@ -263,6 +263,44 @@ rate_limited = False  # был 429 в последнем сборе — poll_loo
 backoff_until = 0  # после 429: реальные запросы к Anthropic заблокированы до этого ts
 
 
+# Карточки показывали сырой текст исключения ("HTTP Error 400: Bad Request") —
+# непонятно без похода в код (см. ERRORS.md). Переводим частые, документированные
+# там случаи в понятный русский текст; тело HTTP-ответа читаем здесь один раз (у
+# HTTPError .read() срабатывает только один раз за объект, поэтому в collect() эта
+# функция — единственное место, где ошибку разбирают). Строку с кодом сохраняем
+# внутри текста — на неё завязана детекция 429 (any("429" in e for e in errs) ниже).
+def _humanize_error(e):
+    if isinstance(e, urllib.error.HTTPError):
+        code = e.code
+        try:
+            body = e.read().decode("utf-8", "ignore")
+        except Exception:
+            body = ""
+        try:
+            data = json.loads(body) if body else {}
+        except Exception:
+            data = {}
+        reason = (data.get("error_description") or data.get("error") or "").strip()
+        low = reason.lower()
+        if code in (400, 401) and ("refresh token expired" in low or "invalid_grant" in low):
+            return f"Токен протух ({code}) — нажми «Войти заново»"
+        if code == 401:
+            return "Токен не принят Anthropic (401) — попробуй «Войти заново»"
+        if code == 403:
+            return "Anthropic заблокировал запрос (403)"
+        if code == 429:
+            return "Anthropic ограничил частоту запросов (429) — само пройдёт через пару минут"
+        if 500 <= code < 600:
+            return f"Anthropic временно недоступен ({code})"
+        return f"Ошибка Anthropic ({code})" + (f": {reason}" if reason else "")
+    if isinstance(e, urllib.error.URLError):
+        low = str(e.reason if hasattr(e, "reason") else e).lower()
+        if "timed out" in low or "timeout" in low:
+            return "Anthropic не отвечает (таймаут)"
+        return "Нет связи с Anthropic (сеть)"
+    return str(e)
+
+
 def collect(force=False, force_account=None):
     global rate_limited, backoff_until
     prev = jload(SNAPSHOT) or {}
@@ -303,7 +341,7 @@ def collect(force=False, force_account=None):
         try:
             access = get_access(n, act)
         except Exception as e:
-            errs.append(str(e))
+            errs.append(_humanize_error(e))
         # (plan-freshness 2026-07-21) usage и plan запрашиваются НЕЗАВИСИМО. Раньше
         # plan вообще не запрашивался, если fetch_usage падал первым (напр. 429) —
         # значит pro→free переход (см. tg_notify ниже) и исключение из авто-кандидатов
@@ -315,11 +353,11 @@ def collect(force=False, force_account=None):
             try:
                 row.update(fetch_usage(access))
             except Exception as e:
-                errs.append(str(e))
+                errs.append(_humanize_error(e))
             try:
                 row["plan"] = fetch_plan(n, access)
             except Exception as e:
-                errs.append(str(e))
+                errs.append(_humanize_error(e))
         if "five_hour" in row and "plan" in row:
             good[n] = {"five_hour": row["five_hour"], "seven_day": row["seven_day"],
                        "plan": row["plan"], "ts": int(time.time())}

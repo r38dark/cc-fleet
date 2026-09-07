@@ -362,6 +362,18 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.2** — account card errors are now translated into a plain-language
+  message instead of the raw `HTTP Error 400: Bad Request`: expired token
+  ("log in again"), rate limit (429), WAF block (403), temporary Anthropic
+  outage (5xx), network/timeout — each with a short next step. The HTTP
+  error body is parsed once, right where the exception is caught (an
+  `HTTPError`'s body can only be read once), and an unrecognized code is
+  shown as-is with its number rather than guessed at. Note: this message
+  comes from the backend, not the frontend i18n layer, so — like other
+  backend-generated strings in this project (`cc-switch` output, session
+  commands) — it's Russian-only regardless of the language toggle; see
+  [ERRORS.md](ERRORS.md) / [ERRORS.en.md](ERRORS.en.md) for the full
+  bilingual breakdown of each error code.
 - **v1.9.1** — two background-polling fixes: (1) `poll_loop()` now
   respects `backoff_until` itself after a caught 429 — it used to call
   `collect(force=True)` unconditionally on every tick, and `force=True`
