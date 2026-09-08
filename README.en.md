@@ -378,6 +378,14 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
   hard-skips any account with a non-empty `error`. Now `plan ok + error`
   gets its own honest message instead of a false "success". New
   dependency: `python3-dateutil` (added to `install.sh`).
+  **Cold-start note:** the anchor is only written inside `/api/recheck`,
+  and the "✅ I renewed" button only shows once the plan has already
+  dropped to `free`. On a fresh install, before an account has ever
+  dropped to Free, there is no countdown line — it appears only after the
+  first natural Pro→Free cycle, once you've renewed and clicked "I
+  renewed". Until then, the only safety net is the instant Telegram alert
+  on an actual Pro→Free drop (see above), which works independently of
+  the countdown.
 - **v1.9.3** — fixed a pause-wake "stuck input" bug: when waking the paused
   session (`pause_ctl.py wake`), the wake message text and Enter are now
   sent to screen as TWO separate `stuff` calls with a short pause between
