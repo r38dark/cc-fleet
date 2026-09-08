@@ -1482,6 +1482,10 @@ h1{font-size:19px;margin:0}
 .tag{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--acc);color:#0f1115;font-weight:700;white-space:nowrap}
 .tag.pin{position:absolute;top:0;right:14px;transform:translateY(-55%);background:#7c5cff;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4);z-index:3}
 .hdrright{display:flex;align-items:center;gap:8px;flex:none}
+.chip{font-size:10.5px;padding:2px 8px;border-radius:99px;background:#1b2029;border:1px solid #2a3140;color:var(--mut);white-space:nowrap;vertical-align:2px;display:inline-flex;align-items:center;gap:3px}
+.chip b{color:var(--txt);font-weight:700}
+.chip.urgent{border-color:rgba(224,91,91,.4)}
+.chip.urgent b{color:var(--bad)}
 .ring{position:relative;flex:none}
 .ring svg{display:block}
 .ringtxt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--txt);font-weight:700}
@@ -1596,6 +1600,8 @@ const I18N={
   staleAt:t=>` · ниже данные на ${t}`,
   renewalIn:(d,h)=>`до ожидаемого PRO→FREE: ~${d} дн ${h} ч`,
   renewalSoon:'подписка: ожидаем обвал в PRO→FREE со дня на день',
+  renewalChip:d=>`⏳ ${d} дн`,
+  renewalChipToday:'⏳ сегодня',
   ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
@@ -1654,6 +1660,8 @@ const I18N={
   staleAt:t=>` · data below from ${t}`,
   renewalIn:(d,h)=>`until expected PRO→FREE: ~${d}d ${h}h`,
   renewalSoon:'subscription: expecting PRO→FREE drop any day now',
+  renewalChip:d=>`⏳ ${d}d`,
+  renewalChipToday:'⏳ today',
   ccpPauseTitle:'⏸ Claude is <b>paused on limits</b> — it resumes on its own',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
@@ -1730,10 +1738,11 @@ function rst(iso){if(!iso)return'';const d=new Date(iso),m=Math.max(0,Math.round
  const h=Math.floor(m/60),mm=m%60;return tr('resetIn',h,mm,d.toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'}))}
 function bar(lbl,o){o=o||{};const p=o.pct;return`<div class="row"><div class="lbl"><span>${lbl}: <b style="color:${col(p)}">${p==null?'?':p+'%'}</b></span><span>${rst(o.resets_at)}</span></div>
  <div class="bar"><div class="fill" style="width:${p||0}%;background:${col(p)}"></div></div></div>`}
-function rstDays(iso){if(!iso)return'';const d=new Date(iso),ms=d-Date.now();
- if(ms<=0)return`<div class="lbl" style="margin-top:4px">${tr('renewalSoon')}</div>`;
- const days=Math.floor(ms/86400000),hrs=Math.floor((ms%86400000)/3600000);
- return`<div class="lbl" style="margin-top:4px"><span>${tr('renewalIn',days,hrs)}</span><span>${d.toLocaleDateString(LANG==='en'?'en-GB':'ru',{day:'2-digit',month:'2-digit'})}</span></div>`}
+function renewChip(iso){if(!iso)return'';const d=new Date(iso),ms=d-Date.now();
+ const title=tr('renewalIn',Math.max(0,Math.floor(ms/86400000)),Math.max(0,Math.floor((ms%86400000)/3600000)));
+ if(ms<=0)return`<span class="chip urgent" title="${tr('renewalSoon')}">${tr('renewalChipToday')}</span>`;
+ const days=Math.floor(ms/86400000);
+ return`<span class="chip${days<3?' urgent':''}" title="${title}">${tr('renewalChip',days)}</span>`}
 function urgCol(f){return f>.5?'var(--bad)':f>.2?'var(--warn)':'var(--ok)'}
 function frac(iso,windowSec){if(!iso)return 0;const remain=(new Date(iso)-Date.now())/1000;return Math.max(0,Math.min(1,remain/windowSec))}
 function ring(o,windowSec,size){o=o||{};size=size||34;const sw=Math.max(3,Math.round(size*.1));const rad=size/2-sw/2;const circ=2*Math.PI*rad;const f=frac(o.resets_at,windowSec);const uc=urgCol(f);const dash=(f*circ).toFixed(1);const c=size/2;
@@ -1750,8 +1759,8 @@ function renderCards(d){
   return `
   <div class="card ${a.active?'active':''}">
    ${a.active?'<span class="tag pin">'+tr('active')+'</span>':''}
-   <div class="top"><span class="email">${a.email} ${plan}</span><div class="hdrright">${r}${icons}</div></div>
-   ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}${a.renewal_next?rstDays(a.renewal_next):''}
+   <div class="top"><span class="email">${a.email} ${plan}${a.renewal_next?renewChip(a.renewal_next):''}</span><div class="hdrright">${r}${icons}</div></div>
+   ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <button onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button onclick="recheck('${n}',this)" style="margin-top:6px;background:var(--acc);color:#0f1115">${tr('extended')}</button>`:''}
    <button onclick="relogin('${n}',this)" style="margin-top:6px;margin-left:8px;background:transparent;border:1px solid #333c4d;color:var(--mut)">${tr('relogin')}</button>

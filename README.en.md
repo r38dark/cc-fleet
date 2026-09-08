@@ -362,6 +362,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.5** — the PRO→FREE countdown moved into a compact "⏳ N days" chip
+  right in the card header, next to the plan tag, instead of a separate
+  line under the 5h/week bars — less vertical space, a red accent when
+  fewer than 3 days remain (the title shows the exact date). Purely a
+  visual refactor of the existing v1.9.4 feature — the logic/anchor is
+  unchanged.
 - **v1.9.4** — countdown to expected subscription end, shown on the account
   card. The "✅ I renewed" button now, besides its instant plan recheck,
   also records the confirmation moment (`state.json["renewal"][acc]`) —
