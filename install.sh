@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet v1.9.3 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.9.4 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
 # (карточки аккаунтов + переключение), read-only зеркало консоли живой
 # screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
@@ -57,7 +57,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet v1.9.3 — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.9.4 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -107,7 +107,7 @@ fi
 # ---------- зависимости ----------
 log "Ставлю системные зависимости (apt)…"
 apt-get update -qq
-APT_PKGS="python3 python3-pyte python3-pexpect screen"
+APT_PKGS="python3 python3-pyte python3-pexpect python3-dateutil screen"
 [ "$WANT_NGINX" = "y" ] && APT_PKGS="$APT_PKGS nginx apache2-utils"
 apt-get install -y -qq $APT_PKGS
 

@@ -362,6 +362,22 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.4** — countdown to expected subscription end, shown on the account
+  card. The "✅ I renewed" button now, besides its instant plan recheck,
+  also records the confirmation moment (`state.json["renewal"][acc]`) —
+  from there the app computes "anchor minus a 30-minute buffer, plus one
+  calendar month" (`dateutil.relativedelta`, not a fixed 30 days, so the
+  date doesn't drift on longer months), and the card shows a line like
+  "until expected PRO→FREE: ~N d Hh (DD.MM)". The existing instant Telegram
+  alert on an actual Pro→Free drop is unchanged — the countdown is just an
+  early heads-up, not a replacement. Also fixed a neighboring bug in the
+  same handler: `/api/recheck` decided success from `plan` alone, ignoring
+  `error` — plan and usage are independent Anthropic endpoints, so plan
+  could already be back to Pro while usage was still 429'ing, and the
+  button happily said "back in rotation" even though auto-switching still
+  hard-skips any account with a non-empty `error`. Now `plan ok + error`
+  gets its own honest message instead of a false "success". New
+  dependency: `python3-dateutil` (added to `install.sh`).
 - **v1.9.3** — fixed a pause-wake "stuck input" bug: when waking the paused
   session (`pause_ctl.py wake`), the wake message text and Enter are now
   sent to screen as TWO separate `stuff` calls with a short pause between

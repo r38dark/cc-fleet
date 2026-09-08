@@ -955,6 +955,17 @@ def _opt_score(row):
     return (100.0 - pct) / _hours_until(resets_at, 168.0)
 
 
+def _renewal_next(confirmed_ts):
+    # Таймер до следующего ожидаемого обвала Pro→Free: якорь минус 30 мин
+    # буфера (подтверждение продления не секунда в секунду) плюс календарный
+    # месяц (relativedelta, не фиксированные 30 дней — иначе на длинных
+    # месяцах дата "уезжает" вперёд от реального списания).
+    from datetime import datetime, timedelta, timezone
+    from dateutil.relativedelta import relativedelta
+    anchor = datetime.fromtimestamp(confirmed_ts, tz=timezone.utc) - timedelta(minutes=30)
+    return (anchor + relativedelta(months=1)).isoformat()
+
+
 def _local_hm(iso):
     # время сброса в локальной зоне сервера, коротко: «07:40»
     try:
@@ -1262,6 +1273,11 @@ class H(BaseHTTPRequestHandler):
             q = parse_qs(u.query)
             with lock:
                 snap = collect(force=True) if q.get("refresh") else (jload(SNAPSHOT) or collect())
+                renewal = jload(STATE, {}).get("renewal", {})
+            for n, row in (snap.get("accounts") or {}).items():
+                ts = (renewal.get(n) or {}).get("confirmed_ts")
+                if ts:
+                    row["renewal_next"] = _renewal_next(ts)
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
             snap["model"] = model_info()
             return self._send(200, snap)
@@ -1343,9 +1359,25 @@ class H(BaseHTTPRequestHandler):
             row = (snap.get("accounts") or {}).get(name, {})
             plan = row.get("plan")
             email = row.get("email", name)
-            if plan and plan != "free":
+            err = row.get("error")
+            # plan и usage у Anthropic — независимые эндпоинты: план может уже
+            # вернуться на Pro, пока usage-эндпоинт всё ещё 429-ит. Раньше отсюда
+            # шло "вернул в ротацию" по одному только plan, хотя autoswitch_check/
+            # optimize_check хард-скипают любой аккаунт с error — реально в
+            # ротацию он не попадал, сообщение вводило в заблуждение.
+            if plan and plan != "free" and not err:
+                # якорь для таймера обратного отсчёта до следующего ожидаемого
+                # обвала Pro→Free — момент, когда пользователь подтвердил
+                # продление; см. _renewal_next()
+                with lock:
+                    st = jload(STATE, {})
+                    st.setdefault("renewal", {})[name] = {"confirmed_ts": time.time()}
+                    jsave(STATE, st)
                 return self._send(200, {"ok": True, "plan": plan,
                     "message": f"✅ снова {plan.upper()} — вернул в ротацию."})
+            if plan and plan != "free" and err:
+                return self._send(200, {"ok": False, "plan": plan,
+                    "message": f"План снова {plan.upper()}, но данные по использованию ещё недоступны ({err}) — в ротацию пока не включён."})
             if plan == "free":
                 return self._send(200, {"ok": False, "plan": plan,
                     "message": "⏳ Anthropic ещё не обновил план (всё ещё Free) — попробуй через минуту."})
@@ -1562,6 +1594,8 @@ const I18N={
   checking:'Проверяю…',
   checkErr:e=>`⚠ ошибка проверки: ${e}`,
   staleAt:t=>` · ниже данные на ${t}`,
+  renewalIn:(d,h)=>`до ожидаемого PRO→FREE: ~${d} дн ${h} ч`,
+  renewalSoon:'подписка: ожидаем обвал в PRO→FREE со дня на день',
   ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
@@ -1618,6 +1652,8 @@ const I18N={
   checking:'Checking…',
   checkErr:e=>`⚠ check failed: ${e}`,
   staleAt:t=>` · data below from ${t}`,
+  renewalIn:(d,h)=>`until expected PRO→FREE: ~${d}d ${h}h`,
+  renewalSoon:'subscription: expecting PRO→FREE drop any day now',
   ccpPauseTitle:'⏸ Claude is <b>paused on limits</b> — it resumes on its own',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
@@ -1694,6 +1730,10 @@ function rst(iso){if(!iso)return'';const d=new Date(iso),m=Math.max(0,Math.round
  const h=Math.floor(m/60),mm=m%60;return tr('resetIn',h,mm,d.toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'}))}
 function bar(lbl,o){o=o||{};const p=o.pct;return`<div class="row"><div class="lbl"><span>${lbl}: <b style="color:${col(p)}">${p==null?'?':p+'%'}</b></span><span>${rst(o.resets_at)}</span></div>
  <div class="bar"><div class="fill" style="width:${p||0}%;background:${col(p)}"></div></div></div>`}
+function rstDays(iso){if(!iso)return'';const d=new Date(iso),ms=d-Date.now();
+ if(ms<=0)return`<div class="lbl" style="margin-top:4px">${tr('renewalSoon')}</div>`;
+ const days=Math.floor(ms/86400000),hrs=Math.floor((ms%86400000)/3600000);
+ return`<div class="lbl" style="margin-top:4px"><span>${tr('renewalIn',days,hrs)}</span><span>${d.toLocaleDateString(LANG==='en'?'en-GB':'ru',{day:'2-digit',month:'2-digit'})}</span></div>`}
 function urgCol(f){return f>.5?'var(--bad)':f>.2?'var(--warn)':'var(--ok)'}
 function frac(iso,windowSec){if(!iso)return 0;const remain=(new Date(iso)-Date.now())/1000;return Math.max(0,Math.min(1,remain/windowSec))}
 function ring(o,windowSec,size){o=o||{};size=size||34;const sw=Math.max(3,Math.round(size*.1));const rad=size/2-sw/2;const circ=2*Math.PI*rad;const f=frac(o.resets_at,windowSec);const uc=urgCol(f);const dash=(f*circ).toFixed(1);const c=size/2;
@@ -1711,7 +1751,7 @@ function renderCards(d){
   <div class="card ${a.active?'active':''}">
    ${a.active?'<span class="tag pin">'+tr('active')+'</span>':''}
    <div class="top"><span class="email">${a.email} ${plan}</span><div class="hdrright">${r}${icons}</div></div>
-   ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
+   ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}${a.renewal_next?rstDays(a.renewal_next):''}
    <button onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button onclick="recheck('${n}',this)" style="margin-top:6px;background:var(--acc);color:#0f1115">${tr('extended')}</button>`:''}
    <button onclick="relogin('${n}',this)" style="margin-top:6px;margin-left:8px;background:transparent;border:1px solid #333c4d;color:var(--mut)">${tr('relogin')}</button>
