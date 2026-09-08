@@ -362,6 +362,15 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.3** — fixed a pause-wake "stuck input" bug: when waking the paused
+  session (`pause_ctl.py wake`), the wake message text and Enter are now
+  sent to screen as TWO separate `stuff` calls with a short pause between
+  them, instead of one `text + "\r"` call. A long string injected in one
+  `stuff` call could sit in the TUI's input box unsubmitted — the terminal
+  accepted the characters, but the trailing `\r` didn't act as submit
+  (resembles bracketed-paste: a batch of bytes arriving all at once is
+  treated as a paste, not as "typed then pressed Enter"). Short commands
+  were unaffected — only long wake messages were.
 - **v1.9.2** — account card errors are now translated into a plain-language
   message instead of the raw `HTTP Error 400: Bad Request`: expired token
   ("log in again"), rate limit (429), WAF block (403), temporary Anthropic

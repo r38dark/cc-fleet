@@ -328,7 +328,20 @@ def cmd_wake(a):
                 % (n, os.path.join(BASE, "tg_queue.py")))
     msg = msg.encode("ascii", "ignore").decode()  # см. комментарий у WAKE_MSG
     try:
-        subprocess.run(["screen", "-S", _screen(), "-X", "stuff", msg + "\r"],
+        # Текст и Enter — ДВУМЯ раздельными stuff-вызовами, не одним "msg\r".
+        # Длинная фраза, залитая одним stuff разом с хвостовым \r, может
+        # осесть в поле ввода TUI непроглоченной — терминал успевает принять
+        # символы, но завершающий \r не срабатывает как submit (похоже на
+        # bracketed-paste: пачка байт, прилетевшая одним махом, трактуется
+        # как вставка текста, а не как "напечатали и нажали Enter"; короткие
+        # команды вроде "/compact\r" через тот же stuff проходят нормально
+        # именно потому что это одна короткая пачка без такого разделения).
+        # Пауза между текстом и Enter имитирует человека, который допечатал
+        # и через мгновение нажал клавишу.
+        subprocess.run(["screen", "-S", _screen(), "-X", "stuff", msg],
+                       capture_output=True, timeout=10)
+        time.sleep(0.3)
+        subprocess.run(["screen", "-S", _screen(), "-X", "stuff", "\r"],
                        capture_output=True, timeout=10)
     except Exception as e:
         _log("инжект в screen не удался: %s" % e)
