@@ -362,6 +362,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.6** — the "🔑 Log in again" relogin link is now automatically
+  copied to the clipboard the moment the new tab opens — no more
+  right-clicking to copy it by hand when the tab opens in the wrong
+  browser profile or gets blocked by a popup blocker; just paste it
+  wherever it's needed. The code-entry prompt now mentions this.
 - **v1.9.5** — the PRO→FREE countdown moved into a compact "⏳ N days" chip
   right in the card header, next to the plan tag, instead of a separate
   line under the 5h/week bars — less vertical space, a red accent when

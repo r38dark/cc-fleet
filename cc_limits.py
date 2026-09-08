@@ -1589,7 +1589,7 @@ const I18N={
   relogin:'🔑 Войти заново',
   relStarting:'Запускаю…',
   relChecking:'Проверяю код…',
-  relPrompt:email=>`Открылась ссылка входа в новой вкладке.\nВойди под ${email} и вставь код авторизации сюда:`,
+  relPrompt:email=>`Ссылка входа открылась в новой вкладке (и скопирована в буфер обмена — если вкладка не та или её заблокировал браузер, просто вставь ссылку в нужный профиль).\nВойди под ${email} и вставь код авторизации сюда:`,
   confirmSwitch:n=>`Переключить активный аккаунт на ${n}?`,
   autoOn:'Авто-переключение включено',autoOff:'Авто-переключение выключено',
   thrSet:v=>'Порог: '+v+'%',
@@ -1649,7 +1649,7 @@ const I18N={
   relogin:'🔑 Log in again',
   relStarting:'Starting…',
   relChecking:'Checking code…',
-  relPrompt:email=>`A login link opened in a new tab.\nSign in as ${email} and paste the authorization code here:`,
+  relPrompt:email=>`The login link opened in a new tab (and was copied to your clipboard — if it's the wrong tab or got blocked, just paste the link into the right browser profile).\nSign in as ${email} and paste the authorization code here:`,
   confirmSwitch:n=>`Switch the active account to ${n}?`,
   autoOn:'Auto-switch enabled',autoOff:'Auto-switch disabled',
   thrSet:v=>'Threshold: '+v+'%',
@@ -1887,6 +1887,7 @@ async function relogin(n,btn){
   const r=await fetch(API+'relogin/start?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
   const d=await r.json();
   if(!d.ok){toast('⚠ '+d.message);return;}
+  try{await navigator.clipboard.writeText(d.url);}catch(e){}
   window.open(d.url,'_blank');
   const code=prompt(tr('relPrompt',d.email||n));
   if(code==null)return;
