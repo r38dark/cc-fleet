@@ -1033,7 +1033,11 @@ def optimize_check(snap):
     ses_soft = c.get("opt_ses_soft", 70)      # ранний уход при свежем кандидате
     ses_cand = c.get("opt_ses_cand_max", 85)  # кандидат: сессия не выше
     ses_fresh = c.get("opt_ses_fresh", 50)    # «свежая» сессия для раннего ухода
-    cap = c.get("weekly_cap", 95)
+    # порог поднят с 95 до 99 (v1.9.7) — 95% недельного лимита ещё оставляет
+    # заметный запас, отсекать кандидата/форсить уход с этой отметки было
+    # слишком рано; используется и как порог форс-ухода (forced ниже), и
+    # как порог допуска кандидата в collect_cand()
+    cap = c.get("weekly_cap", 99)
     ratio = c.get("optimize_ratio", 1.5)
     st = jload(STATE, {})
     act = snap.get("active")

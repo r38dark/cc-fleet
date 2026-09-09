@@ -362,6 +362,15 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.7** — the `weekly_cap` threshold (the weekly-usage level at which
+  an account counts as exhausted for optimize mode — it both forces a
+  leave off the active account and excludes a candidate from being a
+  switch target) was raised from 95% to 99%. At 95% there was still a
+  meaningful chunk of unused headroom left — an account with a nearly
+  empty session but 95-98% weekly could never become a switch target
+  (short of the deepest fallback tier, which ignores weekly entirely),
+  even though it could still do useful work. A pure numeric threshold
+  change, the filter logic itself is unchanged.
 - **v1.9.6** — the "🔑 Log in again" relogin link is now automatically
   copied to the clipboard the moment the new tab opens — no more
   right-clicking to copy it by hand when the tab opens in the wrong
