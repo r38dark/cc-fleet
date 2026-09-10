@@ -362,6 +362,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.8** — live console mirror: window geometry (rows/cols) is now read
+  honestly via `ioctl(TIOCGWINSZ)` directly on the screen window's pty
+  device, instead of a "tight box" fit around the hardcopy text (which
+  drifted with content). The read never touches screen's command channel —
+  no side effects on the live session's screen at any poll frequency.
 - **v1.9.7** — the `weekly_cap` threshold (the weekly-usage level at which
   an account counts as exhausted for optimize mode — it both forces a
   leave off the active account and excludes a candidate from being a

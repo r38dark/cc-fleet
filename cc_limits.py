@@ -2,7 +2,7 @@
 # cc-limits — мониторинг лимитов Pro/Max-аккаунтов Claude Code + авто-переключение.
 # Запуск: systemd unit (порт задаётся в config.json, ключ "port", по умолчанию 8877;
 # снаружи — через nginx /cc/, см. install.sh).
-import html, json, os, re, shutil, subprocess, tempfile, threading, time, urllib.request, urllib.error
+import fcntl, html, json, os, re, shutil, struct, subprocess, tempfile, termios, threading, time, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pyte
 import pexpect
@@ -569,14 +569,72 @@ def _console_ensure_logging():
         _console_offset = 0
 
 
-def _console_dims():
-    # геометрия (число строк/колонок) у hardcopy честная, ломается только
-    # значение не-ASCII символов — берём размер отсюда, контент из pyte
+def _console_dims_fallback():
+    # геометрия по "плотной коробке" вокруг текста hardcopy — приблизительная,
+    # гуляет вместе с контентом (короткая/длинная строка меняют cols). Используется
+    # только если _console_real_dims() не смог получить honest-размер через ioctl.
     txt = screen_hardcopy()
     lines = txt.split("\n") if txt else []
     rows = len(lines) or 24
     cols = max((len(l) for l in lines), default=80) or 80
     return max(cols, 20), max(rows, 5)
+
+
+def _console_window_pty(master_pid):
+    # pty-устройство ОКНА screen (не самого screen-мультиплексора) — находим
+    # прямого child-процесса мастер-PID сессии, у которого fd 0 указывает на
+    # /dev/pts/N (slave-сторона pty, которую держит shell/claude внутри окна).
+    # Размер терминала — атрибут pty на уровне ядра, одинаковый что со стороны
+    # master (держит screen), что со стороны slave — читаем его напрямую
+    # ioctl'ом, не спрашивая сам screen.
+    if not master_pid:
+        return None
+    try:
+        out = subprocess.run(["pgrep", "-P", master_pid], capture_output=True,
+                              timeout=5, text=True).stdout
+        for cpid in out.split():
+            try:
+                link = os.readlink(f"/proc/{cpid}/fd/0")
+            except OSError:
+                continue
+            if link.startswith("/dev/pts/"):
+                return link
+    except Exception:
+        pass
+    return None
+
+
+def _console_real_dims():
+    # Честный размер терминала БЕЗ обращения к command/socket-каналу screen.
+    # Раньше (до этой правки) геометрию брали "плотной коробкой" по hardcopy
+    # (см. _console_dims_fallback) — неточно, гуляет вместе с контентом.
+    # Альтернатива "спросить у самого screen" (`screen -Q info`) выглядит
+    # правильно, но ломается если вызывающий процесс не привязан к той же
+    # управляющей сессии: screen пишет ответ НЕ в stdout вызывающего, а прямо
+    # в message line ЖИВОЙ консоли — визуальная порча экрана на каждый вызов
+    # (не зависит от того, как редко дёргать — кэш/throttling это не чинит,
+    # только уменьшает частоту, сам артефакт остаётся). Правильный путь —
+    # прочитать размер прямо с ядра через ioctl(TIOCGWINSZ) на pty-устройстве
+    # screen-окна: это атрибут pty, а не screen, никакого сообщения screen'у
+    # не шлётся вообще.
+    try:
+        # _console_screen_pid уже свежий — console_snapshot() зовёт
+        # _console_ensure_logging() прямо перед этой функцией, а та внутри
+        # себя уже сходила за master PID через _current_screen_pid(). Второй
+        # раз `screen -list` дёргать незачем.
+        path = _console_window_pty(_console_screen_pid)
+        if path:
+            fd = os.open(path, os.O_RDONLY | os.O_NOCTTY)
+            try:
+                packed = fcntl.ioctl(fd, termios.TIOCGWINSZ, struct.pack("HHHH", 0, 0, 0, 0))
+            finally:
+                os.close(fd)
+            rows, cols, _xp, _yp = struct.unpack("HHHH", packed)
+            if cols > 0 and rows > 0:
+                return max(cols, 20), max(rows, 5)
+    except Exception:
+        pass
+    return _console_dims_fallback()
 
 
 # pyte хранит цвет каждой ячейки: имя одного из 8 базовых ANSI-цветов ("red",
@@ -656,17 +714,17 @@ def _console_reset(cols, rows):
 
 
 def _console_resize(cols, rows):
-    # _console_dims() меряет геометрию по длине строк hardcopy — это не истинный
-    # размер терминала, а "плотная коробка" вокруг текущего контента, и она гуляет
-    # вместе с ним (короткая/длинная строка, кириллица режет длину иначе). Раньше
-    # ЛЮБОЕ изменение (cols, rows) било в _console_reset(), который обнулял
-    # _console_offset — следующий _console_feed() перечитывал ВЕСЬ CONSOLE_LOG
-    # (десятки МБ) через pyte заново. При активной сессии геометрия "меняется"
-    # почти на каждый опрос — сервер прогрессивно отставал и уходил в timeout
-    # (инцидент 12.07, рецидив внешне похожего бага 12.07 утра, но другая причина:
-    # там ломался PID сессии, здесь — offset обнулялся штатно на каждый чих).
-    # pyte.HistoryScreen.resize() меняет размер БЕЗ потери history/offset — дёшево
-    # независимо от того как часто вызывается.
+    # Раньше геометрию мерили "плотной коробкой" вокруг текста hardcopy (см.
+    # _console_dims_fallback) — она гуляла вместе с контентом (короткая/длинная
+    # строка, кириллица режет длину иначе), и ЛЮБОЕ изменение (cols, rows) било
+    # в _console_reset(), который обнулял _console_offset — следующий
+    # _console_feed() перечитывал ВЕСЬ CONSOLE_LOG (десятки МБ) через pyte
+    # заново. При активной сессии геометрия "менялась" почти на каждый опрос —
+    # сервер прогрессивно отставал и уходил в timeout (инцидент 12.07). С
+    # переходом на _console_real_dims() (честный ioctl-размер) геометрия почти
+    # никогда не меняется — но resize() всё равно должен быть дешёвым на
+    # единичный реальный ресайз. pyte.HistoryScreen.resize() меняет размер БЕЗ
+    # потери history/offset — дёшево независимо от того как часто вызывается.
     global _console_geom
     _console_screen.resize(rows, cols)
     _console_geom = (cols, rows)
@@ -696,7 +754,7 @@ def console_snapshot(want_history=False):
     # reflow гигантского DOM без остановки. history теперь считается только по
     # явному запросу (первая загрузка страницы), текущий экран — отдельно и часто.
     _console_ensure_logging()
-    cols, rows = _console_dims()
+    cols, rows = _console_real_dims()
     with _console_lock:
         if _console_screen is None:
             _console_reset(cols, rows)
