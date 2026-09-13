@@ -666,8 +666,11 @@ def _cell_style(ch):
         parts.append(f"background:{bg}")
     if ch.bold:
         parts.append("font-weight:700")
-    if ch.underscore:
-        parts.append("text-decoration:underline")
+    # ch.underscore сознательно НЕ рендерим: на свежей (не --continue) сессии
+    # claude встречается терминальный баг, при котором SGR-underline остаётся
+    # "залипшим" почти на всём экране (десятки % ячеек, включая статус-бар) -
+    # так как 100%-покрытие экрана подчёркиванием никогда не несёт полезного
+    # сигнала в консольном зеркале, безопаснее не отрисовывать этот атрибут.
     return ";".join(parts)
 
 

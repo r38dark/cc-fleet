@@ -362,6 +362,13 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.9.9** — live console mirror: underline (`text-decoration:underline`)
+  is no longer rendered at all. A fresh (non-`--continue`) claude session
+  could hit a terminal quirk where SGR-underline stayed "stuck" across most
+  of the screen (tens of percent of cells, including the status bar) —
+  visually it looked like stripes under every line. Since a fully-underlined
+  screen never carries useful signal in this mirror, the attribute is simply
+  never drawn, regardless of the terminal-side cause.
 - **v1.9.8** — live console mirror: window geometry (rows/cols) is now read
   honestly via `ioctl(TIOCGWINSZ)` directly on the screen window's pty
   device, instead of a "tight box" fit around the hardcopy text (which
