@@ -362,6 +362,14 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.10.0** — "optimize" mode: the last-resort fallback (when no candidate
+  passes even the relaxed 97% session-load bar) no longer switches to an
+  account whose weekly limit is already maxed out. That branch previously
+  only checked 5-hour session load — an account with a low session% but a
+  100% weekly limit still looked like the "best" candidate, the balancer
+  would switch to it and get stuck there for good (nowhere left to go from
+  there). The weekly cap (`weekly_cap`) is now enforced in this branch too,
+  same as everywhere else.
 - **v1.9.9** — live console mirror: underline (`text-decoration:underline`)
   is no longer rendered at all. A fresh (non-`--continue`) claude session
   could hit a terminal quirk where SGR-underline stayed "stuck" across most
