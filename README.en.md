@@ -362,6 +362,14 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.10.1** — reset times in TG notifications/cards (`_local_hm()`) used
+  to render in the timezone of the SERVER running cc-limits — if your
+  self-host lives in a different region than you do, the shown reset time
+  silently didn't match reality. New optional `"tz"` key in `config.json`
+  (an IANA zone name, e.g. `"Asia/Irkutsk"` or `"Europe/Moscow"`) — when
+  set, reset times are always explicitly converted to it, regardless of
+  where the server physically runs. Without the key, behavior is unchanged
+  (server's own zone, as before).
 - **v1.10.0** — "optimize" mode: the last-resort fallback (when no candidate
   passes even the relaxed 97% session-load bar) no longer switches to an
   account whose weekly limit is already maxed out. That branch previously

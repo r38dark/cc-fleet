@@ -274,7 +274,7 @@ python3 /opt/cc-limits/tg_queue.py clear   # аварийный сброс оч�
 | `python3 /opt/cc-limits/limits_gate.py` | можно ли сейчас запускать фоновую задачу (rc `0`/`10`) |
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | пауза по лимитам с автоматическим подъёмом |
 | `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | очередь входящих, накопленных пока держались лимиты |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message` |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `tz` |
 | `/opt/cc-limits/switch_log.jsonl` | аудит-лог: по строке на каждый forced-момент режима оптимизации (порог пробит, свитч заблокирован кулдауном, кандидата нет, сам свитч) — v1.4.0 |
 
 ## Обновление с предыдущей версии
@@ -346,6 +346,13 @@ nginx). Если ставить установщик повторно не хо�
 
 ## История версий
 
+- **v1.10.1** — время сброса в TG-уведомлениях/на карточках (`_local_hm()`)
+  раньше показывалось в часовом поясе СЕРВЕРА, где крутится cc-limits —
+  если self-host стоит не в твоём регионе, время сброса тихо не совпадало с
+  реальностью. Новый необязательный ключ `"tz"` в `config.json` (IANA-имя,
+  например `"Asia/Irkutsk"` или `"Europe/Moscow"`) — если задан, время
+  сброса всегда явно переводится в него, независимо от того, где физически
+  стоит сервер. Без ключа поведение не изменилось (зона сервера, как раньше).
 - **v1.10.0** — режим «оптимизация»: крайний-случай фолбэк (когда ни один
   кандидат не прошёл даже с послаблением по сессии до 97%) перестал
   переключать на аккаунт с забитой под потолок неделей. Раньше в этой ветке

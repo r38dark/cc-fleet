@@ -1028,10 +1028,20 @@ def _renewal_next(confirmed_ts):
 
 
 def _local_hm(iso):
-    # время сброса в локальной зоне сервера, коротко: «07:40»
+    # время сброса, коротко: «07:40». Если self-host крутится не в твоём
+    # часовом поясе (сервер в одном регионе, ты в другом) — голый
+    # .astimezone() тихо покажет ВРЕМЯ СЕРВЕРА, а не твоё. Задай IANA-имя
+    # зоны в ключе "tz" config.json (например "Asia/Irkutsk") — тогда время
+    # переводится явно, независимо от того, где физически стоит сервер. Без
+    # ключа — прежнее поведение (зона сервера).
     try:
         from datetime import datetime
-        return datetime.fromisoformat(iso).astimezone().strftime("%H:%M")
+        dt = datetime.fromisoformat(iso)
+        tzname = cfg().get("tz")
+        if tzname:
+            from zoneinfo import ZoneInfo
+            return dt.astimezone(ZoneInfo(tzname)).strftime("%H:%M")
+        return dt.astimezone().strftime("%H:%M")
     except Exception:
         return "?"
 
