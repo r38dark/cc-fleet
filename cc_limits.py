@@ -403,6 +403,14 @@ def collect(force=False, force_account=None):
                 tg_notify(f"⛔ Claude: аккаунт {n} ({email}) слетел с Pro в Free — пора продлевать подписку. Из ротации исключён.")
             else:
                 tg_notify(f"✅ Claude: аккаунт {n} ({email}) снова {p.upper()} — вернул в ротацию.")
+                if was == "free":
+                    # продление, замеченное фоном (кнопка «Я продлил» могла не
+                    # дождаться Anthropic) — якорь таймера = момент нажатия, если был
+                    click = (st.get("renew_click") or {}).get(n, 0)
+                    anchor = click if time.time() - click < 6 * 3600 else time.time()
+                    st.setdefault("renewal", {})[n] = {"confirmed_ts": anchor}
+                    (st.get("renew_click") or {}).pop(n, None)
+                    jsave(STATE, st)
     if cur != prev:
         st["plans"] = {**prev, **cur}
         jsave(STATE, st)
@@ -1439,6 +1447,9 @@ class H(BaseHTTPRequestHandler):
                 return self._send(400, {"ok": False, "message": "неизвестный аккаунт"})
             _plan_cache.pop(name, None)
             with lock:
+                st = jload(STATE, {})
+                st.setdefault("renew_click", {})[name] = time.time()
+                jsave(STATE, st)
                 snap = collect(force=True, force_account=name)
             row = (snap.get("accounts") or {}).get(name, {})
             plan = row.get("plan")
@@ -1449,14 +1460,17 @@ class H(BaseHTTPRequestHandler):
             # шло "вернул в ротацию" по одному только plan, хотя autoswitch_check/
             # optimize_check хард-скипают любой аккаунт с error — реально в
             # ротацию он не попадал, сообщение вводило в заблуждение.
-            if plan and plan != "free" and not err:
+            if plan and plan != "free":
                 # якорь для таймера обратного отсчёта до следующего ожидаемого
                 # обвала Pro→Free — момент, когда пользователь подтвердил
-                # продление; см. _renewal_next()
+                # продление; см. _renewal_next(). Пишется и при err: план уже
+                # Pro, недоступен только usage-эндпоинт
                 with lock:
                     st = jload(STATE, {})
                     st.setdefault("renewal", {})[name] = {"confirmed_ts": time.time()}
+                    (st.get("renew_click") or {}).pop(name, None)
                     jsave(STATE, st)
+            if plan and plan != "free" and not err:
                 return self._send(200, {"ok": True, "plan": plan,
                     "message": f"✅ снова {plan.upper()} — вернул в ротацию."})
             if plan and plan != "free" and err:

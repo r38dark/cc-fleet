@@ -362,6 +362,18 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.10.2** — the “until PRO→FREE” countdown could stay stuck on the old
+  date after a renewal: the anchor was only written on a fully clean
+  “✅ I renewed” response. If Anthropic still reported Free at click time, or
+  the plan was already Pro but the usage endpoint errored (a 429 right after
+  payment is common), no date was saved; the background poll later sent
+  “PRO again — back in rotation” but left the anchor alone → the card kept
+  showing “⏳ today”. Now the button writes the anchor for any Pro/Max plan
+  (a usage error no longer blocks it), and the background poll sets the
+  anchor itself on a Free→Pro transition — at the button click time (if
+  clicked within the last 6 h) or at detection time. This also removes the
+  cold-start gap: after the first natural Free→Pro the countdown appears
+  even without the button.
 - **v1.10.1** — reset times in TG notifications/cards (`_local_hm()`) used
   to render in the timezone of the SERVER running cc-limits — if your
   self-host lives in a different region than you do, the shown reset time
