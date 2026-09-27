@@ -113,7 +113,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -301,7 +301,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py` and `hooks/queue_on_limits.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -362,6 +362,24 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.11.0** — the balancer picks the next account by when it actually
+  frees up, not just by its session reset. An account is usable when its
+  session is below the threshold **and** its week is below `weekly_cap`; its
+  free-up time is the reset of whichever window (or both) holds it. The rule
+  lives in a shared module, `cc_avail.py`, used by the balancer, the banner
+  (`pause_ctl.py`) and the gate (`limits_gate.py`). Before, with the active
+  account at 100% weekly, the banner claimed "a free account exists", the
+  timer counted down to the active account's session reset, and a neighbour
+  that freed up minutes later was noticed very late. Changes:
+  - leaves an account at 100% session or week immediately, ignoring
+    `switch_cooldown_sec`;
+  - simple mode (`autoswitch`) respects the week too;
+  - `poll_loop` wakes up at the nearest reset of any window (+15 s);
+  - an inactive account's cache is dropped once one of its windows has reset;
+  - the 429 back-off is per account, not global;
+  - the web page no longer polls Anthropic itself, it only reads the snapshot;
+  - the banner says who frees up first and what holds it; chips show the
+    week.
 - **v1.10.2** — the “until PRO→FREE” countdown could stay stuck on the old
   date after a renewal: the anchor was only written on a fully clean
   “✅ I renewed” response. If Anthropic still reported Free at click time, or

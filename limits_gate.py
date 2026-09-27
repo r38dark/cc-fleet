@@ -5,8 +5,9 @@
 # аккаунту, что и живая интерактивная сессия. Если окно уже почти выбрано, такой
 # прогон просто добивает остаток и падает на 429 — а окно нужно человеку.
 #
-# rc=10 — работать нельзя: либо активный аккаунт выше порога (ждём, пока балансер
-#         уйдёт на свежий), либо ВСЕ аккаунты выше порога (переключаться некуда).
+# rc=10 — работать нельзя: либо активный аккаунт не пригоден (ждём, пока балансер
+#         уйдёт на свежий), либо не пригоден НИ ОДИН (переключаться некуда).
+#         Не пригоден = сессия выше порога ИЛИ неделя у потолка weekly_cap.
 # rc=0  — есть живой аккаунт, запускаться можно.
 # Fail-open: снапшота нет или он протух — НЕ блокируем (лишний прогон лучше
 #            молча стоящего демона).
@@ -20,17 +21,13 @@ import sys
 import time
 from datetime import datetime
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cc_avail  # noqa: E402
+
 BASE = os.environ.get("CC_LIMITS_BASE", os.path.dirname(os.path.abspath(__file__)))
 SNAP = os.path.join(BASE, "snapshot.json")
 CONFIG = os.path.join(BASE, "config.json")
 MAX_AGE = 900  # снапшот старше 15 минут считаем неизвестным состоянием
-
-
-def _hm(iso):
-    try:
-        return datetime.fromisoformat(iso).astimezone().strftime("%H:%M")
-    except Exception:
-        return "?"
 
 
 def _default_threshold():
@@ -54,41 +51,37 @@ def main():
         print("snapshot протух (%.0f с) — гейт пропускает" % age)
         return 0
 
-    pcts = {}
+    try:
+        cap = float(json.load(open(CONFIG)).get("weekly_cap") or 99)
+    except Exception:
+        cap = 99.0
+    pcts, usable = {}, {}
     for name, row in accs.items():
         fh = row.get("five_hour") or {}
         pct = fh.get("pct")
         # неизвестный процент = считаем аккаунт живым, блокировать не на чем
-        pcts[name] = (float(pct if pct is not None else 0.0), fh.get("resets_at") or "")
+        pcts[name] = float(pct if pct is not None else 0.0)
+        # пригоден = сессия ниже порога И неделя ниже потолка (см. cc_avail.py)
+        usable[name] = cc_avail.availability(row, ceil, cap)[0]
 
-    line = ", ".join("%s %.0f%%" % (n, p) for n, (p, _) in sorted(pcts.items()))
+    line = ", ".join("%s %.0f%%/нед %s%%" % (n, p, (accs[n].get("seven_day") or {}).get("pct"))
+                     for n, p in sorted(pcts.items()))
 
     # Порог смотрим и на АКТИВНОМ аккаунте, а не только «на всех сразу»: пауза здесь
     # короткая — балансер уходит с аккаунта на том же пороге, после переключения
     # активным станет свежий и гейт откроется сам на следующем тике.
     active = d.get("active") or ""
-    ap = pcts.get(active, (0.0, ""))[0]
-    if active in pcts and ap > ceil:
-        print("активный %s %.0f%% выше %.0f%% (%s) — жду переключения балансера"
-              % (active, ap, ceil, line))
+    if active in usable and not usable[active]:
+        print("активный %s не пригоден (%s) — жду переключения балансера" % (active, line))
         return 10
 
-    if [n for n, (p, _) in pcts.items() if p <= ceil]:
+    if any(usable.values()):
         print("ок (%s)" % line)
         return 0
 
-    best = None
-    for name, (_p, iso) in pcts.items():
-        if not iso:
-            continue
-        try:
-            ts = datetime.fromisoformat(iso).timestamp()
-        except Exception:
-            continue
-        if best is None or ts < best[0]:
-            best = (ts, name, iso)
-    nearest = ("%s в %s" % (best[1], _hm(best[2]))) if best else "неизвестно"
-    print("все аккаунты выше %.0f%% (%s), ближайшее окно: %s" % (ceil, line, nearest))
+    nb = cc_avail.nearest(accs, ceil, cap)
+    nearest = ("%s в %s" % (nb[1], datetime.fromtimestamp(nb[0]).astimezone().strftime("%H:%M"))) if nb else "неизвестно"
+    print("все аккаунты упёрлись в сессию или неделю (%s), раньше всех освободится: %s" % (line, nearest))
     return 10
 
 

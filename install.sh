@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet v1.10.2 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.11.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
 # (карточки аккаунтов + переключение), read-only зеркало консоли живой
 # screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
@@ -57,7 +57,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet v1.10.2 — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.11.0 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -114,10 +114,13 @@ apt-get install -y -qq $APT_PKGS
 command -v claude >/dev/null 2>&1 || warn "Бинарник 'claude' не найден в PATH — веб-кнопка 'Войти заново' работать не будет, пока не поставишь Claude Code (npm i -g @anthropic-ai/claude-code)."
 
 # ---------- сервис ----------
-log "Копирую cc_limits.py → $BASE"
+log "Копирую cc_limits.py и cc_avail.py → $BASE"
 mkdir -p "$BASE"
 cp "$SCRIPT_DIR/cc_limits.py" "$BASE/cc_limits.py"
 chmod 644 "$BASE/cc_limits.py"
+# общее правило «когда аккаунт снова пригоден» — импортируют cc_limits.py, pause_ctl.py, limits_gate.py
+cp "$SCRIPT_DIR/cc_avail.py" "$BASE/cc_avail.py"
+chmod 644 "$BASE/cc_avail.py"
 
 log "Копирую limits_gate.py и pause_ctl.py → $BASE (гейт фоновых задач + пауза с будильником)"
 cp "$SCRIPT_DIR/limits_gate.py" "$BASE/limits_gate.py"

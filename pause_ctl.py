@@ -26,7 +26,10 @@ import subprocess
 import sys
 import time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cc_avail  # noqa: E402
 
 BASE = os.environ.get("CC_LIMITS_BASE", os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(BASE, "pause_state.json")
@@ -62,6 +65,13 @@ def _threshold():
         return 90.0
 
 
+def _weekly_cap():
+    try:
+        return float(_cfg().get("weekly_cap") or 99)
+    except Exception:
+        return 99.0
+
+
 def _screen():
     """Имя screen-сессии Claude Code: env (для тестов) → config.json → 'claude'."""
     return os.environ.get("CC_PAUSE_SCREEN") or _cfg().get("screen_session") or "claude"
@@ -93,27 +103,21 @@ def accounts():
 
 
 def nearest_reset():
-    """(iso, имя аккаунта) ближайшего сброса сессионного окна среди всех аккаунтов."""
-    best = None
-    for name, row in accounts()[0].items():
-        iso = ((row.get("five_hour") or {}).get("resets_at")) or ""
-        if not iso:
-            continue
-        try:
-            ts = datetime.fromisoformat(iso).timestamp()
-        except Exception:
-            continue
-        if best is None or ts < best[0]:
-            best = (ts, iso, name)
-    return (best[1], best[2]) if best else ("", "")
+    """(iso, имя аккаунта) — когда раньше всех снова станет пригоден какой-то аккаунт
+    (держит сессия — её сброс, держит неделя — сброс недели)."""
+    nb = cc_avail.nearest(accounts()[0], _threshold(), _weekly_cap())
+    if not nb:
+        return "", ""
+    return datetime.fromtimestamp(nb[0], tz=timezone.utc).isoformat(), nb[1]
 
 
 def level_state():
     """Сводка для баннера на веб-панели — считается по тем же файлам, что и гейт,
     но без запуска подпроцесса (страницу опрашивают часто).
 
-    level: hard — все аккаунты выше порога, переключаться некуда;
-           gate — активный выше порога, но свободный есть (балансер вот-вот уйдёт,
+    level: hard — ни один аккаунт не пригоден (сессия выше порога или неделя у потолка),
+                  переключаться некуда;
+           gate — активный не пригоден, но пригодный есть (балансер вот-вот уйдёт,
                   фоновые агенты в это время не стартуют);
            none — рабочее состояние.
     """
@@ -133,19 +137,25 @@ def level_state():
     if out["stale"]:
         return out
 
-    pcts = {}
+    cap = _weekly_cap()
+    pcts, usable = {}, {}
     for name, row in accs.items():
         fh = row.get("five_hour") or {}
         pct = fh.get("pct")
         pcts[name] = float(pct if pct is not None else 0.0)
+        ok, t, why = cc_avail.availability(row, thr, cap)
+        usable[name] = ok
         out["accounts"][name] = {"pct": pct, "resets_at": fh.get("resets_at") or "",
+                                 "wpct": (row.get("seven_day") or {}).get("pct"),
+                                 "usable": ok, "held": why,
                                  "email": row.get("email") or "", "active": name == active}
-    if pcts and all(p > thr for p in pcts.values()):
+    if usable and not any(usable.values()):
         out["level"] = "hard"
-    elif active in pcts and pcts[active] > thr:
+    elif active in usable and not usable[active]:
         out["level"] = "gate"
     iso, who = nearest_reset()
-    out["nearest"] = {"acc": who, "resets_at": iso}
+    out["nearest"] = {"acc": who, "resets_at": iso,
+                      "held": (out["accounts"].get(who) or {}).get("held", "")}
     out["line"] = ", ".join("%s %.0f%%" % (n, p) for n, p in sorted(pcts.items()))
     return out
 

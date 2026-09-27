@@ -5,6 +5,7 @@
 import fcntl, html, json, os, re, shutil, struct, subprocess, tempfile, termios, threading, time, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pyte
+import cc_avail
 import pexpect
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
@@ -259,8 +260,11 @@ def fetch_plan(name, access):
 
 
 GOOD = os.path.join(BASE, "last_good.json")
-rate_limited = False  # был 429 в последнем сборе — poll_loop притормозит
-backoff_until = 0  # после 429: реальные запросы к Anthropic заблокированы до этого ts
+# 429 ловится на конкретном аккаунте (лимит частоты у Anthropic — на токен), поэтому
+# и пауза после него — по аккаунту: имя → ts, до которого этот аккаунт не опрашиваем.
+# Общая пауза на всех замораживала бы и соседей: освободившийся аккаунт балансер
+# увидел бы с опозданием, пока активный ловит 429.
+backoff_until = {}
 
 
 # Карточки показывали сырой текст исключения ("HTTP Error 400: Bad Request") —
@@ -302,21 +306,17 @@ def _humanize_error(e):
 
 
 def collect(force=False, force_account=None):
-    global rate_limited, backoff_until
     prev = jload(SNAPSHOT) or {}
     # дедуп: не дёргать Anthropic чаще раза в 30с (иначе 429 Too Many Requests),
     # UI-запросы между опросами получают свежий снапшот с актуальным active.
-    # backoff_until — доп. защита: 30с-дедуп сам по себе не спасал, если UI
-    # опрашивает /api/limits НЕ через force чаще, чем poll_sec, но реже 30с —
-    # он проходит дедуп и сразу повторяет запрос, который поймал 429 только
-    # что, до того как poll_loop успеет притормозить свой ОТДЕЛЬНЫЙ таймер.
-    # backoff_until блокирует ЛЮБОЙ non-force путь на время бэкоффа.
-    if not force and (time.time() - prev.get("ts", 0) < 30 or time.time() < backoff_until):
+    # Страницы Anthropic не опрашивают вообще — только читают снапшот; его раз в
+    # poll_sec обновляет poll_loop. Иначе каждый заход страницы шёл бы в Anthropic
+    # сам, и вместе с poll_loop активный аккаунт опрашивался бы раз в 30–60с — 429.
+    if not force and prev.get("accounts") and time.time() - prev.get("ts", 0) < 900:
         return snap_set_active()
     act = active_name()
     good = jload(GOOD, {})
     accounts = {}
-    saw_429 = False
     for n in profile_names():
         oa = jload(f"{PROFILES}/{n}/oauth_account.json", {})
         row = {"email": oa.get("emailAddress", "?"), "active": n == act}
@@ -329,8 +329,14 @@ def collect(force=False, force_account=None):
         # force_account — явный обход для кнопки "Я продлил" (/api/recheck),
         # там нужна гарантированная свежесть именно этого аккаунта.
         old = good.get(n) or {}
+        # Кэш не годится, если в нём уже наступил сброс окна: аккаунт мог только что
+        # освободиться, и балансеру это нужно знать сразу, а не через inactive_poll_sec.
         stale_ok = (n != act and n != force_account and old.get("ts")
-                    and time.time() - old["ts"] < cfg().get("inactive_poll_sec", 300))
+                    and time.time() - old["ts"] < cfg().get("inactive_poll_sec", 300)
+                    and not cc_avail.reset_passed(old))
+        # после 429 этот аккаунт не трогаем до конца его паузы — показываем кэш
+        if n != force_account and old.get("ts") and time.time() < backoff_until.get(n, 0):
+            stale_ok = True
         if stale_ok:
             row["five_hour"] = old.get("five_hour")
             row["seven_day"] = old.get("seven_day")
@@ -364,7 +370,7 @@ def collect(force=False, force_account=None):
         if errs:
             row["error"] = " | ".join(errs)[:200]
             if any("429" in e for e in errs):
-                saw_429 = True
+                backoff_until[n] = time.time() + cfg().get("poll_sec", 120) * 2
             # разовый сбой (429 и т.п.) не должен стирать карточку — показать
             # последние удачные цифры из отдельного кэша с пометкой возраста
             # (только для того, что реально не получили в этом цикле)
@@ -374,9 +380,6 @@ def collect(force=False, force_account=None):
                     row[k] = old[k]
             row["stale_ts"] = old.get("ts")
         accounts[n] = row
-    rate_limited = saw_429
-    if saw_429:
-        backoff_until = time.time() + cfg().get("poll_sec", 90) * 2
     jsave(GOOD, good)
     snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
     jsave(SNAPSHOT, snap)
@@ -936,10 +939,13 @@ def autoswitch_check(snap):
     accs = snap.get("accounts", {})
     if not act or act not in accs:
         return
+    cap = c.get("weekly_cap", 99)
     act_free = accs[act].get("plan") == "free"
     cur = (accs[act].get("five_hour") or {}).get("pct")
+    cur_w = (accs[act].get("seven_day") or {}).get("pct")
+    act_ok, _t, act_why = cc_avail.availability(accs[act], thr, cap)
     if not act_free:
-        if cur is None or cur < thr:
+        if act_ok:
             st["all_high_notified"] = False
             jsave(STATE, st)
             return
@@ -947,25 +953,26 @@ def autoswitch_check(snap):
         hold = st.get("manual_hold") or {}
         if hold.get("account") == act and time.time() < hold.get("until", 0):
             return
-    if time.time() - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
+    # кулдаун против пинг-понга; с мёртвого (100% сессии/недели) уходим без него
+    if not _dead(accs[act]) and time.time() - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
         return
-    # кандидаты: не активный, без ошибок, НЕ Free; при живом Pro-активном ещё и ниже порога
+    # кандидаты: не активный, без ошибок, пригодный сейчас (сессия и неделя ниже порогов, не Free)
     cand = []
     for n, row in accs.items():
-        if n == act or row.get("error") or row.get("plan") == "free":
+        if n == act or row.get("error"):
             continue
         fh = (row.get("five_hour") or {}).get("pct")
-        sd = (row.get("seven_day") or {}).get("pct")
         if fh is None:
             continue
-        if act_free or (fh < thr and (sd is None or sd < thr)):
+        if cc_avail.availability(row, thr, cap)[0]:
             cand.append((fh, n))
     if not cand:
         if not st.get("all_high_notified"):
             reason = "активный слетел в Free, а остальные недоступны" if act_free \
-                else f"у ВСЕХ аккаунтов сессия ≥{thr}%"
+                else "все аккаунты упёрлись в сессию или неделю"
             tg_notify(f"⛔ Claude: {reason} — переключаться некуда, жду.\n"
-                      + "\n".join(f"{n}: {(r.get('five_hour') or {}).get('pct')}% [{r.get('plan','?')}]" for n, r in accs.items()))
+                      + "\n".join(f"{n}: {(r.get('five_hour') or {}).get('pct')}% [{r.get('plan','?')}]" for n, r in accs.items())
+                      + "\nРаньше всех освободится: " + _nearest_reset(accs))
             st["all_high_notified"] = True
             jsave(STATE, st)
         return
@@ -978,12 +985,19 @@ def autoswitch_check(snap):
         st["known_active"] = target
     jsave(STATE, st)
     email = accs[target].get("email", target)
-    why = f"аккаунт {act} слетел в Free" if act_free else f"сессия {act} дошла до {cur}%"
+    why = (f"аккаунт {act} слетел в Free" if act_free
+           else f"сессия {act} дошла до {cur}%" if "сессия" in act_why
+           else f"неделя {act} дошла до {cur_w}%")
     if ok:
         tg_notify(f"🔄 Claude: {why} — авто-переключил на {target} ({email}, сессия {fh}%). Рестарт не нужен.")
         snap_set_active()
     else:
         tg_notify(f"⚠️ Claude: авто-переключение на {target} не удалось: {out}")
+
+
+def _dead(row):
+    # аккаунт упёрся в 100% сессии или недели — работать на нём нельзя совсем
+    return any(((row.get(k) or {}).get("pct") or 0) >= 100 for k in ("five_hour", "seven_day"))
 
 
 def _hours_until(iso, default_h):
@@ -1059,25 +1073,22 @@ def _accs_line(accs):
     for n, row in sorted(accs.items()):
         fh = row.get("five_hour") or {}
         r = fh.get("resets_at")
-        out.append("%s: сессия %s%%%s" % (n, fh.get("pct"),
-                                          (" (сброс %s)" % _local_hm(r)) if r else ""))
+        sd = row.get("seven_day") or {}
+        rw = sd.get("resets_at")
+        out.append("%s: сессия %s%%%s, неделя %s%%%s" % (
+            n, fh.get("pct"), (" (сброс %s)" % _local_hm(r)) if r else "",
+            sd.get("pct"), (" (сброс %s)" % _local_hm(rw)) if rw else ""))
     return "\n".join(out)
 
 
 def _nearest_reset(accs):
-    best = None
-    for n, row in accs.items():
-        iso = (row.get("five_hour") or {}).get("resets_at")
-        if not iso:
-            continue
-        try:
-            from datetime import datetime
-            ts = datetime.fromisoformat(iso).timestamp()
-        except Exception:
-            continue
-        if best is None or ts < best[0]:
-            best = (ts, n, iso)
-    return ("%s в %s" % (best[1], _local_hm(best[2]))) if best else "неизвестно"
+    # кто раньше всех снова станет пригоден — с учётом и сессии, и недели
+    c = cfg()
+    nb = cc_avail.nearest(accs, c.get("threshold", 90), c.get("weekly_cap", 99))
+    if not nb:
+        return "неизвестно"
+    from datetime import datetime
+    return "%s в %s" % (nb[1], _local_hm(datetime.fromtimestamp(nb[0]).astimezone().isoformat()))
 
 
 def _log_switch_event(event, **kw):
@@ -1174,7 +1185,7 @@ def optimize_check(snap):
                 best = (cfh, n)
         if best and (fh is None or best[0] < fh):
             now = time.time()
-            if now - st.get("last_switch_ts", 0) >= c.get("switch_cooldown_sec", 600):
+            if _dead(a) or now - st.get("last_switch_ts", 0) >= c.get("switch_cooldown_sec", 600):
                 target = best[1]
                 trow = accs[target]
                 tfh = (trow.get("five_hour") or {}).get("pct")
@@ -1199,7 +1210,8 @@ def optimize_check(snap):
                                    remaining_sec=round(c.get("switch_cooldown_sec", 600) - (now - st.get("last_switch_ts", 0))))
     if not cand:
         if forced:
-            _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd)
+            _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd,
+                              nearest=_nearest_reset(accs))
         if forced and not st.get("all_high_notified"):
             # раньше уведомление отсюда убрали как спам, и «упёрлись ВСЕ аккаунты» стало
             # происходить молча — пользователь может не понимать, почему сессия не работает,
@@ -1207,7 +1219,7 @@ def optimize_check(snap):
             # снова появился живой кандидат) и не чаще раза в 2 часа. Это не тот спам, что
             # убирали: успешные переключения по-прежнему молчат.
             if time.time() - st.get("all_high_notified_ts", 0) >= 7200:
-                tg_notify("⛔ Claude: все аккаунты упёрлись в лимит сессии — переключаться некуда.\n"
+                tg_notify("⛔ Claude: все аккаунты упёрлись в лимит (сессия или неделя) — переключаться некуда.\n"
                           + _accs_line(accs)
                           + "\nБлижайшее окно: " + _nearest_reset(accs))
                 st["all_high_notified_ts"] = time.time()
@@ -1225,7 +1237,7 @@ def optimize_check(snap):
     my_w = _opt_score(a)
     my_eff = my_w * (100.0 - (fh or 0)) / 100.0
     if forced:
-        if now - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
+        if not _dead(a) and now - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
             _log_switch_event("forced_blocked_cooldown", active=act, fh=fh, target=target,
                                remaining_sec=round(c.get("switch_cooldown_sec", 600) - (now - st.get("last_switch_ts", 0))))
             return
@@ -1285,21 +1297,22 @@ def switch_policy_check(snap):
 
 def poll_loop():
     while True:
+        snap = {}
         try:
             with lock:
-                # collect(force=True) обходит и 30с-дедуп, и backoff_until — если звать
-                # его безусловно каждый тик, во время активного 429-бэкоффа фоновый поток
-                # продолжит долбить Anthropic и будет ловить 429 заново. Поэтому во время
-                # бэкоффа берём последний снапшот с диска вместо нового запроса.
-                if time.time() < backoff_until:
-                    snap = jload(SNAPSHOT) or snap_set_active()
-                else:
-                    snap = collect(force=True)
+                # 429-паузы — по аккаунтам, внутри collect(); здесь опрашиваем всегда
+                snap = collect(force=True)
                 switch_policy_check(snap)
         except Exception as e:
             print(f"poll fail: {e}", flush=True)
-        # при 429 удвоить паузу — дать rate-limit'у Anthropic отойти
-        time.sleep(cfg().get("poll_sec", 120) * (2 if rate_limited else 1))
+        # Просыпаемся не только по poll_sec, но и сразу после ближайшего сброса окна
+        # любого аккаунта (+15с запаса): освободившийся аккаунт подхватываем в первую
+        # же минуту, а не через несколько тиков и inactive_poll_sec кэша неактивных.
+        wait = cfg().get("poll_sec", 120)
+        nr = cc_avail.next_reset_ts((snap or {}).get("accounts") or {})
+        if nr is not None:
+            wait = min(wait, max(nr - time.time() + 15, 5))
+        time.sleep(wait)
 
 
 # ---------- HTTP ----------
@@ -1703,14 +1716,16 @@ const I18N={
   ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
-  ccpHardTitle:'⛔ Уперлись в сессионные лимиты — <b>переключаться некуда</b>',
-  ccpHardSub:thr=>`Все аккаунты выше ${thr}%. Фоновые задачи не стартуют, чтобы не добить окно; балансер переключится, как только освободится ближайшее.`,
+  ccpHardTitle:'⛔ Уперлись в лимиты — <b>переключаться некуда</b>',
+  ccpHardSub:(thr,na,held)=>`Все аккаунты упёрлись в сессию (порог ${thr}%) или неделю. Фоновые задачи не стартуют, чтобы не добить окно. `+(na?`Раньше всех освободится <b>${na}</b>`+(held?` (держит ${held})`:'')+' — балансер переключится на него сразу после сброса.':'Балансер переключится, как только освободится ближайший.'),
   ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
-  ccpGateSub:(n,p,thr)=>`${n} на <span class="num">${p}</span> (порог ${thr}%). Свободный аккаунт есть — ждём переключения балансера, после него задачи пойдут сами.`,
+  ccpGateSub:(n,p,w,thr)=>`${n}: сессия <span class="num">${p}</span> (порог ${thr}%), неделя <span class="num">${w}</span>. Свободный аккаунт есть — балансер переключится на следующем тике, после него задачи пойдут сами.`,
+  ccpWeek:w=>` · нед ${w}%`,
   ccpActive:' · активный',
   ccpChecks:n=>`перепроверок окна: <b>${n}</b>`,
   ccpTillWake:'до подъёма',
   ccpTillNearest:'до ближайшего окна',
+  ccpTillFree:n=>'до освобождения '+n,
   ccpTillReset:'до сброса окна',
   ccpLeft:(h,m,s)=>h?`${h} ч ${m} мин`:`${m} мин ${s} с`,
   modelsBtnTitle:'Модели',
@@ -1763,14 +1778,16 @@ const I18N={
   ccpPauseTitle:'⏸ Claude is <b>paused on limits</b> — it resumes on its own',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
-  ccpHardTitle:'⛔ Session limits reached — <b>nothing to switch to</b>',
-  ccpHardSub:thr=>`All accounts are above ${thr}%. Background jobs stay down so they don't burn the rest of the window; the balancer switches as soon as the nearest one resets.`,
+  ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
+  ccpHardSub:(thr,na,held)=>`Every account is out of session (threshold ${thr}%) or weekly quota. Background jobs stay down so they don't burn the rest of the window. `+(na?`<b>${na}</b> frees up first`+(held?` (held by ${held==='сессия'?'session':held==='неделя'?'week':held==='сессия+неделя'?'session+week':held})`:'')+' — the balancer switches to it right after the reset.':'The balancer switches as soon as the nearest one frees up.'),
   ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
-  ccpGateSub:(n,p,thr)=>`${n} is at <span class="num">${p}</span> (threshold ${thr}%). A free account exists — waiting for the balancer to switch, after that jobs resume by themselves.`,
+  ccpGateSub:(n,p,w,thr)=>`${n}: session <span class="num">${p}</span> (threshold ${thr}%), week <span class="num">${w}</span>. A free account exists — the balancer switches on the next tick, after that jobs resume by themselves.`,
+  ccpWeek:w=>` · wk ${w}%`,
   ccpActive:' · active',
   ccpChecks:n=>`window re-checks: <b>${n}</b>`,
   ccpTillWake:'until resume',
   ccpTillNearest:'until nearest window',
+  ccpTillFree:n=>'until '+n+' frees up',
   ccpTillReset:'until window reset',
   ccpLeft:(h,m,s)=>h?`${h}h ${m}m`:`${m}m ${s}s`,
   modelsBtnTitle:'Models',
@@ -2024,17 +2041,19 @@ function ccpRender(){
     +(pause.note?'<br>'+ccpEsc(pause.note):'');
   if(upMs){timer=upMs;tlabel=tr('ccpTillWake');}
  }else if(mode==='hard'){
-  title=tr('ccpHardTitle');sub=tr('ccpHardSub',thr);
-  if(near){timer=near;tlabel=tr('ccpTillNearest');}
+  const na=d.nearest&&d.nearest.acc;
+  title=tr('ccpHardTitle');sub=tr('ccpHardSub',thr,na?ccpEsc(na):'',na?ccpEsc(d.nearest.held||''):'');
+  if(near){timer=near;tlabel=na?tr('ccpTillFree',ccpEsc(na)):tr('ccpTillNearest');}
  }else{
   const a=(d.accounts||{})[d.active]||{};
   title=tr('ccpGateTitle');
-  sub=tr('ccpGateSub',ccpEsc(d.active||'?'),a.pct==null?'?':a.pct+'%',thr);
-  if(a.resets_at){timer=new Date(a.resets_at).getTime();tlabel=tr('ccpTillReset');}
+  // без таймера: сброс сессии активного тут ни при чём — балансер уходит на свободный сразу
+  sub=tr('ccpGateSub',ccpEsc(d.active||'?'),a.pct==null?'?':a.pct+'%',a.wpct==null?'?':Math.round(a.wpct)+'%',thr);
  }
  const chips=Object.entries(d.accounts||{}).map(([n,a])=>
-  '<span class="ccp-chip'+(a.pct!=null&&a.pct>thr?' hot':'')+'">'+ccpEsc(n)
-  +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b></span>').join('');
+  '<span class="ccp-chip'+(a.usable===false?' hot':'')+'">'+ccpEsc(n)
+  +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b>'
+  +(a.wpct!=null&&a.wpct>=90?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
  el.className='ccpause lvl-'+mode;el.hidden=false;
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
