@@ -901,6 +901,158 @@ def model_info():
                           for k, v in models.items()]}
 
 
+# ── Меню выбора в консоли → Telegram ────────────────────────────────────────
+# Claude Code иногда останавливается на интерактивном меню («Model switch» при
+# срабатывании safeguards и т.п.) и ждёт клавишу: пока человек не подойдёт к консоли,
+# сессия стоит — soft lock. Сторож замечает такое меню (футер «Enter to select ·
+# ↑/↓ to navigate»), шлёт его в Telegram с URL-кнопками вариантов; кнопка открывает
+# /cc-hook/dialog/answer с одноразовым ключом, и номер варианта уходит в screen.
+# URL-кнопки, а не callback: getUpdates этого бота уже слушает телеграм-канал
+# Claude Code, второй опрос забирал бы у него апдейты.
+_DLG_FOOTER_RE = re.compile(r"Enter to select.*to navigate")
+# hardcopy режет не-ASCII до codepoint & 0x7F (см. ниже у _console_dims): курсор «❯»
+# приходит буквой/знаком, линия «─» — нулевыми байтами, поэтому префиксы — любые
+_DLG_OPT_RE = re.compile(r"^\s*(?:[^\d\s]{1,2}\s+)?(\d{1,2})\.\s+(\S.*?)\s*$")
+_DLG_RULE_RE = re.compile(r"^\s*[─━\x00-]{10,}\s*$")
+_DLG_SKIP_OPTS = ("Type something",)  # требует ввода текста — из Telegram не ответить
+_DLG = {"sig": None, "seen": 0, "key": None, "msg_id": None, "opts": {}, "title": ""}
+_DLG_LOCK = threading.Lock()
+_html_escape = html.escape  # в do_GET имя html занято локальной переменной
+
+
+def _tg_call(method, payload):
+    token = tg_token()
+    if not token or not cfg().get("chat_id"):
+        return None
+    try:
+        return http_json(f"https://api.telegram.org/bot{token}/{method}", payload)
+    except Exception as e:
+        print(f"tg {method} fail: {e}", flush=True)
+        return None
+
+
+def parse_console_menu(txt):
+    """Нижнее интерактивное меню на экране → {"title", "body", "options": [(n, text, hint)]}
+    или None. Заголовок и текст — от ближайшей горизонтальной линии над «1.»."""
+    lines = [l.rstrip() for l in (txt or "").splitlines()]
+    foot = max((i for i, l in enumerate(lines) if _DLG_FOOTER_RE.search(l)), default=None)
+    if foot is None:
+        return None
+    # футер живого меню — внизу экрана; та же фраза выше по экрану — это цитата в
+    # переписке, а не меню
+    if sum(1 for l in lines[foot + 1:] if l.strip()) > 3:
+        return None
+    first = None
+    for i in range(foot - 1, max(foot - 60, -1), -1):
+        m = _DLG_OPT_RE.match(lines[i])
+        if m and m.group(1) == "1":
+            first = i
+            break
+    if first is None:
+        return None
+    opts, cur = [], None
+    for l in lines[first:foot]:
+        m = _DLG_OPT_RE.match(l)
+        if m and int(m.group(1)) == len(opts) + 1:
+            cur = [int(m.group(1)), m.group(2).rstrip("."), ""]
+            opts.append(cur)
+        elif cur and l.strip() and not _DLG_RULE_RE.match(l) and not cur[2]:
+            cur[2] = l.strip()
+        elif not l.strip():
+            cur = None if cur and cur[2] else cur
+    top = first
+    for i in range(first - 1, max(first - 40, -1), -1):
+        if _DLG_RULE_RE.match(lines[i]):
+            break
+        top = i
+    head = [l.strip(" │|") .strip() for l in lines[top:first]]
+    head = [re.sub(r"^[^\w«\"(]+\s*", "", l) if j == 0 else l for j, l in enumerate(head) if l.strip()]
+    title = head[0] if head else ""
+    body = " ".join(head[1:])
+    return {"title": title, "body": body, "options": [tuple(o) for o in opts]} if opts else None
+
+
+def _dlg_public_base():
+    return (cfg().get("public_url") or "").rstrip("/")
+
+
+def _dlg_notify(menu):
+    key = os.urandom(12).hex()
+    opts = [o for o in menu["options"] if not any(s in o[1] for s in _DLG_SKIP_OPTS)]
+    text = "⏸ Консоль ждёт выбора\n\n" + (menu["title"] or "Меню") + "\n"
+    if menu["body"]:
+        text += menu["body"][:1500] + "\n"
+    text += "\n" + "\n".join(f"{n}. {t}" + (f" — {h}" if h else "") for n, t, h in menu["options"])
+    base = _dlg_public_base()
+    payload = {"chat_id": cfg().get("chat_id"), "text": text}
+    if base:
+        payload["reply_markup"] = {"inline_keyboard": [
+            [{"text": f"{n}. {t}"[:60], "url": f"{base}/cc-hook/dialog/answer?k={key}&n={n}"}]
+            for n, t, _ in opts]}
+    else:
+        payload["text"] += "\n\n(кнопок нет: в config.json не задан public_url — ответь в консоли)"
+    r = _tg_call("sendMessage", payload)
+    mid = ((r or {}).get("result") or {}).get("message_id")
+    _DLG.update(key=key, msg_id=mid, opts={n: t for n, t, _ in opts}, title=menu["title"])
+
+
+def _dlg_close_msg(note):
+    if _DLG.get("msg_id"):
+        _tg_call("editMessageReplyMarkup", {"chat_id": cfg().get("chat_id"),
+                 "message_id": _DLG["msg_id"], "reply_markup": {"inline_keyboard": []}})
+        _tg_call("sendMessage", {"chat_id": cfg().get("chat_id"), "text": note,
+                 "reply_to_message_id": _DLG["msg_id"]})
+    _DLG.update(sig=None, seen=0, key=None, msg_id=None, opts={}, title="")
+
+
+def _dlg_tick(txt):
+    """Вызывается сторожем раз в ~5 с с текущим экраном."""
+    menu = parse_console_menu(txt)
+    with _DLG_LOCK:
+        if not menu:
+            if _DLG.get("msg_id"):
+                _dlg_close_msg("Меню в консоли закрыто — выбор больше не нужен.")
+            else:
+                _DLG.update(sig=None, seen=0)
+            return
+        sig = menu["title"] + "|" + "|".join(t for _, t, _ in menu["options"])
+        if sig != _DLG.get("sig"):
+            if _DLG.get("msg_id"):
+                _dlg_close_msg("Меню в консоли сменилось.")
+            _DLG.update(sig=sig, seen=1)
+            return
+        _DLG["seen"] += 1
+        # второй тик подряд (~5–10 с): не дёргать Telegram из-за меню, которое
+        # человек открыл в консоли сам и тут же закрыл
+        if _DLG["seen"] == 2 and not _DLG.get("msg_id"):
+            _dlg_notify(menu)
+
+
+def dialog_answer(key, n):
+    """Нажатие кнопки из Telegram. → (ok, текст для страницы)."""
+    scr = cfg().get("screen_session", "claude")
+    with _DLG_LOCK:
+        if not key or key != _DLG.get("key"):
+            return False, "Это меню уже закрыто или на него уже ответили."
+        if n not in _DLG["opts"]:
+            return False, "Такого варианта нет."
+        sig = _DLG["sig"]
+        choice = _DLG["opts"][n]
+        _DLG["key"] = None  # одноразовый ключ
+    subprocess.run(["screen", "-S", scr, "-p", "0", "-X", "stuff", str(n)],
+                   capture_output=True, timeout=10)
+    time.sleep(1.5)
+    menu = parse_console_menu(screen_hardcopy())
+    if menu and menu["title"] + "|" + "|".join(t for _, t, _ in menu["options"]) == sig:
+        # цифра только перевела курсор — подтверждаем
+        subprocess.run(["screen", "-S", scr, "-p", "0", "-X", "stuff", "\r"],
+                       capture_output=True, timeout=10)
+    with _DLG_LOCK:
+        if _DLG.get("sig") == sig:
+            _dlg_close_msg(f"✅ Выбрано: {n}. {choice}")
+    return True, f"Выбрано: {n}. {choice}"
+
+
 def _dialog_watchdog():
     # Постоянный сторож диалога "Switch model?" (Yes/No), крутится с самого
     # старта сервиса, а не только 12с после конкретного клика по кнопке модели.
@@ -921,6 +1073,8 @@ def _dialog_watchdog():
                 subprocess.run(["screen", "-S", scr, "-p", "0", "-X", "stuff", "\r"],
                                capture_output=True, timeout=10)
                 time.sleep(2)  # дать экрану обновиться, не долбить ещё раз тот же диалог
+            else:
+                _dlg_tick(txt)
         except Exception:
             pass
         time.sleep(5)
@@ -1432,6 +1586,22 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         from urllib.parse import urlparse, parse_qs
         u = urlparse(self.path)
+        if u.path == "/api/dialog/answer":
+            # без авторизации: доступ даёт одноразовый ключ из кнопки в Telegram
+            q = parse_qs(u.query)
+            try:
+                n = int((q.get("n") or ["0"])[0])
+            except ValueError:
+                n = 0
+            ok, msg = dialog_answer((q.get("k") or [""])[0], n)
+            page = ('<!doctype html><meta charset="utf-8"><meta name="viewport" '
+                    'content="width=device-width,initial-scale=1"><title>Консоль</title>'
+                    '<body style="font:16px system-ui,sans-serif;background:#111;color:#ddd;'
+                    'display:flex;align-items:center;justify-content:center;height:90vh;'
+                    'text-align:center;padding:16px">' + ("✅ " if ok else "⚠ ") +
+                    _html_escape(msg) + '<br><br><span style="color:#888;font-size:14px">'
+                    'Можно закрыть страницу</span></body>')
+            return self._send(200 if ok else 410, page.encode(), "text/html; charset=utf-8")
         if u.path in ("/", "/index.html"):
             if not self.headers.get("X-Auth-User"):
                 return self._send(403, {"error": "forbidden"})

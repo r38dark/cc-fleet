@@ -362,6 +362,15 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.12.0** — console choice menus are forwarded to Telegram. Claude Code
+  sometimes stops on an interactive menu (e.g. «Model switch» when Opus 5.5
+  safeguards falsely flag a message) and waits for a key — until someone gets
+  to the console, the session is stuck. The balancer watchdog now spots such a
+  menu and sends its text with a button per option; pressing one types the
+  choice into the console (one-time link `/cc-hook/dialog/answer`). If the menu
+  is closed in the console, the buttons are removed. Requires `chat_id` and
+  `public_url` in `config.json` (`install.sh` with nginx sets
+  `https://<domain>` itself); without `public_url` you get the menu text only.
 - **v1.11.1** — the «Check for new models» button now works on any install:
   it scans the installed Claude Code itself (`claude` from PATH, npm or native
   install) and offers model IDs newer than the ones already listed (e.g. Opus
