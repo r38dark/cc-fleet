@@ -362,6 +362,13 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.11.1** — the «Check for new models» button now works on any install:
+  it scans the installed Claude Code itself (`claude` from PATH, npm or native
+  install) and offers model IDs newer than the ones already listed (e.g. Opus
+  5.5 when Opus 5 is known). Previously it only read the optional release
+  watcher's state file, which a normal install doesn't have, so it silently
+  showed nothing. Now every click gives feedback: «N found» or «no new models».
+  Opus 5.5 is added to the built-in list.
 - **v1.11.0** — the balancer picks the next account by when it actually
   frees up, not just by its session reset. An account is usable when its
   session is below the threshold **and** its week is below `weekly_cap`; its

@@ -426,6 +426,7 @@ MODELS = {  # id → короткое имя для UI
     "claude-fable-5": "Fable 5",
     "claude-fable-5-1": "Fable 5.1",
     "claude-opus-5": "Opus 5",
+    "claude-opus-5-5": "Opus 5.5",
     "claude-sonnet-5": "Sonnet 5",
     "claude-haiku-4-5-20251001": "Haiku 4.5",
 }
@@ -443,16 +444,77 @@ def all_models():
     return {**MODELS, **(cfg().get("extra_models") or {})}
 
 
+def _find_claude_bins():
+    # Бинарник/скрипт Claude Code, в строках которого зашиты ID моделей. Ставят его
+    # по-разному (npm -g в /usr/lib или ~/.npm-global, нативный установщик в ~/.local),
+    # поэтому идём от `claude` в PATH и добираем типовые места.
+    cands = []
+    w = shutil.which("claude")
+    if w:
+        cands.append(os.path.realpath(w))
+    for root in ("/root/.npm-global/lib/node_modules", "/usr/lib/node_modules",
+                 "/usr/local/lib/node_modules"):
+        pkg = os.path.join(root, "@anthropic-ai", "claude-code")
+        cands += [os.path.join(pkg, "bin", "claude.exe"), os.path.join(pkg, "cli.js")]
+    cands += [os.path.expanduser("~/.local/bin/claude")]
+    out = []
+    for p in cands:
+        p = os.path.realpath(p)
+        if os.path.isfile(p) and p not in out:
+            out.append(p)
+    return out
+
+
+_MODEL_ID_RE = re.compile(rb"claude-(?:opus|sonnet|haiku|fable)-[0-9][a-z0-9-]*")
+# «чистый» ID релиза: claude-opus-5, claude-opus-5-5, claude-haiku-4-5-20251001.
+# Всё остальное из бинарника (-v1, -fast, -mythos-…) — внутренние варианты, не показываем
+_CLEAN_ID_RE = re.compile(r"claude-(opus|sonnet|haiku|fable)-(\d{1,2})(?:-(\d{1,2}))?(?:-\d{8})?")
+
+
+def _scan_claude_model_ids():
+    found = set()
+    for p in _find_claude_bins():
+        try:
+            with open(p, "rb") as f:
+                found |= {m.decode() for m in _MODEL_ID_RE.findall(f.read())}
+        except Exception:
+            pass
+    return found
+
+
+def _model_ver(mid):
+    m = _CLEAN_ID_RE.fullmatch(mid)
+    if not m:
+        return None
+    return m.group(1), (int(m.group(2)), int(m.group(3) or 0))
+
+
 def model_candidates():
-    # known_ids копится в model_version_watch.py при каждом изменении версии CLI —
-    # там вперемешку публичные релизы и internal/preview-варианты (-fast, -v1,
-    # датированные снапшоты). Отдаём то, чего ещё нет в текущем наборе и что не
-    # отклонили раньше — какой из них реальная модель, а какой мусор, решает
-    # человек в UI (чекбоксы), не автоматика.
-    known = (jload(MODEL_WATCH_STATE, {}) or {}).get("known_ids") or []
-    have = set(all_models().keys())
+    # Кнопка «Проверить новые модели». Источники ID:
+    #  1) скан установленного Claude Code прямо сейчас (у любой установки, ~0.2 с);
+    #  2) known_ids из model_version_watch.py, если такой сторож крутится рядом.
+    # В бинарнике вперемешку релизы, старьё и внутренние варианты — отдаём только
+    # чистые ID, которые НОВЕЕ всего, что уже есть в наборе по этому семейству
+    # (opus-5-5 при известном opus-5), и которые не отклоняли. Решает человек в UI.
+    known = set((jload(MODEL_WATCH_STATE, {}) or {}).get("known_ids") or [])
+    known |= _scan_claude_model_ids()
+    have_map = all_models()
+    have = set(have_map.keys())
+    have_names = set(have_map.values())
     ignored = set(cfg().get("model_ignored_ids") or [])
-    cand_ids = sorted(m for m in known if m not in have and m not in ignored)
+    newest = {}
+    for mid in have:
+        v = _model_ver(mid)
+        if v and v[1] > newest.get(v[0], (0, 0)):
+            newest[v[0]] = v[1]
+    cand_ids = []
+    for m in sorted(known):
+        v = _model_ver(m)
+        if m in have or m in ignored or not v or v[1] <= newest.get(v[0], (0, 0)):
+            continue
+        cand_ids.append(m)
+    # из одного релиза оставляем короткий алиас, датированный снапшот рядом не нужен
+    cand_ids = [m for m in cand_ids if not (re.search(r"-\d{8}$", m) and m.rsplit("-", 1)[0] in cand_ids)]
 
     def guess_name(mid):
         parts = mid.split("-")[1:]  # без "claude"
@@ -467,7 +529,11 @@ def model_candidates():
                 break
         return family + (" " + ".".join(nums) if nums else "")
 
-    return [{"id": m, "guess_name": guess_name(m)} for m in cand_ids]
+    result = []
+    for m in cand_ids:
+        name = guess_name(m)
+        result.append({"id": m, "guess_name": name, "already": name in have_names})
+    return result
 
 
 def screen_hardcopy():
@@ -1616,7 +1682,7 @@ button:disabled{opacity:.35;cursor:default}
 .err{color:var(--bad);font-size:13px;margin-top:8px}
 .switchrow{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--mut);margin-bottom:14px}
 .switchrow input{transform:scale(1.25)}
-#msg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#232a36;padding:10px 18px;border-radius:12px;font-size:14px;display:none;max-width:92vw}
+#msg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#232a36;padding:10px 18px;border-radius:12px;font-size:14px;display:none;max-width:92vw;z-index:20}
 .termwrap{display:flex;flex-direction:column;min-height:130px;margin-bottom:18px}
 .termhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .termhead h2{font-size:15px;margin:0}
@@ -1736,6 +1802,9 @@ const I18N={
   newBadge:'новая',
   checkNewModels:'🔄 Проверить новые модели',
   candSearching:'Ищу…',
+  candFound:'Найдено новых моделей: {n} — отметь нужные',
+  candNone:'Новых моделей нет — у тебя уже всё актуальное',
+  candErr:'Не удалось проверить модели — сервер ответил ошибкой',
   compactTitle:'Сжать контекст (/compact)',
   newSessionTitle:'Новая сессия (/clear)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
@@ -1798,6 +1867,9 @@ const I18N={
   newBadge:'new',
   checkNewModels:'🔄 Check for new models',
   candSearching:'Searching…',
+  candFound:'New models found: {n} — tick the ones you want',
+  candNone:'No new models — you are up to date',
+  candErr:'Could not check for models',
   compactTitle:'Compact context (/compact)',
   newSessionTitle:'New session (/clear)',
   confirmNewSession:'Start a new Claude session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the console. Continue?',
@@ -1949,9 +2021,11 @@ $('#poolList').addEventListener('change',async e=>{
 async function checkNewModels(){
  $('#poolList').innerHTML='<div style="color:var(--mut);font-size:12.5px;padding:6px 2px">'+tr('candSearching')+'</div>';
  try{
-  const r=await fetch(API+'models/candidates?token='+TOKEN);const d=await r.json();
+  const r=await fetch(API+'models/candidates?token='+TOKEN);
+  if(!r.ok)throw new Error(r.status);const d=await r.json();
   lastCandidates=(d&&d.candidates)||[];
- }catch(e){lastCandidates=[];}
+  toast(lastCandidates.length?tr('candFound').replace('{n}',lastCandidates.length):tr('candNone'));
+ }catch(e){lastCandidates=[];toast('⚠ '+tr('candErr'));}
  renderPool();
 }
 $('#checkNew').addEventListener('click',checkNewModels);
