@@ -362,6 +362,16 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.13.0** — notice on automatic model switches. The Claude Code runtime
+  sometimes hands the session to another model on its own — e.g. Opus 5.5
+  safeguards flag the session and Opus 4.8 answers from then on, with no menu
+  and nothing written to `settings.json`. The balancer watchdog compares the
+  model in the session status line with the default in `settings.json` and
+  sends «model switched automatically: A → B» to Telegram, with the reason
+  (safeguard, when it is visible on screen) and how to switch back; when the
+  model matches the default again, a second message follows. Switches via
+  `/model` or the «Model» button are not reported (they change the default
+  too). Status lines with `│` separators («Opus 5.5 │ 45% │ …») are now parsed.
 - **v1.12.0** — console choice menus are forwarded to Telegram. Claude Code
   sometimes stops on an interactive menu (e.g. «Model switch» when Opus 5.5
   safeguards falsely flag a message) and waits for a key — until someone gets

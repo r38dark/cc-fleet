@@ -854,11 +854,31 @@ def console_snapshot(want_history=False):
     return current_html, history_html
 
 
+# Имя модели в статус-строке живой сессии. Строка бывает и "  Fable 5     40%  root",
+# и "  Opus 5.5 │ ✍️ 45% │ project" — hardcopy режет не-ASCII (│ → \x02, эмодзи → \x00),
+# поэтому между именем и процентом допускаем любой короткий мусор. Берём последнюю
+# такую строку (статус внизу экрана). Имя может быть не из MODELS (Opus 4.8 — модель
+# отката safeguard'ов), поэтому возвращаем именно имя, а не ID.
+_STATUS_MODEL_RE = re.compile(r"^\s{0,4}((?:Opus|Sonnet|Haiku|Fable) \d+(?:\.\d+)?)\b[^\n]{0,24}?\d+%")
+
+
+def status_model_name(txt):
+    name = None
+    for line in txt.splitlines():
+        m = _STATUS_MODEL_RE.match(line)
+        if m:
+            name = m.group(1)
+    return name
+
+
 def session_model():
     # Источник истины = статус-строка живой сессии (то, что видно в терминале):
     # "  Fable 5     40%  root  ⏵ xhigh". Именно она отражает и авто-переключения
     # рантайма (напр. safeguard'ы Fable→Opus), которых нет в settings.json.
     txt = screen_hardcopy()
+    name = status_model_name(txt)
+    if name:
+        return next((mid for mid, n in all_models().items() if n == name), name)
     for line in txt.splitlines():
         for mid, name in all_models().items():
             # имя модели в начале строки статуса + где-то дальше "root"
@@ -1053,6 +1073,43 @@ def dialog_answer(key, n):
     return True, f"Выбрано: {n}. {choice}"
 
 
+# Рантайм иногда сам отдаёт сессию другой модели — напр. safeguard
+# Opus 5.5 пометил сессию, и «Opus 4.8 is answering instead» — без меню и без записи
+# в settings.json, поэтому это было незаметно. Сторож сравнивает модель в статус-строке
+# с дефолтом из settings.json: ушла с дефолта не через /model (/model дефолт тоже
+# меняет) — сообщение в Telegram; вернулась — второе сообщение.
+_MW = {"last": None, "cand": None, "cand_n": 0, "away": False}
+_SAFEGUARD_RE = re.compile(r"(\w+ \d+(?:\.\d+)?)'s safeguards? flagged this session")
+
+
+def _model_watch_tick(txt):
+    name = status_model_name(txt)
+    if not name:
+        return
+    # две одинаковые подряд (~10 с) — чтобы битый кадр hardcopy не дал ложную смену
+    if name != _MW["cand"]:
+        _MW["cand"], _MW["cand_n"] = name, 1
+        return
+    _MW["cand_n"] += 1
+    if _MW["cand_n"] < 2 or name == _MW["last"]:
+        return
+    prev, _MW["last"] = _MW["last"], name
+    if prev is None:
+        return  # первый замер после старта сервиса
+    dflt_id = (jload(SETTINGS, {}) or {}).get("model")
+    dflt = all_models().get(dflt_id, dflt_id)
+    if name != dflt:
+        sg = _SAFEGUARD_RE.search(txt.replace("\n", " "))
+        why = (f"сработал safeguard {sg.group(1)} — рантайм сам отдал ответы {name}"
+               if sg else "не через /model (дефолт в настройках — " + str(dflt) + ")")
+        tg_notify(f"⚠️ Модель сессии сменилась автоматически: {prev} → {name}\n"
+                  f"Причина: {why}.\nВернуть: /model {dflt_id} в консоли или кнопка «Модель» в панели.")
+        _MW["away"] = True
+    elif _MW["away"]:
+        tg_notify(f"✅ Модель сессии снова {name} (была {prev}).")
+        _MW["away"] = False
+
+
 def _dialog_watchdog():
     # Постоянный сторож диалога "Switch model?" (Yes/No), крутится с самого
     # старта сервиса, а не только 12с после конкретного клика по кнопке модели.
@@ -1075,6 +1132,7 @@ def _dialog_watchdog():
                 time.sleep(2)  # дать экрану обновиться, не долбить ещё раз тот же диалог
             else:
                 _dlg_tick(txt)
+            _model_watch_tick(txt)
         except Exception:
             pass
         time.sleep(5)
