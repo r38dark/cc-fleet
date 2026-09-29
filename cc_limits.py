@@ -919,7 +919,7 @@ def model_info():
             "available": [{"id": k, "name": v, "enabled": k in enabled,
                            "new": now - added_ts.get(k, 0) < 14 * 86400}
                           for k, v in models.items()],
-            "effort": session_effort(), "effort_default": (jload(SETTINGS, {}) or {}).get("effortLevel"),
+            "effort": session_effort(sess), "effort_default": settings_effort(sess),
             "efforts": list(EFFORT_LEVELS)}
 
 
@@ -930,7 +930,22 @@ EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 _STATUS_EFFORT_RE = re.compile(r"[^\w\s]\s*(low|medium|high|xhigh|max)\b")
 
 
-def session_effort():
+def settings_effort(model_id=None, s=None):
+    # Claude Code хранит effort ПО МОДЕЛИ: modelSettings[<id>].effortLevel — туда пишет
+    # /effort; верхний effortLevel — лишь общий фолбэк, /effort его не трогает
+    s = s if s is not None else (jload(SETTINGS, {}) or {})
+    per = ((s.get("modelSettings") or {}).get(model_id) or {}).get("effortLevel") if model_id else None
+    return per or s.get("effortLevel")
+
+
+def session_effort(model_id=None):
+    # сначала settings по модели сессии: /effort сохраняет туда сразу, как только
+    # консоль его выполнила; статус-строка перерисовывается позже и может отставать
+    model_id = model_id or session_model()
+    per = ((((jload(SETTINGS, {}) or {}).get("modelSettings") or {}).get(model_id) or {}).get("effortLevel")
+           if model_id else None)
+    if per:
+        return per
     try:
         txt = screen_hardcopy()
         for line in txt.splitlines():
@@ -940,7 +955,7 @@ def session_effort():
                     return m.group(1)
     except Exception:
         pass
-    return (jload(SETTINGS, {}) or {}).get("effortLevel")
+    return settings_effort(model_id)
 
 
 def set_effort(level):
@@ -949,7 +964,11 @@ def set_effort(level):
     if level not in EFFORT_LEVELS:
         return False, "unknown effort"
     s = jload(SETTINGS, {}) or {}
-    s["effortLevel"] = level
+    mid = session_model()
+    if mid and mid.startswith("claude-"):
+        s.setdefault("modelSettings", {}).setdefault(mid, {})["effortLevel"] = level
+    else:
+        s["effortLevel"] = level
     with open(SETTINGS + ".tmp", "w") as f:
         json.dump(s, f, indent=2, ensure_ascii=False)
     os.replace(SETTINGS + ".tmp", SETTINGS)

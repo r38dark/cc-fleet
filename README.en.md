@@ -362,6 +362,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.14.1** — effort is read where Claude Code actually stores it: `/effort`
+  saves the level per model in `modelSettings[<id>].effortLevel`, not in the
+  top-level `effortLevel`, so the API kept reporting the old level after a switch.
+  `effort`/`effort_default` now come from the session model's settings (falling
+  back to the status line and the top-level `effortLevel`); `POST /api/effort`
+  writes there too.
 - **v1.14.0** — session effort over the API. `model` in `/api/limits` now carries
   `effort` (the live session level from the status line, falling back to
   `effortLevel` in `settings.json`), `effort_default` and the `efforts` list

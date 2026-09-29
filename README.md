@@ -346,6 +346,11 @@ nginx). Если ставить установщик повторно не хо�
 
 ## История версий
 
+- **v1.14.1** — effort читается там, где его хранит Claude Code: `/effort`
+  пишет уровень по модели в `modelSettings[<id>].effortLevel`, а не в верхний
+  `effortLevel`. Раньше после переключения API продолжал отдавать старый уровень.
+  Теперь `effort`/`effort_default` берутся из настроек модели сессии (фолбэк —
+  статус-строка и общий `effortLevel`), `POST /api/effort` пишет туда же.
 - **v1.14.0** — effort сессии через API. `model` в `/api/limits` теперь несёт
   `effort` (уровень живой сессии из статус-строки, иначе `effortLevel` из
   `settings.json`), `effort_default` и список `efforts` (low … max). Новый
