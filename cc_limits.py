@@ -938,9 +938,44 @@ def settings_effort(model_id=None, s=None):
     return per or s.get("effortLevel")
 
 
+_TR_EFFORT_CMD_RE = re.compile(r"<local-command-stdout>Set effort level to (low|medium|high|xhigh|max)\b")
+
+
+def transcript_effort():
+    # effort живой сессии по её транскрипту: вывод /effort пишется туда сразу (в т.ч.
+    # «max — this session only», которого нет в settings.json), а у каждой реплики
+    # ассистента есть поле "effort". Берём то, что встретилось последним.
+    try:
+        files = [os.path.join(TRANSCRIPTS, f) for f in os.listdir(TRANSCRIPTS) if f.endswith(".jsonl")]
+        newest = max(files, key=os.path.getmtime)
+        with open(newest, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 300_000))
+            tail = f.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    eff = None
+    for line in tail.splitlines():
+        try:
+            d = json.loads(line)
+        except Exception:
+            continue
+        if d.get("type") == "assistant" and d.get("effort") in EFFORT_LEVELS:
+            eff = d["effort"]
+        elif d.get("type") == "user":
+            c = (d.get("message") or {}).get("content")
+            m = _TR_EFFORT_CMD_RE.search(c) if isinstance(c, str) else None
+            if m:
+                eff = m.group(1)
+    return eff
+
+
 def session_effort(model_id=None):
-    # сначала settings по модели сессии: /effort сохраняет туда сразу, как только
-    # консоль его выполнила; статус-строка перерисовывается позже и может отставать
+    # 1) транскрипт живой сессии; 2) settings по модели сессии (/effort сохраняет туда
+    # всё, кроме session-only max); 3) статус-строка; 4) общий effortLevel
+    eff = transcript_effort()
+    if eff:
+        return eff
     model_id = model_id or session_model()
     per = ((((jload(SETTINGS, {}) or {}).get("modelSettings") or {}).get(model_id) or {}).get("effortLevel")
            if model_id else None)

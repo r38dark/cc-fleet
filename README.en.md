@@ -362,6 +362,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.14.2** — the live session `effort` is read from its transcript: the last
+  `/effort` output or the `effort` field of the latest assistant turn. This also
+  catches `max`, which Claude Code applies to the current session only and never
+  writes to `settings.json`. Falls back to model settings, the status line and the
+  top-level `effortLevel`.
 - **v1.14.1** — effort is read where Claude Code actually stores it: `/effort`
   saves the level per model in `modelSettings[<id>].effortLevel`, not in the
   top-level `effortLevel`, so the API kept reporting the old level after a switch.
