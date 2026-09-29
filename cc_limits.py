@@ -918,7 +918,50 @@ def model_info():
             "default": dflt, "default_name": models.get(dflt, dflt),
             "available": [{"id": k, "name": v, "enabled": k in enabled,
                            "new": now - added_ts.get(k, 0) < 14 * 86400}
-                          for k, v in models.items()]}
+                          for k, v in models.items()],
+            "effort": session_effort(), "effort_default": (jload(SETTINGS, {}) or {}).get("effortLevel"),
+            "efforts": list(EFFORT_LEVELS)}
+
+
+# Уровень effort живой сессии — хвост той же статус-строки, что и модель: "  Opus 5.5     50%  root  ⏵ xhigh". Не нашли строку —
+# берём effortLevel из settings.json (дефолт новых сессий).
+EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+# перед уровнем — значок ⏵, который hardcopy отдаёт мусорным не-словесным символом
+_STATUS_EFFORT_RE = re.compile(r"[^\w\s]\s*(low|medium|high|xhigh|max)\b")
+
+
+def session_effort():
+    try:
+        txt = screen_hardcopy()
+        for line in txt.splitlines():
+            if _STATUS_MODEL_RE.match(line):
+                m = _STATUS_EFFORT_RE.search(line)
+                if m:
+                    return m.group(1)
+    except Exception:
+        pass
+    return (jload(SETTINGS, {}) or {}).get("effortLevel")
+
+
+def set_effort(level):
+    # тот же принцип, что set_default_model: effortLevel в settings.json (дефолт новых
+    # сессий) + best-effort "/effort <уровень>" в живую консоль через screen stuff
+    if level not in EFFORT_LEVELS:
+        return False, "unknown effort"
+    s = jload(SETTINGS, {}) or {}
+    s["effortLevel"] = level
+    with open(SETTINGS + ".tmp", "w") as f:
+        json.dump(s, f, indent=2, ensure_ascii=False)
+    os.replace(SETTINGS + ".tmp", SETTINGS)
+    live = False
+    try:
+        scr = cfg().get("screen_session", "darqai")
+        p = subprocess.run(["screen", "-S", scr, "-p", "0", "-X", "stuff", f"/effort {level}\r"],
+                           capture_output=True, text=True, timeout=10)
+        live = p.returncode == 0
+    except Exception:
+        pass
+    return True, "effort " + level + (" — дефолт сохранён; в текущей сессии применится, если она сейчас свободна (иначе повтори)" if live else " — сохранён дефолт для новых сессий (живая недоступна)")
 
 
 # ── Меню выбора в консоли → Telegram ────────────────────────────────────────
@@ -1790,6 +1833,9 @@ class H(BaseHTTPRequestHandler):
                 "message": "Не удалось проверить план: " + (row.get("error") or "?")})
         if u.path == "/api/model":
             ok, msg = set_default_model(body.get("model", ""))
+            return self._send(200 if ok else 400, {"ok": ok, "message": msg, "model": model_info()})
+        if u.path == "/api/effort":
+            ok, msg = set_effort(body.get("effort", ""))
             return self._send(200 if ok else 400, {"ok": ok, "message": msg, "model": model_info()})
         if u.path == "/api/session":
             ok, msg = send_session_command(body.get("cmd", ""))

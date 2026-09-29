@@ -362,6 +362,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.14.0** — session effort over the API. `model` in `/api/limits` now carries
+  `effort` (the live session level from the status line, falling back to
+  `effortLevel` in `settings.json`), `effort_default` and the `efforts` list
+  (low … max). New `POST /api/effort {"effort": "high"}` writes `effortLevel` to
+  `settings.json` and best-effort sends `/effort <level>` to the console — same
+  approach as `/api/model`: it applies if the session is idle right now.
 - **v1.13.0** — notice on automatic model switches. The Claude Code runtime
   sometimes hands the session to another model on its own — e.g. Opus 5.5
   safeguards flag the session and Opus 4.8 answers from then on, with no menu
