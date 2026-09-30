@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet v1.14.2 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.15.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
 # (карточки аккаунтов + переключение), read-only зеркало консоли живой
 # screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
@@ -57,7 +57,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet v1.14.2 — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.15.0 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -131,7 +131,8 @@ log "Копирую tg_queue.py и hooks/ → $BASE (очередь входящ
 cp "$SCRIPT_DIR/tg_queue.py" "$BASE/tg_queue.py"
 mkdir -p "$BASE/hooks"
 cp "$SCRIPT_DIR/hooks/queue_on_limits.py" "$BASE/hooks/queue_on_limits.py"
-chmod 755 "$BASE/tg_queue.py" "$BASE/hooks/queue_on_limits.py"
+cp "$SCRIPT_DIR/hooks/pause_tool_gate.py" "$BASE/hooks/pause_tool_gate.py"
+chmod 755 "$BASE/tg_queue.py" "$BASE/hooks/queue_on_limits.py" "$BASE/hooks/pause_tool_gate.py"
 
 log "Ставлю cc-switch → /usr/local/bin/cc-switch"
 cp "$SCRIPT_DIR/cc-switch" /usr/local/bin/cc-switch
@@ -257,6 +258,38 @@ PY
 else
   log "Хук очереди не подключён. Вручную: hooks.UserPromptSubmit → команда"
   echo "  CC_LIMITS_DIR=$BASE /usr/bin/python3 $BASE/hooks/queue_on_limits.py"
+fi
+
+# Стоп-кран инструментов: хук PreToolUse останавливает уже начатый ход, когда встала
+# пауза (без него пауза глушит только новые входящие, а текущий ход добивает окно).
+# Пауза отключена кнопкой на панели — хук пропускает всё.
+ask_yn HOOK_TOOLS "Подключить стоп-кран инструментов на паузе (PreToolUse) в settings.json Claude Code?" y
+if [ "$HOOK_TOOLS" = "y" ]; then
+  [ -n "${CLAUDE_SETTINGS:-}" ] || ask CLAUDE_SETTINGS "Путь к settings.json Claude Code" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+  mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+  [ -f "$CLAUDE_SETTINGS" ] || echo '{}' > "$CLAUDE_SETTINGS"
+  cp "$CLAUDE_SETTINGS" "$CLAUDE_SETTINGS.bak_$(date +%Y%m%d%H%M%S)"
+  CC_SETTINGS="$CLAUDE_SETTINGS" CC_HOOK_CMD="CC_LIMITS_DIR=$BASE /usr/bin/python3 $BASE/hooks/pause_tool_gate.py" python3 <<'PY'
+import json, os
+p = os.environ["CC_SETTINGS"]
+cmd = os.environ["CC_HOOK_CMD"]
+try:
+    d = json.load(open(p))
+    if not isinstance(d, dict):
+        d = {}
+except Exception:
+    d = {}
+pre = d.setdefault("hooks", {}).setdefault("PreToolUse", [])
+# идемпотентность: ищем наш скрипт, а не точную строку — путь мог поменяться
+pre[:] = [x for x in pre if "pause_tool_gate.py" not in json.dumps(x)]
+pre.append({"matcher": "*", "hooks": [{"type": "command", "command": cmd}]})
+json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+print("  OK: стоп-кран инструментов прописан в %s" % p)
+PY
+  echo "  Аварийный выход, если хук мешает: $BASE/pause_ctl.py off (или clear) — эти команды он пропускает всегда."
+else
+  log "Стоп-кран не подключён. Вручную: hooks.PreToolUse, matcher \"*\" → команда"
+  echo "  CC_LIMITS_DIR=$BASE /usr/bin/python3 $BASE/hooks/pause_tool_gate.py"
 fi
 
 log "Проверяю health-check (127.0.0.1:$PORT)…"

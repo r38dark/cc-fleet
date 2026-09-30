@@ -12,6 +12,14 @@
 #   pause_ctl.py status [--json]                                        — что сейчас
 #   pause_ctl.py clear                                                  — снять руками
 #   pause_ctl.py wake --if-due                                          — крон-тик
+#   pause_ctl.py off [--by ...]  — отключить паузу (кнопка на веб-панели): работа сверх порога
+#   pause_ctl.py on  [--by ...]  — включить обратно; если окно всё ещё забито — пауза сразу
+#
+# Пауза ставится ТОЛЬКО по сессионному (5-часовому) окну — недельный потолок её не
+# касается: он держит балансер и фоновые задачи (limits_gate.py), но не разговор.
+# «Отключена вручную» (override) переживает все автоматические постановки паузы
+# (очередь входящих, хук инструментов) и снимается сама, когда окно отпустит,
+# или кнопкой «Включить паузу».
 #
 # При постановке паузы и при автоматическом подъёме уходит уведомление в Telegram —
 # если в config.json задан chat_id (отключается ключом "pause_notify": false).
@@ -102,29 +110,50 @@ def accounts():
     return (d.get("accounts") or {}), (d.get("active") or ""), float(d.get("ts") or 0)
 
 
+NO_WEEK = float("inf")  # паузе недельный потолок не нужен — см. шапку
+
+
 def nearest_reset():
-    """(iso, имя аккаунта) — когда раньше всех снова станет пригоден какой-то аккаунт
-    (держит сессия — её сброс, держит неделя — сброс недели)."""
-    nb = cc_avail.nearest(accounts()[0], _threshold(), _weekly_cap())
+    """(iso, имя аккаунта) — когда раньше всех отпустит сессионное окно какого-то аккаунта."""
+    nb = cc_avail.nearest(accounts()[0], _threshold(), NO_WEEK)
     if not nb:
         return "", ""
     return datetime.fromtimestamp(nb[0], tz=timezone.utc).isoformat(), nb[1]
+
+
+def session_blocked():
+    """(стоять?, строка) — решение будильника: все аккаунты выше сессионного порога или
+    активный выше порога (балансер ещё не ушёл). Неделю не смотрим. Нет свежего снимка —
+    не держим (fail-open, как limits_gate)."""
+    s = level_state()
+    if s.get("stale"):
+        return False, "снимок лимитов устарел"
+    line = s.get("line") or "?"
+    if s.get("level") == "hard":
+        return True, "все аккаунты выше порога сессии (%s)" % line
+    a = s["accounts"].get(s.get("active")) or {}
+    if a and not a.get("ses_ok", True):
+        return True, "активный %s выше порога сессии (%s) — жду переключения балансера" % (
+            s.get("active"), line)
+    return False, "ок (%s)" % line
 
 
 def level_state():
     """Сводка для баннера на веб-панели — считается по тем же файлам, что и гейт,
     но без запуска подпроцесса (страницу опрашивают часто).
 
-    level: hard — ни один аккаунт не пригоден (сессия выше порога или неделя у потолка),
-                  переключаться некуда;
-           gate — активный не пригоден, но пригодный есть (балансер вот-вот уйдёт,
-                  фоновые агенты в это время не стартуют);
+    level: hard — все аккаунты выше порога сессионного окна, переключаться некуда —
+                  здесь встаёт пауза (неделя не участвует);
+           gate — активный не пригоден (сессия или неделя), но пригодный есть (балансер
+                  вот-вот уйдёт, фоновые задачи в это время не стартуют);
            none — рабочее состояние.
     """
     accs, active, ts = accounts()
     thr = _threshold()
     st = load()
     pause = {
+        "override": bool(st.get("override")),
+        "override_since": st.get("override_since") or 0,
         "active": bool(st.get("active")),
         "reason": st.get("reason") or "",
         "note": st.get("note") or "",
@@ -138,24 +167,24 @@ def level_state():
         return out
 
     cap = _weekly_cap()
-    pcts, usable = {}, {}
+    pcts, usable, ses_ok = {}, {}, {}
     for name, row in accs.items():
         fh = row.get("five_hour") or {}
         pct = fh.get("pct")
         pcts[name] = float(pct if pct is not None else 0.0)
         ok, t, why = cc_avail.availability(row, thr, cap)
         usable[name] = ok
+        ses_ok[name] = cc_avail.availability(row, thr, NO_WEEK)[0]
         out["accounts"][name] = {"pct": pct, "resets_at": fh.get("resets_at") or "",
                                  "wpct": (row.get("seven_day") or {}).get("pct"),
-                                 "usable": ok, "held": why,
+                                 "usable": ok, "held": why, "ses_ok": ses_ok[name],
                                  "email": row.get("email") or "", "active": name == active}
-    if usable and not any(usable.values()):
+    if ses_ok and not any(ses_ok.values()):
         out["level"] = "hard"
     elif active in usable and not usable[active]:
         out["level"] = "gate"
     iso, who = nearest_reset()
-    out["nearest"] = {"acc": who, "resets_at": iso,
-                      "held": (out["accounts"].get(who) or {}).get("held", "")}
+    out["nearest"] = {"acc": who, "resets_at": iso, "held": "сессия" if who else ""}
     out["line"] = ", ".join("%s %.0f%%" % (n, p) for n, p in sorted(pcts.items()))
     return out
 
@@ -228,6 +257,11 @@ def _tg(text, force=False):
 
 
 def cmd_set(a):
+    if load().get("override"):
+        # паузу отключили кнопкой — автоматические постановки (очередь, хук) молчат,
+        # пока её не включат обратно или окно не отпустит само (см. cmd_wake)
+        _log("пауза отключена вручную — не ставлю (%s)" % (a.reason or "лимиты"))
+        return 0
     iso, who = (a.resume_at, "") if a.resume_at else nearest_reset()
     resume_ts = 0.0
     if iso:
@@ -270,27 +304,41 @@ def cmd_clear(_a):
 def cmd_status(a):
     st = load()
     blocked, line = gate()
-    out = {"pause": st, "gate_blocked": blocked, "gate": line}
+    sb, sline = session_blocked()
+    out = {"pause": st, "gate_blocked": blocked, "gate": line,
+           "session_blocked": sb, "session": sline}
     if a.json:
         print(json.dumps(out, ensure_ascii=False))
     else:
-        print("пауза: %s" % ("активна" if st.get("active") else "нет"))
+        print("пауза: %s" % ("ОТКЛЮЧЕНА вручную с %s" % datetime.fromtimestamp(
+            st.get("override_since") or 0).strftime("%d.%m %H:%M") if st.get("override")
+            else "активна" if st.get("active") else "нет"))
         if st.get("active"):
             print("  причина: %s" % st.get("reason"))
             print("  подъём:  %s"
                   % datetime.fromtimestamp(st.get("resume_at") or 0).strftime("%d.%m %H:%M"))
+        print("окно для паузы: %s" % sline)
         print("гейт: %s" % line)
     return 0
 
 
 def cmd_wake(a):
     st = load()
+    if st.get("override"):
+        # отключённая вручную пауза включается обратно сама, как только окно отпустило —
+        # иначе следующий забитый лимит прошёл бы уже без неё
+        ls = level_state()
+        if not ls.get("stale") and ls.get("level") != "hard":
+            st.update(override=False, override_cleared_at=_now(), override_cleared_by="окно отпустило")
+            save(st)
+            _log("пауза снова включена: окно отпустило (%s)" % (ls.get("line") or "?"))
+        return 0
     if not st.get("active"):
         return 0
     if a.if_due and _now() < float(st.get("resume_at") or 0):
         return 0
 
-    blocked, line = gate()
+    blocked, line = session_blocked()
     if blocked:
         # окно ещё не отпустило — молча переставляем будильник, никого не дёргаем
         iso, who = nearest_reset()
@@ -323,12 +371,17 @@ def cmd_wake(a):
     if st.get("note"):
         msg += "\nБыло незакрыто: %s" % st["note"]
     _tg(msg)
-    # Будим живую сессию тем же способом, что и веб-кнопки панели — stuff в screen.
     tmpl = _cfg().get("pause_wake_message") or WAKE_MSG
     try:
         msg = tmpl % (level_state().get("line") or "?")
     except TypeError:
         msg = tmpl  # в шаблоне нет %s — шлём как есть
+    _wake_session(msg)
+    return 0
+
+
+def _wake_session(msg):
+    """Будим живую сессию тем же способом, что и веб-кнопки панели — stuff в screen."""
     # Пока держалась пауза, входящие сообщения копились в очереди (tg_queue.py).
     # Разобрать их — первое дело после подъёма, иначе они молча потеряются.
     n = _queued()
@@ -355,6 +408,37 @@ def cmd_wake(a):
                        capture_output=True, timeout=10)
     except Exception as e:
         _log("инжект в screen не удался: %s" % e)
+
+
+def cmd_off(a):
+    """Кнопка «Отключить паузу»: входящие идут сразу, инструменты не блокируются —
+    работа сверх порога, до настоящего лимита аккаунта."""
+    st = load()
+    was = bool(st.get("active"))
+    st.update(active=False, override=True, override_since=_now(), override_by=a.by or "",
+              cleared_at=_now())
+    save(st)
+    _log("пауза отключена вручную (%s)%s" % (a.by or "?", ", сессия стояла — бужу" if was else ""))
+    _tg("▶️ Claude: пауза отключена вручную — работа сверх порога, до настоящего лимита "
+        "аккаунта. Включится сама, когда отпустит сессионное окно, или кнопкой на панели.")
+    if was or _queued():
+        _wake_session("[cc-pause] Pause disabled manually from the web panel (%s): work past "
+                      "the threshold is allowed. Continue the paused task from the state saved "
+                      "earlier." % (level_state().get("line") or "?"))
+    return 0
+
+
+def cmd_on(a):
+    """Кнопка «Включить паузу»: снимает отключение; если окно всё ещё забито — пауза сразу."""
+    st = load()
+    st.update(override=False, override_cleared_at=_now(), override_cleared_by=a.by or "")
+    save(st)
+    ls = level_state()
+    _log("пауза снова включена вручную (%s)" % (a.by or "?"))
+    if not ls.get("stale") and ls.get("level") == "hard":
+        return cmd_set(argparse.Namespace(reason="включена вручную", resume_at="",
+                                          note="окно забито (%s)" % (ls.get("line") or "")))
+    _tg("⏸ Claude: пауза снова работает — встанет, когда все аккаунты упрутся в сессионное окно.")
     return 0
 
 
@@ -374,6 +458,11 @@ def main():
 
     s = sub.add_parser("clear")
     s.set_defaults(fn=cmd_clear)
+
+    for name, fn in (("off", cmd_off), ("on", cmd_on)):
+        s = sub.add_parser(name)
+        s.add_argument("--by", default="")
+        s.set_defaults(fn=fn)
 
     s = sub.add_parser("wake")
     s.add_argument("--if-due", action="store_true", dest="if_due")

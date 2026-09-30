@@ -88,7 +88,7 @@ def blocked_now():
     """(блокировать?, level, строка процентов, iso ближайшего сброса).
 
     Блокируем только когда работать реально негде:
-      hard  — все аккаунты выше порога;
+      hard  — все аккаунты выше порога сессии (неделя не в счёт, см. pause_ctl);
       пауза — сессия уже стоит и ждёт будильника.
     level == "gate" (активный сожжён, но свободный есть) НЕ блокируем: балансер
     переключится на следующем тике и работа поедет дальше.
@@ -97,6 +97,9 @@ def blocked_now():
     lvl = st.get("level")
     paused = bool((st.get("pause") or {}).get("active"))
     iso = (st.get("nearest") or {}).get("resets_at") or ""
+    if (st.get("pause") or {}).get("override"):
+        # паузу отключили кнопкой на панели (pause_ctl off) — сообщения идут сразу
+        return False, lvl, st.get("line") or "", iso
     return (lvl == "hard" or paused), lvl, st.get("line") or "", iso
 
 

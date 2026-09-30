@@ -35,6 +35,7 @@ there's something to say; in normal operation it isn't rendered at all
 (screenshots below are in Russian, the panel itself is RU/EN):
 
 ![Paused on limits](screenshots/banner-pause.png)
+![Pause disabled manually](screenshots/banner-off.png)
 ![Nothing to switch to](screenshots/banner-hard.png)
 ![Active account is full](screenshots/banner-gate.png)
 
@@ -54,10 +55,18 @@ there's something to say; in normal operation it isn't rendered at all
   has already burned its window: otherwise they eat exactly the limit you
   need for yourself.
 - ⏸ **Limit pause with an alarm** (`pause_ctl.py`) — when every account is
-  above the threshold and there is nothing to switch to, work goes on pause,
-  and a system cron lifts it at the nearest window reset and wakes the live
-  session. Nothing lives inside the Claude Code session itself, so the pause
-  survives a restart, `/clear` and a reboot.
+  above the 5-hour window threshold and there is nothing to switch to, work
+  goes on pause, and a system cron lifts it at the nearest window reset and
+  wakes the live session. Weekly limits never trigger the pause. Nothing lives
+  inside the Claude Code session itself, so the pause survives a restart,
+  `/clear` and a reboot.
+- ▶️ **"Disable pause" button** in the panel banner — keep working past the
+  threshold when you really need to; "Enable pause" puts it back, and if you
+  forget, the pause re-enables itself as soon as the window frees up.
+- 🛑 **Tool brake** (a `PreToolUse` hook) — when the pause goes up, the turn
+  Claude Code is already in stops too: it gets a couple of minutes to bring
+  the current action to a consistent state, then tools stay closed until the
+  alarm.
 - 📥 **Incoming queue while limits are burnt** (`tg_queue.py` + a
   `UserPromptSubmit` hook) — while the windows are burnt, a message from a
   chat channel (Telegram and the like) never reaches the model: it goes into a
@@ -276,6 +285,55 @@ next to it), or by hand:
 ⚠️ Claude Code reads `settings.json` at startup — restart the session after
 wiring the hook, otherwise it will not be called.
 
+## Disable-pause button and the tool brake (v1.15.0)
+
+**The pause is driven by the 5-hour window only.** The "nothing to switch to"
+level (`hard`) means every account is above the threshold of the session
+window specifically. The weekly cap (`weekly_cap`) neither sets the pause nor
+holds the alarm: it still works in the balancer (an account at its weekly cap
+is not picked) and in the background-job gate `limits_gate.py`, but it no
+longer stops the live session.
+
+**The button.** While the pause is up (or all windows are full), the panel
+banner shows a "Disable pause" button. Press it — the pause is lifted, the
+session is woken right away with "work past the threshold is allowed", the
+incoming queue stops collecting, and the tool hook lets everything through.
+The banner turns green, "Pause disabled manually", with an "Enable pause"
+button that puts the pause back — if the windows are still full, the pause
+goes up immediately with an alarm for the nearest reset. If you never press
+"Enable", cron returns the pause to normal operation as soon as the window
+frees up (log: "пауза снова включена: окно отпустило"), so a forgotten button
+can't leave the pause off forever. Same from the console:
+
+```bash
+python3 /opt/cc-limits/pause_ctl.py off --by "me"   # disable the pause
+python3 /opt/cc-limits/pause_ctl.py on  --by "me"   # enable it back
+```
+
+The panel calls the same thing via `POST /api/pause?token=<hook_token>` with
+the body `{"action": "off"}` or `{"action": "on"}`.
+
+**The tool brake.** Without it the pause only silences new incoming messages,
+while the turn already in progress keeps going and burns the window until it
+ends by itself. The `PreToolUse` hook (`hooks/pause_tool_gate.py`) closes
+that: with the pause up, Claude's first tool call is denied with the
+instruction "don't start new steps, bring what you started to a consistent
+state and write down what's left", then it has 120 seconds for that, after
+which every tool is denied until the alarm. If every account is above the
+threshold and there is no pause yet, the hook sets it itself. Always let
+through: project memory, Claude Code's `settings.json` and hooks, and the
+`pause_ctl`/`tg_queue` commands (emergency exit — `pause_ctl.py off` or
+`clear`). With the pause disabled by the button everything passes; any error
+inside the hook is a pass too.
+
+It is wired up by an installer question (it edits `hooks.PreToolUse` in
+`settings.json`, keeping a backup next to it), or by hand:
+
+```json
+{ "hooks": { "PreToolUse": [ { "matcher": "*", "hooks": [ { "type": "command",
+  "command": "CC_LIMITS_DIR=/opt/cc-limits /usr/bin/python3 /opt/cc-limits/hooks/pause_tool_gate.py" } ] } ] } }
+```
+
 ## Management
 
 | Command / URL | What it does |
@@ -286,6 +344,7 @@ wiring the hook, otherwise it will not be called.
 | `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`), pause, nearest reset |
 | `python3 /opt/cc-limits/limits_gate.py` | may a background job start right now (rc `0`/`10`) |
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
+| `python3 /opt/cc-limits/pause_ctl.py off\|on` | disable the pause (work past the threshold) / enable it back — same as the banner buttons |
 | `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | incoming messages queued while the limits held |
 | `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message` |
 | `/opt/cc-limits/switch_log.jsonl` | audit log: one line per forced-mode moment in optimize mode (threshold crossed, switch blocked by cooldown, no candidate, actual switch) — v1.4.0 |
@@ -302,7 +361,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
 installer again — copy `cc_limits.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`,
-`tg_queue.py` and `hooks/queue_on_limits.py` into `/opt/cc-limits`, add the
+`tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
 ## Telegram notifications (optional)
@@ -362,6 +421,13 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.15.0** — the pause is driven by the 5-hour window only: weekly limits no
+  longer set it (before, accounts at 99–100% weekly gave "nothing to switch
+  to" while their sessions were free). "Disable pause" / "Enable pause"
+  buttons in the banner and `pause_ctl.py off|on`: a disabled pause
+  re-enables itself once the window frees up. New `PreToolUse` hook
+  `hooks/pause_tool_gate.py` — the pause also stops the turn already in
+  progress, not just new incoming messages; the installer offers to wire it up.
 - **v1.14.2** — the live session `effort` is read from its transcript: the last
   `/effort` output or the `effort` field of the latest assistant turn. This also
   catches `max`, which Claude Code applies to the current session only and never

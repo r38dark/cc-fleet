@@ -1894,6 +1894,24 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/session":
             ok, msg = send_session_command(body.get("cmd", ""))
             return self._send(200 if ok else 400, {"ok": ok, "message": msg})
+        if u.path == "/api/pause":
+            # кнопки «Отключить / Включить паузу» в баннере: pause_ctl off|on — тот же модуль,
+            # что у будильника и хуков; лог — рядом с логом будильника
+            action = body.get("action")
+            if action not in ("off", "on"):
+                return self._send(400, {"ok": False, "error": "action: off|on"})
+            try:
+                r = subprocess.run(["/usr/bin/python3", os.path.join(BASE, "pause_ctl.py"), action,
+                                    "--by", "web panel"], capture_output=True, text=True, timeout=30,
+                                   env=dict(os.environ, CC_LIMITS_BASE=BASE))
+                with open(os.path.join(BASE, "pause_wake.log"), "a", encoding="utf-8") as f:
+                    f.write(r.stdout + r.stderr)
+                ok, out = r.returncode == 0, (r.stdout + r.stderr).strip()[-300:]
+            except Exception as e:
+                ok, out = False, str(e)[:200]
+            d = pause_state()
+            d.update(ok=ok, out=out)
+            return self._send(200 if ok else 500, d)
         if u.path == "/api/config":
             c = cfg()
             for k in ("autoswitch", "threshold", "optimize"):
@@ -2026,6 +2044,13 @@ button:disabled{opacity:.35;cursor:default}
 .ccpause.lvl-hard{--ccp-accent:#e05b5b;background:linear-gradient(90deg,rgba(224,91,91,.10),rgba(224,91,91,0) 55%),var(--card)}
 .ccpause.lvl-gate{--ccp-accent:#e8b93e;background:linear-gradient(90deg,rgba(232,185,62,.10),rgba(232,185,62,0) 55%),var(--card)}
 .ccpause.lvl-pause{--ccp-accent:#a78bfa;background:linear-gradient(90deg,rgba(167,139,250,.12),rgba(167,139,250,0) 55%),var(--card)}
+.ccpause.lvl-off{--ccp-accent:#5fd08a;background:linear-gradient(90deg,rgba(95,208,138,.10),rgba(95,208,138,0) 55%),var(--card)}
+.ccp-actions{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ccp-btn{font:inherit;font-size:12.5px;font-weight:600;padding:6px 14px;border-radius:8px;cursor:pointer;color:var(--txt);background:#1b2029;border:1px solid var(--ccp-accent)}
+.ccp-btn:hover{background:#232a36}
+.ccp-btn:disabled{opacity:.55;cursor:wait}
+.ccp-hint{font-size:11.5px;color:var(--mut)}
+.ccp-err{font-size:11.5px;color:#ffb1b1}
 .ccp-dot{flex:none;width:10px;height:10px;margin-top:5px;border-radius:50%;background:var(--ccp-accent);box-shadow:0 0 0 0 var(--ccp-accent);animation:ccp-pulse 2.4s ease-out infinite}
 @keyframes ccp-pulse{70%{box-shadow:0 0 0 7px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
 @media (prefers-reduced-motion:reduce){.ccp-dot{animation:none}}
@@ -2111,7 +2136,16 @@ const I18N={
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
   ccpHardTitle:'⛔ Уперлись в лимиты — <b>переключаться некуда</b>',
-  ccpHardSub:(thr,na,held)=>`Все аккаунты упёрлись в сессию (порог ${thr}%) или неделю. Фоновые задачи не стартуют, чтобы не добить окно. `+(na?`Раньше всех освободится <b>${na}</b>`+(held?` (держит ${held})`:'')+' — балансер переключится на него сразу после сброса.':'Балансер переключится, как только освободится ближайший.'),
+  ccpHardSub:(thr,na,held)=>`Все аккаунты упёрлись в сессионное окно (порог ${thr}%). Фоновые задачи не стартуют, чтобы не добить окно. `+(na?`Раньше всех освободится <b>${na}</b>`+' — балансер переключится на него сразу после сброса.':'Балансер переключится, как только освободится ближайший.'),
+  ccpOffTitle:'▶ Пауза <b>отключена вручную</b> — Claude работает сверх порога',
+  ccpOffSub:(na,at)=>'Входящие сообщения доходят сразу, инструменты не блокируются — до настоящего лимита аккаунта. Пауза включится сама, как только отпустит сессионное окно'+(na&&at?` (раньше всех — <b>${na}</b> в <span class="num">${at}</span>)`:'')+', или по кнопке.',
+  ccpBtnOff:'Отключить паузу',
+  ccpBtnOn:'Включить паузу',
+  ccpHintOff:thr=>`Claude продолжит сразу, сверх порога ${thr}%`,
+  ccpHintHardOff:'следующее сообщение не встанет в очередь',
+  ccpHintOnHard:'окно забито — пауза встанет сразу',
+  ccpHintOnFree:'окно уже свободно — пауза просто снова начнёт работать',
+  ccpErr:e=>'не получилось: '+e,
   ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
   ccpGateSub:(n,p,w,thr)=>`${n}: сессия <span class="num">${p}</span> (порог ${thr}%), неделя <span class="num">${w}</span>. Свободный аккаунт есть — балансер переключится на следующем тике, после него задачи пойдут сами.`,
   ccpWeek:w=>` · нед ${w}%`,
@@ -2176,7 +2210,16 @@ const I18N={
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
   ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
-  ccpHardSub:(thr,na,held)=>`Every account is out of session (threshold ${thr}%) or weekly quota. Background jobs stay down so they don't burn the rest of the window. `+(na?`<b>${na}</b> frees up first`+(held?` (held by ${held==='сессия'?'session':held==='неделя'?'week':held==='сессия+неделя'?'session+week':held})`:'')+' — the balancer switches to it right after the reset.':'The balancer switches as soon as the nearest one frees up.'),
+  ccpHardSub:(thr,na,held)=>`Every account is out of its session window (threshold ${thr}%). Background jobs stay down so they don't burn the rest of the window. `+(na?`<b>${na}</b> frees up first`+' — the balancer switches to it right after the reset.':'The balancer switches as soon as the nearest one frees up.'),
+  ccpOffTitle:'▶ Pause <b>disabled manually</b> — Claude works past the threshold',
+  ccpOffSub:(na,at)=>'Incoming messages go straight through and tools are not blocked — up to the real account limit. The pause re-arms by itself once a session window frees up'+(na&&at?` (first: <b>${na}</b> at <span class="num">${at}</span>)`:'')+', or with the button.',
+  ccpBtnOff:'Disable pause',
+  ccpBtnOn:'Enable pause',
+  ccpHintOff:thr=>`Claude continues right away, past the ${thr}% threshold`,
+  ccpHintHardOff:'the next message will not be queued',
+  ccpHintOnHard:'window is full — the pause starts right away',
+  ccpHintOnFree:'window is already free — the pause simply works again',
+  ccpErr:e=>'failed: '+e,
   ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
   ccpGateSub:(n,p,w,thr)=>`${n}: session <span class="num">${p}</span> (threshold ${thr}%), week <span class="num">${w}</span>. A free account exists — the balancer switches on the next tick, after that jobs resume by themselves.`,
   ccpWeek:w=>` · wk ${w}%`,
@@ -2430,22 +2473,29 @@ function ccpAt(ms){return new Date(ms).toLocaleTimeString(LANG==='en'?'en-GB':'r
 function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
- if(!d||d.stale||(lvl==='none'&&!pause.active)){el.hidden=true;return;}
- // приоритет: пауза (в ней уже есть будильник) > переключаться некуда > активный забит
- const mode=pause.active?'pause':lvl;
+ if(!d||d.stale||(lvl==='none'&&!pause.active&&!pause.override)){el.hidden=true;return;}
+ // приоритет: пауза отключена кнопкой > пауза (в ней уже есть будильник) >
+ // переключаться некуда > активный забит
+ const mode=pause.override?'off':pause.active?'pause':lvl;
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90);
- let title,sub,timer=null,tlabel='';
- if(mode==='pause'){
+ let title,sub,timer=null,tlabel='',action=null;
+ if(mode==='off'){
+  const na=d.nearest&&d.nearest.acc;
+  title=tr('ccpOffTitle');sub=tr('ccpOffSub',lvl==='hard'&&na?ccpEsc(na):'',lvl==='hard'&&near?ccpAt(near):'');
+  action={act:'on',label:tr('ccpBtnOn'),hint:tr(lvl==='hard'?'ccpHintOnHard':'ccpHintOnFree')};
+ }else if(mode==='pause'){
   const upMs=(pause.resume_at||0)*1000;
   title=tr('ccpPauseTitle');
   sub=tr('ccpPauseSub',ccpEsc(pause.reason||tr('ccpDefReason')),upMs?ccpAt(upMs):'')
     +(pause.note?'<br>'+ccpEsc(pause.note):'');
   if(upMs){timer=upMs;tlabel=tr('ccpTillWake');}
+  action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintOff',thr)};
  }else if(mode==='hard'){
   const na=d.nearest&&d.nearest.acc;
   title=tr('ccpHardTitle');sub=tr('ccpHardSub',thr,na?ccpEsc(na):'',na?ccpEsc(d.nearest.held||''):'');
   if(near){timer=near;tlabel=na?tr('ccpTillFree',ccpEsc(na)):tr('ccpTillNearest');}
+  action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintHardOff')};
  }else{
   const a=(d.accounts||{})[d.active]||{};
   title=tr('ccpGateTitle');
@@ -2460,7 +2510,10 @@ function ccpRender(){
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
   +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')
-  +'</div></div>'
+  +'</div>'
+  +(action?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+action.act+'\',this)">'
+    +action.label+'</button><span class="ccp-hint">'+ccpEsc(action.hint)+'</span></div>':'')
+  +'</div>'
   +(timer?'<div class="ccp-timer" data-until="'+timer+'"><div class="t">'+ccpLeft(timer)+'</div>'
     +'<div class="l">'+tlabel+'</div></div>':'');
 }
@@ -2469,6 +2522,17 @@ function ccpTick(){
  const until=+t.dataset.until;
  t.querySelector('.t').textContent=ccpLeft(until);
  if(Date.now()>until+60000)ccpLoad();  // окно должно было отпустить — перечитаем
+}
+async function ccpToggle(act,btn){
+ if(btn)btn.disabled=true;
+ try{
+  const r=await fetch(API+'pause?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:act})});
+  const d=await r.json();
+  if(!r.ok||!d.ok)throw new Error(d.out||d.error||('HTTP '+r.status));
+  ccpData=d;ccpRender();
+ }catch(e){
+  if(btn){btn.disabled=false;const h=btn.parentNode.querySelector('.ccp-hint');if(h){h.className='ccp-err';h.textContent=tr('ccpErr',e.message);}}
+ }
 }
 async function ccpLoad(){
  try{const r=await fetch(API+'pause?token='+TOKEN);ccpData=await r.json();}catch(e){ccpData=null;}
