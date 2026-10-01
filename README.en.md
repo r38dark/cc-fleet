@@ -291,8 +291,8 @@ wiring the hook, otherwise it will not be called.
 level (`hard`) means every account is above the threshold of the session
 window specifically. The weekly cap (`weekly_cap`) neither sets the pause nor
 holds the alarm: it still works in the balancer (an account at its weekly cap
-is not picked) and in the background-job gate `limits_gate.py`, but it no
-longer stops the live session.
+is not picked), but it stops neither the live session nor background jobs
+(the `limits_gate.py` gate, since v1.15.1).
 
 **The button.** While the pause is up (or all windows are full), the panel
 banner shows a "Disable pause" button. Press it — the pause is lifted, the
@@ -421,6 +421,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.15.1** — the background-job gate `limits_gate.py` no longer looks at
+  the weekly cap: it holds on the 5-hour window only, same as the live-session
+  pause. Before, accounts at 99–100% weekly stopped background runs until the
+  week reset — a day or longer.
 - **v1.15.0** — the pause is driven by the 5-hour window only: weekly limits no
   longer set it (before, accounts at 99–100% weekly gave "nothing to switch
   to" while their sessions were free). "Disable pause" / "Enable pause"
