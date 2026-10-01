@@ -39,6 +39,20 @@ there's something to say; in normal operation it isn't rendered at all
 ![Nothing to switch to](screenshots/banner-hard.png)
 ![Active account is full](screenshots/banner-gate.png)
 
+Five looks (v1.16.0) — the classic one and four skins: Phosphor, Aurora,
+Slate, Blocks. Switch them in "⚙ Settings"; the browser remembers the choice:
+
+![cc-fleet skins](screenshots/skins.png)
+
+Full-screen console (the ⛶ button above the console) — the console takes
+≈70% of the height, the accounts sit below at ≈30%, the font fits the window:
+
+![Full screen](screenshots/fullscreen.png)
+
+Picking a look in settings:
+
+![Look settings](screenshots/settings-skins.png)
+
 ## Features
 
 - 📊 **Multi-account limit monitoring** at once — 5-hour window and weekly
@@ -74,6 +88,20 @@ there's something to say; in normal operation it isn't rendered at all
   the queue is worked through after the wake-up. Without it every new message
   wakes the session and burns what is left of the window, while the person in
   the chat is sure their messages are piling up.
+- 🎨 **Five looks** (v1.16.0) — classic, Phosphor (green phosphor terminal),
+  Aurora (dark glass), Slate (graphite, thin lines), Blocks (bold blocks).
+  Gear → "Look": preview cards, the choice is remembered in the browser, no
+  external fonts or requests — system typefaces only. Pure CSS driven by a
+  `data-skin` attribute; the markup and logic are the same for every look.
+- ⛶ **Full-screen console** — a button next to the console title: the console
+  takes ≈70% of the height, the accounts ≈30% below. "Whole console" picks a
+  font (10 px and up) to fit as many lines as possible, "Large" gives a big
+  readable one. Close with ✕, Esc or the browser's Back; on a phone the
+  console fills the screen with the accounts underneath.
+- 🎚 **Effort levels per model** — `/api/limits` returns, for every model, the
+  list of effort levels it supports (read from the catalog baked into the
+  Claude Code binary; an unknown model is never blocked), and setting a level
+  the model does not accept is rejected with a clear message.
 - 🔔 **State banner** at the top of the panel (RU/EN): "limits reached —
   nothing to switch to", "active account is full — background jobs paused",
   "paused, resuming at 16:03" with a countdown. In normal operation there is
@@ -421,6 +449,16 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.16.0** — looks and full-screen console. Five looks (classic, Phosphor,
+  Aurora, Slate, Blocks) in "⚙ Settings": pure CSS driven by `data-skin`, the
+  choice lives in `localStorage`, and an early inline script in `<head>` sets
+  the skin before first paint (no flash). The ⛶ button opens the console full
+  screen (≈70/30 with the accounts below, "Whole console"/"Large" font fit,
+  exit with ✕/Esc/Back). The controls row and the "I renewed" button were
+  redone for each look. `effort`: `/api/limits` returns the supported levels
+  per model, and an unavailable level is not applied. The default classic look
+  is unchanged. Also: the default `screen` session name in `/api/effort` is
+  now `claude`, like everywhere else (it was a private name).
 - **v1.15.1** — the background-job gate `limits_gate.py` no longer looks at
   the weekly cap: it holds on the 5-hour window only, same as the live-session
   pause. Before, accounts at 99–100% weekly stopped background runs until the
