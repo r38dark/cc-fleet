@@ -102,7 +102,8 @@ gear, a "Delete" button on every card and the windows for both flows
 - ⏸ **Limit pause with an alarm** (`pause_ctl.py`) — when every account is
   above the 5-hour window threshold and there is nothing to switch to, work
   goes on pause, and a system cron lifts it at the nearest window reset and
-  wakes the live session. Weekly limits never trigger the pause. Nothing lives
+  wakes the live session. The weekly cap triggers the pause only with "Pause at
+  the weekly cap" enabled (v1.21.0). Nothing lives
   inside the Claude Code session itself, so the pause survives a restart,
   `/clear` and a reboot.
 - ▶️ **"Disable pause" button** in the panel banner — keep working past the
@@ -461,6 +462,15 @@ holds the alarm: it still works in the balancer (an account at its weekly cap
 is not picked), but it stops neither the live session nor background jobs
 (the `limits_gate.py` gate, since v1.15.1).
 
+**The exception is the "Pause at the weekly cap" option (v1.21.0).** When the
+active account reaches `weekly_cap` (99%) and nothing is fit to switch to, the
+level is `week`: the pause goes up the same way, with the same tool brake and
+"Disable pause" button. The alarm checks it every minute and lifts it as soon
+as there is somewhere to work (another account freed up or the week reset).
+With the option off (`"weekly_pause": false`, the default) the level is
+`weekrisk`: no pause, and the banner and Telegram warn that the balancer won't
+stop the account from filling up to 100%.
+
 **The button.** While the pause is up (or all windows are full), the panel
 banner shows a "Disable pause" button. Press it — the pause is lifted, the
 session is woken right away with "work past the threshold is allowed", the
@@ -509,12 +519,12 @@ It is wired up by an installer question (it edits `hooks.PreToolUse` in
 | `cc-switch <N>` / `cc-switch next` | manually switch the active session |
 | `/cc/` (or `curl 127.0.0.1:8877/api/limits?token=<hook_token>`) | limits, auto-switch, console mirror |
 | `curl 127.0.0.1:8877/api/update?token=<hook_token>` | update state: installed and available version, mode, stage, result of the last update |
-| `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`), pause, nearest reset |
+| `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`/`week`/`weekrisk`), pause, nearest reset |
 | `python3 /opt/cc-limits/limits_gate.py` | may a background job start right now (rc `0`/`10`) |
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
 | `python3 /opt/cc-limits/pause_ctl.py off\|on` | disable the pause (work past the threshold) / enable it back — same as the banner buttons |
 | `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | incoming messages queued while the limits held |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `update_mode`, `update_check`, `update_repo`, `service_name`, `opt_defer_max_sec` |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `weekly_cap`, `weekly_pause`, `update_mode`, `update_check`, `update_repo`, `service_name`, `opt_defer_max_sec` |
 | `/opt/cc-limits/switch_log.jsonl` | audit log: one line per forced-mode moment in optimize mode (threshold crossed, switch blocked by cooldown, no candidate, actual switch) — v1.4.0; `deferred_busy` — a planned switch waits for a pause, `switch` carries `waited_sec`/`busy` — v1.19.3 |
 
 ## Updates from the panel (v1.18.0)
@@ -595,7 +605,10 @@ cron line from `install.sh`, and restart the service.
 What the bot sends:
 
 - account auto-switches (and manual ones, including `cc-switch` from a shell);
-- "nothing to switch to" — every account above the threshold;
+- "nothing to switch to" — every account above the threshold; at the weekly cap
+  it says what happens: a pause or "the balancer won't stop it at 100%" (v1.21.0);
+- an account's week reached the 99% cap — one message per account per week,
+  active or not (v1.21.0);
 - **the limit pause going up** (until when, window percentages, what was left
   unfinished) and **the pause being lifted by the alarm** (how long it stood,
   how many times the alarm was pushed back) — v1.2.1;
@@ -648,6 +661,18 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.0** — weekly 99% cap: an optional pause and warnings. The balancer
+  already skipped accounts at 99% of their week (`weekly_cap`), but when the
+  active account hit that cap with nowhere to switch, work went on to 100%
+  while Telegram said "waiting". Now "⚙ Settings" has a "Pause at the weekly
+  cap" option (`weekly_pause`, off by default): with it Claude pauses in that
+  case, as on the 5-hour window, and resumes on its own once another account
+  frees up or the week resets (or via "Disable pause"). Without it you get a
+  red banner and one message, "the balancer won't stop it at 100% — you work
+  at your own risk", with a hint where to enable the pause. On top of that,
+  any account that reaches 99% of its week, active or not, gets one Telegram
+  message per week. The banner timer shows days ("3 d 09 h"), and the reset
+  time includes the weekday.
 - **v1.20.1** — readable inactive buttons on cards. "In use now" and
   "Optimizer active" were translucent and almost blended into the background;
   now they are an opaque plate with text contrast of 4.5 or higher in all five

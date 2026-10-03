@@ -89,6 +89,7 @@ def blocked_now():
 
     Блокируем только когда работать реально негде:
       hard  — все аккаунты выше порога сессии (неделя не в счёт, см. pause_ctl);
+      week  — активный на недельном потолке, уйти некуда, «Пауза на недельном потолке» включена;
       пауза — сессия уже стоит и ждёт будильника.
     level == "gate" (активный сожжён, но свободный есть) НЕ блокируем: балансер
     переключится на следующем тике и работа поедет дальше.
@@ -100,7 +101,7 @@ def blocked_now():
     if (st.get("pause") or {}).get("override"):
         # паузу отключили кнопкой на панели (pause_ctl off) — сообщения идут сразу
         return False, lvl, st.get("line") or "", iso
-    return (lvl == "hard" or paused), lvl, st.get("line") or "", iso
+    return (lvl in ("hard", "week") or paused), lvl, st.get("line") or "", iso
 
 
 def cmd_enqueue(a):

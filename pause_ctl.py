@@ -15,8 +15,11 @@
 #   pause_ctl.py off [--by ...]  — отключить паузу (кнопка на веб-панели): работа сверх порога
 #   pause_ctl.py on  [--by ...]  — включить обратно; если окно всё ещё забито — пауза сразу
 #
-# Пауза ставится ТОЛЬКО по сессионному (5-часовому) окну — недельный потолок её не
-# касается: он держит балансер и фоновые задачи (limits_gate.py), но не разговор.
+# Пауза ставится по сессионному (5-часовому) окну. Недельный потолок ставит её, только
+# если включён ключ "weekly_pause" (⚙ Настройки → «Пауза на недельном потолке», v1.21.0):
+# активный дошёл до weekly_cap и переключаться некуда — стоим, пока не освободится другой
+# аккаунт или не сбросится неделя. Ключ выключен — неделя паузу не ставит, панель и
+# Telegram предупреждают, что заполнение до 100% никто не остановит.
 # «Отключена вручную» (override) переживает все автоматические постановки паузы
 # (очередь входящих, хук инструментов) и снимается сама, когда окно отпустит,
 # или кнопкой «Включить паузу».
@@ -80,6 +83,11 @@ def _weekly_cap():
         return 99.0
 
 
+def _weekly_pause():
+    """Опция «Пауза на недельном потолке»: по умолчанию выключена."""
+    return bool(_cfg().get("weekly_pause"))
+
+
 def _screen():
     """Имя screen-сессии Claude Code: env (для тестов) → config.json → 'claude'."""
     return os.environ.get("CC_PAUSE_SCREEN") or _cfg().get("screen_session") or "claude"
@@ -110,31 +118,68 @@ def accounts():
     return (d.get("accounts") or {}), (d.get("active") or ""), float(d.get("ts") or 0)
 
 
-NO_WEEK = float("inf")  # паузе недельный потолок не нужен — см. шапку
+NO_WEEK = float("inf")  # сессионной паузе недельный потолок не нужен — см. шапку
 
 
-def nearest_reset():
-    """(iso, имя аккаунта) — когда раньше всех отпустит сессионное окно какого-то аккаунта."""
-    nb = cc_avail.nearest(accounts()[0], _threshold(), NO_WEEK)
+def _nearest(week=False):
+    """(iso, имя, что держит) — кто раньше всех снова станет пригоден. week=False — смотрим
+    только сессионное окно; week=True — и недельный потолок (для паузы на неделе)."""
+    nb = cc_avail.nearest(accounts()[0], _threshold(), _weekly_cap() if week else NO_WEEK)
     if not nb:
-        return "", ""
-    return datetime.fromtimestamp(nb[0], tz=timezone.utc).isoformat(), nb[1]
+        return "", "", ""
+    return datetime.fromtimestamp(nb[0], tz=timezone.utc).isoformat(), nb[1], nb[2]
+
+
+def nearest_reset(week=False):
+    """(iso, имя аккаунта) — когда раньше всех отпустит окно какого-то аккаунта."""
+    iso, who, _held = _nearest(week)
+    return iso, who
+
+
+def _week_reason(s):
+    """Причина паузы на недельном потолке — человеческим текстом."""
+    a = s["accounts"].get(s.get("active")) or {}
+    return "неделя %s на %.0f%% (потолок %.0f%%), переключаться некуда" % (
+        s.get("active"), a.get("wpct") or 0, s.get("weekly_cap") or _weekly_cap())
 
 
 def session_blocked():
     """(стоять?, строка) — решение будильника: все аккаунты выше сессионного порога или
-    активный выше порога (балансер ещё не ушёл). Неделю не смотрим. Нет свежего снимка —
-    не держим (fail-open, как limits_gate)."""
+    активный выше порога (балансер ещё не ушёл). Неделю смотрим, только если включена
+    «Пауза на недельном потолке». Нет свежего снимка — не держим (fail-open, как limits_gate)."""
     s = level_state()
     if s.get("stale"):
         return False, "снимок лимитов устарел"
     line = s.get("line") or "?"
     if s.get("level") == "hard":
         return True, "все аккаунты выше порога сессии (%s)" % line
+    if s.get("level") == "week":
+        return True, _week_reason(s)
     a = s["accounts"].get(s.get("active")) or {}
     if a and not a.get("ses_ok", True):
         return True, "активный %s выше порога сессии (%s) — жду переключения балансера" % (
             s.get("active"), line)
+    if a and s.get("weekly_pause") and (a.get("wpct") or 0) >= s.get("weekly_cap", 99):
+        return True, "активный %s на недельном потолке — жду переключения балансера" % s.get("active")
+    return False, "ок (%s)" % line
+
+
+def week_blocked():
+    """(стоять?, строка) — то же для паузы на недельном потолке: держим, пока уйти некуда или
+    балансер ещё не ушёл с аккаунта на потолке. Сессию активного здесь не смотрим: оптимизация
+    уходит и на аккаунт с сессией чуть выше порога — работать там она разрешила сама, а если
+    забьются все сессии, встанет обычная сессионная пауза (уровень hard)."""
+    s = level_state()
+    if s.get("stale"):
+        return False, "снимок лимитов устарел"
+    line = s.get("line") or "?"
+    if s.get("level") == "hard":
+        return True, "все аккаунты выше порога сессии (%s)" % line
+    if s.get("level") == "week":
+        return True, _week_reason(s)
+    a = s["accounts"].get(s.get("active")) or {}
+    if a and s.get("weekly_pause") and (a.get("wpct") or 0) >= s.get("weekly_cap", 99):
+        return True, "активный %s на недельном потолке — жду переключения балансера" % s.get("active")
     return False, "ок (%s)" % line
 
 
@@ -144,6 +189,10 @@ def level_state():
 
     level: hard — все аккаунты выше порога сессионного окна, переключаться некуда —
                   здесь встаёт пауза (неделя не участвует);
+           week — активный дошёл до недельного потолка, пригодных нет, и включена
+                  «Пауза на недельном потолке» — здесь тоже встаёт пауза;
+           weekrisk — то же, но опция выключена: паузы нет, заполнение до 100% никто
+                  не остановит — панель и Telegram предупреждают;
            gate — активный не пригоден (сессия или неделя), но пригодный есть (балансер
                   вот-вот уйдёт, фоновые задачи в это время не стартуют);
            none — рабочее состояние.
@@ -160,9 +209,11 @@ def level_state():
         "since": st.get("since") or 0,
         "resume_at": st.get("resume_at") or 0,
         "checks": st.get("checks") or 0,
+        "kind": st.get("kind") or "session",
     }
     out = {"pause": pause, "threshold": thr, "level": "none", "accounts": {},
-           "active": active, "stale": bool(not accs or (_now() - ts) > 900)}
+           "active": active, "stale": bool(not accs or (_now() - ts) > 900),
+           "weekly_cap": _weekly_cap(), "weekly_pause": _weekly_pause()}
     if out["stale"]:
         return out
 
@@ -179,12 +230,19 @@ def level_state():
                                  "wpct": (row.get("seven_day") or {}).get("pct"),
                                  "usable": ok, "held": why, "ses_ok": ses_ok[name],
                                  "email": row.get("email") or "", "active": name == active}
+    a = accs.get(active) or {}
+    aw = (a.get("seven_day") or {}).get("pct")
+    week_full = a.get("plan") != "free" and aw is not None and aw >= cap
+    # уйти есть куда — пригодный аккаунт без ошибки (на ошибочный балансер не переключает)
+    other_ok = any(ok for n, ok in usable.items() if n != active and not accs[n].get("error"))
     if ses_ok and not any(ses_ok.values()):
         out["level"] = "hard"
+    elif week_full and not other_ok:
+        out["level"] = "week" if out["weekly_pause"] else "weekrisk"
     elif active in usable and not usable[active]:
         out["level"] = "gate"
-    iso, who = nearest_reset()
-    out["nearest"] = {"acc": who, "resets_at": iso, "held": "сессия" if who else ""}
+    iso, who, held = _nearest(out["level"] in ("week", "weekrisk"))
+    out["nearest"] = {"acc": who, "resets_at": iso, "held": held}
     out["line"] = ", ".join("%s %.0f%%" % (n, p) for n, p in sorted(pcts.items()))
     return out
 
@@ -262,7 +320,9 @@ def cmd_set(a):
         # пока её не включат обратно или окно не отпустит само (см. cmd_wake)
         _log("пауза отключена вручную — не ставлю (%s)" % (a.reason or "лимиты"))
         return 0
-    iso, who = (a.resume_at, "") if a.resume_at else nearest_reset()
+    ls = level_state()
+    week = not ls.get("stale") and ls.get("level") == "week"
+    iso, who = (a.resume_at, "") if a.resume_at else nearest_reset(week)
     resume_ts = 0.0
     if iso:
         try:
@@ -274,7 +334,9 @@ def cmd_set(a):
     st = {
         "active": True,
         "since": _now(),
-        "reason": a.reason or "лимиты сессионного окна",
+        # очередь и хук передают общую «сессионную» причину — на неделе пишем настоящую
+        "reason": _week_reason(ls) if week else (a.reason or "лимиты сессионного окна"),
+        "kind": "week" if week else "session",
         "note": a.note or "",
         "resume_at": resume_ts,
         "reset_of": who,
@@ -284,9 +346,12 @@ def cmd_set(a):
     when = datetime.fromtimestamp(resume_ts).strftime("%H:%M")
     _log("пауза поставлена, подъём в %s (%s)" % (when, st["reason"]))
     msg = "⏸ Claude: пауза по лимитам до %s — %s." % (when, st["reason"])
-    line = level_state().get("line") or ""
+    line = ls.get("line") or ""
     if line:
         msg += "\nСессионные окна: %s." % line
+    if week:
+        msg += ("\nПоднимусь сам, когда освободится другой аккаунт или сбросится неделя. "
+                "Продолжить сразу — «Отключить паузу» на панели.")
     if st["note"]:
         msg += "\nНезакрытое: %s" % st["note"]
     _tg(msg)
@@ -328,20 +393,28 @@ def cmd_wake(a):
         # отключённая вручную пауза включается обратно сама, как только окно отпустило —
         # иначе следующий забитый лимит прошёл бы уже без неё
         ls = level_state()
-        if not ls.get("stale") and ls.get("level") != "hard":
+        if not ls.get("stale") and ls.get("level") not in ("hard", "week"):
             st.update(override=False, override_cleared_at=_now(), override_cleared_by="окно отпустило")
             save(st)
             _log("пауза снова включена: окно отпустило (%s)" % (ls.get("line") or "?"))
         return 0
     if not st.get("active"):
         return 0
-    if a.if_due and _now() < float(st.get("resume_at") or 0):
+    # пауза на неделе может стоять сутками, а уйти становится куда раньше будильника
+    # (добавили аккаунт, выключили опцию, сняли потолок) — её проверяем каждую минуту
+    week = st.get("kind") == "week"
+    due = _now() >= float(st.get("resume_at") or 0)
+    if a.if_due and not due and not week:
         return 0
 
-    blocked, line = session_blocked()
+    blocked, line = week_blocked() if week else session_blocked()
+    if week and not blocked and level_state().get("stale"):
+        blocked = True  # снимок протух — не снимаем недельную паузу вслепую
     if blocked:
+        if a.if_due and not due:
+            return 0  # неделя ещё держит — будильник не переставляем раньше срока
         # окно ещё не отпустило — молча переставляем будильник, никого не дёргаем
-        iso, who = nearest_reset()
+        iso, who = nearest_reset(week)
         try:
             nxt = datetime.fromisoformat(iso).timestamp() + GRACE
         except Exception:
@@ -359,7 +432,8 @@ def cmd_wake(a):
     save(st)
     _log("пауза снята автоматически: %s" % line)
     stood = _dur(_now() - float(st.get("since") or _now()))
-    msg = "▶️ Claude: пауза снята — окно отпустило."
+    msg = ("▶️ Claude: пауза на недельном потолке снята — есть куда работать." if week
+           else "▶️ Claude: пауза снята — окно отпустило.")
     pcts = level_state().get("line") or ""
     if pcts:
         msg += "\nСессионные окна: %s." % pcts
@@ -420,7 +494,7 @@ def cmd_off(a):
     save(st)
     _log("пауза отключена вручную (%s)%s" % (a.by or "?", ", сессия стояла — бужу" if was else ""))
     _tg("▶️ Claude: пауза отключена вручную — работа сверх порога, до настоящего лимита "
-        "аккаунта. Включится сама, когда отпустит сессионное окно, или кнопкой на панели.")
+        "аккаунта. Включится сама, когда освободится окно, или кнопкой на панели.")
     if was or _queued():
         _wake_session("[cc-pause] Pause disabled manually from the web panel (%s): work past "
                       "the threshold is allowed. Continue the paused task from the state saved "
@@ -435,10 +509,11 @@ def cmd_on(a):
     save(st)
     ls = level_state()
     _log("пауза снова включена вручную (%s)" % (a.by or "?"))
-    if not ls.get("stale") and ls.get("level") == "hard":
+    if not ls.get("stale") and ls.get("level") in ("hard", "week"):
         return cmd_set(argparse.Namespace(reason="включена вручную", resume_at="",
                                           note="окно забито (%s)" % (ls.get("line") or "")))
-    _tg("⏸ Claude: пауза снова работает — встанет, когда все аккаунты упрутся в сессионное окно.")
+    _tg("⏸ Claude: пауза снова работает — встанет, когда все аккаунты упрутся в сессионное окно"
+        + (" или активный дойдёт до недельного потолка без запасного аккаунта." if _weekly_pause() else "."))
     return 0
 
 

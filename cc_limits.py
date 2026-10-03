@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.20.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1653,13 +1653,11 @@ def autoswitch_check(snap):
         if cc_avail.availability(row, thr, cap)[0]:
             cand.append((fh, n))
     if not cand:
-        if not st.get("all_high_notified"):
-            reason = "активный слетел в Free, а остальные недоступны" if act_free \
-                else "все аккаунты упёрлись в сессию или неделю"
-            tg_notify(f"⛔ Claude: {reason} — переключаться некуда, жду.\n"
-                      + "\n".join(f"{n}: {(r.get('five_hour') or {}).get('pct')}% [{r.get('plan','?')}]" for n, r in accs.items())
-                      + "\nРаньше всех освободится: " + _nearest_reset(accs))
+        text, lvl = _nowhere_text(accs, act, act_free)
+        if not st.get("all_high_notified") or _week_news(st, lvl):
+            tg_notify(text)
             st["all_high_notified"] = True
+            st["nowhere_lvl"] = lvl
             jsave(STATE, st)
         return
     cand.sort()
@@ -1667,13 +1665,19 @@ def autoswitch_check(snap):
     ok, out = do_switch(target)
     st["last_switch_ts"] = time.time()
     st["all_high_notified"] = False
+    week_why = not act_free and "сессия" not in act_why
     if ok:
         st["known_active"] = target
+        if week_why:
+            # это сообщение и есть предупреждение о недельном потолке — _week_cap_warn() второго не шлёт
+            st.setdefault("week_warned", {})[act] = _week_key(accs[act].get("seven_day") or {})
     jsave(STATE, st)
     email = accs[target].get("email", target)
+    wreset = (accs[act].get("seven_day") or {}).get("resets_at")
     why = (f"аккаунт {act} слетел в Free" if act_free
-           else f"сессия {act} дошла до {cur}%" if "сессия" in act_why
-           else f"неделя {act} дошла до {cur_w}%")
+           else f"сессия {act} дошла до {cur}%" if not week_why
+           else f"неделя {act} дошла до {round(cur_w or 0)}% (потолок {cap:g}%), до сброса недели"
+                + (f" ({_local_dhm(wreset)})" if wreset else "") + " балансер его не берёт")
     if ok:
         tg_notify(f"🔄 Claude: {why} — авто-переключил на {target} ({email}, сессия {fh}%). Рестарт не нужен.")
         snap_set_active()
@@ -1754,6 +1758,22 @@ def _local_hm(iso):
         return "?"
 
 
+def _local_dhm(iso):
+    # «сб 04.10 в 05:00»: для недельного сброса одного HH:MM мало; зона — как в _local_hm()
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(iso)
+        tzname = cfg().get("tz")
+        if tzname:
+            from zoneinfo import ZoneInfo
+            dt = dt.astimezone(ZoneInfo(tzname))
+        else:
+            dt = dt.astimezone()
+        return "%s %s в %s" % ("пн вт ср чт пт сб вс".split()[dt.weekday()], dt.strftime("%d.%m"), dt.strftime("%H:%M"))
+    except Exception:
+        return "?"
+
+
 def _accs_line(accs):
     out = []
     for n, row in sorted(accs.items()):
@@ -1775,6 +1795,113 @@ def _nearest_reset(accs):
         return "неизвестно"
     from datetime import datetime
     return "%s в %s" % (nb[1], _local_hm(datetime.fromtimestamp(nb[0]).astimezone().isoformat()))
+
+
+WEEK_LEVELS = ("week", "weekrisk")
+
+
+def _nowhere_text(accs, act, act_free=False):
+    """(текст, level) уведомления «переключаться некуда» — что будет дальше, по тому же
+    pause_ctl.level_state(), что и баннер. До v1.21.0 здесь всегда было «жду», хотя с
+    недельного потолка никто не уходил и аккаунт добивался до 100%."""
+    ls = pause_state()
+    lvl = ls.get("level") or "none"
+    override = bool((ls.get("pause") or {}).get("override"))
+    w = round(((accs.get(act) or {}).get("seven_day") or {}).get("pct") or 0)
+    cap = ls.get("weekly_cap") or cfg().get("weekly_cap", 99)
+    tail = "\n" + _accs_line(accs) + "\nРаньше всех освободится: " + _nearest_reset(accs)
+    if act_free:
+        head = f"⛔ Claude: {act} слетел в Free, остальные недоступны — переключаться некуда, жду, пока освободится другой."
+    elif lvl == "week" and not override:
+        head = (f"⏸ Claude: неделя {act} — {w}% (потолок {cap:.0f}%), переключаться некуда — Claude встаёт на паузу. "
+                "Поднимется сам, когда освободится другой аккаунт или сбросится неделя; продолжить сразу — "
+                "«Отключить паузу» на панели.")
+    elif lvl in WEEK_LEVELS:
+        head = (f"⚠️ Claude: неделя {act} — {w}%, переключаться некуда. Балансер не остановит заполнение "
+                "до 100% — работаешь на свой страх и риск.")
+        head += ("\nПауза отключена вручную на панели." if override else
+                 f"\nОстановку на {cap:.0f}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».")
+    elif lvl == "hard" and not override:
+        head = "⛔ Claude: все аккаунты выше порога сессии — переключаться некуда, Claude встаёт на паузу до сброса окна."
+    elif lvl == "hard":
+        head = "⛔ Claude: все аккаунты выше порога сессии — переключаться некуда. Пауза отключена вручную: работа идёт до настоящего лимита аккаунта."
+    else:
+        head = f"⛔ Claude: переключаться некуда — работа идёт дальше на {act} сверх порога, пока не освободится другой аккаунт."
+    return head + tail, lvl
+
+
+def _week_news(st, lvl):
+    """Эпизод «некуда» уже начался по сессии, а теперь упёрлись в недельный потолок —
+    об этом сообщаем отдельно (иначе флаг эпизода проглотит предупреждение о 100%)."""
+    return lvl in WEEK_LEVELS and st.get("nowhere_lvl") not in WEEK_LEVELS
+
+
+def _week_key(sd):
+    # ключ недели аккаунта — время её сброса (resets_at плавает на доли секунды, поэтому число, не строка)
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(sd["resets_at"]).timestamp()
+    except Exception:
+        return 0
+
+
+def _week_cap_warn(snap):
+    """Неделя аккаунта дошла до потолка (weekly_cap, 99%) — ровно одно сообщение на аккаунт
+    за неделю, активный он или нет и есть ли куда переключиться. Где это уже сказало
+    сообщение балансера («авто-переключил… неделя», «переключаться некуда» на неделе),
+    второго не шлём. Активный, с которого балансер вот-вот уйдёт, ждёт ухода: тогда
+    сообщение скажет, куда ушли."""
+    c = cfg()
+    cap = c.get("weekly_cap", 99)
+    st = jload(STATE, {})
+    warned = dict(st.get("week_warned") or {})
+    accs = snap.get("accounts") or {}
+    act = (jload(SNAPSHOT) or {}).get("active") or snap.get("active")  # после переключения в этом же тике
+    now = time.time()
+    for n in list(warned):
+        w = ((accs.get(n) or {}).get("seven_day") or {}).get("pct")
+        if (warned[n] and now > warned[n] + 600) or (w is not None and w < cap - 5):
+            del warned[n]  # неделя сбросилась — следующий потолок снова предупредит
+    lvl = None
+    for n, row in sorted(accs.items()):
+        sd = row.get("seven_day") or {}
+        w = sd.get("pct")
+        if row.get("error") or row.get("plan") == "free" or w is None or w < cap:
+            continue
+        key = _week_key(sd)
+        if n in warned and abs(warned[n] - key) < 6 * 3600:
+            continue
+        reset = sd.get("resets_at")
+        head = f"⚠️ Claude: неделя {n} дошла до {round(w)}% (потолок {cap:g}%)."
+        text = None
+        if n != act:
+            text = (head + (f" Последний {100 - cap:g}% балансер оставляет в запасе:" if cap < 100 else "")
+                    + f" {n} больше не берётся до сброса недели"
+                    + (f" — {_local_dhm(reset)}" if reset else "") + "."
+                    + (f" Сейчас работа идёт на {act}." if act else ""))
+        else:
+            if lvl is None:
+                lvl = pause_state().get("level") or "none"
+            hold = st.get("manual_hold") or {}
+            if lvl in WEEK_LEVELS:
+                if not (st.get("all_high_notified") and st.get("nowhere_lvl") in WEEK_LEVELS):
+                    text = _nowhere_text(accs, act)[0]  # балансер выключен — «некуда» никто не сказал
+            elif not c.get("optimize") and not c.get("autoswitch", True):
+                text = (f"{head} Авто-переключение выключено — балансер не уведёт с {n}: "
+                        "переключись вручную, иначе он добьётся до 100%.")
+            elif not c.get("optimize") and hold.get("account") == n and now < hold.get("until", 0):
+                from datetime import datetime
+                text = (f"{head} {n} закреплён вручную — балансер не уведёт с него до "
+                        f"{_local_hm(datetime.fromtimestamp(hold['until']).astimezone().isoformat())}; "
+                        "до тех пор заполнение до 100% — на твой риск.")
+            else:
+                continue  # балансер уходит с него в ближайшие тики — предупредим, когда уйдёт
+        warned[n] = key
+        if text:
+            tg_notify(text)
+    if warned != (st.get("week_warned") or {}):
+        st["week_warned"] = warned
+        jsave(STATE, st)
 
 
 def _log_switch_event(event, **kw):
@@ -1899,18 +2026,20 @@ def optimize_check(snap):
         if forced:
             _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd,
                               nearest=_nearest_reset(accs))
-        if forced and not st.get("all_high_notified"):
+        text, lvl = _nowhere_text(accs, act, act_free) if forced else ("", "")
+        if forced and (not st.get("all_high_notified") or _week_news(st, lvl)):
             # раньше уведомление отсюда убрали как спам, и «упёрлись ВСЕ аккаунты» стало
             # происходить молча — пользователь может не понимать, почему сессия не работает,
             # часами. Возвращаем ровно ОДНО сообщение на эпизод (флаг снимается только когда
             # снова появился живой кандидат) и не чаще раза в 2 часа. Это не тот спам, что
             # убирали: успешные переключения по-прежнему молчат.
-            if time.time() - st.get("all_high_notified_ts", 0) >= 7200:
-                tg_notify("⛔ Claude: все аккаунты упёрлись в лимит (сессия или неделя) — переключаться некуда.\n"
-                          + _accs_line(accs)
-                          + "\nБлижайшее окно: " + _nearest_reset(accs))
+            # предупреждение о недельном потолке не глушим двухчасовым окном: без него
+            # человек не узнает, что аккаунт добивается до 100% (или что Claude встал)
+            if lvl in WEEK_LEVELS or time.time() - st.get("all_high_notified_ts", 0) >= 7200:
+                tg_notify(text)
                 st["all_high_notified_ts"] = time.time()
             st["all_high_notified"] = True
+            st["nowhere_lvl"] = lvl
             jsave(STATE, st)
         return
     if st.get("all_high_notified"):
@@ -2000,6 +2129,10 @@ def switch_policy_check(snap):
         optimize_check(snap)
     else:
         autoswitch_check(snap)
+    try:
+        _week_cap_warn(snap)
+    except Exception as e:
+        print(f"week cap warn fail: {e}", flush=True)
 
 
 def poll_loop():
@@ -2128,6 +2261,8 @@ class H(BaseHTTPRequestHandler):
                 if le:
                     row["login_expires"] = le
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
+            snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
+            snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
             snap["model"] = model_info()
             return self._send(200, snap)
         if u.path == "/api/pause":
@@ -2293,6 +2428,8 @@ class H(BaseHTTPRequestHandler):
                 c["update_mode"] = body["update_mode"]
             if isinstance(body.get("update_check"), bool):
                 c["update_check"] = body["update_check"]
+            if isinstance(body.get("weekly_pause"), bool):
+                c["weekly_pause"] = body["weekly_pause"]
             if "enabled_models" in body:
                 # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
                 # хотя бы одна модель должна остаться доступной для переключения
@@ -2445,7 +2582,7 @@ button:disabled{opacity:.35;cursor:default}
 /* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
 .ccpause{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid #232a36;border-left:4px solid var(--ccp-accent,var(--mut))}
 .ccpause[hidden]{display:none}
-.ccpause.lvl-hard{--ccp-accent:#e05b5b;background:linear-gradient(90deg,rgba(224,91,91,.10),rgba(224,91,91,0) 55%),var(--card)}
+.ccpause.lvl-hard{--ccp-accent:#e86b6b;background:linear-gradient(90deg,rgba(224,91,91,.10),rgba(224,91,91,0) 55%),var(--card)}
 .ccpause.lvl-gate{--ccp-accent:#e8b93e;background:linear-gradient(90deg,rgba(232,185,62,.10),rgba(232,185,62,0) 55%),var(--card)}
 .ccpause.lvl-pause{--ccp-accent:#a78bfa;background:linear-gradient(90deg,rgba(167,139,250,.12),rgba(167,139,250,0) 55%),var(--card)}
 .ccpause.lvl-off{--ccp-accent:#5fd08a;background:linear-gradient(90deg,rgba(95,208,138,.10),rgba(95,208,138,0) 55%),var(--card)}
@@ -2573,9 +2710,9 @@ html[data-skin="phosphor"] .termbox::-webkit-scrollbar-thumb{background:#1f6b36;
 html[data-skin="phosphor"] .termbox::-webkit-scrollbar-thumb:hover{background:#6dff9a;background-clip:padding-box}
 html[data-skin="phosphor"] .switchrow{gap:6px;color:var(--phd);font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;transition:color .15s}
 html[data-skin="phosphor"] .switchrow:hover,html[data-skin="phosphor"] .switchrow:has(input:checked){color:var(--ph2)}
-html[data-skin="phosphor"] .switchrow input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;flex:none;margin:0;width:3ch;height:1.25em;font:700 12px/1.25 ui-monospace,Consolas,monospace;letter-spacing:0;cursor:pointer;vertical-align:middle}
-html[data-skin="phosphor"] .switchrow input[type=checkbox]::before{content:"[ ]";color:var(--phd)}
-html[data-skin="phosphor"] .switchrow input[type=checkbox]:checked::before{content:"[x]";color:var(--ph);text-shadow:0 0 8px rgba(109,255,154,.8)}
+html[data-skin="phosphor"] .switchrow input[type=checkbox],html[data-skin="phosphor"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;flex:none;margin:0;width:3ch;height:1.25em;font:700 12px/1.25 ui-monospace,Consolas,monospace;letter-spacing:0;cursor:pointer;vertical-align:middle}
+html[data-skin="phosphor"] .switchrow input[type=checkbox]::before,html[data-skin="phosphor"] .wkchk input[type=checkbox]::before{content:"[ ]";color:var(--phd)}
+html[data-skin="phosphor"] .switchrow input[type=checkbox]:checked::before,html[data-skin="phosphor"] .wkchk input[type=checkbox]:checked::before{content:"[x]";color:var(--ph);text-shadow:0 0 8px rgba(109,255,154,.8)}
 html[data-skin="phosphor"] .thrbtn{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--ph);font-family:inherit}
 html[data-skin="phosphor"] .thrbtn:hover{border-color:var(--ph);background:#0c2a17}
 html[data-skin="phosphor"] .mchip{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--ph2);font-family:inherit;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
@@ -2640,10 +2777,10 @@ html[data-skin="aurora"] .termbox::-webkit-scrollbar-track{background:transparen
 html[data-skin="aurora"] .termbox::-webkit-scrollbar-thumb{background:linear-gradient(#7c5cff,#22d3ee);border:2px solid transparent;background-clip:padding-box}
 html[data-skin="aurora"] .switchrow{gap:9px;color:var(--mut);font-weight:600;cursor:pointer}
 html[data-skin="aurora"] .switchrow:has(input:checked){color:var(--txt)}
-html[data-skin="aurora"] .switchrow input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:30px;height:18px;border-radius:99px;background:rgba(255,255,255,.14);transition:background .2s;cursor:pointer}
-html[data-skin="aurora"] .switchrow input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#c9cff5;transition:transform .2s,background .2s}
-html[data-skin="aurora"] .switchrow input[type=checkbox]:checked{background:linear-gradient(90deg,#7c5cff,#22d3ee)}
-html[data-skin="aurora"] .switchrow input[type=checkbox]:checked::after{transform:translateX(12px);background:#fff}
+html[data-skin="aurora"] .switchrow input[type=checkbox],html[data-skin="aurora"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:30px;height:18px;border-radius:99px;background:rgba(255,255,255,.14);transition:background .2s;cursor:pointer}
+html[data-skin="aurora"] .switchrow input[type=checkbox]::after,html[data-skin="aurora"] .wkchk input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#c9cff5;transition:transform .2s,background .2s}
+html[data-skin="aurora"] .switchrow input[type=checkbox]:checked,html[data-skin="aurora"] .wkchk input[type=checkbox]:checked{background:linear-gradient(90deg,#7c5cff,#22d3ee)}
+html[data-skin="aurora"] .switchrow input[type=checkbox]:checked::after,html[data-skin="aurora"] .wkchk input[type=checkbox]:checked::after{transform:translateX(12px);background:#fff}
 html[data-skin="aurora"] .thrbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:99px;color:var(--txt)}
 html[data-skin="aurora"] .thrbtn:hover{border-color:#7de7f7}
 html[data-skin="aurora"] .mchip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--txt);font-weight:600}
@@ -2701,11 +2838,11 @@ html[data-skin="slate"] .termbox{font-family:"JetBrains Mono",ui-monospace,Conso
 html[data-skin="slate"] .termbox::-webkit-scrollbar-track{background:transparent}
 html[data-skin="slate"] .termbox::-webkit-scrollbar-thumb{background:#3a3f48;border-color:#08090b}
 html[data-skin="slate"] .switchrow{gap:10px;color:var(--mut);font-size:12.5px;cursor:pointer}
-html[data-skin="slate"] .switchrow input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:26px;height:15px;border-radius:99px;background:#262a31;box-shadow:inset 0 0 0 1px var(--sl-line2);transition:background .15s;cursor:pointer}
-html[data-skin="slate"] .switchrow input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:#8a909c;transition:transform .15s,background .15s}
-html[data-skin="slate"] .switchrow input[type=checkbox]:checked{background:#e7e9ee;box-shadow:none}
-html[data-skin="slate"] .switchrow input[type=checkbox]:checked::after{transform:translateX(11px);background:#0e0f12}
-html[data-skin="slate"] .switchrow input[type=checkbox]:focus-visible{outline:1px solid #e7e9ee;outline-offset:2px}
+html[data-skin="slate"] .switchrow input[type=checkbox],html[data-skin="slate"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:26px;height:15px;border-radius:99px;background:#262a31;box-shadow:inset 0 0 0 1px var(--sl-line2);transition:background .15s;cursor:pointer}
+html[data-skin="slate"] .switchrow input[type=checkbox]::after,html[data-skin="slate"] .wkchk input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:#8a909c;transition:transform .15s,background .15s}
+html[data-skin="slate"] .switchrow input[type=checkbox]:checked,html[data-skin="slate"] .wkchk input[type=checkbox]:checked{background:#e7e9ee;box-shadow:none}
+html[data-skin="slate"] .switchrow input[type=checkbox]:checked::after,html[data-skin="slate"] .wkchk input[type=checkbox]:checked::after{transform:translateX(11px);background:#0e0f12}
+html[data-skin="slate"] .switchrow input[type=checkbox]:focus-visible,html[data-skin="slate"] .wkchk input[type=checkbox]:focus-visible{outline:1px solid #e7e9ee;outline-offset:2px}
 html[data-skin="slate"] .switchrow:has(input:checked),html[data-skin="slate"] #autoWrap:has(input:checked){color:var(--txt)}
 html[data-skin="slate"] .thrbtn{background:transparent;border:1px solid var(--sl-line2);color:#aab0bc;border-radius:6px;font-family:inherit;font-weight:500}
 html[data-skin="slate"] .thrbtn:hover{border-color:#e7e9ee;color:#fff}
@@ -2765,9 +2902,9 @@ html[data-skin="blocks"] .termbox::-webkit-scrollbar-track{background:#111}
 html[data-skin="blocks"] .termbox::-webkit-scrollbar-thumb{background:#ffd84d;border:2px solid #111;border-radius:0;background-clip:padding-box}
 html[data-skin="blocks"] .termwrap{margin-bottom:22px}
 html[data-skin="blocks"] .switchrow{gap:9px;color:var(--bk);font-weight:700;cursor:pointer}
-html[data-skin="blocks"] .switchrow input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:20px;height:20px;background:#fff;border:2px solid var(--bk);border-radius:0;box-shadow:2px 2px 0 var(--bk);cursor:pointer}
-html[data-skin="blocks"] .switchrow input[type=checkbox]:checked{background:var(--bb)}
-html[data-skin="blocks"] .switchrow input[type=checkbox]:checked::after{content:"";position:absolute;inset:1px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/14px no-repeat}
+html[data-skin="blocks"] .switchrow input[type=checkbox],html[data-skin="blocks"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:20px;height:20px;background:#fff;border:2px solid var(--bk);border-radius:0;box-shadow:2px 2px 0 var(--bk);cursor:pointer}
+html[data-skin="blocks"] .switchrow input[type=checkbox]:checked,html[data-skin="blocks"] .wkchk input[type=checkbox]:checked{background:var(--bb)}
+html[data-skin="blocks"] .switchrow input[type=checkbox]:checked::after,html[data-skin="blocks"] .wkchk input[type=checkbox]:checked::after{content:"";position:absolute;inset:1px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/14px no-repeat}
 html[data-skin="blocks"] .thrbtn{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);font-weight:700;box-shadow:2px 2px 0 var(--bk)}
 html[data-skin="blocks"] .thrbtn:hover{background:var(--bl);border-color:var(--bk)}
 html[data-skin="blocks"] .mchip{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);font-weight:700;box-shadow:3px 3px 0 var(--bk);transition:transform .08s,box-shadow .08s}
@@ -2817,7 +2954,10 @@ html[data-skin="blocks"] .ccp-title,html[data-skin="blocks"] .ccp-sub .num,html[
 html[data-skin="blocks"] .ccpause.lvl-upd .ccp-title b{color:#1f62c4}html[data-skin="blocks"] .ccpause.lvl-updok .ccp-title b{color:#18804a}html[data-skin="blocks"] .ccpause.lvl-upderr .ccp-title b{color:#c0392b}
 html[data-skin="blocks"] .ccp-sub,html[data-skin="blocks"] .ccp-hint,html[data-skin="blocks"] .ccp-timer .l{color:var(--mut)}
 html[data-skin="blocks"] .ccp-chip{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk)}
-html[data-skin="blocks"] .ccp-chip.hot{background:#ff3d3d;color:#fff}
+html[data-skin="blocks"] .ccp-chip.hot{background:#ff3d3d;color:var(--bk)}
+/* акцент баннера (заголовок, таймер, полоса) на белом — тёмные варианты, светлые не читались (2,7–3,6) */
+html[data-skin="blocks"] .ccpause.lvl-hard{--ccp-accent:#c0392b}html[data-skin="blocks"] .ccpause.lvl-pause{--ccp-accent:#6d28d9}
+html[data-skin="blocks"] .ccpause.lvl-gate{--ccp-accent:#8a5a00}html[data-skin="blocks"] .ccpause.lvl-off{--ccp-accent:#18804a}
 html[data-skin="blocks"] .ccp-btn{background:var(--bk);color:var(--by);border:2px solid var(--bk);border-radius:0;box-shadow:3px 3px 0 var(--ccp-accent,var(--bb))}
 html[data-skin="blocks"] .ccp-btn:hover{background:var(--bb);color:#fff}
 html[data-skin="blocks"] .ccp-err{color:#d41818}
@@ -3013,6 +3153,8 @@ html:root:root .acts .chip{padding:2px 5px;font-size:10.5px}
 .modal .switchrow{margin:2px 0 6px;gap:6px;font-size:13px}
 .modal #autoWrap{flex:1 1 auto;display:flex;align-items:center;gap:6px}
 .modal #autoNote{margin:0 0 6px}
+.modal .wkchk{margin:2px 0 6px;font-size:12.5px}.modal .wkchk input{transform:scale(1.25);margin:3px 3px 0 2px;flex:none}
+.modal .wkchk b{color:var(--txt)}
 /* ---- режим «только консоль» ---- */
 #fsBtn .fsx{display:none}
 html.conly #fsBtn .fsi{display:none}
@@ -3116,6 +3258,7 @@ html:root:root .dmet .dtop{gap:6px}
   <div class="modalh" id="autoHdr">Авто-переключение</div>
   <div class="switchrow"><span id="autoWrap"><input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label></span><button type="button" class="thrbtn" id="thrMinus" aria-label="−"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="thrbtn" id="thrPlus" aria-label="+"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
   <div class="modalsub" id="autoNote" hidden></div>
+  <label class="updchk wkchk"><input type="checkbox" id="wkPause"><span id="wkLbl">Пауза на недельном потолке</span></label>
   <div class="modalh" id="skinTitle">Оформление</div>
   <div class="skgrid" id="skinGrid" role="radiogroup"></div>
   <div class="modalh" id="updHdr">Обновления</div>
@@ -3184,6 +3327,15 @@ const I18N={
   confirmModel:n=>`Сменить модель на ${n}?`,
   confirmEffort:l=>`Изменить effort на «${l}»?`,
   autoOn:'Авто-переключение включено',autoOff:'Авто-переключение выключено',
+  wkLbl:cap=>`<b>Пауза на недельном потолке</b> — остановить Claude на ${cap}% недели, если переключаться некуда. Выключено — балансер не остановит заполнение до 100%.`,
+  wkOn:'Пауза на недельном потолке включена',wkOff:'Пауза на недельном потолке выключена',
+  ccpWeekTitle:'⏸ Неделя на потолке — <b>переключаться некуда</b>',
+  ccpWeekSub:(n,w,cap,na)=>`${n}: неделя <span class="num">${w}</span> (потолок ${cap}%), остальные аккаунты недоступны. Включена «Пауза на недельном потолке» — Claude встанет на паузу на следующем шаге и продолжит сам, когда `+(na?`освободится <b>${na}</b>.`:'освободится другой аккаунт или сбросится неделя.'),
+  ccpRiskTitle:'⚠ Неделя на потолке — <b>балансер не остановит заполнение до 100%</b>',
+  ccpRiskSub:(n,w,cap)=>`${n}: неделя <span class="num">${w}</span>, переключаться некуда — работаешь на свой страх и риск. Остановку на ${cap}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».`,
+  ccpWeekReason:(n,w,cap)=>`неделя ${n} на ${w}% (потолок ${cap}%), переключаться некуда`,
+  ccpHintWeekOff:'работа пойдёт до 100% недели',
+  ccpBtnSettings:'Открыть настройки',ccpHintSettings:'опция «Пауза на недельном потолке»',
   thrSet:v=>'Порог: '+v+'%',
   optOn:'Оптимизация лимитов включена — ручные переключения заблокированы',
   optOff:'Оптимизация выключена — ручные переключения доступны',
@@ -3255,7 +3407,7 @@ const I18N={
   ccpHardTitle:'⛔ Уперлись в лимиты — <b>переключаться некуда</b>',
   ccpHardSub:(thr,na,held)=>`Все аккаунты упёрлись в сессионное окно (порог ${thr}%). Фоновые задачи не стартуют, чтобы не добить окно. `+(na?`Раньше всех освободится <b>${na}</b>`+' — балансер переключится на него сразу после сброса.':'Балансер переключится, как только освободится ближайший.'),
   ccpOffTitle:'▶ Пауза <b>отключена вручную</b> — Claude работает сверх порога',
-  ccpOffSub:(na,at)=>'Входящие сообщения доходят сразу, инструменты не блокируются — до настоящего лимита аккаунта. Пауза включится сама, как только отпустит сессионное окно'+(na&&at?` (раньше всех — <b>${na}</b> в <span class="num">${at}</span>)`:'')+', или по кнопке.',
+  ccpOffSub:(na,at)=>'Входящие сообщения доходят сразу, инструменты не блокируются — до настоящего лимита аккаунта. Пауза включится сама, как только освободится окно'+(na&&at?` (раньше всех — <b>${na}</b> в <span class="num">${at}</span>)`:'')+', или по кнопке.',
   ccpBtnOff:'Отключить паузу',
   ccpBtnOn:'Включить паузу',
   ccpHintOff:thr=>`Claude продолжит сразу, сверх порога ${thr}%`,
@@ -3272,7 +3424,7 @@ const I18N={
   ccpTillNearest:'до ближайшего окна',
   ccpTillFree:n=>'до освобождения '+n,
   ccpTillReset:'до сброса окна',
-  ccpLeft:(h,m,s)=>h?`${h} ч ${m} мин`:`${m} мин ${s} с`,
+  ccpLeft:(h,m,s)=>h?`${h} ч ${m} мин`:`${m} мин ${s} с`,ccpLeftD:(d,h)=>`${d} д ${h} ч`,
   modelsBtnTitle:'Настройки',
   modelsTitle:'Настройки',
   modelsHdr:'Модели',
@@ -3357,6 +3509,15 @@ const I18N={
   confirmModel:n=>`Switch the model to ${n}?`,
   confirmEffort:l=>`Change effort to “${l}”?`,
   autoOn:'Auto-switch enabled',autoOff:'Auto-switch disabled',
+  wkLbl:cap=>`<b>Pause at the weekly cap</b> — stop Claude at ${cap}% of the week when there is nothing to switch to. Off — the balancer won't stop the account from filling up to 100%.`,
+  wkOn:'Pause at the weekly cap enabled',wkOff:'Pause at the weekly cap disabled',
+  ccpWeekTitle:'⏸ Weekly cap reached — <b>nothing to switch to</b>',
+  ccpWeekSub:(n,w,cap,na)=>`${n}: week <span class="num">${w}</span> (cap ${cap}%), the other accounts are unavailable. “Pause at the weekly cap” is on — Claude pauses at the next step and resumes by itself when `+(na?`<b>${na}</b> frees up.`:'another account frees up or the week resets.'),
+  ccpRiskTitle:'⚠ Weekly cap reached — <b>the balancer won\'t stop it at 100%</b>',
+  ccpRiskSub:(n,w,cap)=>`${n}: week <span class="num">${w}</span>, nothing to switch to — you work at your own risk. To stop at ${cap}%, turn on ⚙ Settings → “Pause at the weekly cap”.`,
+  ccpWeekReason:(n,w,cap)=>`week of ${n} at ${w}% (cap ${cap}%), nothing to switch to`,
+  ccpHintWeekOff:'work goes on up to 100% of the week',
+  ccpBtnSettings:'Open settings',ccpHintSettings:'option “Pause at the weekly cap”',
   thrSet:v=>'Threshold: '+v+'%',
   optOn:'Limit optimization enabled — manual switching blocked',
   optOff:'Optimization disabled — manual switching available',
@@ -3428,7 +3589,7 @@ const I18N={
   ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
   ccpHardSub:(thr,na,held)=>`Every account is out of its session window (threshold ${thr}%). Background jobs stay down so they don't burn the rest of the window. `+(na?`<b>${na}</b> frees up first`+' — the balancer switches to it right after the reset.':'The balancer switches as soon as the nearest one frees up.'),
   ccpOffTitle:'▶ Pause <b>disabled manually</b> — Claude works past the threshold',
-  ccpOffSub:(na,at)=>'Incoming messages go straight through and tools are not blocked — up to the real account limit. The pause re-arms by itself once a session window frees up'+(na&&at?` (first: <b>${na}</b> at <span class="num">${at}</span>)`:'')+', or with the button.',
+  ccpOffSub:(na,at)=>'Incoming messages go straight through and tools are not blocked — up to the real account limit. The pause re-arms by itself once a window frees up'+(na&&at?` (first: <b>${na}</b> at <span class="num">${at}</span>)`:'')+', or with the button.',
   ccpBtnOff:'Disable pause',
   ccpBtnOn:'Enable pause',
   ccpHintOff:thr=>`Claude continues right away, past the ${thr}% threshold`,
@@ -3445,7 +3606,7 @@ const I18N={
   ccpTillNearest:'until nearest window',
   ccpTillFree:n=>'until '+n+' frees up',
   ccpTillReset:'until window reset',
-  ccpLeft:(h,m,s)=>h?`${h}h ${m}m`:`${m}m ${s}s`,
+  ccpLeft:(h,m,s)=>h?`${h}h ${m}m`:`${m}m ${s}s`,ccpLeftD:(d,h)=>`${d}d ${h}h`,
   modelsBtnTitle:'Settings',
   modelsTitle:'Settings',
   modelsHdr:'Models',
@@ -3487,7 +3648,8 @@ function renderLangSwitch(){
   :'<span onclick="setLang(\'ru\')" style="cursor:pointer;text-decoration:underline">RU</span> · <b style="color:var(--txt)">EN</b>';
 }
 let THR=85,lastSnap=null,lastModel=null;
-function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);}
+let WCAP=99;
+function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);$('#wkLbl').innerHTML=tr('wkLbl',WCAP);}
 function applyI18n(){
  document.title=tr('title');document.documentElement.lang=LANG;
  $('#h1').textContent=tr('h1');
@@ -3679,6 +3841,8 @@ async function load(refresh){
  $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';
  $('#autoWrap').title=opt?tr('optDisabledTitle'):'';$('#autoNote').hidden=!opt;
  if(d.config&&d.config.threshold)THR=d.config.threshold;
+ if(d.config&&d.config.weekly_cap)WCAP=Math.round(d.config.weekly_cap);
+ $('#wkPause').checked=!!(d.config&&d.config.weekly_pause);
  renderAutoLbl();renderCards(d);
  setUpd(d.ts);
  renderModel(d.model);
@@ -3818,6 +3982,10 @@ async function setThr(v){
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:THR})});
  toast(tr('thrSet',THR));
 }
+$('#wkPause').addEventListener('change',async e=>{
+ await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({weekly_pause:e.target.checked})});
+ toast(e.target.checked?tr('wkOn'):tr('wkOff'));ccpLoad();
+});
 $('#thrMinus').addEventListener('click',()=>setThr(THR-5));
 $('#thrPlus').addEventListener('click',()=>setThr(THR+5));
 $('#opt').addEventListener('change',async e=>{
@@ -3952,9 +4120,11 @@ const ccpEsc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt
 function ccpLeft(untilMs){
  const s=Math.max(0,Math.round((untilMs-Date.now())/1000));
  const h=Math.floor(s/3600),m=Math.floor(s%3600/60);
+ if(h>=48)return tr('ccpLeftD',Math.floor(h/24),String(h%24).padStart(2,'0'));  // пауза до сброса недели
  return tr('ccpLeft',h,h?String(m).padStart(2,'0'):m,String(s%60).padStart(2,'0'));
 }
-function ccpAt(ms){return new Date(ms).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'});}
+// дальше суток (пауза на неделе) — с днём недели, иначе «14:00» читается как сегодня
+function ccpAt(ms){return new Date(ms).toLocaleString(LANG==='en'?'en-GB':'ru',ms-Date.now()>20*3600e3?{weekday:'short',hour:'2-digit',minute:'2-digit'}:{hour:'2-digit',minute:'2-digit'});}
 function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
@@ -3963,19 +4133,33 @@ function ccpRender(){
  // переключаться некуда > активный забит
  const mode=pause.override?'off':pause.active?'pause':lvl;
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
- const thr=Math.round(d.threshold||90);
+ const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);
  let title,sub,timer=null,tlabel='',action=null;
  if(mode==='off'){
   const na=d.nearest&&d.nearest.acc;
-  title=tr('ccpOffTitle');sub=tr('ccpOffSub',lvl==='hard'&&na?ccpEsc(na):'',lvl==='hard'&&near?ccpAt(near):'');
-  action={act:'on',label:tr('ccpBtnOn'),hint:tr(lvl==='hard'?'ccpHintOnHard':'ccpHintOnFree')};
+  const full=lvl==='hard'||lvl==='week';
+  title=tr('ccpOffTitle');sub=tr('ccpOffSub',full&&na?ccpEsc(na):'',full&&near?ccpAt(near):'');
+  action={act:'on',label:tr('ccpBtnOn'),hint:tr(full?'ccpHintOnHard':'ccpHintOnFree')};
  }else if(mode==='pause'){
   const upMs=(pause.resume_at||0)*1000;
   title=tr('ccpPauseTitle');
-  sub=tr('ccpPauseSub',ccpEsc(pause.reason||tr('ccpDefReason')),upMs?ccpAt(upMs):'')
+  const wk=pause.kind==='week',wa=(d.accounts||{})[d.active]||{};
+  const reason=wk?tr('ccpWeekReason',ccpEsc(d.active||'?'),wa.wpct==null?'?':Math.round(wa.wpct),wcap):(pause.reason||tr('ccpDefReason'));
+  sub=tr('ccpPauseSub',wk?reason:ccpEsc(reason),upMs?ccpAt(upMs):'')
     +(pause.note?'<br>'+ccpEsc(pause.note):'');
   if(upMs){timer=upMs;tlabel=tr('ccpTillWake');}
-  action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintOff',thr)};
+  action={act:'off',label:tr('ccpBtnOff'),hint:wk?tr('ccpHintWeekOff'):tr('ccpHintOff',thr)};
+ }else if(mode==='week'||mode==='weekrisk'){
+  const na=d.nearest&&d.nearest.acc,a=(d.accounts||{})[d.active]||{};
+  const n=ccpEsc(d.active||'?'),w=a.wpct==null?'?':Math.round(a.wpct)+'%';
+  if(mode==='week'){
+   title=tr('ccpWeekTitle');sub=tr('ccpWeekSub',n,w,wcap,na?ccpEsc(na):'');
+   action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintWeekOff')};
+  }else{
+   title=tr('ccpRiskTitle');sub=tr('ccpRiskSub',n,w,wcap);
+   action={act:'settings',label:tr('ccpBtnSettings'),hint:tr('ccpHintSettings')};
+  }
+  if(near){timer=near;tlabel=na?tr('ccpTillFree',ccpEsc(na)):tr('ccpTillNearest');}
  }else if(mode==='hard'){
   const na=d.nearest&&d.nearest.acc;
   title=tr('ccpHardTitle');sub=tr('ccpHardSub',thr,na?ccpEsc(na):'',na?ccpEsc(d.nearest.held||''):'');
@@ -3991,7 +4175,7 @@ function ccpRender(){
   '<span class="ccp-chip'+(a.usable===false?' hot':'')+'">'+ccpEsc(n)
   +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b>'
   +(a.wpct!=null&&a.wpct>=90?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
- el.className='ccpause lvl-'+mode;el.hidden=false;
+ el.className='ccpause lvl-'+({week:'pause',weekrisk:'hard'}[mode]||mode);el.hidden=false;
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
   +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')
@@ -4009,6 +4193,7 @@ function ccpTick(){
  if(Date.now()>until+60000)ccpLoad();  // окно должно было отпустить — перечитаем
 }
 async function ccpToggle(act,btn){
+ if(act==='settings'){$('#gear').click();return;}
  if(btn)btn.disabled=true;
  try{
   const r=await fetch(API+'pause?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:act})});
