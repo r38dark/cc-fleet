@@ -557,7 +557,10 @@ How an update goes (the banner shows the stages):
    watchdog unit **puts the previous files back** and restarts the service; the
    banner says "failed, the previous version was restored". The automatic mode
    will not install a version that failed to start again by itself (manually —
-   the "Retry" button).
+   the "Retry" button);
+5. after the confirmation, open panel tabs reload themselves onto the new
+   version (v1.21.1) — unless an account dialog is open, a field has
+   unfinished text or full screen is on; then right after that.
 
 Good to know:
 
@@ -661,6 +664,17 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.1** — the tab reloads itself after an update. Before, an open panel
+  only showed the "Updated" banner after the service updated, while its HTML
+  and scripts stayed from the previous version, so new things (such as the
+  v1.21.0 checkbox) appeared only after a manual F5. Now the page knows its own
+  version and, once the service is on the new one and has confirmed the start,
+  reloads itself (within a minute); open "⚙ Settings" come back. The reload
+  waits while an add/remove account dialog is open, a field has unfinished
+  text, or full screen is on. If the tab is still on the old version after the
+  reload, there are no retries: the banner shows a "Reload page" button. It
+  works from the next update on: a tab opened on v1.21.0 or earlier needs one
+  manual reload.
 - **v1.21.0** — weekly 99% cap: an optional pause and warnings. The balancer
   already skipped accounts at 99% of their week (`weekly_cap`), but when the
   active account hit that cap with nowhere to switch, work went on to 100%

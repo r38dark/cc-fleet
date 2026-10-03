@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.1", "date": "2026-10-03",
+     "ru": {"t": "Вкладка сама перезагружается после обновления", "p": ["Служба обновилась — открытая панель перезагружается сама, открытые настройки откроются снова", "Ждёт, пока закроешь диалог аккаунта, допишешь ввод или выйдешь из полноэкранного режима", "Не помогло — повторов нет, на плашке кнопка «Обновить страницу»"]},
+     "en": {"t": "The tab reloads itself after an update", "p": ["Once the service updates, an open panel reloads itself; open Settings come back", "It waits until you close an account dialog, finish typing or leave full screen", "If that did not help, no retries: the banner shows a “Reload page” button"]}},
     {"v": "1.21.0", "date": "2026-10-03",
      "ru": {"t": "Недельный потолок 99%: пауза по выбору и предупреждения", "p": ["Опция «Пауза на недельном потолке»: на 99% недели и некуда переключиться Claude встаёт на паузу", "Без опции — баннер и сообщение «не остановит до 100% — на свой страх и риск» вместо «жду»", "Любой аккаунт дошёл до 99% недели — одно сообщение в Telegram за неделю"]},
      "en": {"t": "Weekly 99% cap: optional pause and warnings", "p": ["“Pause at the weekly cap” option: at 99% of the week with nowhere to switch, Claude pauses", "Without it: a banner and a “won’t stop it at 100%, at your own risk” message instead of “waiting”", "Any account reaching 99% of its week gets one Telegram message per week"]}},

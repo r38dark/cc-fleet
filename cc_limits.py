@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2242,7 +2242,7 @@ class H(BaseHTTPRequestHandler):
             if not self.headers.get("X-Auth-User"):
                 return self._send(403, {"error": "forbidden"})
             # токен вшивается в страницу: браузер может не переслать Basic Auth в fetch
-            html = PAGE.replace("__TOKEN__", cfg().get("hook_token", ""))
+            html = PAGE.replace("__TOKEN__", cfg().get("hook_token", "")).replace("__PAGE_VER__", VERSION)
             return self._send(200, html.encode(), "text/html; charset=utf-8")
         if u.path == "/api/limits":
             if not self._authed():
@@ -3271,7 +3271,7 @@ html:root:root .dmet .dtop{gap:6px}
 </div>
 <div id="acctScrim" class="scrim" hidden><div class="modal" id="acctBox" role="dialog" aria-modal="true"></div></div>
 <script>
-const $=s=>document.querySelector(s);const TOKEN='__TOKEN__';const API=location.origin+'/cc-hook/';
+const $=s=>document.querySelector(s);const TOKEN='__TOKEN__';const PAGE_VER='__PAGE_VER__';const API=location.origin+'/cc-hook/';
 const I18N={
  ru:{
   title:'Claude — лимиты аккаунтов',
@@ -3375,6 +3375,10 @@ const I18N={
   updBtnSkip:'Пропустить эту версию',
   updBtnPage:'Страница релиза ↗',
   updBtnOk:'Понятно',
+  updBtnReload:'Обновить страницу',
+  updStaleTitle:v=>`⬆ Служба уже на версии <b>${v}</b>`,
+  updStaleSub:'Эта вкладка открыта на прежней версии — обнови страницу, чтобы увидеть новое.',
+  updStaleHeld:'Страница обновится сама, как только закроешь диалог, допишешь ввод или выйдешь из полноэкранного режима.',
   updBtnRetry:'Повторить',
   updNotes:'Что нового',
   updAutoSoon:'Автообновление включено — поставлю при ближайшей проверке.',
@@ -3557,6 +3561,10 @@ const I18N={
   updBtnSkip:'Skip this version',
   updBtnPage:'Release page ↗',
   updBtnOk:'Got it',
+  updBtnReload:'Reload page',
+  updStaleTitle:v=>`⬆ The service is already on <b>${v}</b>`,
+  updStaleSub:'This tab is still on the previous version — reload the page to see what’s new.',
+  updStaleHeld:'The page will reload by itself once you close the dialog, finish typing or leave full screen.',
   updBtnRetry:'Retry',
   updNotes:'What’s new',
   updAutoSoon:'Auto-update is on — it will be installed at the next check.',
@@ -4210,7 +4218,7 @@ async function ccpLoad(){
 }
 
 // ---- автообновление: баннер «вышла версия», блок в настройках, ручной/авто режим ----
-let updData=null,updWait=null,updTimer=null,updDown=false;
+let updData=null,updWait=null,updTimer=null,updDown=false,updHeld=false;
 const updBusy=()=>!!(updWait||(updData&&(updData.phase!=='idle'||updData.pending)));
 const updAt=ts=>ts?new Date(ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'}):'';
 async function updPost(path,body){
@@ -4229,8 +4237,28 @@ async function updLoad(){
    if((res&&res.to===updWait.to&&(!res.ok||updData.version===updWait.to))||Date.now()-updWait.ts>300000)updWait=null;
   }
  }catch(e){updDown=true;}  // служба перезапускается — просто ждём, баннер покажет это
+ updHeld=false;
+ if(updStale())updReload(false);
  updRender();updSettingsRender();
- updTimer=setTimeout(updLoad,(updBusy()||updDown)?2000:60000);
+ updTimer=setTimeout(updLoad,(updBusy()||updDown)?2000:(updHeld?5000:60000));
+}
+// служба уже на новой версии, а HTML/JS этой вкладки — с прежней (обновили отсюда, из другой вкладки или
+// авто-режимом): новое приезжает только с перезагрузкой — делаем её сами, если она ничего не оборвёт
+function updStale(){return !!(updData&&!updDown&&updData.version&&updData.version!==PAGE_VER&&updData.phase==='idle'&&!updData.pending);}
+function updHold(){  // перезагрузка сейчас потеряет ввод: диалог аккаунта, набранный текст, полноэкранный режим
+ if(!$('#acctScrim').hidden||document.fullscreenElement)return true;
+ return [...document.querySelectorAll('input,textarea')].some(el=>(el.tagName==='TEXTAREA'||/^(text|email|search|url|number|password)$/.test(el.type))
+  &&el.value!==el.defaultValue&&el.offsetParent!==null);
+}
+function updReload(force){
+ const v=updData&&updData.version;
+ if(!force){
+  let tried='';try{tried=sessionStorage.getItem('cc_upd_reload')||'';}catch(e){}
+  if(tried===v)return;  // уже перезагружались ради этой версии, а вкладка всё равно прежняя — дальше только кнопкой
+  if((updHeld=updHold()))return;  // проверим снова через 5 с
+ }
+ try{sessionStorage.setItem('cc_upd_reload',v||'');if(!$('#scrim').hidden)sessionStorage.setItem('cc_upd_reopen','1');}catch(e){}
+ location.reload();
 }
 // причина ошибки: код → текст на языке интерфейса (сырой текст бэкенда — в подсказке); нет перевода — показываем как есть
 function updErrText(code,raw){
@@ -4255,12 +4283,19 @@ function updRender(){
   if(res.ok){
    cls='lvl-updok';title=tr('updOkTitle',ccpEsc(res.to));sub=tr('updOkSub',ccpEsc(res.from));
    acts='<button type="button" class="ccp-btn" onclick="updAck()">'+tr('updBtnOk')+'</button>';
+   if(updStale()){
+    sub+='<br>'+tr(updHeld?'updStaleHeld':'updStaleSub');
+    acts='<button type="button" class="ccp-btn" onclick="updReload(true)">'+tr('updBtnReload')+'</button>'+acts.replace('ccp-btn"','ccp-btn sec"');
+   }
   }else{
    cls='lvl-upderr';title=tr('updErrTitle',ccpEsc(res.to));
    sub=updErrText(res.code,res.error)+(res.rolled_back?'<br>'+tr('updRolled'):'');
    acts='<button type="button" class="ccp-btn" onclick="updAck()">'+tr('updBtnOk')+'</button>'
     +((d.available&&!res.needs_install&&d.supported)?'<button type="button" class="ccp-btn sec" onclick="updApply(this)">'+tr('updBtnRetry')+'</button>':'');
   }
+ }else if(updStale()){
+  cls='lvl-updok';title=tr('updStaleTitle',ccpEsc(d.version));sub=tr(updHeld?'updStaleHeld':'updStaleSub');
+  acts='<button type="button" class="ccp-btn" onclick="updReload(true)">'+tr('updBtnReload')+'</button>';
  }else if(d.available&&!d.skipped){
   cls='lvl-upd';title=tr('updBTitle',ccpEsc(L.version));sub=tr('updBSub',ccpEsc(d.version),ccpEsc(L.name&&L.name!==L.tag?L.name:''));
   const notes=updNotesText(updNotesPick(L));
@@ -4372,6 +4407,7 @@ $('#gear').addEventListener('click',()=>{updSettingsRender();updLoad();});
 applyI18n();load();setInterval(()=>load(),60000);
 updLoad();
 ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
+try{if(sessionStorage.getItem('cc_upd_reopen')){sessionStorage.removeItem('cc_upd_reopen');$('#gear').click();}}catch(e){}
 </script></body></html>"""
 
 
