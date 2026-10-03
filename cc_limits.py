@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.3"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3156,7 +3156,9 @@ html:root:root .acts .chip{padding:2px 5px;font-size:10.5px}
 .modal .wkchk{margin:2px 0 6px;font-size:12.5px}.modal .wkchk input{transform:scale(1.25);margin:3px 3px 0 2px;flex:none}
 .modal .wkchk b{color:var(--txt)}
 /* ---- версия приложения: мелко, справа внизу под карточками ---- */
-#verTag{align-self:flex-end;text-align:right;margin:2px 2px 0;font-size:10.5px;line-height:1.25;color:var(--mut);letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* подпись версии — в нижнем отступе под карточками, строку не занимает: карточки и консоль не сжимаются */
+#verTag{align-self:flex-end;flex:none;height:0;overflow:visible;text-align:right;margin:0 2px;font-size:9px;line-height:1;color:var(--mut);letter-spacing:.03em;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none;user-select:none}
+@media (min-width:900px){#verTag{position:fixed;right:18px;bottom:0;height:auto;margin:0}html[data-skin="blocks"] #verTag{bottom:-2px}}
 html.conly #verTag{display:none}
 /* ---- режим «только консоль» ---- */
 #fsBtn .fsx{display:none}

@@ -664,6 +664,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.3** — the version label no longer takes a line: in 1.21.2 it sat on
+  its own line and pushed the cards and console up by 15 px; it now sits in
+  the bottom padding under the cards, with the layout as before 1.21.2. 9 px
+  font; the label is not clickable or selectable.
 - **v1.21.2** — the app version in the bottom-right corner: a small
   "cc-fleet vX.Y.Z" label on the right under the cards, aligned with them, so
   you see at once which version the tab has open. The number is filled in when
