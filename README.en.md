@@ -88,6 +88,11 @@ gear, a "Delete" button on every card and the windows for both flows
 - 🎯 **Limit optimization mode** — the service itself decides which account
   to use right now, to stretch the combined limit across all accounts;
   manual switch buttons are blocked while it runs.
+  A planned switch (v1.19.3) waits for a pause between turns of the live
+  session, at most 15 minutes (`opt_defer_max_sec`, 0 = do not wait): switching
+  accounts mid-turn drops the prompt cache, and on Sonnet 5.5 also the
+  reasoning of that turn. Emergency moves (session threshold, weekly limit,
+  fall to Free) happen at once, as before.
 - 🖥 **Live console mirror** — the same `screen` session visible in your
   terminal, streamed to the browser in real time (read-only).
 - 🚦 **Gate for background jobs** (`limits_gate.py`) — one line in your own
@@ -508,8 +513,8 @@ It is wired up by an installer question (it edits `hooks.PreToolUse` in
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
 | `python3 /opt/cc-limits/pause_ctl.py off\|on` | disable the pause (work past the threshold) / enable it back — same as the banner buttons |
 | `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | incoming messages queued while the limits held |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `update_mode`, `update_check`, `update_repo`, `service_name` |
-| `/opt/cc-limits/switch_log.jsonl` | audit log: one line per forced-mode moment in optimize mode (threshold crossed, switch blocked by cooldown, no candidate, actual switch) — v1.4.0 |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `update_mode`, `update_check`, `update_repo`, `service_name`, `opt_defer_max_sec` |
+| `/opt/cc-limits/switch_log.jsonl` | audit log: one line per forced-mode moment in optimize mode (threshold crossed, switch blocked by cooldown, no candidate, actual switch) — v1.4.0; `deferred_busy` — a planned switch waits for a pause, `switch` carries `waited_sec`/`busy` — v1.19.3 |
 
 ## Updates from the panel (v1.18.0)
 
@@ -637,6 +642,17 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.19.3** — a planned account switch waits for a pause between turns.
+  Before, optimize mode switched accounts at any moment, mid-turn included:
+  the prompt cache was dropped (the whole long session was re-read at the new
+  account's expense), and on Sonnet 5.5 the turn's reasoning was lost too — it
+  is bound to the organization. Now the session's busy state is read from the
+  spinner line in the console (the watchdog looks every 5 s, a pause is 2
+  checks in a row without the spinner); a planned switch waits for a pause up
+  to `opt_defer_max_sec` (900 s, 0 = do not wait) and runs as soon as the pause
+  starts, without waiting for `poll_sec`. Emergency moves and non-optimize mode
+  do not wait. `switch_log.jsonl` gets a `deferred_busy` event and
+  `waited_sec`/`busy` fields on every switch.
 - **v1.19.2** — the page fits the window, "console only" mode, smartphone. The
   page is no longer squeezed into a 640 px column: the header, the console and
   the cards (in a row, across the window width) fit without page scrolling, and

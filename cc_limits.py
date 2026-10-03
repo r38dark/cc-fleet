@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.19.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.19.3"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1482,6 +1482,41 @@ def _model_watch_tick(txt):
         _MW["away"] = False
 
 
+# Занятость живой сессии — по строке спиннера над полем ввода, пока идёт ход:
+# "✻ Harmonizing… (27s · ↓ 2.0k tokens)". hardcopy режет не-ASCII (… → &, значок
+# спиннера → любой символ), поэтому опираемся на ASCII-часть: слово, многоточие,
+# "(Ns". После хода строка становится "✻ Worked for 27s" — без скобки, не совпадает.
+_SPINNER_RE = re.compile(
+    r"^\s*(?:\S{1,2}\s+)?[A-Za-z][\w-]*(?:…|&|\.\.\.)\s*"
+    r"\((?:(?:\d+h\s*)?(?:\d+m\s*)?\d+s\b|esc to interrupt)", re.M)
+# idle_n — сколько тиков сторожа подряд спиннера нет: один битый кадр hardcopy не
+# должен выглядеть паузой. defer_pending ставит optimize_check, пока ждёт паузу.
+_BUSY = {"idle_n": 99, "tick_ts": 0.0, "defer_pending": False, "wake_ts": 0.0}
+_POLL_WAKE = threading.Event()
+
+
+def _busy_tick(txt):
+    tail = "\n".join([l for l in (txt or "").splitlines() if l.strip()][-30:])
+    _BUSY["tick_ts"] = time.time()
+    if _SPINNER_RE.search(tail):
+        _BUSY["idle_n"] = 0
+        return
+    _BUSY["idle_n"] += 1
+    # пауза только что началась, а плановое переключение ждёт её — будим poll_loop,
+    # не дожидаясь poll_sec (иначе короткую паузу между ходами можно проспать)
+    if _BUSY["idle_n"] == 2 and _BUSY["defer_pending"] and time.time() - _BUSY["wake_ts"] > 60:
+        _BUSY["wake_ts"] = time.time()
+        _POLL_WAKE.set()
+
+
+def session_busy():
+    # сторож не тикал больше минуты (нет screen-сессии, hardcopy висит) — занятость
+    # неизвестна, переключение не держим
+    if time.time() - _BUSY["tick_ts"] > 60:
+        return False
+    return _BUSY["idle_n"] < 2
+
+
 def _dialog_watchdog():
     # Постоянный сторож диалога "Switch model?" (Yes/No), крутится с самого
     # старта сервиса, а не только 12с после конкретного клика по кнопке модели.
@@ -1505,6 +1540,7 @@ def _dialog_watchdog():
             else:
                 _dlg_tick(txt)
             _model_watch_tick(txt)
+            _busy_tick(txt)
         except Exception:
             pass
         time.sleep(5)
@@ -1779,6 +1815,7 @@ def optimize_check(snap):
     # как порог допуска кандидата в collect_cand()
     cap = c.get("weekly_cap", 99)
     ratio = c.get("optimize_ratio", 1.5)
+    _BUSY["defer_pending"] = False
     st = jload(STATE, {})
     act = snap.get("active")
     accs = snap.get("accounts", {})
@@ -1920,13 +1957,33 @@ def optimize_check(snap):
             why = ("у %s сброс недели через %s (запас %s%%) — выгоднее жечь его; %s берегу (сброс через %s, запас %s%%)"
                    % (target, _fmt_hours(t_hrs), round(100 - (tsd or 0)),
                       act, _fmt_hours(a_hrs), round(100 - (sd or 0))))
+    # Смена аккаунта посреди хода сбрасывает кэш промпта (вся сессия перечитывается за
+    # счёт нового аккаунта), а у Sonnet 5.5 ещё и выкидывает рассуждения хода (thinking
+    # привязан к организации). Плановое переключение ждёт паузы между ходами, но не
+    # дольше opt_defer_max_sec; аварийное (forced) уходит сразу. 0 — не ждать.
+    dfr = st.get("defer") or {}
+    if dfr and now - dfr.get("seen", 0) > 300:
+        dfr = {}  # прошлое ожидание прервалось (переключение стало не нужно) — новый эпизод
+    defer_max = c.get("opt_defer_max_sec", 900)
+    if not forced and defer_max > 0 and session_busy() and now - dfr.get("since", now) < defer_max:
+        first = not dfr
+        st["defer"] = {"since": dfr.get("since", now), "seen": now, "to": target}
+        jsave(STATE, st)
+        _BUSY["defer_pending"] = True
+        if first:
+            _log_switch_event("deferred_busy", from_acc=act, to=target, fh=fh, why=why)
+        return
+    waited = round(now - dfr["since"]) if dfr else 0
+    st.pop("defer", None)
+    _BUSY["defer_pending"] = False
     ok, out = do_switch(target)
     st["last_switch_ts"] = now
     st["opt_last_switch_ts"] = now
     if ok:
         st["known_active"] = target
     jsave(STATE, st)
-    _log_switch_event("switch", forced=forced, from_acc=act, to=target, fh=fh, why=why, ok=ok)
+    _log_switch_event("switch", forced=forced, from_acc=act, to=target, fh=fh, why=why, ok=ok,
+                      waited_sec=waited, busy=session_busy())
     if ok:
         # (04.08.26: "постоянно пишет переключился переключился переключился") —
         # уведомление об успешном плановом/оптимизационном переключении убрано, спамило.
@@ -1966,7 +2023,9 @@ def poll_loop():
         nr = cc_avail.next_reset_ts((snap or {}).get("accounts") or {})
         if nr is not None:
             wait = min(wait, max(nr - time.time() + 15, 5))
-        time.sleep(wait)
+        # раньше срока будит _busy_tick: отложенное плановое переключение дождалось паузы
+        _POLL_WAKE.wait(wait)
+        _POLL_WAKE.clear()
 
 
 # ---------- HTTP ----------
