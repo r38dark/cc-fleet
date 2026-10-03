@@ -648,6 +648,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.20.1** — readable inactive buttons on cards. "In use now" and
+  "Optimizer active" were translucent and almost blended into the background;
+  now they are an opaque plate with text contrast of 4.5 or higher in all five
+  looks. In Blocks it is a white plate with a black border and no shadow (only
+  clickable buttons keep the shadow), and the model name field in "⚙ Settings →
+  Models" is white with black text.
 - **v1.20.0** — changelog in Settings. "⚙ Settings → Updates" has a collapsed
   "Changelog" row under the version line: every version since v1.0.0 (date,
   title, up to three points), newest first, in the interface language,

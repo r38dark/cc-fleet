@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.20.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.20.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2522,6 +2522,7 @@ html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accen
 .btn-relogin{margin-left:8px;background:transparent;border:1px solid #333c4d;color:var(--mut)}
 .acts{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:12px}
 .acts .btn-sw,.acts .btn-renew,.acts .btn-relogin{margin-top:0}
+.btn-sw:disabled{opacity:1;background:transparent;border:1px solid #333c4d;color:var(--mut);padding:7px 13px}
 .acts .chip.login{flex:0 0 auto}
 .acts .chip.login+.btn-relogin{margin-left:0}
 .poolname{width:100%;box-sizing:border-box;background:#0f1115;border:1px solid #2a3140;color:inherit;border-radius:6px;padding:5px 8px;font-size:13px}
@@ -2602,6 +2603,7 @@ html[data-skin="phosphor"] .lbl span:last-child{text-transform:none;letter-spaci
 html[data-skin="phosphor"] .bar{height:9px;border-radius:0;background:repeating-linear-gradient(90deg,#0d2c18 0 5px,transparent 5px 7px)}
 html[data-skin="phosphor"] .fill{border-radius:0;-webkit-mask:repeating-linear-gradient(90deg,#000 0 5px,transparent 5px 7px);mask:repeating-linear-gradient(90deg,#000 0 5px,transparent 5px 7px)}
 html[data-skin="phosphor"] .btn-sw{background:transparent;border:1px dashed #2fb15a;border-radius:0;color:var(--ph);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+html[data-skin="phosphor"] .btn-sw:disabled{opacity:1;border:1px dotted var(--phl);color:var(--phd)}
 html[data-skin="phosphor"] .btn-sw:hover:not(:disabled){background:#0c2a17;border:1px solid var(--ph);box-shadow:0 0 12px rgba(109,255,154,.3)}
 html[data-skin="phosphor"] .btn-relogin{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
 html[data-skin="phosphor"] .btn-relogin:hover:not(:disabled){border-color:var(--ph);color:var(--ph)}
@@ -2669,6 +2671,7 @@ html[data-skin="aurora"] .fill[data-t=ok]{background:linear-gradient(90deg,#22d3
 html[data-skin="aurora"] .fill[data-t=warn]{background:linear-gradient(90deg,#fbbf24,#fb923c);box-shadow:0 0 14px -2px rgba(251,191,36,.75)}
 html[data-skin="aurora"] .fill[data-t=bad]{background:linear-gradient(90deg,#fb7185,#f43f5e);box-shadow:0 0 14px -2px rgba(244,63,94,.8)}
 html[data-skin="aurora"] .btn-sw{background:linear-gradient(135deg,rgba(124,92,255,.85),rgba(34,211,238,.75));color:#fff;border-radius:99px;font-weight:700}
+html[data-skin="aurora"] .btn-sw:disabled{opacity:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#c9cff5;padding:7px 13px}
 html[data-skin="aurora"] .btn-sw:hover:not(:disabled){box-shadow:0 0 22px -4px rgba(34,211,238,.7)}
 html[data-skin="aurora"] .btn-relogin{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--mut);border-radius:99px;font-weight:600}
 html[data-skin="aurora"] .btn-relogin:hover:not(:disabled){border-color:#7de7f7;color:#fff}
@@ -2731,6 +2734,7 @@ html[data-skin="slate"] .lbl b{font-family:"JetBrains Mono",monospace;font-size:
 html[data-skin="slate"] .bar{height:4px;border-radius:2px;background:#1f2228}
 html[data-skin="slate"] .fill{border-radius:2px}
 html[data-skin="slate"] .btn-sw{color:#e7e9ee;border-color:#4d525d}
+html[data-skin="slate"] .btn-sw:disabled{opacity:1;color:var(--mut);border-color:var(--sl-line2);border-style:dashed}
 html[data-skin="slate"] .btn-sw:hover:not(:disabled){background:#e7e9ee;color:#0e0f12;border-color:#e7e9ee}
 html[data-skin="slate"] .ccp-btn{border-color:var(--ccp-accent)}
 html[data-skin="slate"] .btn-renew{display:inline-flex;align-items:center;gap:9px;border:0;padding:8px 0;background:transparent;color:#aab0bc;font-size:12px}
@@ -2792,6 +2796,7 @@ html[data-skin="blocks"] .lbl span:last-child{font-weight:500;opacity:.8}
 html[data-skin="blocks"] .bar{height:12px;border-radius:0;background:#fff;border:2px solid var(--bk)}
 html[data-skin="blocks"] .fill{border-radius:0;border-right:2px solid var(--bk)}
 html[data-skin="blocks"] .btn-sw{background:var(--bk);color:var(--by);border:2px solid var(--bk);border-radius:0;font-weight:700;box-shadow:3px 3px 0 var(--bb);transition:transform .08s,box-shadow .08s,background .08s}
+html[data-skin="blocks"] .btn-sw:disabled{opacity:1;background:#fff;color:var(--bk);border:2px solid var(--bk);box-shadow:none}
 html[data-skin="blocks"] .btn-sw:hover:not(:disabled){background:var(--bb);color:#fff;transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--bk)}
 html[data-skin="blocks"] .btn-sw:active:not(:disabled){transform:translate(3px,3px);box-shadow:0 0 0 var(--bk)}
 html[data-skin="blocks"] .btn-relogin{background:#fff;border:2px solid var(--bk);color:var(--bk);border-radius:0;font-weight:700;box-shadow:3px 3px 0 var(--bk)}
@@ -2922,6 +2927,8 @@ html[data-skin="blocks"] .dlgwarn{border:2px solid var(--bk);border-radius:0;bac
 html[data-skin="blocks"] .dlgwarn b{color:#c40000}
 html[data-skin="blocks"] .dlginp{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 html[data-skin="blocks"] .dlginp:focus{background:#fffbe0}
+html[data-skin="blocks"] .poolname{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
+html[data-skin="blocks"] .poolname:focus{outline:none;background:#fffbe0}
 html[data-skin="blocks"] .btn-danger{background:var(--bad);color:#fff;border:2px solid var(--bk);border-radius:0;box-shadow:3px 3px 0 var(--bk)}
 html[data-skin="blocks"] .dlgstep i{background:var(--bk);color:var(--by);border-radius:0}
 html[data-skin="blocks"] .dlgurl{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}

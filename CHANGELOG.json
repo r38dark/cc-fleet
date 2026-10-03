@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.20.1", "date": "2026-10-03",
+     "ru": {"t": "Читаемые неактивные кнопки на карточках", "p": ["«Используется сейчас» и «Рулит оптимизация» больше не полупрозрачные — контраст не ниже 4,5 во всех оформлениях", "Blocks: такие кнопки — белые с чёрной рамкой без тени; поле названия модели в настройках — белое с чёрным текстом"]},
+     "en": {"t": "Readable inactive buttons on cards", "p": ["“In use now” and “Optimizer active” are no longer translucent: contrast is 4.5 or higher in every look", "Blocks: these buttons are white with a black border and no shadow; the model name field in Settings is white"]}},
     {"v": "1.20.0", "date": "2026-10-03",
      "ru": {"t": "История изменений в настройках", "p": ["«⚙ Настройки → Обновления»: свёрнутая строка «История изменений» со всеми версиями с v1.0.0", "Журнал лежит в `CHANGELOG.json`, приезжает с обновлениями, язык — как в интерфейсе"]},
      "en": {"t": "Changelog in Settings", "p": ["“⚙ Settings → Updates”: a collapsed “Changelog” row with every version since v1.0.0", "The log lives in `CHANGELOG.json`, arrives with updates and follows the interface language"]}},
