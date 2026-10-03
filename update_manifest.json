@@ -1,10 +1,11 @@
 {
-  "version": "1.19.3",
+  "version": "1.20.0",
   "needs_install": false,
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
     {"src": "cc_avail.py", "mode": "644"},
     {"src": "cc_update.py", "mode": "644"},
+    {"src": "CHANGELOG.json", "mode": "644"},
     {"src": "limits_gate.py", "mode": "755"},
     {"src": "pause_ctl.py", "mode": "755"},
     {"src": "tg_queue.py", "mode": "755"},

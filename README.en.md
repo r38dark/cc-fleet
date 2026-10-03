@@ -169,7 +169,8 @@ gear, a "Delete" button on every card and the windows for both flows
   the archive, verifies it, replaces the files and restarts the service by
   itself. A backup is made before replacing, and a failed start rolls back
   automatically. Details are in "Updates from the panel". Fitted into all five
-  looks, RU/EN.
+  looks, RU/EN. The same block has a collapsed **"Changelog"** row (v1.20.0):
+  every version since v1.0.0 — date, title and a couple of points, newest first.
 - 🔔 **State banner** at the top of the panel (RU/EN): "limits reached —
   nothing to switch to", "active account is full — background jobs paused",
   "paused, resuming at 16:03" with a countdown. In normal operation there is
@@ -568,6 +569,11 @@ Good to know:
   (`true`/`false`), `update_repo` (default `r38dark/cc-fleet`, for forks),
   `service_name`.
 - API: `GET /api/update` (state), `POST /api/update/check|apply|skip|ack`.
+- **Changelog** (v1.20.0) — a collapsed row in "⚙ Settings → Updates": version,
+  date, title and up to three points, newest first, in the interface language.
+  The data is `CHANGELOG.json` in `/opt/cc-limits/` (put there by `install.sh`,
+  refreshed by the updater, served by `GET /api/changelog`). Every release adds
+  its own entry.
 
 ## Upgrading from a previous version
 
@@ -642,6 +648,13 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.20.0** — changelog in Settings. "⚙ Settings → Updates" has a collapsed
+  "Changelog" row under the version line: every version since v1.0.0 (date,
+  title, up to three points), newest first, in the interface language,
+  scrolling inside the block, the installed version marked. The log is
+  `CHANGELOG.json`, it arrives with updates (listed in `update_manifest.json`),
+  and the page reads it via `GET /api/changelog`. Fitted into all five looks,
+  RU/EN.
 - **v1.19.3** — a planned account switch waits for a pause between turns.
   Before, optimize mode switched accounts at any moment, mid-turn included:
   the prompt cache was dropped (the whole long session was re-read at the new

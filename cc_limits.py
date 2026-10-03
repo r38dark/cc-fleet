@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.19.3"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.20.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2054,6 +2054,16 @@ def pause_state():
         return {"ok": False, "err": str(e)[:200], "level": "none", "pause": {"active": False}}
 
 
+def changelog():
+    """История изменений для «⚙ Настройки → Обновления»: CHANGELOG.json в каталоге установки
+    (приезжает с обновлениями по update_manifest.json). Нет файла или он битый — пустой список."""
+    for d in (BASE, os.path.dirname(os.path.abspath(__file__))):
+        data = jload(os.path.join(d, "CHANGELOG.json"))
+        if isinstance(data, dict) and isinstance(data.get("versions"), list):
+            return {"versions": data["versions"]}
+    return {"versions": []}
+
+
 class H(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
@@ -2128,6 +2138,10 @@ class H(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
             return self._send(200, UPDATER.status())
+        if u.path == "/api/changelog":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            return self._send(200, changelog())
         if u.path == "/api/console":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -2464,6 +2478,22 @@ html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accen
 .updsub.bad{color:var(--bad)}
 .updchk{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--mut);margin-top:8px;cursor:pointer}
 .updchk input{margin-top:2px}
+.updlog{margin:4px 0 10px;border:1px solid #2a3140;border-radius:8px}
+.updlog>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:13px;font-weight:600;color:var(--txt);user-select:none}
+.updlog>summary::-webkit-details-marker{display:none}
+.updlog>summary::before{content:'';flex:none;border-left:5px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .15s}
+.updlog[open]>summary::before{transform:rotate(90deg)}
+.updlog-list{max-height:260px;overflow-y:auto;padding:0 10px 4px;border-top:1px solid #1e232c}
+.ul-it{padding:7px 0;border-bottom:1px solid #1e232c}
+.ul-it:last-child{border-bottom:0}
+.ul-h{font-size:12.5px;line-height:1.4;color:var(--txt)}
+.ul-v{font-weight:700;font-variant-numeric:tabular-nums}
+.ul-d{color:var(--mut);font-size:11.5px;margin:0 6px;font-variant-numeric:tabular-nums}
+.ul-cur{display:inline-block;font-size:10.5px;line-height:1.3;color:var(--acc);border:1px solid currentColor;border-radius:99px;padding:0 6px;margin-right:6px;vertical-align:1px}
+.ul-it ul{margin:3px 0 0;padding-left:16px}
+.ul-it li{font-size:11.5px;line-height:1.4;color:var(--mut);margin:1px 0}
+.ul-it code{font:.95em ui-monospace,Consolas,monospace}
+.ul-empty{font-size:12px;color:var(--mut);padding:8px 0}
 .ccp-err{font-size:11.5px;color:#ffb1b1}
 .ccp-dot{flex:none;width:10px;height:10px;margin-top:5px;border-radius:50%;background:var(--ccp-accent);box-shadow:0 0 0 0 var(--ccp-accent);animation:ccp-pulse 2.4s ease-out infinite}
 @keyframes ccp-pulse{70%{box-shadow:0 0 0 7px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
@@ -2908,6 +2938,26 @@ html[data-skin="slate"] .segctl button.on{background:#e7e9ee;color:#0e0f12}
 html[data-skin="blocks"] .segctl{border:2px solid var(--bk);border-radius:0;background:#fff;box-shadow:3px 3px 0 var(--bk)}
 html[data-skin="blocks"] .segctl button{background:transparent;color:var(--bk);font-weight:700}
 html[data-skin="blocks"] .segctl button.on{background:var(--bk);color:var(--by)}
+html[data-skin="phosphor"] .updlog{border-color:var(--phl);border-radius:0}
+html[data-skin="phosphor"] .updlog>summary{color:var(--ph);text-transform:uppercase;letter-spacing:.06em;font-size:12px}
+html[data-skin="phosphor"] .updlog-list,html[data-skin="phosphor"] .ul-it{border-color:#0f2e19}
+html[data-skin="phosphor"] .ul-h{color:var(--ph2)}
+html[data-skin="phosphor"] .ul-cur{border-radius:0}
+html[data-skin="aurora"] .updlog{border-color:rgba(255,255,255,.14);border-radius:14px;background:rgba(255,255,255,.03)}
+html[data-skin="aurora"] .updlog-list,html[data-skin="aurora"] .ul-it{border-color:rgba(255,255,255,.08)}
+html[data-skin="aurora"] .ul-cur{color:#c4b5ff}
+html[data-skin="slate"] .updlog{border-color:var(--sl-line2);border-radius:7px}
+html[data-skin="slate"] .updlog>summary{font-weight:500}
+html[data-skin="slate"] .updlog-list,html[data-skin="slate"] .ul-it{border-color:var(--sl-line)}
+html[data-skin="slate"] .ul-cur{color:var(--mut)}
+html[data-skin="blocks"] .updlog{border:2px solid var(--bk);border-radius:0;background:#fff;box-shadow:3px 3px 0 var(--bk)}
+html[data-skin="blocks"] .updlog>summary{color:var(--bk);font-weight:800}
+html[data-skin="blocks"] .updlog[open]>summary{background:var(--by)}
+html[data-skin="blocks"] .updlog-list{border-top:2px solid var(--bk)}
+html[data-skin="blocks"] .ul-it{border-color:#d9d9d9}
+html[data-skin="blocks"] .ul-h{color:var(--bk)}
+html[data-skin="blocks"] .ul-d,html[data-skin="blocks"] .ul-it li{color:#3a3a3a}
+html[data-skin="blocks"] .ul-cur{color:var(--bk);background:var(--bl);border:2px solid var(--bk);border-radius:0;font-weight:700}
 
 /* ---- вёрстка «вписано в окно» (ПК): консоль забирает всю свободную высоту, остальное компактно;
    «−/+» над консолью меняют только шрифт внутри неё — размер блока от масштаба не зависит ---- */
@@ -3143,6 +3193,9 @@ const I18N={
   loginHint:w=>`Логин истекает ${w}. После этого нужно «Войти заново»`,
   loginHintGone:w=>`Логин истёк ${w}. Нужно «Войти заново»`,
   updHdr:'Обновления',
+  updLog:'История изменений',
+  updLogCur:'установлена',
+  updLogEmpty:'Журнал изменений недоступен',
   updVer:v=>`cc-fleet v${v}`,
   updUpToDate:'Установлена последняя версия',
   updNeverChecked:'Проверка ещё не выполнялась',
@@ -3313,6 +3366,9 @@ const I18N={
   loginHint:w=>`Login expires ${w}. After that you need “Log in again”`,
   loginHintGone:w=>`Login expired ${w}. Use “Log in again”`,
   updHdr:'Updates',
+  updLog:'Changelog',
+  updLogCur:'installed',
+  updLogEmpty:'Changelog is unavailable',
   updVer:v=>`cc-fleet v${v}`,
   updUpToDate:'You are on the latest version',
   updNeverChecked:'Not checked yet',
@@ -4048,10 +4104,42 @@ async function updAck(){
  try{updData=await updPost('ack');}catch(e){}
  updRender();updSettingsRender();
 }
+// история изменений: CHANGELOG.json грузится при первом раскрытии; узел живёт отдельно и переносится
+// при каждой перерисовке #updBox (раз в минуту), поэтому раскрытие и прокрутка не сбрасываются
+let updLogEl=null,updLogData=null,updLogKey='';
+function updLogDate(s){const m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s||'');return !m?ccpEsc(s||''):(LANG==='en'?m[0]:m[3]+'.'+m[2]+'.'+m[1]);}
+function updLogTxt(s){return ccpEsc(s||'').replace(/`([^`]+)`/g,'<code>$1</code>');}
+function updLogList(){
+ const list=updLogEl.querySelector('.updlog-list'),vs=(updLogData&&updLogData.versions)||[];
+ if(!vs.length){list.innerHTML='<div class="ul-empty">'+tr(updLogData?'updLogEmpty':'loading')+'</div>';return;}
+ const cur=updData&&updData.version;
+ list.innerHTML=vs.map(e=>{
+  const x=(LANG==='en'?(e.en||e.ru):(e.ru||e.en))||{},p=Array.isArray(x.p)?x.p:[];
+  return '<div class="ul-it"><div class="ul-h"><span class="ul-v">v'+ccpEsc(e.v)+'</span><span class="ul-d">'+updLogDate(e.date)+'</span>'
+   +(e.v===cur?'<span class="ul-cur">'+tr('updLogCur')+'</span>':'')+updLogTxt(x.t)+'</div>'
+   +(p.length?'<ul>'+p.map(t=>'<li>'+updLogTxt(t)+'</li>').join('')+'</ul>':'')+'</div>';
+ }).join('');
+ updLogKey=LANG+'|'+cur;
+}
+async function updLogFetch(){
+ try{const r=await fetch(API+'changelog?token='+TOKEN);if(!r.ok)throw new Error(r.status);updLogData=await r.json();updLogList();}
+ catch(e){updLogData=null;updLogEl.querySelector('.updlog-list').innerHTML='<div class="ul-empty">'+tr('updLogEmpty')+'</div>';}  // при следующем раскрытии — новая попытка
+}
+function updLogNode(){
+ if(!updLogEl){
+  updLogEl=document.createElement('details');updLogEl.className='updlog';
+  updLogEl.innerHTML='<summary></summary><div class="updlog-list"></div>';
+  updLogEl.addEventListener('toggle',()=>{if(updLogEl.open&&!updLogData){updLogList();updLogFetch();}});
+ }
+ updLogEl.querySelector('summary').textContent=tr('updLog');
+ if(updLogData&&updLogKey!==LANG+'|'+(updData&&updData.version))updLogList();
+ return updLogEl;
+}
 function updSettingsRender(){
  const box=$('#updBox');if(!box||$('#scrim').hidden)return;
  const d=updData;
  if(!d){box.innerHTML='';return;}
+ const logSt=updLogEl?updLogEl.querySelector('.updlog-list').scrollTop:0;
  const L=d.latest;
  const line=d.available?tr(d.skipped?'updSkippedLine':'updAvailLine',L.version):tr(d.last_check?'updUpToDate':'updNeverChecked');
  const when=(!d.available&&d.last_check)?' · '+tr('updCheckedAt',updAt(d.last_check)):'';
@@ -4063,6 +4151,9 @@ function updSettingsRender(){
   +['manual','auto'].map(m=>'<button type="button" role="radio" data-m="'+m+'" aria-checked="'+(d.mode===m)+'" class="'+(d.mode===m?'on':'')+'">'+tr(m==='auto'?'updAuto':'updManual')+'</button>').join('')+'</div></div>'
   +'<div class="modalsub" style="margin:0">'+tr(d.mode==='auto'?'updHintAuto':'updHintManual')+'</div>'
   +'<label class="updchk"><input type="checkbox" id="updChk"'+(d.check?' checked':'')+'><span>'+tr('updCheckLbl')+'</span></label>';
+ const seg=box.querySelector('.segctl');  // под строкой версии, перед «Вручную / Автоматически»
+ seg.parentNode.before(updLogNode());
+ updLogEl.querySelector('.updlog-list').scrollTop=logSt;
 }
 $('#updBox').addEventListener('click',async e=>{
  const d=updData;if(!d)return;

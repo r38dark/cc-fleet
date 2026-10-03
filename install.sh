@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet v1.19.3 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.20.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
 # (карточки аккаунтов + переключение), read-only зеркало консоли живой
 # screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
@@ -57,7 +57,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet v1.19.3 — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.20.0 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -124,6 +124,9 @@ chmod 644 "$BASE/cc_update.py"
 # общее правило «когда аккаунт снова пригоден» — импортируют cc_limits.py, pause_ctl.py, limits_gate.py
 cp "$SCRIPT_DIR/cc_avail.py" "$BASE/cc_avail.py"
 chmod 644 "$BASE/cc_avail.py"
+# история изменений для «⚙ Настройки → Обновления» (дальше приезжает с обновлениями)
+cp "$SCRIPT_DIR/CHANGELOG.json" "$BASE/CHANGELOG.json"
+chmod 644 "$BASE/CHANGELOG.json"
 
 log "Копирую limits_gate.py и pause_ctl.py → $BASE (гейт фоновых задач + пауза с будильником)"
 cp "$SCRIPT_DIR/limits_gate.py" "$BASE/limits_gate.py"
