@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.2", "date": "2026-10-03",
+     "ru": {"t": "Версия приложения в правом нижнем углу", "p": ["Мелкая подпись «cc-fleet vX.Y.Z» справа под карточками — видно, какая версия открыта", "Версия подставляется при отдаче страницы: после обновления вкладка покажет новую", "В режиме «только консоль» подписи нет"]},
+     "en": {"t": "App version in the bottom-right corner", "p": ["A small “cc-fleet vX.Y.Z” label under the cards on the right shows which version is open", "The version is filled in when the page is served: after an update the tab shows the new one", "Hidden in console-only mode"]}},
     {"v": "1.21.1", "date": "2026-10-03",
      "ru": {"t": "Вкладка сама перезагружается после обновления", "p": ["Служба обновилась — открытая панель перезагружается сама, открытые настройки откроются снова", "Ждёт, пока закроешь диалог аккаунта, допишешь ввод или выйдешь из полноэкранного режима", "Не помогло — повторов нет, на плашке кнопка «Обновить страницу»"]},
      "en": {"t": "The tab reloads itself after an update", "p": ["Once the service updates, an open panel reloads itself; open Settings come back", "It waits until you close an account dialog, finish typing or leave full screen", "If that did not help, no retries: the banner shows a “Reload page” button"]}},

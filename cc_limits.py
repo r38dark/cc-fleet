@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3155,6 +3155,9 @@ html:root:root .acts .chip{padding:2px 5px;font-size:10.5px}
 .modal #autoNote{margin:0 0 6px}
 .modal .wkchk{margin:2px 0 6px;font-size:12.5px}.modal .wkchk input{transform:scale(1.25);margin:3px 3px 0 2px;flex:none}
 .modal .wkchk b{color:var(--txt)}
+/* ---- версия приложения: мелко, справа внизу под карточками ---- */
+#verTag{align-self:flex-end;text-align:right;margin:2px 2px 0;font-size:10.5px;line-height:1.25;color:var(--mut);letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+html.conly #verTag{display:none}
 /* ---- режим «только консоль» ---- */
 #fsBtn .fsx{display:none}
 html.conly #fsBtn .fsi{display:none}
@@ -3251,6 +3254,7 @@ html:root:root .dmet .dtop{gap:6px}
 </div></div>
 <div id="cards">Загрузка…</div>
 <div id="msg"></div>
+<div id="verTag" title="cc-fleet">cc-fleet v__PAGE_VER__</div>
 <div class="dock"><div class="dockzone" id="dockZone"><div class="docktab" id="dockTab" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg><span id="dockTabLbl">Аккаунты</span></div><div class="dockpanel" id="dockPanel"></div></div></div>
 <div id="scrim" class="scrim" hidden>
  <div class="modal">

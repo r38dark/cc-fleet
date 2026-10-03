@@ -664,6 +664,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.2** — the app version in the bottom-right corner: a small
+  "cc-fleet vX.Y.Z" label on the right under the cards, aligned with them, so
+  you see at once which version the tab has open. The number is filled in when
+  the page is served, so after an update (and the v1.21.1 tab self-reload) it
+  shows the new one. Hidden in console-only mode.
 - **v1.21.1** — the tab reloads itself after an update. Before, an open panel
   only showed the "Updated" banner after the service updated, while its HTML
   and scripts stayed from the previous version, so new things (such as the
