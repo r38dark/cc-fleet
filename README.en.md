@@ -60,6 +60,12 @@ the Russian UI, the panel is bilingual):
 ![Update banner](screenshots/update-banner.png)
 ![Update settings](screenshots/update-settings.png)
 
+Adding and deleting accounts (v1.19.0) — the "+ Add account" tile at the end
+of the list, a "Delete" button on every card and the windows for both flows
+(deleting only works after typing the confirmation word):
+
+![Adding and deleting accounts](screenshots/accounts.en.png)
+
 ## Features
 
 - 📊 **Multi-account limit monitoring** at once — 5-hour window and weekly
@@ -117,6 +123,14 @@ the Russian UI, the panel is bilingual):
   under a day shows hours, past the date it says "expired"; the tooltip has the
   exact date. Tokens never reach `/api/limits`, only the `login_expires` date
   goes out. Fitted into all five looks.
+- ➕ **Adding and deleting accounts from the panel** (v1.19.0) — an
+  "+ Add account" tile at the end of the list: sign-in link → code from the
+  page → the account joins the rotation by itself. A "Delete" button on the
+  card removes an account for good (the profile with its tokens and every
+  trace in the snapshot) — if you lose access to an account it no longer sits
+  there as dead weight. Confirmation is typing the word "confirm"; there is no
+  recycle bin and no undo. Telegram reports both actions. Fitted into all five
+  looks, RU/EN.
 - 🔄 **Updates from the panel** (v1.18.0) — once a day the panel asks GitHub
   whether a newer release exists and shows a banner "v1.18.1 is out — Update /
   Skip this version". "⚙ Settings" has a **"Manual / Automatic"** switch
@@ -237,6 +251,76 @@ cc-switch save 1   # saves the CURRENT live session as profile acc1
 
 Repeat `/login` + `cc-switch save N` for each next account. To check what
 the service sees: `cc-switch list`.
+
+## Adding and deleting accounts (v1.19.0)
+
+**Why this became necessary.** An account can become unreachable: access to
+its mailbox or phone is lost and a fresh sign-in ("Log in again" asks for a
+confirmation in the browser) is no longer possible. A login lives ≈28 days from
+a real `/login` and is not extended (see the "login N d" chip on the card) —
+once it runs out the account starts failing with "Login expired" and there is
+nothing to log it in again with. The dead account stays in the rotation: a card
+with an error, wasted requests, warnings. Before, the only way to drop it was
+by hand on the file system. Now it is done from the panel, and a new account is
+added the same way without SSH.
+
+### Deleting an account for good
+
+The **"Delete"** button on a card → a window with a red **"This cannot be
+undone"** warning. The **"Delete for good"** button stays disabled until you
+type the word **"confirm"** (the Russian UI asks for «подтверждаю»); case and
+surrounding spaces do not matter. Both the page and the server check the word —
+an API request without it deletes nothing. Esc, "Cancel" and a click on the
+backdrop close the window without doing anything.
+
+- **What is wiped:** the whole profile folder `/root/.claude-profiles/accN/`
+  (the tokens live there), the account's rows in the snapshot, caches and
+  service state, and the "active" mark. There is no recycle bin and no undo: the
+  account disappears from the rotation and from the screen; the only way back
+  is adding it again (a fresh browser sign-in).
+- **The active account** can be deleted: the live session is first moved to
+  another suitable account (not Free, preferably with limit to spare). If there is nowhere
+  to move it, the deletion refuses and nothing is wiped.
+- **The last account** in the rotation cannot be deleted.
+- After a deletion `cc-switch` simply no longer sees the profile.
+
+### Adding an account
+
+The **"+ Add account"** tile at the end of the list → a window:
+
+1. the account's email (optional — it pre-fills the sign-in page so you do not
+   have to type it again) → **"Get the sign-in link"**;
+2. open the link, sign in to the Claude account you want, paste the code from
+   the sign-in page → **"Add to rotation"**.
+
+A few seconds later there is a new card and the account takes part in
+auto-switching — nothing to configure by hand.
+
+- The sign-in runs in an isolated temp HOME (like "Log in again"), the live
+  Claude Code session is not touched.
+- The new profile takes the first empty installer slot, otherwise the next
+  `accN` number.
+- The same account cannot be added twice: "already in the rotation as accN".
+- A Free account is added but stays out of auto-switching until it is Pro
+  (Telegram warns about it).
+- An abandoned attempt (link fetched, code never entered) is dropped by itself
+  after about 10 minutes (checked on every limits poll) or by a new attempt.
+
+### Telegram and API
+
+If Telegram is set up, one message per action, for example:
+`🗑 Claude: аккаунт acc3 (…) удалён из ротации навсегда — …` and
+`➕ Claude: аккаунт acc4 (…, PRO) добавлен в ротацию. Теперь в ротации: 3
+(acc1, acc2, acc4).` (the bot's texts are Russian, as all of its messages).
+
+API (all with `?token=<hook_token>`, a JSON body; the optional `lang` field,
+`ru`/`en`, picks the language of the text in the response):
+
+| Request | What it does |
+|---|---|
+| `POST /api/account/delete` `{"account":"acc3","confirm":"confirm"}` | delete an account for good; without the right word — `ok:false`, nothing deleted |
+| `POST /api/account/add/start` `{"email":""}` | start a sign-in → `{url, slot}` |
+| `POST /api/account/add/submit` `{"slot":"acc4","code":"…"}` | finish the sign-in with the code from the page → the account is in the rotation |
 
 ## Background-job gate and limit pause (v1.2.0)
 
@@ -479,6 +563,7 @@ What the bot sends:
   unfinished) and **the pause being lifted by the alarm** (how long it stood,
   how many times the alarm was pushed back) — v1.2.1;
 - an account re-logged in through the web button;
+- an account **added to the rotation** or **deleted for good** (v1.19.0);
 - an account dropping from Pro to Free, and coming back.
 
 Who to write to — the `chat_id` key in `config.json` (`install.sh` asks for
@@ -525,6 +610,19 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - HTTPS/certbot — a manual step after `install.sh`.
 
 ## Version history
+
+- **v1.19.0** — adding and deleting accounts from the panel. An "+ Add account"
+  tile (email optional → sign-in link → code from the page → the account joins
+  the rotation by itself; the sign-in runs in an isolated temp HOME, duplicate
+  guard, a Free account is flagged) and a "Delete" button on the card: the
+  profile with its tokens and the traces in the snapshot/caches are wiped for
+  good, no recycle bin; confirmation is typing the word "confirm" (checked by
+  both the page and the server), before deleting the active account the session
+  is moved to another one, the last account cannot be deleted. Telegram reports
+  a successful add and a successful deletion. Routes
+  `/api/account/delete|add/start|add/submit`. The windows are fitted into all
+  five looks, RU/EN. It updates from the panel as usual (the "New version
+  released" banner on v1.18.x installs).
 
 - **v1.18.0** — updates from the panel. Once a day one request to GitHub
   Releases (no token), a banner "New version released — Update / Skip this

@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.18.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.19.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -183,17 +183,24 @@ def _relogin_cleanup(name):
 
 def _relogin_sweep():
     now = time.time()
-    for n in [n for n, st in _relogin.items() if now - st["started"] > _RELOGIN_TTL]:
+    for n in [n for n, st in list(_relogin.items()) if now - st["started"] > _RELOGIN_TTL]:
         _relogin_cleanup(n)
 
 
-def relogin_start(name):
+def relogin_start(name, new_email=None):
+    # new_email=None — перелогин существующего аккаунта; строка (может быть пустой) —
+    # вход нового аккаунта в свободный слот name (см. addacct_start)
     _relogin_sweep()
-    if name not in profile_names():
-        return False, "неизвестный аккаунт", None
+    if new_email is None:
+        if name not in profile_names():
+            return False, "неизвестный аккаунт", None
+        oa = jload(f"{PROFILES}/{name}/oauth_account.json", {})
+        email = oa.get("emailAddress", "")
+    else:
+        if not _ACC_RE.match(name or ""):
+            return False, "неверное имя слота", None
+        email = new_email
     _relogin_cleanup(name)  # если была брошенная попытка — начинаем чисто
-    oa = jload(f"{PROFILES}/{name}/oauth_account.json", {})
-    email = oa.get("emailAddress", "")
     home = tempfile.mkdtemp(prefix=f"cc-relogin-{name}-")
     env = dict(os.environ)
     env["HOME"] = home
@@ -216,14 +223,16 @@ def relogin_start(name):
         shutil.rmtree(home, ignore_errors=True)
         return False, "claude auth login не показал ссылку: " + tail.strip(), None
     url = child.match.group(1).rstrip(").,")
-    _relogin[name] = {"child": child, "home": home, "started": time.time()}
+    _relogin[name] = {"child": child, "home": home, "started": time.time(), "new": new_email is not None}
     return True, url, email
 
 
-def relogin_submit(name, code):
+def relogin_submit(name, code, new=False, lang="ru"):
     st = _relogin.get(name)
-    if not st:
-        return False, "Нет активной попытки для этого аккаунта — начни заново.", None
+    # попытка нового аккаунта (слот ещё без профиля) завершается только через add/submit, и наоборот
+    if not st or bool(st.get("new")) != bool(new):
+        return False, _t(lang, "Нет активной попытки для этого аккаунта — начни заново.",
+                         "No sign-in in progress for this account — start again."), None
     child, home = st["child"], st["home"]
     creds_path = os.path.join(home, ".claude", ".credentials.json")
     try:
@@ -235,12 +244,30 @@ def relogin_submit(name, code):
     if not os.path.isfile(creds_path):
         print(f"relogin_submit({name}): fail, CLI tail: {(child.before or '')[-300:]!r}", flush=True)
         _relogin_cleanup(name)
-        return False, "Логин не завершился — код мог быть неверным, просроченным или ещё не подтверждён в браузере. Попробуй ещё раз (кнопка «Войти заново» заново) или проверь, что вход в браузере точно завершён.", None
+        return False, _t(lang,
+                         "Логин не завершился — код мог быть неверным, просроченным или ещё не подтверждён в браузере. Попробуй ещё раз (кнопка «Войти заново» заново) или проверь, что вход в браузере точно завершён.",
+                         "Sign-in did not complete — the code may be wrong, expired, or not yet confirmed in the browser. Try again (the Log in again button) or make sure the browser sign-in really finished."), None
     with lock:  # один захват на весь критический участок — collect() ниже lock уже не берёт
         try:
             creds = jload(creds_path)
-            jsave(f"{PROFILES}/{name}/credentials.json", creds)
             oa = (jload(os.path.join(home, ".claude.json"), {}) or {}).get("oauthAccount")
+            if new:
+                # без accountUuid профиль не опознать (ни в ротации, ни как активный)
+                if not (oa and oa.get("accountUuid")):
+                    return False, _t(lang, "Вход прошёл, но Claude Code не вернул данные аккаунта — попробуй ещё раз.",
+                                     "Signed in, but Claude Code returned no account data — try again."), None
+                dup = next((n for n in _real_names()
+                            if (jload(f"{PROFILES}/{n}/oauth_account.json", {}) or {}).get("accountUuid") == oa["accountUuid"]), None)
+                if dup:
+                    em = oa.get('emailAddress', '?')
+                    return False, _t(lang, f"Этот аккаунт ({em}) уже в ротации как {dup} — второй раз добавлять не нужно.",
+                                     f"This account ({em}) is already in the rotation as {dup} — no need to add it twice."), None
+                if name in _real_names():  # слот заняли, пока шёл вход
+                    return False, _t(lang, "Слот уже занят — начни добавление заново.",
+                                     "That slot has just been taken — start adding again."), None
+                os.makedirs(f"{PROFILES}/{name}", exist_ok=True)
+                os.chmod(f"{PROFILES}/{name}", 0o700)  # слот установщика мог быть создан с 755
+            jsave(f"{PROFILES}/{name}/credentials.json", creds)
             if oa:
                 jsave(f"{PROFILES}/{name}/oauth_account.json", oa)
             act = active_name()
@@ -256,8 +283,156 @@ def relogin_submit(name, code):
         snap = collect(force=True)
     row = (snap.get("accounts") or {}).get(name, {})
     email = row.get("email", name)
+    if new:
+        cnt, names = _rotation_text()
+        plan = row.get("plan")
+        tg_notify(f"➕ Claude: аккаунт {name} ({email}" + (f", {plan.upper()}" if plan else "")
+                  + f") добавлен в ротацию. Теперь в ротации: {cnt} ({names})."
+                  + (" ⚠️ Сейчас это Free — в авто-переключении он не участвует, пока не станет Pro." if plan == "free" else ""))
+        return True, _t(lang, f"✅ {email} добавлен в ротацию как {name}.",
+                        f"✅ {email} added to the rotation as {name}."), snap
     tg_notify(f"🔑 Claude: аккаунт {name} ({email}) перелогинен через сайт — токен обновлён.")
-    return True, f"✅ {email} — вход выполнен, токен обновлён.", snap
+    return True, _t(lang, f"✅ {email} — вход выполнен, токен обновлён.",
+                    f"✅ {email} — signed in, token refreshed."), snap
+
+
+# ---------------------------------------------------------------- добавление и удаление аккаунтов
+def _t(lang, ru, en):
+    # серверные тексты для окон добавления/удаления: язык берётся из тела запроса (по умолчанию ru)
+    return en if lang == "en" else ru
+
+
+# Удаление необратимо: стирается папка профиля с токенами. Слово подтверждения сервер
+# проверяет сам — запрос без него не пройдёт, даже если дёрнуть API напрямую.
+DELETE_WORDS = ("подтверждаю", "confirm")  # русское слово — основное, английское — для EN-интерфейса
+_ACC_RE = re.compile(r"^acc[0-9]{1,3}$")
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}$")
+
+
+def _is_real(name):
+    # «настоящий» профиль: аккаунт сохранён (accountUuid + токены), а не пустой слот установщика
+    oa = jload(f"{PROFILES}/{name}/oauth_account.json", {}) or {}
+    return bool(oa.get("accountUuid")) and os.path.isfile(f"{PROFILES}/{name}/credentials.json")
+
+
+def _real_names():
+    return [n for n in profile_names() if _is_real(n)]
+
+
+def _rotation_text():
+    names = _real_names()
+    return len(names), ", ".join(names) or "—"
+
+
+def _free_slot():
+    # первый пустой слот установщика (oauth_account.json = {}), иначе следующий номер
+    nums = []
+    if os.path.isdir(PROFILES):
+        for d in os.listdir(PROFILES):
+            if _ACC_RE.match(d) and os.path.isdir(f"{PROFILES}/{d}"):
+                nums.append(int(d[3:]))
+    for n in sorted(nums):
+        d = f"{PROFILES}/acc{n}"
+        oa = jload(f"{d}/oauth_account.json", {}) or {}
+        if not oa.get("accountUuid") and not os.path.isfile(f"{d}/credentials.json"):
+            return f"acc{n}"
+    return f"acc{max(nums, default=0) + 1}"
+
+
+def addacct_start(email, lang="ru"):
+    """→ (ok, url|message, slot, email). Почта необязательна: уходит в ссылку входа как подсказка."""
+    email = (email or "").strip()
+    if email and not _EMAIL_RE.match(email):
+        return False, _t(lang, "Почта выглядит некорректно.", "The email looks invalid."), None, None
+    slot = _free_slot()
+    ok, url_or_msg, em = relogin_start(slot, new_email=email)
+    return ok, url_or_msg, slot, em
+
+
+def _move_off(name):
+    """Активный аккаунт удаляют — сначала перевести живую сессию на другой. → (target|None, причина)."""
+    accs = (jload(SNAPSHOT) or {}).get("accounts") or {}
+    c = cfg()
+    thr, cap = c.get("threshold", 85), c.get("weekly_cap", 99)
+    cands = []
+    for n in _real_names():
+        if n == name:
+            continue
+        row = accs.get(n) or {}
+        if row.get("plan") == "free":
+            continue  # cc-switch на Free всё равно откажет
+        free_now = bool(row) and cc_avail.availability(row, thr, cap)[0]
+        fh = (row.get("five_hour") or {}).get("pct")
+        cands.append((0 if free_now else 1, fh if fh is not None else 101, n))
+    last = "нет другого пригодного аккаунта (остальные Free или без токенов)"
+    for _a, _b, n in sorted(cands):
+        ok, out = do_switch(n)
+        if ok:
+            return n, ""
+        last = out
+    return None, last
+
+
+def delete_account(name, confirm, lang="ru"):
+    """→ (ok, message, snapshot|None). Убирает аккаунт из ротации навсегда: профиль с токенами,
+    строки в снимке, кэшах и state. Берёт lock сама — снаружи не оборачивать."""
+    if (confirm or "").strip().lower() not in DELETE_WORDS:
+        return False, _t(lang, "Слово подтверждения введено неверно — ничего не удалено.",
+                         "The confirmation word is wrong — nothing was deleted."), None
+    if not _ACC_RE.match(name or "") or name not in profile_names():
+        return False, _t(lang, "Неизвестный аккаунт.", "Unknown account."), None
+    pdir = f"{PROFILES}/{name}"
+    if os.path.islink(pdir):
+        return False, _t(lang, "Профиль — символическая ссылка, удалять не буду.",
+                         "The profile is a symbolic link — refusing to delete it."), None
+    with lock:
+        real = _real_names()
+        if name in real and len(real) <= 1:
+            return False, _t(lang, "Это последний аккаунт в ротации — удалить его нельзя.",
+                             "This is the last account in the rotation — it cannot be deleted."), None
+        oa = jload(f"{pdir}/oauth_account.json", {}) or {}
+        email = oa.get("emailAddress") or ""
+        moved = None
+        if active_name() == name:
+            moved, why = _move_off(name)
+            if not moved:
+                return False, _t(lang, "Это активный аккаунт, а переключить сессию на другой не удалось — ничего не удалено. ",
+                                 "This is the active account and the session could not be moved to another one — nothing was deleted. ") + why, None
+        _relogin_cleanup(name)
+        try:
+            shutil.rmtree(pdir)
+        except OSError as e:
+            return False, _t(lang, f"Не удалось стереть профиль: {e}", f"Could not wipe the profile: {e}"), None
+        _plan_cache.pop(name, None)
+        backoff_until.pop(name, None)
+        good = jload(GOOD, {}) or {}
+        if good.pop(name, None) is not None:
+            jsave(GOOD, good)
+        st = jload(STATE, {})
+        for k in ("plans", "renewal", "renew_click"):
+            if isinstance(st.get(k), dict):
+                st[k].pop(name, None)
+        if (st.get("manual_hold") or {}).get("account") == name:
+            st.pop("manual_hold", None)
+        if moved:
+            st["known_active"] = moved
+            st["last_switch_ts"] = time.time()
+        elif st.get("known_active") == name:
+            st["known_active"] = active_name()
+        jsave(STATE, st)
+        snap = jload(SNAPSHOT) or {}
+        (snap.get("accounts") or {}).pop(name, None)
+        if snap.get("active") == name:
+            snap["active"] = None
+        jsave(SNAPSHOT, snap)
+        snap = snap_set_active()
+    cnt, names = _rotation_text()
+    who = f"{name} ({email})" if email else f"{name} ({_t(lang, 'пустой слот', 'empty slot')})"
+    tg_notify(f"🗑 Claude: аккаунт {who} удалён из ротации навсегда — профиль и токены стёрты, вернуть нельзя."
+              + (f" Живая сессия переведена на {moved}." if moved else "")
+              + f" В ротации осталось: {cnt} ({names}).")
+    return True, (_t(lang, f"🗑 {who} удалён навсегда.", f"🗑 {who} deleted for good.")
+                  + (_t(lang, f" Сессия переведена на {moved}.", f" Session moved to {moved}.") if moved else "")), snap
 
 
 def fetch_usage(access):
@@ -1774,6 +1949,10 @@ def poll_loop():
                 switch_policy_check(snap)
         except Exception as e:
             print(f"poll fail: {e}", flush=True)
+        try:
+            _relogin_sweep()  # брошенная попытка входа (ссылку взяли, код не ввели) не висит дольше TTL
+        except Exception as e:
+            print(f"relogin sweep fail: {e}", flush=True)
         # Просыпаемся не только по poll_sec, но и сразу после ближайшего сброса окна
         # любого аккаунта (+15с запаса): освободившийся аккаунт подхватываем в первую
         # же минуту, а не через несколько тиков и inactive_poll_sec кэша неактивных.
@@ -2081,11 +2260,23 @@ class H(BaseHTTPRequestHandler):
             if not ok:
                 return self._send(400, {"ok": False, "message": url_or_msg})
             return self._send(200, {"ok": True, "url": url_or_msg, "email": email})
+        if u.path == "/api/account/delete":
+            ok, message, snap = delete_account(body.get("account", ""), body.get("confirm", ""), lang=body.get("lang"))
+            return self._send(200, {"ok": ok, "message": message})
+        if u.path == "/api/account/add/start":
+            ok, url_or_msg, slot, email = addacct_start(body.get("email", ""), lang=body.get("lang"))
+            if not ok:
+                return self._send(400, {"ok": False, "message": url_or_msg})
+            return self._send(200, {"ok": True, "url": url_or_msg, "slot": slot, "email": email})
+        if u.path == "/api/account/add/submit":
+            # lock берёт сама relogin_submit — снаружи не оборачивать
+            ok, message, snap = relogin_submit(body.get("slot", ""), body.get("code", ""), new=True, lang=body.get("lang"))
+            return self._send(200, {"ok": ok, "message": message})
         if u.path == "/api/relogin/submit":
             # lock берёт сама relogin_submit (вокруг записи в профиль + collect) —
             # тут НЕ оборачивать: lock не реентерабельный, второй with lock = дедлок
             name = body.get("account", "")
-            ok, message, snap = relogin_submit(name, body.get("code", ""))
+            ok, message, snap = relogin_submit(name, body.get("code", ""), lang=body.get("lang"))
             return self._send(200, {"ok": ok, "message": message})
         return self._send(404, {"error": "not found"})
 
@@ -2577,6 +2768,76 @@ html[data-skin="blocks"] .fsseg button.on{background:var(--bk);color:var(--by)}
 html[data-skin="blocks"] .fsinfo{color:var(--bk);font-weight:700}
 html[data-skin="blocks"] #fsRoot.fs{background:var(--by)}
 html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:var(--bk)}
+
+/* ---- добавление/удаление аккаунтов ---- */
+.addtile{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:0 0 12px;padding:15px 16px;background:transparent;border:1.5px dashed #333c4d;color:var(--mut);border-radius:14px;font-size:14px;font-weight:600;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.addtile:hover{border-color:var(--acc);color:var(--txt);background:rgba(124,154,255,.06)}
+.addtile .plus{width:24px;height:24px;border-radius:50%;border:1.5px solid currentColor;display:inline-flex;align-items:center;justify-content:center;font-size:17px;line-height:1;font-weight:500;padding-bottom:1px}
+.btn-del{margin:0 0 0 auto;display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid #333c4d;color:var(--mut)}
+.btn-del svg{width:14px;height:14px}
+.btn-del:hover:not(:disabled){border-color:var(--bad);color:var(--bad)}
+.acts .btn-del{margin-top:0}
+#acctScrim{z-index:60}
+.dlgwarn{border:1px solid rgba(224,91,91,.5);background:rgba(224,91,91,.09);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.5;margin:10px 0 12px}
+.dlgwarn b{color:var(--bad)}
+.dlglbl{display:block;font-size:12.5px;color:var(--mut);margin-top:6px}
+.dlginp{width:100%;background:#0f1115;border:1px solid #2a3140;color:var(--txt);border-radius:9px;padding:9px 11px;font-size:14px;margin-top:6px;font-family:inherit}
+.dlginp:focus{outline:none;border-color:var(--acc)}
+.dlgerr{color:var(--bad);font-size:13px;margin-top:10px;line-height:1.4}
+.dlgerr[hidden]{display:none}
+.btn-danger{background:var(--bad);color:#fff;margin-top:0}
+.dlgstep{display:flex;align-items:center;gap:9px;margin:14px 0 6px;font-size:13px;font-weight:600}
+.dlgstep i{flex:none;width:20px;height:20px;border-radius:50%;background:var(--acc);color:#0f1115;font-style:normal;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.dlgurl{word-break:break-all;font-size:11.5px;line-height:1.4;background:#0f1115;border:1px solid #2a3140;border-radius:9px;padding:8px 10px;color:var(--mut);max-height:62px;overflow:auto}
+.dlgrow{display:flex;gap:8px;margin-top:8px}
+.dlgrow button{margin-top:0}
+html[data-skin="phosphor"] .addtile{border:1px dashed var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+html[data-skin="phosphor"] .addtile:hover{border-color:var(--ph);color:var(--ph);background:#0c2a17;box-shadow:0 0 14px rgba(109,255,154,.22)}
+html[data-skin="phosphor"] .addtile .plus{border-radius:0}
+html[data-skin="phosphor"] .btn-del{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+html[data-skin="phosphor"] .btn-del:hover:not(:disabled){border-color:#ff6b5e;color:#ff6b5e}
+html[data-skin="phosphor"] .dlgwarn{border:1px dashed #ff6b5e;border-radius:0;background:rgba(255,107,94,.06);color:#ffd9d4}
+html[data-skin="phosphor"] .dlginp{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--ph)}
+html[data-skin="phosphor"] .dlginp:focus{border-color:var(--ph);box-shadow:0 0 10px rgba(109,255,154,.25)}
+html[data-skin="phosphor"] .btn-danger{background:#ff6b5e;color:#1a0300;border-radius:0;font-family:inherit;text-transform:uppercase;letter-spacing:.06em}
+html[data-skin="phosphor"] #acctBox button:not(.ghostbtn):not(.btn-danger){border-radius:0;background:var(--ph);color:#021006;font-family:inherit;font-weight:700}
+html[data-skin="phosphor"] #acctBox .ghostbtn{border-radius:0}
+html[data-skin="phosphor"] .dlgstep i{border-radius:0;background:var(--ph);color:#021006}
+html[data-skin="phosphor"] .dlgurl{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--phd)}
+html[data-skin="aurora"] .addtile{border:1.5px dashed rgba(255,255,255,.22);border-radius:20px;color:var(--mut);background:rgba(255,255,255,.03)}
+html[data-skin="aurora"] .addtile:hover{border-color:#7de7f7;color:#fff;background:linear-gradient(135deg,rgba(124,92,255,.18),rgba(34,211,238,.12));box-shadow:0 10px 30px -12px rgba(124,92,255,.6)}
+html[data-skin="aurora"] .btn-del{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--mut);border-radius:99px;font-weight:600}
+html[data-skin="aurora"] .btn-del:hover:not(:disabled){border-color:var(--bad);color:#fff;background:rgba(251,113,133,.16)}
+html[data-skin="aurora"] .dlgwarn{border:1px solid rgba(251,113,133,.45);border-radius:14px;background:rgba(251,113,133,.09)}
+html[data-skin="aurora"] .dlginp{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px}
+html[data-skin="aurora"] .dlginp:focus{border-color:#7de7f7}
+html[data-skin="aurora"] .btn-danger{background:linear-gradient(135deg,#fb7185,#c24bd6);color:#fff;border-radius:99px}
+html[data-skin="aurora"] .dlgstep i{background:linear-gradient(135deg,#7c5cff,#22d3ee);color:#fff}
+html[data-skin="aurora"] .dlgurl{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px}
+html[data-skin="slate"] .addtile{border:1px dashed var(--sl-line2);border-radius:14px;color:var(--sl-dim);font-weight:500}
+html[data-skin="slate"] .addtile:hover{border-color:#4d525d;color:#fff;background:#14161a}
+html[data-skin="slate"] .btn-del{font-family:inherit;font-weight:500;background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:var(--mut)}
+html[data-skin="slate"] .btn-del:hover:not(:disabled){border-color:var(--bad);color:var(--bad);background:#1b1e24}
+html[data-skin="slate"] .dlgwarn{border:1px solid rgba(239,106,106,.4);border-radius:10px;background:rgba(239,106,106,.07)}
+html[data-skin="slate"] .dlginp{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
+html[data-skin="slate"] .dlginp:focus{border-color:#8a909c}
+html[data-skin="slate"] .btn-danger{font-weight:500;background:transparent;border:1px solid var(--bad);color:var(--bad);border-radius:7px}
+html[data-skin="slate"] .btn-danger:hover:not(:disabled){background:var(--bad);color:#0e0f12}
+html[data-skin="slate"] .dlgstep i{background:transparent;border:1px solid var(--sl-line2);color:#c7ccd6}
+html[data-skin="slate"] .dlgurl{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
+html[data-skin="blocks"] .addtile{background:#fff;border:3px dashed var(--bk);border-radius:0;color:var(--bk);font-weight:800;box-shadow:4px 4px 0 var(--bk)}
+html[data-skin="blocks"] .addtile:hover{background:var(--bl);border-style:solid}
+html[data-skin="blocks"] .addtile .plus{border:2px solid var(--bk);border-radius:0;background:var(--by)}
+html[data-skin="blocks"] .btn-del{background:#fff;border:2px solid var(--bk);color:var(--bk);border-radius:0;font-weight:700;box-shadow:3px 3px 0 var(--bk)}
+html[data-skin="blocks"] .btn-del:hover:not(:disabled){background:var(--bad);color:#fff}
+html[data-skin="blocks"] .dlgwarn{border:2px solid var(--bk);border-radius:0;background:#ffe3e3;color:var(--bk);box-shadow:3px 3px 0 var(--bad)}
+html[data-skin="blocks"] .dlgwarn b{color:#c40000}
+html[data-skin="blocks"] .dlginp{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
+html[data-skin="blocks"] .dlginp:focus{background:#fffbe0}
+html[data-skin="blocks"] .btn-danger{background:var(--bad);color:#fff;border:2px solid var(--bk);border-radius:0;box-shadow:3px 3px 0 var(--bk)}
+html[data-skin="blocks"] .dlgstep i{background:var(--bk);color:var(--by);border-radius:0}
+html[data-skin="blocks"] .dlgurl{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
+html[data-skin="blocks"] .dlgerr{color:#c40000;font-weight:700}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter></svg>
 <div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="gear" class="hdrgear" title="Модели">⚙</button></div></div>
@@ -2615,6 +2876,7 @@ html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:v
   <div class="modalfoot"><button id="checkNew" class="ghostbtn">🔄 Проверить новые модели</button><button id="modalDone" style="margin-top:0">Готово</button></div>
  </div>
 </div>
+<div id="acctScrim" class="scrim" hidden><div class="modal" id="acctBox" role="dialog" aria-modal="true"></div></div>
 <script>
 const $=s=>document.querySelector(s);const TOKEN='__TOKEN__';const API=location.origin+'/cc-hook/';
 const I18N={
@@ -2638,6 +2900,34 @@ const I18N={
   switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
   extended:'Я продлил',
   relogin:'🔑 Войти заново',
+  addTile:'Добавить аккаунт',
+  addTitle:'Добавить аккаунт в ротацию',
+  addSub:'Войди в Claude под нужным аккаунтом — после входа он сам встанет в ротацию, настраивать вручную ничего не нужно.',
+  addEmailLbl:'Почта аккаунта (необязательно)',
+  addEmailHint:'Подставится на странице входа, чтобы не набирать её заново.',
+  addGetLink:'Получить ссылку для входа',
+  addStarting:'Готовлю ссылку…',
+  addStep1:'Открой ссылку и войди в нужный аккаунт Claude',
+  addOpen:'Открыть ссылку',
+  addCopy:'Копировать',
+  addCopied:'Скопировано ✓',
+  addStep2:'Вставь код, который покажет страница после входа',
+  addCodePh:'Код со страницы входа',
+  addSubmit:'Добавить в ротацию',
+  addChecking:'Проверяю вход…',
+  addRestart:'Начать заново',
+  addNeedCode:'Вставь код со страницы входа.',
+  delBtn:'Удалить',
+  delBtnTitle:'Удалить аккаунт из ротации навсегда',
+  delTitle:'Удалить аккаунт навсегда?',
+  delWarn:'<b>Это безвозвратно.</b> Профиль и токены аккаунта будут стёрты сразу — без корзины и без отката. Из ротации он пропадёт полностью; вернуть его можно только добавив заново, с новым входом через браузер.',
+  delActive:'Сейчас это активный аккаунт — перед удалением сессия будет переведена на другой.',
+  delLast:'Это единственный аккаунт в ротации — удалить его нельзя.',
+  delWord:'подтверждаю',
+  delType:w=>'Чтобы подтвердить, введи слово «'+w+'»',
+  delGo:'Удалить навсегда',
+  delWorking:'Удаляю…',
+  cancel:'Отмена',
   relStarting:'Запускаю…',
   relChecking:'Проверяю код…',
   relPrompt:email=>`Ссылка входа открылась в новой вкладке (и скопирована в буфер обмена — если вкладка не та или её заблокировал браузер, просто вставь ссылку в нужный профиль).\nВойди под ${email} и вставь код авторизации сюда:`,
@@ -2773,6 +3063,34 @@ const I18N={
   switchBlockedTitle:'Blocked: limit-switch optimization is on',
   extended:'I renewed',
   relogin:'🔑 Log in again',
+  addTile:'Add an account',
+  addTitle:'Add an account to the rotation',
+  addSub:'Sign in to Claude with the account you want — once you are in, it joins the rotation by itself, no manual setup.',
+  addEmailLbl:'Account email (optional)',
+  addEmailHint:'Pre-fills the sign-in page so you do not have to type it again.',
+  addGetLink:'Get the sign-in link',
+  addStarting:'Preparing the link…',
+  addStep1:'Open the link and sign in to the Claude account',
+  addOpen:'Open link',
+  addCopy:'Copy',
+  addCopied:'Copied ✓',
+  addStep2:'Paste the code the page shows after sign-in',
+  addCodePh:'Code from the sign-in page',
+  addSubmit:'Add to rotation',
+  addChecking:'Checking sign-in…',
+  addRestart:'Start over',
+  addNeedCode:'Paste the code from the sign-in page.',
+  delBtn:'Delete',
+  delBtnTitle:'Remove the account from the rotation for good',
+  delTitle:'Delete this account for good?',
+  delWarn:'<b>This cannot be undone.</b> The profile and its tokens are wiped immediately — no recycle bin, no rollback. The account disappears from the rotation entirely; the only way back is to add it again with a fresh browser sign-in.',
+  delActive:'This is the active account — the session will be moved to another one first.',
+  delLast:'This is the only account in the rotation — it cannot be deleted.',
+  delWord:'confirm',
+  delType:w=>'To confirm, type the word “'+w+'”',
+  delGo:'Delete for good',
+  delWorking:'Deleting…',
+  cancel:'Cancel',
   relStarting:'Starting…',
   relChecking:'Checking code…',
   relPrompt:email=>`The login link opened in a new tab (and was copied to your clipboard — if it's the wrong tab or got blocked, just paste the link into the right browser profile).\nSign in as ${email} and paste the authorization code here:`,
@@ -3052,6 +3370,7 @@ window.addEventListener('popstate',()=>{if(FS.on&&!(history.state&&history.state
 document.addEventListener('fullscreenchange',()=>{if(FS.on&&FS.browser&&!document.fullscreenElement)fsClose();});
 document.addEventListener('keydown',e=>{
  if(e.key!=='Escape')return;
+ if(!$('#acctScrim').hidden){acctClose();return;}
  if(!$('#scrim').hidden){$('#scrim').hidden=true;return;}
  if(FS.on)fsClose();
 });
@@ -3096,9 +3415,10 @@ function renderCards(d){
    ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
-   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}',this)">${tr('relogin')}</button></div>
+   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}',this)">${tr('relogin')}</button>
+   <button class="btn-del" title="${tr('delBtnTitle')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg>${tr('delBtn')}</button></div>
   </div>`;
- }).join('');
+ }).join('')+`<button class="addtile" onclick="acctAdd()"><span class="plus">+</span>${tr('addTile')}</button>`;
 }
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
@@ -3227,12 +3547,106 @@ async function relogin(n,btn){
   const code=prompt(tr('relPrompt',d.email||n));
   if(code==null)return;
   btn.textContent=tr('relChecking');
-  const r2=await fetch(API+'relogin/submit?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n,code})});
+  const r2=await fetch(API+'relogin/submit?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n,code,lang:LANG})});
   const d2=await r2.json();toast(d2.ok?d2.message:'⚠ '+d2.message);
  }catch(e){toast('⚠ '+e);}
  finally{btn.disabled=false;btn.textContent=orig;load();}
 }
 $('#rf').addEventListener('click',()=>{$('#rf').disabled=true;load(1).finally(()=>$('#rf').disabled=false)});
+
+// ---- добавление и удаление аккаунтов ----
+// Окно одно на оба сценария (#acctBox). Удаление необратимо: кнопка «Удалить навсегда»
+// оживает только после ввода слова; ту же проверку делает и сервер.
+const acctEsc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let acctBusy=false;
+function acctClose(){if(acctBusy)return;$('#acctScrim').hidden=true;$('#acctBox').innerHTML='';}
+function acctShow(html){$('#acctBox').innerHTML=html;$('#acctScrim').hidden=false;}
+function acctErr(t){const e=$('#acctErr');if(!e)return;e.textContent=t;e.hidden=!t;}
+async function acctPost(path,body){
+ const r=await fetch(API+path+'?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({lang:LANG},body))});
+ return r.json();
+}
+function acctDel(n){
+ const accs=(lastSnap&&lastSnap.accounts)||{};const a=accs[n]||{};
+ const real=Object.values(accs).filter(x=>x.email&&x.email!=='?').length;
+ const isReal=a.email&&a.email!=='?';const last=isReal&&real<=1;
+ const word=tr('delWord');
+ acctShow(`<h3>${tr('delTitle')}</h3>
+  <div class="modalsub"><b>${acctEsc(isReal?a.email:n)}</b> · ${acctEsc(n)}</div>
+  <div class="dlgwarn">${tr('delWarn')}${a.active?'<br><br>'+tr('delActive'):''}</div>
+  ${last?`<div class="dlgerr">${tr('delLast')}</div>`:`<label class="dlglbl" for="delInp">${tr('delType',word)}</label>
+  <input id="delInp" class="dlginp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${word}">
+  <div class="dlgerr" id="acctErr" hidden></div>`}
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button>${last?'':`<button class="btn-danger" id="delGo" disabled>${tr('delGo')}</button>`}</div>`);
+ $('#acctCancel').onclick=acctClose;
+ if(last)return;
+ const inp=$('#delInp'),go=$('#delGo');
+ inp.addEventListener('input',()=>{go.disabled=inp.value.trim().toLowerCase()!==word;});
+ inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!go.disabled)go.click();});
+ go.onclick=async()=>{
+  if(acctBusy||go.disabled)return;
+  acctBusy=true;go.disabled=true;go.textContent=tr('delWorking');acctErr('');
+  try{
+   const d=await acctPost('account/delete',{account:n,confirm:inp.value});
+   acctBusy=false;
+   if(d.ok){acctClose();toast(d.message);load();return;}
+   acctErr(d.message);go.textContent=tr('delGo');go.disabled=inp.value.trim().toLowerCase()!==word;
+  }catch(e){acctBusy=false;acctErr(String(e));go.textContent=tr('delGo');go.disabled=false;}
+ };
+ setTimeout(()=>inp.focus(),30);
+}
+function acctAdd(){
+ acctShow(`<h3>${tr('addTitle')}</h3>
+  <div class="modalsub">${tr('addSub')}</div>
+  <label class="dlglbl" for="addEmail">${tr('addEmailLbl')}</label>
+  <input id="addEmail" class="dlginp" type="email" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="name@example.com">
+  <div class="modalsub" style="margin:6px 0 0">${tr('addEmailHint')}</div>
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button id="addGo">${tr('addGetLink')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ const go=$('#addGo'),em=$('#addEmail');
+ em.addEventListener('keydown',e=>{if(e.key==='Enter')go.click();});
+ go.onclick=async()=>{
+  if(acctBusy)return;
+  acctBusy=true;go.disabled=true;go.textContent=tr('addStarting');acctErr('');
+  try{
+   const d=await acctPost('account/add/start',{email:em.value.trim()});
+   acctBusy=false;
+   if(!d.ok){acctErr(d.message);go.disabled=false;go.textContent=tr('addGetLink');return;}
+   acctAddStep2(d);
+  }catch(e){acctBusy=false;acctErr(String(e));go.disabled=false;go.textContent=tr('addGetLink');}
+ };
+ setTimeout(()=>em.focus(),30);
+}
+function acctAddStep2(d){
+ acctShow(`<h3>${tr('addTitle')}</h3>
+  <div class="dlgstep"><i>1</i>${tr('addStep1')}</div>
+  <div class="dlgurl">${acctEsc(d.url)}</div>
+  <div class="dlgrow"><button id="addOpen">${tr('addOpen')}</button><button class="ghostbtn" id="addCopy">${tr('addCopy')}</button></div>
+  <div class="dlgstep"><i>2</i>${tr('addStep2')}</div>
+  <input id="addCode" class="dlginp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${tr('addCodePh')}">
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button id="addSend">${tr('addSubmit')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ $('#addOpen').onclick=()=>window.open(d.url,'_blank');
+ $('#addCopy').onclick=async()=>{try{await navigator.clipboard.writeText(d.url);const b=$('#addCopy');b.textContent=tr('addCopied');setTimeout(()=>{b.textContent=tr('addCopy')},1800);}catch(e){}};
+ const code=$('#addCode'),send=$('#addSend');
+ code.addEventListener('keydown',e=>{if(e.key==='Enter')send.click();});
+ send.onclick=async()=>{
+  if(acctBusy)return;
+  if(!code.value.trim()){acctErr(tr('addNeedCode'));return;}
+  acctBusy=true;send.disabled=true;send.textContent=tr('addChecking');acctErr('');
+  try{
+   const r=await acctPost('account/add/submit',{slot:d.slot,code:code.value.trim()});
+   acctBusy=false;
+   if(r.ok){acctClose();toast(r.message);load();return;}
+   // неудачная попытка на сервере уже сброшена — второй раз тот же код не сработает, нужна новая ссылка
+   acctErr(r.message);send.disabled=false;send.textContent=tr('addRestart');send.onclick=acctAdd;
+  }catch(e){acctBusy=false;acctErr(String(e));send.disabled=false;send.textContent=tr('addSubmit');}
+ };
+ setTimeout(()=>code.focus(),30);
+}
+$('#acctScrim').addEventListener('mousedown',e=>{if(e.target.id==='acctScrim')acctClose();});
 
 // ---- баннер лимитов/паузы ----
 // Данные тянем раз в 20 с, а обратный отсчёт тикает локально каждую секунду —
