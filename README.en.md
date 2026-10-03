@@ -60,8 +60,8 @@ the Russian UI, the panel is bilingual):
 ![Update banner](screenshots/update-banner.png)
 ![Update settings](screenshots/update-settings.png)
 
-Adding and deleting accounts (v1.19.0) — the "+ Add account" tile at the end
-of the list, a "Delete" button on every card and the windows for both flows
+Adding and deleting accounts (v1.19.0) — a "+" button in the header next to the
+gear, a "Delete" button on every card and the windows for both flows
 (deleting only works after typing the confirmation word):
 
 ![Adding and deleting accounts](screenshots/accounts.en.png)
@@ -123,8 +123,8 @@ of the list, a "Delete" button on every card and the windows for both flows
   under a day shows hours, past the date it says "expired"; the tooltip has the
   exact date. Tokens never reach `/api/limits`, only the `login_expires` date
   goes out. Fitted into all five looks.
-- ➕ **Adding and deleting accounts from the panel** (v1.19.0) — an
-  "+ Add account" tile at the end of the list: sign-in link → code from the
+- ➕ **Adding and deleting accounts from the panel** (v1.19.0) — a
+  "+" button in the header next to the gear: sign-in link → code from the
   page → the account joins the rotation by itself. A "Delete" button on the
   card removes an account for good (the profile with its tokens and every
   trace in the snapshot) — if you lose access to an account it no longer sits
@@ -286,7 +286,7 @@ backdrop close the window without doing anything.
 
 ### Adding an account
 
-The **"+ Add account"** tile at the end of the list → a window:
+The **"+"** button in the header (next to the "Models" gear, tooltip "Add an account") → a window:
 
 1. the account's email (optional — it pre-fills the sign-in page so you do not
    have to type it again) → **"Get the sign-in link"**;
@@ -610,6 +610,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - HTTPS/certbot — a manual step after `install.sh`.
 
 ## Version history
+
+- **v1.19.1** — adding an account moved from a tile at the end of the list to a
+  compact "+" button in the header next to the "Models" gear (RU/EN tooltip,
+  in all five looks): no permanently hanging empty block, and a new card appears
+  only once an account has been added. The windows and the API are unchanged.
 
 - **v1.19.0** — adding and deleting accounts from the panel. An "+ Add account"
   tile (email optional → sign-in link → code from the page → the account joins

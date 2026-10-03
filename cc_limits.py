@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.19.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.19.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2770,9 +2770,7 @@ html[data-skin="blocks"] #fsRoot.fs{background:var(--by)}
 html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:var(--bk)}
 
 /* ---- добавление/удаление аккаунтов ---- */
-.addtile{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:0 0 12px;padding:15px 16px;background:transparent;border:1.5px dashed #333c4d;color:var(--mut);border-radius:14px;font-size:14px;font-weight:600;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
-.addtile:hover{border-color:var(--acc);color:var(--txt);background:rgba(124,154,255,.06)}
-.addtile .plus{width:24px;height:24px;border-radius:50%;border:1.5px solid currentColor;display:inline-flex;align-items:center;justify-content:center;font-size:17px;line-height:1;font-weight:500;padding-bottom:1px}
+.hdrgear svg{width:14px;height:14px}
 .btn-del{margin:0 0 0 auto;display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid #333c4d;color:var(--mut)}
 .btn-del svg{width:14px;height:14px}
 .btn-del:hover:not(:disabled){border-color:var(--bad);color:var(--bad)}
@@ -2791,9 +2789,6 @@ html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:v
 .dlgurl{word-break:break-all;font-size:11.5px;line-height:1.4;background:#0f1115;border:1px solid #2a3140;border-radius:9px;padding:8px 10px;color:var(--mut);max-height:62px;overflow:auto}
 .dlgrow{display:flex;gap:8px;margin-top:8px}
 .dlgrow button{margin-top:0}
-html[data-skin="phosphor"] .addtile{border:1px dashed var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
-html[data-skin="phosphor"] .addtile:hover{border-color:var(--ph);color:var(--ph);background:#0c2a17;box-shadow:0 0 14px rgba(109,255,154,.22)}
-html[data-skin="phosphor"] .addtile .plus{border-radius:0}
 html[data-skin="phosphor"] .btn-del{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
 html[data-skin="phosphor"] .btn-del:hover:not(:disabled){border-color:#ff6b5e;color:#ff6b5e}
 html[data-skin="phosphor"] .dlgwarn{border:1px dashed #ff6b5e;border-radius:0;background:rgba(255,107,94,.06);color:#ffd9d4}
@@ -2804,8 +2799,6 @@ html[data-skin="phosphor"] #acctBox button:not(.ghostbtn):not(.btn-danger){borde
 html[data-skin="phosphor"] #acctBox .ghostbtn{border-radius:0}
 html[data-skin="phosphor"] .dlgstep i{border-radius:0;background:var(--ph);color:#021006}
 html[data-skin="phosphor"] .dlgurl{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--phd)}
-html[data-skin="aurora"] .addtile{border:1.5px dashed rgba(255,255,255,.22);border-radius:20px;color:var(--mut);background:rgba(255,255,255,.03)}
-html[data-skin="aurora"] .addtile:hover{border-color:#7de7f7;color:#fff;background:linear-gradient(135deg,rgba(124,92,255,.18),rgba(34,211,238,.12));box-shadow:0 10px 30px -12px rgba(124,92,255,.6)}
 html[data-skin="aurora"] .btn-del{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--mut);border-radius:99px;font-weight:600}
 html[data-skin="aurora"] .btn-del:hover:not(:disabled){border-color:var(--bad);color:#fff;background:rgba(251,113,133,.16)}
 html[data-skin="aurora"] .dlgwarn{border:1px solid rgba(251,113,133,.45);border-radius:14px;background:rgba(251,113,133,.09)}
@@ -2814,8 +2807,6 @@ html[data-skin="aurora"] .dlginp:focus{border-color:#7de7f7}
 html[data-skin="aurora"] .btn-danger{background:linear-gradient(135deg,#fb7185,#c24bd6);color:#fff;border-radius:99px}
 html[data-skin="aurora"] .dlgstep i{background:linear-gradient(135deg,#7c5cff,#22d3ee);color:#fff}
 html[data-skin="aurora"] .dlgurl{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px}
-html[data-skin="slate"] .addtile{border:1px dashed var(--sl-line2);border-radius:14px;color:var(--sl-dim);font-weight:500}
-html[data-skin="slate"] .addtile:hover{border-color:#4d525d;color:#fff;background:#14161a}
 html[data-skin="slate"] .btn-del{font-family:inherit;font-weight:500;background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:var(--mut)}
 html[data-skin="slate"] .btn-del:hover:not(:disabled){border-color:var(--bad);color:var(--bad);background:#1b1e24}
 html[data-skin="slate"] .dlgwarn{border:1px solid rgba(239,106,106,.4);border-radius:10px;background:rgba(239,106,106,.07)}
@@ -2825,9 +2816,6 @@ html[data-skin="slate"] .btn-danger{font-weight:500;background:transparent;borde
 html[data-skin="slate"] .btn-danger:hover:not(:disabled){background:var(--bad);color:#0e0f12}
 html[data-skin="slate"] .dlgstep i{background:transparent;border:1px solid var(--sl-line2);color:#c7ccd6}
 html[data-skin="slate"] .dlgurl{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
-html[data-skin="blocks"] .addtile{background:#fff;border:3px dashed var(--bk);border-radius:0;color:var(--bk);font-weight:800;box-shadow:4px 4px 0 var(--bk)}
-html[data-skin="blocks"] .addtile:hover{background:var(--bl);border-style:solid}
-html[data-skin="blocks"] .addtile .plus{border:2px solid var(--bk);border-radius:0;background:var(--by)}
 html[data-skin="blocks"] .btn-del{background:#fff;border:2px solid var(--bk);color:var(--bk);border-radius:0;font-weight:700;box-shadow:3px 3px 0 var(--bk)}
 html[data-skin="blocks"] .btn-del:hover:not(:disabled){background:var(--bad);color:#fff}
 html[data-skin="blocks"] .dlgwarn{border:2px solid var(--bk);border-radius:0;background:#ffe3e3;color:var(--bk);box-shadow:3px 3px 0 var(--bad)}
@@ -2840,7 +2828,7 @@ html[data-skin="blocks"] .dlgurl{background:#fff;color:var(--bk);border:2px soli
 html[data-skin="blocks"] .dlgerr{color:#c40000;font-weight:700}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter></svg>
-<div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="gear" class="hdrgear" title="Модели">⚙</button></div></div>
+<div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="gear" class="hdrgear" title="Модели">⚙</button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div id="fsRoot">
 <div class="fsbar" id="fsBar"><span class="fsinfo" id="fsInfo"></span><div class="fsseg"><button type="button" id="fsMFit"></button><button type="button" id="fsMBig"></button></div><button type="button" class="iconbtn" id="fsClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
@@ -2900,7 +2888,7 @@ const I18N={
   switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
   extended:'Я продлил',
   relogin:'🔑 Войти заново',
-  addTile:'Добавить аккаунт',
+  addBtnTitle:'Добавить аккаунт',
   addTitle:'Добавить аккаунт в ротацию',
   addSub:'Войди в Claude под нужным аккаунтом — после входа он сам встанет в ротацию, настраивать вручную ничего не нужно.',
   addEmailLbl:'Почта аккаунта (необязательно)',
@@ -3063,7 +3051,7 @@ const I18N={
   switchBlockedTitle:'Blocked: limit-switch optimization is on',
   extended:'I renewed',
   relogin:'🔑 Log in again',
-  addTile:'Add an account',
+  addBtnTitle:'Add an account',
   addTitle:'Add an account to the rotation',
   addSub:'Sign in to Claude with the account you want — once you are in, it joins the rotation by itself, no manual setup.',
   addEmailLbl:'Account email (optional)',
@@ -3223,7 +3211,7 @@ function applyI18n(){
  $('#h1').textContent=tr('h1');$('#consoleTitle').textContent=tr('console');
  $('#optLbl').textContent=tr('optLbl');$('#rf').textContent=tr('refresh');
  renderAutoLbl();renderLangSwitch();
- $('#gear').title=tr('modelsBtnTitle');$('#modalTitle').textContent=tr('modelsTitle');
+ $('#gear').title=tr('modelsBtnTitle');$('#addAcct').title=tr('addBtnTitle');$('#addAcct').setAttribute('aria-label',tr('addBtnTitle'));$('#modalTitle').textContent=tr('modelsTitle');
  $('#modelsHdr').textContent=tr('modelsHdr');$('#skinTitle').textContent=tr('skinTitle');buildSkinGrid();
  $('#fsBtn').title=tr('fsOpenTitle');$('#fsClose').title=tr('fsCloseTitle');
  $('#fsMFit').textContent=tr('fsFit');$('#fsMFit').title=tr('fsFitTitle');$('#fsMBig').textContent=tr('fsBig');$('#fsMBig').title=tr('fsBigTitle');
@@ -3418,7 +3406,7 @@ function renderCards(d){
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}',this)">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg>${tr('delBtn')}</button></div>
   </div>`;
- }).join('')+`<button class="addtile" onclick="acctAdd()"><span class="plus">+</span>${tr('addTile')}</button>`;
+ }).join('');
 }
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
