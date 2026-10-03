@@ -123,6 +123,24 @@ def refresh_tokens(creds_path):
     return c
 
 
+def _login_expires(name, act):
+    # Срок жизни логина: refreshTokenExpiresAt в credentials.json — абсолютная дата
+    # (~28 дней от настоящего /login), refresh её НЕ продлевает. После неё аккаунт
+    # отваливается с «Login expired», лечится только «Войти заново». У активного профиля
+    # истину ведёт live-файл CLI, у остальных — файл профиля. Сами токены наружу не уходят.
+    from datetime import datetime, timezone
+    try:
+        path = LIVE_CREDS if name == act else f"{PROFILES}/{name}/credentials.json"
+        ms = (jload(path, {}) or {}).get("claudeAiOauth", {}).get("refreshTokenExpiresAt")
+        if not ms and name == act:
+            ms = (jload(f"{PROFILES}/{name}/credentials.json", {}) or {}).get("claudeAiOauth", {}).get("refreshTokenExpiresAt")
+        if not ms:
+            return None
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).isoformat()
+    except Exception:
+        return None
+
+
 def get_access(name, act):
     # Для активного профиля access берём из live-файла (его ведёт сам CLI),
     # рефрешим live только если он уже протух. Неактивным рефрешим свои файлы профилей.
@@ -1843,6 +1861,11 @@ class H(BaseHTTPRequestHandler):
                 ts = (renewal.get(n) or {}).get("confirmed_ts")
                 if ts:
                     row["renewal_next"] = _renewal_next(ts)
+            act_n = active_name()
+            for n, row in (snap.get("accounts") or {}).items():
+                le = _login_expires(n, act_n)
+                if le:
+                    row["login_expires"] = le
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
             snap["model"] = model_info()
             return self._send(200, snap)
@@ -2079,6 +2102,9 @@ h1{font-size:19px;margin:0}
 .chip b{color:var(--txt);font-weight:700}
 .chip.urgent{border-color:rgba(224,91,91,.4)}
 .chip.urgent b{color:var(--bad)}
+.chip.warn{border-color:rgba(232,170,60,.45)}
+.chip.warn b{color:var(--warn)}
+.chip.login{cursor:help;vertical-align:baseline}
 .ring{position:relative;flex:none}
 .ring svg{display:block}
 .ringtxt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--txt);font-weight:700}
@@ -2148,6 +2174,8 @@ button:disabled{opacity:.35;cursor:default}
 .btn-relogin{margin-left:8px;background:transparent;border:1px solid #333c4d;color:var(--mut)}
 .acts{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:12px}
 .acts .btn-sw,.acts .btn-renew,.acts .btn-relogin{margin-top:0}
+.acts .chip.login{flex:0 0 auto}
+.acts .chip.login+.btn-relogin{margin-left:0}
 .poolname{width:100%;box-sizing:border-box;background:#0f1115;border:1px solid #2a3140;color:inherit;border-radius:6px;padding:5px 8px;font-size:13px}
 .modal{max-width:380px;max-height:90vh;overflow-y:auto}
 .modalh{font-size:12.5px;font-weight:700;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
@@ -2235,6 +2263,8 @@ html[data-skin="phosphor"] .tag.pin{background:var(--ph);color:#021006;border-co
 html[data-skin="phosphor"] .chip{background:transparent;border:1px dashed var(--phl);border-radius:0;color:var(--phd);font-family:inherit}
 html[data-skin="phosphor"] .chip b{color:var(--ph2)}
 html[data-skin="phosphor"] .chip.urgent{border-color:#ff6b5e}
+html[data-skin="phosphor"] .chip.warn{border-color:#ffd24a}
+html[data-skin="phosphor"] .chip.warn b{color:#ffd24a}
 html[data-skin="phosphor"] .email{font-weight:700;font-size:13px;color:#d8ffe4;text-shadow:0 0 6px rgba(109,255,154,.45)}
 html[data-skin="phosphor"] .err{color:#ff6b5e}
 html[data-skin="phosphor"] .ring svg circle:first-child{stroke:#0f2e19}
@@ -2310,6 +2340,8 @@ html[data-skin="aurora"] .tag.pin{background:linear-gradient(135deg,#7c5cff,#ff5
 html[data-skin="aurora"] .chip{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12);color:var(--mut);font-family:inherit}
 html[data-skin="aurora"] .chip b{color:var(--txt)}
 html[data-skin="aurora"] .chip.urgent{border-color:rgba(251,113,133,.6)}
+html[data-skin="aurora"] .chip.warn{border-color:rgba(251,191,36,.6)}
+html[data-skin="aurora"] .chip.warn b{color:#fbbf24}
 html[data-skin="aurora"] .email{font-weight:800;letter-spacing:.005em}
 html[data-skin="aurora"] .ring{filter:drop-shadow(0 0 10px rgba(124,92,255,.35))}
 html[data-skin="aurora"] .ring svg circle:first-child{stroke:rgba(255,255,255,.10)}
@@ -2381,6 +2413,7 @@ html[data-skin="slate"] .tag.pin{background:#e7e9ee;color:#0e0f12;border-color:#
 html[data-skin="slate"] .chip{background:transparent;border:0;border-radius:0;color:var(--mut);font-family:"JetBrains Mono",monospace;font-size:11.5px;padding:0}
 html[data-skin="slate"] .chip b{color:#c7ccd6;font-weight:500}
 html[data-skin="slate"] .chip.urgent b{color:var(--bad)}
+html[data-skin="slate"] .chip.warn b{color:#e0a64a}
 html[data-skin="slate"] .email{font-size:13.5px;font-weight:600;letter-spacing:-.005em}
 html[data-skin="slate"] .ring svg circle:first-child{stroke:#23262d}
 html[data-skin="slate"] .ring svg circle{stroke-width:2.6}
@@ -2447,6 +2480,8 @@ html[data-skin="blocks"] .chip{background:#fff;border:2px solid var(--bk);border
 html[data-skin="blocks"] .chip b{color:var(--bk)}
 html[data-skin="blocks"] .chip.urgent{background:#ff3d3d;color:#fff}
 html[data-skin="blocks"] .chip.urgent b{color:#fff}
+html[data-skin="blocks"] .chip.warn{background:#ffd23f}
+html[data-skin="blocks"] .chip.warn b{color:var(--bk)}
 html[data-skin="blocks"] .email{font-size:15px;font-weight:700;color:var(--bk)}
 html[data-skin="blocks"] .err{color:#d41818;font-weight:700}
 html[data-skin="blocks"] .ring svg circle{stroke-width:4.5;stroke-linecap:butt}
@@ -2566,6 +2601,12 @@ const I18N={
   renewalSoon:'подписка: ожидаем обвал в PRO→FREE со дня на день',
   renewalChip:d=>`⏳ ${d} дн`,
   renewalChipToday:'⏳ сегодня',
+  loginWord:'логин',
+  loginD:d=>`${d} дн`,
+  loginH:h=>`${h} ч`,
+  loginGone:'истёк',
+  loginHint:w=>`Логин истекает ${w}. После этого нужно «Войти заново»`,
+  loginHintGone:w=>`Логин истёк ${w}. Нужно «Войти заново»`,
   ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
@@ -2648,6 +2689,12 @@ const I18N={
   renewalSoon:'subscription: expecting PRO→FREE drop any day now',
   renewalChip:d=>`⏳ ${d}d`,
   renewalChipToday:'⏳ today',
+  loginWord:'login',
+  loginD:d=>`${d}d`,
+  loginH:h=>`${h}h`,
+  loginGone:'expired',
+  loginHint:w=>`Login expires ${w}. After that you need “Log in again”`,
+  loginHintGone:w=>`Login expired ${w}. Use “Log in again”`,
   ccpPauseTitle:'⏸ Claude is <b>paused on limits</b> — it resumes on its own',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
@@ -2874,6 +2921,13 @@ function renewChip(iso){if(!iso)return'';const d=new Date(iso),ms=d-Date.now();
  if(ms<=0)return`<span class="chip urgent" title="${tr('renewalSoon')}">${tr('renewalChipToday')}</span>`;
  const days=Math.floor(ms/86400000);
  return`<span class="chip${days<3?' urgent':''}" title="${title}">${tr('renewalChip',days)}</span>`}
+function loginChip(iso){if(!iso)return'';const d=new Date(iso),ms=d-Date.now();
+ const when=d.toLocaleString(LANG==='en'?'en-GB':'ru',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+ if(ms<=0)return`<span class="chip login urgent" title="${tr('loginHintGone',when)}">${tr('loginWord')} <b>${tr('loginGone')}</b></span>`;
+ const days=Math.floor(ms/86400000);
+ const cls=days<=3?' urgent':days<=7?' warn':'';
+ const left=days>=1?tr('loginD',days):tr('loginH',Math.max(1,Math.floor(ms/3600000)));
+ return`<span class="chip login${cls}" title="${tr('loginHint',when)}">${tr('loginWord')} <b>${left}</b></span>`}
 function urgCol(f){return f>.5?'var(--bad)':f>.2?'var(--warn)':'var(--ok)'}
 function frac(iso,windowSec){if(!iso)return 0;const remain=(new Date(iso)-Date.now())/1000;return Math.max(0,Math.min(1,remain/windowSec))}
 function ring(o,windowSec,size){o=o||{};size=size||34;const sw=Math.max(3,Math.round(size*.1));const rad=size/2-sw/2;const circ=2*Math.PI*rad;const f=frac(o.resets_at,windowSec);const uc=urgCol(f);const dash=(f*circ).toFixed(1);const c=size/2;
@@ -2894,7 +2948,7 @@ function renderCards(d){
    ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
-   <button class="btn-relogin" onclick="relogin('${n}',this)">${tr('relogin')}</button></div>
+   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}',this)">${tr('relogin')}</button></div>
   </div>`;
  }).join('');
 }

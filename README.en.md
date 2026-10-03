@@ -102,6 +102,14 @@ Picking a look in settings:
   list of effort levels it supports (read from the catalog baked into the
   Claude Code binary; an unknown model is never blocked), and setting a level
   the model does not accept is rejected with a clear message.
+- ⏳ **Login expiry on the card** (v1.17.0) — next to "Log in again" there is a
+  "login N d" chip: how long is left until the date after which the account
+  drops with "Login expired". The date comes from `refreshTokenExpiresAt` in
+  `credentials.json` (an absolute date, ≈28 days after a real `/login`; an
+  ordinary token refresh does not extend it). ≤3 days is red, ≤7 is yellow,
+  under a day shows hours, past the date it says "expired"; the tooltip has the
+  exact date. Tokens never reach `/api/limits`, only the `login_expires` date
+  goes out. Fitted into all five looks.
 - 🔔 **State banner** at the top of the panel (RU/EN): "limits reached —
   nothing to switch to", "active account is full — background jobs paused",
   "paused, resuming at 16:03" with a countdown. In normal operation there is
@@ -449,6 +457,14 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.17.0** — login expiry on the account card. `/api/limits` returns
+  `login_expires` (an ISO date from `refreshTokenExpiresAt`: for the active
+  account from the CLI's live file, for the others from the profile file; no
+  field or a broken file — the key is simply absent), and next to "Log in
+  again" sits a "login N d" chip: ≤3 days red, ≤7 yellow, under a day shows
+  hours, past the date "expired", the exact date in the tooltip. Tokens never
+  go out. The chip is fitted into the classic look and the four skins (readable
+  on the active card in Blocks too), RU/EN.
 - **v1.16.0** — looks and full-screen console. Five looks (classic, Phosphor,
   Aurora, Slate, Blocks) in "⚙ Settings": pure CSS driven by `data-skin`, the
   choice lives in `localStorage`, and an early inline script in `<head>` sets
