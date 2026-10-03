@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.19.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.19.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -484,8 +484,14 @@ def _humanize_error(e):
             data = json.loads(body) if body else {}
         except Exception:
             data = {}
-        reason = (data.get("error_description") or data.get("error") or "").strip()
-        low = reason.lower()
+        raw_reason = data.get("error_description") or data.get("error") or ""
+        kind = data.get("error") if isinstance(data.get("error"), str) else ""  # код вроде invalid_grant
+        if isinstance(raw_reason, dict):
+            # Anthropic иногда отдаёт {"error": {"type": ..., "message": ...}}, а не строку
+            kind = str(raw_reason.get("type") or "")
+            raw_reason = raw_reason.get("message") or kind or json.dumps(raw_reason, ensure_ascii=False)
+        reason = str(raw_reason).strip()
+        low = (reason + " " + kind).lower()
         if code in (400, 401) and ("refresh token expired" in low or "invalid_grant" in low):
             return f"Токен протух ({code}) — нажми «Войти заново»"
         if code == 401:
@@ -2287,14 +2293,14 @@ PAGE = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude — лимиты аккаунтов</title>
 <link rel="icon" href="data:,">
-<script>try{var _s=localStorage.getItem('cc_skin');if(/^(phosphor|aurora|slate|blocks)$/.test(_s))document.documentElement.setAttribute('data-skin',_s)}catch(e){}</script>
+<script>try{var _s=localStorage.getItem('cc_skin');if(/^(phosphor|aurora|slate|blocks)$/.test(_s))document.documentElement.setAttribute('data-skin',_s)}catch(e){}try{if(localStorage.getItem('cc_conly')==='1')document.documentElement.classList.add('conly')}catch(e){}</script>
 <style>
 :root{--bg:#0f1115;--card:#181c24;--txt:#e8eaf0;--mut:#8b93a7;--ok:#34c07c;--warn:#e8b93e;--bad:#e05b5b;--acc:#7c9aff}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;max-width:640px;margin:0 auto}
+body{background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px}
 .hdr{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0 14px}
 h1{font-size:19px;margin:0}
-.hdrgear{background:transparent;border:1px solid #2a3140;color:var(--mut);width:28px;height:28px;padding:0;margin:0;border-radius:8px;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.hdrgear{background:transparent;border:1px solid #2a3140;color:var(--mut);width:28px;height:28px;padding:0;margin:0;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
 .mchip{margin:0;background:transparent;border:1px solid #2a3140;color:var(--txt);font-weight:600;padding:5px 12px;border-radius:99px;font-size:13px;cursor:pointer}
 .mchip.active{background:var(--acc);color:#0f1115;border-color:var(--acc)}
 .mrowslim{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
@@ -2311,6 +2317,8 @@ h1{font-size:19px;margin:0}
 .ghostbtn{margin:0;background:transparent;border:1px solid #2a3140;color:var(--txt);font-weight:600;padding:8px 14px;border-radius:10px;font-size:13px;cursor:pointer}
 .card{position:relative;background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:12px;border:1px solid #232a36}
 .card.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+#cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px;align-items:start;margin-bottom:12px}
+#cards .card{margin-bottom:0}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .email{font-weight:600;font-size:15px;word-break:break-all}
 .tag{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--acc);color:#0f1115;font-weight:700;white-space:nowrap}
@@ -2323,32 +2331,41 @@ h1{font-size:19px;margin:0}
 .chip.warn{border-color:rgba(232,170,60,.45)}
 .chip.warn b{color:var(--warn)}
 .chip.login{cursor:help;vertical-align:baseline}
+.chip.login svg{width:13px;height:13px;flex:none;color:var(--ok)}
+.chip.login.warn svg{color:var(--warn)}
+.chip.login.urgent svg{color:var(--bad)}
+.acts .chip.login{height:26px;box-sizing:border-box;padding:0 10px;gap:5px;font-size:12px}
+html[data-skin="blocks"] .chip.login svg{color:var(--bk)}
+html[data-skin="phosphor"] .chip.login svg{color:var(--ph)}
 .ring{position:relative;flex:none}
 .ring svg{display:block}
 .ringtxt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--txt);font-weight:700}
 .iconrow{display:flex;gap:6px;flex:none}
 .iconbtn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;background:var(--card);border:1px solid #2a3140;border-radius:7px;color:var(--mut);cursor:pointer;padding:0;margin:0;flex:none}
 .iconbtn:hover{border-color:var(--acc);color:var(--txt)}
-.iconbtn svg{width:14px;height:14px}
+.iconbtn svg{width:14px;height:14px;display:block}
 .row{margin-top:10px}
 .lbl{display:flex;justify-content:space-between;font-size:12.5px;color:var(--mut);margin-bottom:4px}
 .bar{height:10px;border-radius:99px;background:#242b38;overflow:hidden}
 .fill{height:100%;border-radius:99px;transition:width .5s}
 button{background:var(--acc);border:0;color:#0f1115;font-weight:700;padding:8px 14px;border-radius:10px;font-size:13.5px;cursor:pointer;margin-top:12px}
 button:disabled{opacity:.35;cursor:default}
-.thrbtn{background:var(--card);border:1px solid #2a3140;color:var(--txt);font-weight:700;padding:1px 9px;border-radius:6px;font-size:14px;line-height:1.6;margin:0}
+.thrbtn{background:var(--card);border:1px solid #2a3140;color:var(--txt);width:30px;height:26px;padding:0;border-radius:6px;margin:0;display:inline-flex;align-items:center;justify-content:center}
+.thrbtn svg{width:14px;height:14px;display:block}
 .thrbtn:hover{border-color:var(--acc)}
-.foot{display:flex;justify-content:space-between;align-items:center;color:var(--mut);font-size:12.5px;margin-top:6px;flex-wrap:wrap;gap:8px}
 .err{color:var(--bad);font-size:13px;margin-top:8px}
 .switchrow{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--mut);margin-bottom:14px}
 .switchrow input{transform:scale(1.25)}
 #msg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#232a36;padding:10px 18px;border-radius:12px;font-size:14px;display:none;max-width:92vw;z-index:20}
-.termwrap{display:flex;flex-direction:column;min-height:130px;margin-bottom:18px}
-.termhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.termhead h2{font-size:15px;margin:0}
+.termwrap{position:relative;display:flex;flex-direction:column;min-height:130px;margin-bottom:18px}
 .termdot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+.tzoom{position:absolute;top:7px;right:22px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
+.hdrl{display:flex;align-items:center;gap:10px;min-width:0}
+.hdrgear:disabled svg{animation:ccspin .8s linear infinite}
+.tzval{margin:0;padding:0 4px;min-width:48px;background:transparent;border:0;color:var(--mut);font-family:inherit;font-size:12.5px;font-weight:600;text-align:center;cursor:pointer}
+.tzval:hover{color:var(--txt)}
 .termdot.err{background:var(--bad)}
-.termbox{background:#0b0d10;border:1px solid #232a36;border-radius:8px;padding:10px 12px;max-height:42vh;overflow-x:hidden;overflow-y:auto;margin:0;font:11px/1.3 ui-monospace,Consolas,monospace;color:#c8d0dc;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:#3a3f4b #14171c}
+.termbox{background:#0b0d10;border:1px solid #232a36;border-radius:8px;padding:10px 12px;overflow-x:hidden;overflow-y:auto;margin:0;font:11px/1.3 ui-monospace,Consolas,monospace;font-size:calc(11px*var(--tz,1));color:#c8d0dc;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:#3a3f4b #14171c}
 .termbox::-webkit-scrollbar{width:9px}
 .termbox::-webkit-scrollbar-track{background:#14171c}
 .termbox::-webkit-scrollbar-thumb{background:#3a3f4b;border-radius:99px;border:2px solid #14171c;background-clip:padding-box}
@@ -2380,6 +2397,9 @@ html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accen
 @keyframes updslide{0%{margin-left:-35%}100%{margin-left:100%}}
 @media (prefers-reduced-motion:reduce){.upd-bar i{animation:none;width:100%;opacity:.45}}
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+.segctl{display:inline-flex;border:1px solid #2a3140;border-radius:8px;overflow:hidden}
+.segctl button{margin:0;background:transparent;border:0;color:var(--mut);font-weight:600;padding:6px 12px;border-radius:0;font-size:12.5px}
+.segctl button.on{background:var(--acc);color:#0f1115}
 .updtxt{min-width:0;font-size:13px}
 .updsub{font-size:12px;color:var(--mut);margin-top:2px}
 .updsub.bad{color:var(--bad)}
@@ -2442,29 +2462,6 @@ html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accen
 .skp-blocks .c{background:#111;border:2px solid #111;border-radius:0;box-shadow:2px 2px 0 #111}
 .skp-blocks .a{background:#fff;border:2px solid #111;border-radius:0;box-shadow:2px 2px 0 #111}
 .skp-blocks .a:nth-of-type(1){background:#b6f23a}
-/* --- полный экран консоли: #fsRoot целиком становится фикс-оверлеем; консоль сверху ≈70% высоты, аккаунты снизу ≈30% --- */
-.fsbar,.fsacc{display:none}
-.fsbtn{margin-left:auto}
-.fsseg{display:inline-flex;border:1px solid #2a3140;border-radius:8px;overflow:hidden}
-.fsseg button{margin:0;background:transparent;border:0;color:var(--mut);font-weight:600;padding:6px 12px;border-radius:0;font-size:12.5px}
-.fsseg button.on{background:var(--acc);color:#0f1115}
-.fsinfo{flex:1;min-width:0;font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-body.fs-on{overflow:hidden}
-#fsRoot{display:contents}
-#fsRoot.fs{position:fixed;inset:0;z-index:40;box-sizing:border-box;padding:14px;background:var(--bg);display:grid;gap:10px 14px;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,7fr) minmax(0,3fr)}
-#fsRoot.fs>.fsbar{grid-area:1/1;display:flex;align-items:center;gap:10px}
-#fsRoot.fs>.ccpause{grid-area:2/1;margin:0}
-#fsRoot.fs>.termwrap{grid-area:3/1;margin:0;min-width:0;min-height:0}
-#fsRoot.fs>.fsacc{grid-area:4/1;display:block;min-width:0;min-height:0;overflow-x:hidden;overflow-y:auto;padding:12px 6px 6px 2px}
-#fsRoot.fs .fsbtn{display:none}
-#fsRoot.fs .termbox{flex:none;max-height:none;font-size:var(--fs-fz,14px);line-height:1.25}
-#fsRoot.fs #cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;align-items:start}
-#fsRoot.fs .card{margin-bottom:0}
-#fsRoot.fs.phone{grid-template-rows:auto auto minmax(0,1fr) auto}
-#fsRoot.fs.phone>.fsacc{max-height:44vh}
-#fsRoot.fs.phone #cards{grid-template-columns:1fr}
-#fsRoot.fs.phone .termbox{white-space:pre-wrap;word-break:break-word}
-#fsRoot.fs.phone .fsseg{display:none}
 .scrim{z-index:50}
 #msg{z-index:70}
 /* скин: phosphor */
@@ -2472,11 +2469,12 @@ body.fs-on{overflow:hidden}
 html[data-skin="phosphor"]{--bg:#020603;--card:#031008;--txt:#c9ffd9;--mut:#4f9f6b;--ok:#6dff9a;--warn:#ffd24a;--bad:#ff6b5e;--acc:#6dff9a;--ph:#6dff9a;--ph2:#9bf5b5;--phd:#4f9f6b;--phl:#1f6b36;--phbg:#031008}
 html[data-skin="phosphor"] body{font-family:ui-monospace,"IBM Plex Mono","SF Mono","Cascadia Mono","Roboto Mono",Consolas,monospace;font-size:13.5px;color:var(--ph2)}
 html[data-skin="phosphor"]::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px)}
-html[data-skin="phosphor"] h1,html[data-skin="phosphor"] .termhead h2{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#d8ffe4;text-shadow:0 0 8px rgba(109,255,154,.7);filter:url(#ccPhosphor)}
-html[data-skin="phosphor"] h1::before,html[data-skin="phosphor"] .termhead h2::before{content:"▌";color:var(--ph);margin-right:4px}
+html[data-skin="phosphor"] h1{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#d8ffe4;text-shadow:0 0 8px rgba(109,255,154,.7);filter:url(#ccPhosphor)}
+html[data-skin="phosphor"] h1::before{content:"▌";color:var(--ph);margin-right:4px}
 html[data-skin="phosphor"] .hdr{padding-bottom:6px;border-bottom:1px dashed var(--phl)}
 html[data-skin="phosphor"] .hdrgear,html[data-skin="phosphor"] .iconbtn{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--ph)}
 html[data-skin="phosphor"] .hdrgear:hover,html[data-skin="phosphor"] .iconbtn:hover{background:#0c2a17;border-color:var(--ph);color:var(--ph)}
+html[data-skin="phosphor"] .tzval{color:var(--ph);text-transform:uppercase;letter-spacing:.06em}
 html[data-skin="phosphor"] .termdot{border-radius:0;background:var(--ph);box-shadow:0 0 8px var(--ph)}
 html[data-skin="phosphor"] .termdot.err{background:#ff6b5e;box-shadow:0 0 8px #ff6b5e}
 html[data-skin="phosphor"] .termbox{font-family:ui-monospace,"IBM Plex Mono","SF Mono","Cascadia Mono",Consolas,monospace;background:#010502;color:#c8d0dc;border:1px solid var(--phl);border-radius:2px;padding:12px 14px;filter:url(#ccPhosphor);box-shadow:inset 0 0 70px rgba(60,255,120,.10);scrollbar-color:#1f6b36 #010502}
@@ -2526,11 +2524,6 @@ html[data-skin="phosphor"] .rn-ic{font-size:0;display:inline-block;width:7px;hei
 html[data-skin="phosphor"] .btn-renew:hover:not(:disabled){background:var(--ph);color:#021006;text-shadow:none;box-shadow:0 0 16px rgba(109,255,154,.5)}
 html[data-skin="phosphor"] .btn-renew:hover::before,html[data-skin="phosphor"] .btn-renew:hover::after{color:#021006}
 html[data-skin="phosphor"] .btn-renew:hover .rn-ic{background:#021006;box-shadow:none;animation:none}
-html[data-skin="phosphor"] .foot{color:var(--phd)}
-html[data-skin="phosphor"] #rf{display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid #2fb15a;border-radius:0;color:var(--ph);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em;padding:7px 12px}
-html[data-skin="phosphor"] #rf::before{content:"";flex:none;width:13px;height:13px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat}
-html[data-skin="phosphor"] #rf:hover:not(:disabled){background:#0c2a17;border-color:var(--ph)}
-html[data-skin="phosphor"] #rf:disabled::before{animation:ccspin .8s linear infinite}
 html[data-skin="phosphor"] .modal{background:var(--phbg);border:1px solid var(--phl);border-radius:0;box-shadow:0 0 40px rgba(60,255,120,.12)}
 html[data-skin="phosphor"] .poolrow{border-color:#0f2e19}
 html[data-skin="phosphor"] .newbadge{border-radius:0;background:transparent;border:1px solid var(--ph);color:var(--ph)}
@@ -2540,18 +2533,13 @@ html[data-skin="phosphor"] .ccpause{border-radius:0}
 html[data-skin="phosphor"] .ccp-btn{border-radius:0;font-family:inherit;text-transform:uppercase;letter-spacing:.05em;border-color:var(--ccp-accent);background:transparent}
 html[data-skin="phosphor"] .ccp-chip{border-radius:0}
 html[data-skin="phosphor"] #msg{background:#031008;border:1px solid var(--ph);border-radius:0;color:var(--ph2)}
-html[data-skin="phosphor"] .fsseg{border-color:var(--phl);border-radius:0}
-html[data-skin="phosphor"] .fsseg button{font-family:inherit;text-transform:uppercase;letter-spacing:.06em;color:var(--phd)}
-html[data-skin="phosphor"] .fsseg button.on{background:var(--ph);color:#021006}
-html[data-skin="phosphor"] .fsinfo{color:var(--phd)}
-html[data-skin="phosphor"] #fsRoot.fs{background:#010603}
 html[data-skin="phosphor"] .skopt.on{box-shadow:0 0 0 1px var(--ph)}
 /* скин: aurora */
 /* AURORA — тёмное стекло и свечение: плавные градиенты, пилюли */
 html[data-skin="aurora"]{--bg:#080915;--card:rgba(255,255,255,.06);--txt:#e8eaff;--mut:#8d94bd;--ok:#34d399;--warn:#fbbf24;--bad:#fb7185;--acc:#7c5cff;--au1:#7c5cff;--au2:#22d3ee;--au3:#ff5aaa}
 html[data-skin="aurora"] body{font-family:"Manrope","Inter",-apple-system,"Segoe UI",system-ui,sans-serif;color:var(--txt);
  background:radial-gradient(900px 520px at 4% -12%,rgba(124,92,255,.40),transparent 62%),radial-gradient(820px 520px at 104% 112%,rgba(34,211,238,.26),transparent 62%),radial-gradient(520px 320px at 72% -6%,rgba(255,90,170,.18),transparent 70%),#080915;background-attachment:fixed}
-html[data-skin="aurora"] h1,html[data-skin="aurora"] .termhead h2{font-weight:800;letter-spacing:.01em;background:linear-gradient(90deg,#fff,#b9a8ff 60%,#7de7f7);-webkit-background-clip:text;background-clip:text;color:transparent}
+html[data-skin="aurora"] h1{font-weight:800;letter-spacing:.01em;background:linear-gradient(90deg,#fff,#b9a8ff 60%,#7de7f7);-webkit-background-clip:text;background-clip:text;color:transparent}
 html[data-skin="aurora"] .hdrgear,html[data-skin="aurora"] .iconbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:50%;color:#bfc6ee}
 html[data-skin="aurora"] .hdrgear:hover,html[data-skin="aurora"] .iconbtn:hover{border-color:#7de7f7;color:#fff;box-shadow:0 0 14px -2px rgba(34,211,238,.6)}
 html[data-skin="aurora"] .termdot{width:9px;height:9px;background:#34d399;box-shadow:0 0 10px #34d399,0 0 22px rgba(52,211,153,.6)}
@@ -2598,9 +2586,6 @@ html[data-skin="aurora"] .btn-relogin:hover:not(:disabled){border-color:#7de7f7;
 html[data-skin="aurora"] .btn-renew{display:inline-flex;align-items:center;gap:8px;padding:3px 16px 3px 4px;border:1px solid transparent;border-radius:99px;font-size:12.5px;font-weight:700;color:#eaf6ff;background:linear-gradient(#141633,#0e1027) padding-box,linear-gradient(135deg,#34d399,#22d3ee 55%,#7c5cff) border-box;box-shadow:0 8px 22px -10px rgba(34,211,238,.7)}
 html[data-skin="aurora"] .rn-ic{font-size:0;width:20px;height:20px;border-radius:50%;flex:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/12px no-repeat,linear-gradient(135deg,#34d399,#22d3ee);box-shadow:0 0 12px rgba(52,211,153,.7)}
 html[data-skin="aurora"] .btn-renew:hover:not(:disabled){box-shadow:0 0 26px -2px rgba(34,211,238,.75);background:linear-gradient(#1a1d42,#121534) padding-box,linear-gradient(135deg,#34d399,#22d3ee 55%,#c24bd6) border-box}
-html[data-skin="aurora"] #rf{display:inline-flex;align-items:center;gap:7px;padding:7px 15px 7px 12px;border-radius:99px;background:linear-gradient(135deg,#7c5cff,#22d3ee);color:#fff;font-weight:700}
-html[data-skin="aurora"] #rf::before{content:"";flex:none;width:13px;height:13px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat}
-html[data-skin="aurora"] #rf:disabled::before{animation:ccspin .8s linear infinite}
 html[data-skin="aurora"] .modal{background:#12132b;border:1px solid rgba(255,255,255,.14);border-radius:20px;box-shadow:0 30px 80px -20px rgba(0,0,0,.9)}
 html[data-skin="aurora"] .poolrow{border-color:rgba(255,255,255,.08)}
 html[data-skin="aurora"] .newbadge{background:rgba(124,92,255,.3);color:#d8dcff}
@@ -2609,11 +2594,6 @@ html[data-skin="aurora"] #modalDone{background:linear-gradient(135deg,#7c5cff,#c
 html[data-skin="aurora"] .ccpause{border-radius:16px}
 html[data-skin="aurora"] .ccp-btn{border-radius:99px;background:rgba(255,255,255,.06)}
 html[data-skin="aurora"] #msg{background:#1a1c3a;border:1px solid rgba(255,255,255,.14)}
-html[data-skin="aurora"] .fsseg{border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(255,255,255,.05)}
-html[data-skin="aurora"] .fsseg button{background:transparent;color:var(--mut);font-weight:700}
-html[data-skin="aurora"] .fsseg button.on{background:linear-gradient(135deg,#7c5cff,#c24bd6);color:#fff}
-html[data-skin="aurora"] .fsinfo{color:var(--mut)}
-html[data-skin="aurora"] #fsRoot.fs{background:radial-gradient(900px 520px at 4% -12%,rgba(124,92,255,.40),transparent 62%),radial-gradient(820px 520px at 104% 112%,rgba(34,211,238,.26),transparent 62%),#080915}
 html[data-skin="aurora"] .skopt.on{background:#20203a;box-shadow:0 0 0 1px #7c5cff}
 /* скин: slate */
 /* SLATE — графит и тишина: одна гарнитура, тонкие линии, акцент только цветом статуса */
@@ -2623,7 +2603,6 @@ html[data-skin="slate"] h1{font-size:12px;font-weight:600;letter-spacing:.12em;t
 html[data-skin="slate"] .hdr{padding-bottom:10px;border-bottom:1px solid var(--sl-line)}
 html[data-skin="slate"] .hdrgear,html[data-skin="slate"] .iconbtn{background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:#aab0bc}
 html[data-skin="slate"] .hdrgear:hover,html[data-skin="slate"] .iconbtn:hover{background:#1b1e24;border-color:#4d525d;color:#fff}
-html[data-skin="slate"] .termhead h2{font-size:11.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
 html[data-skin="slate"] .termdot{width:7px;height:7px;background:var(--ok);box-shadow:0 0 0 3px rgba(62,207,142,.15)}
 html[data-skin="slate"] .termdot.err{background:var(--bad);box-shadow:0 0 0 3px rgba(239,106,106,.15)}
 html[data-skin="slate"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;background:#08090b;color:#e3e7ee;border:1px solid var(--sl-line);border-radius:10px;padding:14px 16px;filter:brightness(1.12) contrast(1.06);scrollbar-color:#3a3f48 transparent}
@@ -2638,8 +2617,8 @@ html[data-skin="slate"] .switchrow input[type=checkbox]:focus-visible{outline:1p
 html[data-skin="slate"] .switchrow:has(input:checked),html[data-skin="slate"] #autoWrap:has(input:checked){color:var(--txt)}
 html[data-skin="slate"] .thrbtn{background:transparent;border:1px solid var(--sl-line2);color:#aab0bc;border-radius:6px;font-family:inherit;font-weight:500}
 html[data-skin="slate"] .thrbtn:hover{border-color:#e7e9ee;color:#fff}
-html[data-skin="slate"] .btn-sw,html[data-skin="slate"] .btn-relogin,html[data-skin="slate"] #rf,html[data-skin="slate"] .ghostbtn,html[data-skin="slate"] #modalDone,html[data-skin="slate"] .ccp-btn{font-family:inherit;font-weight:500;background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:#c7ccd6;transition:background .15s,border-color .15s,color .15s}
-html[data-skin="slate"] .btn-sw:hover:not(:disabled),html[data-skin="slate"] .btn-relogin:hover:not(:disabled),html[data-skin="slate"] #rf:hover:not(:disabled),html[data-skin="slate"] .ghostbtn:hover,html[data-skin="slate"] #modalDone:hover,html[data-skin="slate"] .ccp-btn:hover{background:#1b1e24;border-color:#4d525d;color:#fff}
+html[data-skin="slate"] .btn-sw,html[data-skin="slate"] .btn-relogin,html[data-skin="slate"] .ghostbtn,html[data-skin="slate"] #modalDone,html[data-skin="slate"] .ccp-btn{font-family:inherit;font-weight:500;background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:#c7ccd6;transition:background .15s,border-color .15s,color .15s}
+html[data-skin="slate"] .btn-sw:hover:not(:disabled),html[data-skin="slate"] .btn-relogin:hover:not(:disabled),html[data-skin="slate"] .ghostbtn:hover,html[data-skin="slate"] #modalDone:hover,html[data-skin="slate"] .ccp-btn:hover{background:#1b1e24;border-color:#4d525d;color:#fff}
 html[data-skin="slate"] .mchip{border-color:var(--sl-line2);color:#c7ccd6;border-radius:7px;font-weight:500;font-size:12px;padding:4px 11px}
 html[data-skin="slate"] .mchip.active{background:#e7e9ee;border-color:#e7e9ee;color:#0e0f12;font-weight:600}
 html[data-skin="slate"] .mchip.active:hover:not(:disabled){background:#e7e9ee;color:#0e0f12}
@@ -2672,28 +2651,20 @@ html[data-skin="slate"] .rn-t{border-bottom:1px solid #3a3f48;padding-bottom:1px
 html[data-skin="slate"] .btn-renew:hover .rn-ic{background-color:#e7e9ee;border-color:#e7e9ee;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E")}
 html[data-skin="slate"] .btn-renew:hover .rn-t{border-color:#e7e9ee}
 html[data-skin="slate"] .btn-relogin{color:var(--mut);border-color:var(--sl-line2)}
-html[data-skin="slate"] .foot{color:var(--mut);padding-top:2px}
-html[data-skin="slate"] #rf{padding:7px 14px 7px 11px;display:inline-flex;align-items:center;gap:7px;font-size:12px}
-html[data-skin="slate"] #rf::before{content:"";width:13px;height:13px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat}
-html[data-skin="slate"] #rf:disabled::before{animation:ccspin .8s linear infinite}
 html[data-skin="slate"] .modal{background:#14161a;border:1px solid var(--sl-line2);border-radius:14px}
 html[data-skin="slate"] .poolrow{border-color:var(--sl-line)}
 html[data-skin="slate"] .newbadge{background:#1f2228;color:#e7e9ee}
 html[data-skin="slate"] .ccpause{border-radius:12px}
-html[data-skin="slate"] .fsseg{border:1px solid var(--sl-line2);border-radius:7px;background:var(--card)}
-html[data-skin="slate"] .fsseg button{border:0;background:transparent;color:var(--mut)}
-html[data-skin="slate"] .fsseg button.on{background:#e7e9ee;color:#0e0f12}
-html[data-skin="slate"] .fsinfo{color:var(--mut);font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:11.5px}
-html[data-skin="slate"] #fsRoot.fs{background:var(--bg)}
 html[data-skin="slate"] .skopt.on{box-shadow:0 0 0 1px #e7e9ee}
 /* скин: blocks */
 /* BLOCKS — нео-брутализм: плоские цвета, толстые чёрные рамки, жёсткие тени */
 html[data-skin="blocks"]{--bg:#ffd84d;--card:#fff;--txt:#111;--mut:#2b2b2b;--ok:#00d084;--warn:#ffb400;--bad:#ff3d3d;--acc:#4b3fff;--bk:#111;--by:#ffd84d;--bl:#c6f432;--bb:#4b3fff}
 html[data-skin="blocks"] body{font-family:"Space Grotesk",-apple-system,"Segoe UI",system-ui,sans-serif;font-weight:500;color:var(--bk)}
-html[data-skin="blocks"] h1,html[data-skin="blocks"] .termhead h2{display:inline-block;background:var(--bk);color:var(--by);font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 12px;transform:rotate(-1deg)}
+html[data-skin="blocks"] h1{display:inline-block;background:var(--bk);color:var(--by);font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 12px;transform:rotate(-1deg)}
 html[data-skin="blocks"] #langSwitch,html[data-skin="blocks"] #langSwitch b{color:var(--bk)!important}
 html[data-skin="blocks"] .hdrgear,html[data-skin="blocks"] .iconbtn{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);box-shadow:2px 2px 0 var(--bk)}
 html[data-skin="blocks"] .hdrgear:hover,html[data-skin="blocks"] .iconbtn:hover{background:var(--bl);border-color:var(--bk);color:var(--bk)}
+html[data-skin="blocks"] .tzval{color:#fff;font-weight:700}
 html[data-skin="blocks"] .termdot{border-radius:0;width:11px;height:11px;background:#00d084;border:2px solid var(--bk)}
 html[data-skin="blocks"] .termdot.err{background:#ff3d3d}
 html[data-skin="blocks"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-weight:500;background:#0a0a0a;color:#fff;border:3px solid var(--bk);border-radius:0;padding:10px 14px;box-shadow:5px 5px 0 var(--bb),5px 5px 0 3px var(--bk);filter:brightness(1.18) contrast(1.1);scrollbar-color:#ffd84d #111}
@@ -2741,11 +2712,6 @@ html[data-skin="blocks"] .rn-ic{font-size:0;width:18px;height:18px;flex:none;bor
 html[data-skin="blocks"] .btn-renew:hover:not(:disabled){background:var(--bl);color:var(--bk);transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--bk)}
 html[data-skin="blocks"] .btn-renew:hover .rn-ic{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/12px no-repeat,var(--bb)}
 html[data-skin="blocks"] .btn-renew:active:not(:disabled){transform:translate(4px,4px);box-shadow:0 0 0 var(--bk)}
-html[data-skin="blocks"] .foot{color:var(--bk);font-weight:700}
-html[data-skin="blocks"] #rf{display:inline-flex;align-items:center;gap:7px;padding:7px 14px 7px 11px;border:3px solid var(--bk);border-radius:0;background:var(--bk);color:var(--by);font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:12px;box-shadow:3px 3px 0 var(--bb)}
-html[data-skin="blocks"] #rf::before{content:"";flex:none;width:13px;height:13px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M23 4v6h-6'/%3E%3Cpath d='M20.5 15a9 9 0 1 1-2.1-9.4L23 10'/%3E%3C/svg%3E") center/contain no-repeat}
-html[data-skin="blocks"] #rf:hover:not(:disabled){background:var(--bb);color:#fff}
-html[data-skin="blocks"] #rf:disabled::before{animation:ccspin .8s linear infinite}
 html[data-skin="blocks"] .modal{background:#fff;color:var(--bk);border:3px solid var(--bk);border-radius:0;box-shadow:6px 6px 0 var(--bk)}
 html[data-skin="blocks"] .modalsub{color:var(--mut)}
 html[data-skin="blocks"] .poolrow{border-color:var(--bk)}
@@ -2762,15 +2728,60 @@ html[data-skin="blocks"] .ccp-btn{background:var(--bk);color:var(--by);border:2p
 html[data-skin="blocks"] .ccp-btn:hover{background:var(--bb);color:#fff}
 html[data-skin="blocks"] .ccp-err{color:#d41818}
 html[data-skin="blocks"] #msg{background:var(--bk);color:var(--by);border:3px solid var(--bk);border-radius:0;font-weight:700}
-html[data-skin="blocks"] .fsseg{border:2px solid var(--bk);border-radius:0;background:#fff;box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="blocks"] .fsseg button{background:transparent;color:var(--bk);font-weight:700}
-html[data-skin="blocks"] .fsseg button.on{background:var(--bk);color:var(--by)}
-html[data-skin="blocks"] .fsinfo{color:var(--bk);font-weight:700}
-html[data-skin="blocks"] #fsRoot.fs{background:var(--by)}
 html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:var(--bk)}
 
 /* ---- добавление/удаление аккаунтов ---- */
-.hdrgear svg{width:14px;height:14px}
+.hdrgear svg{width:14px;height:14px;display:block}
+.efrow{display:flex;align-items:center;gap:8px;margin:-6px 0 14px;font-size:12px;color:var(--mut)}
+.efrow .eflbl{flex:0 0 auto;min-width:84px;cursor:default}
+.efrow .eflbl b{font-weight:600;color:var(--ef);transition:color .25s}
+.efrow .eflbl.mis b{text-decoration:underline dotted #c8a24a}
+.efrow .eflbl.na{min-width:0;font-style:italic}
+.efB{position:relative;flex:0 1 260px;min-width:150px;height:16px;cursor:pointer;margin:0 6px;--ef:#7c9aff}
+.efB.busy{opacity:.6;pointer-events:none}
+.efB.lock{cursor:not-allowed}
+.efB.lock .th{opacity:.55}
+.efB .tr{position:absolute;left:0;right:0;top:6px;height:4px;border-radius:99px;background:#242b38}
+.efB .fl{position:absolute;left:0;top:6px;height:4px;border-radius:99px;background:linear-gradient(90deg,#6f86b3,var(--ef));transition:width .25s}
+.efB .tk{position:absolute;top:5px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#3a4250}
+.efB .tk.pass{background:rgba(255,255,255,.55)}
+.efB .tk.off{background:#1a1e27;box-shadow:0 0 0 1px #2a2f3a;cursor:not-allowed}
+.efB .th{position:absolute;top:2px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--bg);border:2px solid var(--ef);box-shadow:0 0 0 3px color-mix(in srgb,var(--ef) 22%,transparent);transition:left .25s,border-color .25s}
+html[data-skin="aurora"] .efrow{color:var(--mut)}
+html[data-skin="aurora"] .efB .tr{height:5px;top:5.5px;background:rgba(255,255,255,.08)}
+html[data-skin="aurora"] .efB .fl{top:5.5px;height:5px;background:linear-gradient(90deg,#22d3ee,var(--ef));box-shadow:0 0 12px -2px var(--ef)}
+html[data-skin="aurora"] .efB .tk{background:rgba(255,255,255,.18)}
+html[data-skin="aurora"] .efB .tk.pass{background:rgba(255,255,255,.7)}
+html[data-skin="aurora"] .efB .tk.off{background:transparent;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
+html[data-skin="aurora"] .efB .th{background:#fff;border:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--ef) 45%,transparent),0 0 16px var(--ef)}
+html[data-skin="blocks"] .efrow{color:var(--bk);font-weight:700}
+html[data-skin="blocks"] .efrow .eflbl b{color:var(--bk)!important}
+html[data-skin="blocks"] .efB{--ef:#4b3fff!important}
+html[data-skin="blocks"] .efB .tr{height:8px;top:4px;background:#fff;border:2px solid var(--bk);border-radius:0;box-sizing:border-box}
+html[data-skin="blocks"] .efB .fl{top:4px;height:8px;border-radius:0;background:var(--bb);border:2px solid var(--bk);box-sizing:border-box}
+html[data-skin="blocks"] .efB .tk{border-radius:0;background:var(--bk);width:2px;height:8px;top:4px;margin-left:-1px}
+html[data-skin="blocks"] .efB .tk.pass{background:var(--bk)}
+html[data-skin="blocks"] .efB .tk.off{background:transparent;box-shadow:none}
+html[data-skin="blocks"] .efB .th{border-radius:0;width:15px;height:15px;margin-left:-7.5px;top:.5px;background:var(--by);border:3px solid var(--bk);box-shadow:2px 2px 0 var(--bk)}
+html[data-skin="phosphor"] .efrow{color:var(--phd)}
+html[data-skin="phosphor"] .efrow .eflbl{text-transform:uppercase;letter-spacing:.08em}
+html[data-skin="phosphor"] .efrow .eflbl b{color:var(--ph)!important}
+html[data-skin="phosphor"] .efB{--ef:#6dff9a!important}
+html[data-skin="phosphor"] .efB .tr{height:2px;top:7px;border-radius:0;background:#0f2e19}
+html[data-skin="phosphor"] .efB .fl{top:7px;height:2px;border-radius:0;background:var(--ph);box-shadow:0 0 8px var(--ph)}
+html[data-skin="phosphor"] .efB .tk{border-radius:0;background:#1f6b36;top:6px;width:4px;height:4px;margin-left:-2px}
+html[data-skin="phosphor"] .efB .tk.pass{background:var(--ph)}
+html[data-skin="phosphor"] .efB .tk.off{background:#031008;box-shadow:0 0 0 1px #12351d}
+html[data-skin="phosphor"] .efB .th{border-radius:0;background:#010502;border:2px solid var(--ph);box-shadow:0 0 10px rgba(109,255,154,.7);width:10px;height:10px;margin-left:-5px;top:3px}
+html[data-skin="slate"] .efrow{color:var(--mut)}
+html[data-skin="slate"] .efrow .eflbl b{color:#e7e9ee!important;font-family:"JetBrains Mono",monospace;font-weight:600}
+html[data-skin="slate"] .efB{--ef:#e7e9ee!important}
+html[data-skin="slate"] .efB .tr{height:2px;top:7px;border-radius:1px;background:#23262d}
+html[data-skin="slate"] .efB .fl{top:7px;height:2px;border-radius:1px;background:#e7e9ee}
+html[data-skin="slate"] .efB .tk{width:2px;height:6px;top:5px;margin-left:-1px;border-radius:1px;background:#3a3f48}
+html[data-skin="slate"] .efB .tk.pass{background:#e7e9ee}
+html[data-skin="slate"] .efB .tk.off{background:#23262d;box-shadow:none}
+html[data-skin="slate"] .efB .th{width:11px;height:11px;margin-left:-5.5px;top:2.5px;border:0;border-radius:50%;background:#e7e9ee;box-shadow:0 0 0 4px rgba(231,233,238,.14)}
 .btn-del{margin:0 0 0 auto;display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid #333c4d;color:var(--mut)}
 .btn-del svg{width:14px;height:14px}
 .btn-del:hover:not(:disabled){border-color:var(--bad);color:var(--bad)}
@@ -2826,34 +2837,169 @@ html[data-skin="blocks"] .btn-danger{background:var(--bad);color:#fff;border:2px
 html[data-skin="blocks"] .dlgstep i{background:var(--bk);color:var(--by);border-radius:0}
 html[data-skin="blocks"] .dlgurl{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 html[data-skin="blocks"] .dlgerr{color:#c40000;font-weight:700}
+html[data-skin="phosphor"] .segctl{border-color:var(--phl);border-radius:0}
+html[data-skin="phosphor"] .segctl button{font-family:inherit;text-transform:uppercase;letter-spacing:.06em;color:var(--phd)}
+html[data-skin="phosphor"] .segctl button.on{background:var(--ph);color:#021006}
+html[data-skin="aurora"] .segctl{border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(255,255,255,.05)}
+html[data-skin="aurora"] .segctl button{background:transparent;color:var(--mut);font-weight:700}
+html[data-skin="aurora"] .segctl button.on{background:linear-gradient(135deg,#7c5cff,#c24bd6);color:#fff}
+html[data-skin="slate"] .segctl{border:1px solid var(--sl-line2);border-radius:7px;background:var(--card)}
+html[data-skin="slate"] .segctl button{border:0;background:transparent;color:var(--mut)}
+html[data-skin="slate"] .segctl button.on{background:#e7e9ee;color:#0e0f12}
+html[data-skin="blocks"] .segctl{border:2px solid var(--bk);border-radius:0;background:#fff;box-shadow:3px 3px 0 var(--bk)}
+html[data-skin="blocks"] .segctl button{background:transparent;color:var(--bk);font-weight:700}
+html[data-skin="blocks"] .segctl button.on{background:var(--bk);color:var(--by)}
+
+/* ---- вёрстка «вписано в окно» (ПК): консоль забирает всю свободную высоту, остальное компактно;
+   «−/+» над консолью меняют только шрифт внутри неё — размер блока от масштаба не зависит ---- */
+.toolrow,.tgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px}
+.toolrow{margin-bottom:14px}
+.toolrow .switchrow,.toolrow .mrowslim,.toolrow .efrow{margin:0}
+.toolrow .tgrp:last-child{flex:1 1 auto}
+.toolrow .efrow{flex:1 1 280px;min-width:0}
+.toolrow .efB{flex:1 1 150px;max-width:none}
+.termbox{height:42vh;max-height:none}
+@media (min-width:900px){
+html:root:root body{height:100vh;height:100dvh;display:flex;flex-direction:column;padding:4px 16px 8px}
+html:root:root body>*{flex:none}
+html:root:root .hdr{margin:0 0 4px}
+html:root:root .termwrap{flex:1 1 0;min-height:120px;margin-bottom:6px}
+html:root:root .termbox{flex:1 1 0;height:auto;min-height:0}
+html:root:root .toolrow{margin-bottom:6px}
+html:root:root #cards{margin:12px 0 4px;gap:10px}
+html:root:root .card{padding:8px 12px}
+html:root:root .card .row{margin-top:5px}
+html:root:root .card .lbl{margin-bottom:2px;line-height:1.25}
+html:root:root .acts{margin-top:7px}
+html:root:root .top{flex-wrap:nowrap}
+html:root:root .email{min-width:0}
+html:root:root .acts button{padding:4px 10px;font-size:12.5px}
+html:root:root #cards .card{container-type:inline-size}
+@container (max-width:470px){
+html:root:root .btn-del .dl{display:none}
+html:root:root .acts{gap:4px}
+html:root:root .acts button{padding:4px 8px}
+html:root:root .acts .btn-del{padding:4px 6px}
+html:root:root .acts .chip{padding:2px 6px}
+}
+@container (max-width:420px){
+html:root:root .acts{gap:3px}
+html:root:root .acts button{padding:4px 6px;font-size:12px}
+html:root:root .acts .btn-del{padding:4px 5px}
+html:root:root .acts .chip{padding:2px 5px;font-size:10.5px}
+}
+}
+
+/* ---- оптимизация в шапке рядом с названием; авто-переключение — в настройках ---- */
+.hdrl{flex-wrap:wrap}
+.hdrl .switchrow{margin:0;gap:8px;font-size:13px}
+.hdrl .switchrow label{cursor:pointer}
+.modal .switchrow{margin:2px 0 6px;gap:6px;font-size:13px}
+.modal #autoWrap{flex:1 1 auto;display:flex;align-items:center;gap:6px}
+.modal #autoNote{margin:0 0 6px}
+/* ---- режим «только консоль» ---- */
+#fsBtn .fsx{display:none}
+html.conly #fsBtn .fsi{display:none}
+html.conly #fsBtn .fsx{display:block}
+html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause{display:none!important}
+html:root:root.conly body{height:100vh;height:100dvh;display:flex;flex-direction:column;padding:0}
+html:root:root.conly .termwrap{flex:1 1 0;min-height:0;margin:0}
+html:root:root.conly .termbox{flex:1 1 0;height:auto;min-height:0;border:0;border-radius:0;box-shadow:none;padding-bottom:36px}
+/* ---- панель аккаунтов: язычок у нижнего края, при наведении выезжает панель, у аккаунта — подробности ---- */
+.dock{display:none}
+html.conly .dock{display:block}
+.dockzone{position:fixed;left:0;right:0;bottom:0;height:30px;z-index:40}
+.docktab{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:4px 12px;border-radius:99px;background:rgba(0,0,0,.6);color:var(--mut);font:600 11px/1 system-ui,sans-serif;letter-spacing:.04em;cursor:pointer;opacity:.8;transition:opacity .2s}
+.docktab svg{width:12px;height:12px;display:block;flex:none}
+.dockzone:hover .docktab,.dockzone.pin .docktab{opacity:0}
+.dockpanel{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;justify-content:center;gap:10px;padding:12px 14px 14px;background:var(--bg);border-top:1px solid rgba(128,128,128,.28);box-shadow:0 -14px 34px rgba(0,0,0,.5);transform:translateY(110%);transition:transform .22s ease .35s;pointer-events:none}
+.dockzone:hover .dockpanel,.dockzone.pin .dockpanel{transform:none;transition-delay:0s;pointer-events:auto}
+.dchip{position:relative;display:flex;align-items:center;gap:11px;padding:7px 12px;border-radius:10px;background:var(--card);border:1px solid #2a3140;color:var(--txt);font-size:12.5px;line-height:1.2;font-weight:600;min-width:0;cursor:default}
+.dchip.act{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.ddot{width:8px;height:8px;border-radius:50%;background:#4a5263;flex:none}
+.dchip.act .ddot{background:var(--ok);box-shadow:0 0 0 3px rgba(52,192,124,.22)}
+.dchip.er .ddot{background:var(--bad)}
+.dmail{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dmet{display:flex;flex-direction:column;gap:3px;min-width:58px;font-size:11.5px}
+.dmet .dml{color:var(--mut);font-weight:600;font-size:10.5px}
+.dmet b{font-weight:700}
+.dmet .dtop{display:flex;justify-content:space-between;gap:8px}
+.dbar{display:block;height:3px;border-radius:99px;background:#242b38;overflow:hidden}
+.dbar .fill{display:block}
+.dpop{position:absolute;left:0;bottom:calc(100% + 10px);width:350px;max-width:92vw;padding:10px 12px 12px;border-radius:12px;background:linear-gradient(var(--card),var(--card)),var(--bg);border:1px solid #2a3140;box-shadow:0 12px 30px rgba(0,0,0,.55);color:var(--txt);font-weight:400;opacity:0;pointer-events:none;transition:opacity .15s;z-index:2;white-space:normal}
+.dchip:hover .dpop{opacity:1}
+.dpop .dpt{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:700;font-size:13px}
+.dpop .dpe{overflow:hidden;text-overflow:ellipsis}
+.dpop .lbl{gap:12px}
+.dpop .lbl span{white-space:nowrap}
+.dpop .dpa{font-size:11px;color:var(--ok);font-weight:700}
+.dpop .row:first-of-type{margin-top:8px}
+html[data-skin="phosphor"] .dockpanel{border-top:1px dashed var(--phl)}
+html[data-skin="phosphor"] .dchip,html[data-skin="phosphor"] .dpop{border:1px solid var(--phl);border-radius:0;background:var(--phbg)}
+html[data-skin="phosphor"] .dchip.act{border-color:var(--ph);box-shadow:0 0 14px rgba(109,255,154,.25)}
+html[data-skin="phosphor"] .ddot{border-radius:0}
+html[data-skin="aurora"] .dockpanel{border-top:1px solid rgba(255,255,255,.12)}
+html[data-skin="aurora"] .dchip,html[data-skin="aurora"] .dpop{border:1px solid rgba(255,255,255,.14);border-radius:14px}
+html[data-skin="aurora"] .dchip.act{border-color:#7c5cff;box-shadow:0 0 22px -6px rgba(124,92,255,.8)}
+html[data-skin="slate"] .dockpanel{border-top:1px solid var(--sl-line)}
+html[data-skin="slate"] .dchip,html[data-skin="slate"] .dpop{border:1px solid var(--sl-line2);border-radius:8px}
+html[data-skin="slate"] .dchip.act{border-color:#555b66;box-shadow:inset 0 2px 0 #e7e9ee}
+html[data-skin="blocks"] .dockpanel{border-top:3px solid var(--bk);box-shadow:none}
+html[data-skin="blocks"] .dchip,html[data-skin="blocks"] .dpop{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0;box-shadow:3px 3px 0 var(--bk)}
+html[data-skin="blocks"] .dchip.act{background:var(--bl)}
+html[data-skin="blocks"] .dbar{background:#e6e6e6;border:1px solid var(--bk)}
+html[data-skin="blocks"] .ddot{border-radius:0;border:2px solid var(--bk)}
+html[data-skin="blocks"] .docktab{background:var(--bk);color:var(--by)}
+/* ---- телефон (≤640 px): компактная шапка, высокая консоль, масштаб над консолью, карточки плотнее ---- */
+@media (max-width:640px){
+html:root:root body{padding:10px 10px 14px}
+html:root:root .hdr{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:center;gap:6px 8px;margin:2px 0 8px}
+html:root:root .hdrl{display:contents}
+html:root:root h1{font-size:16px;order:1;min-width:0}
+html:root:root #termDot{order:2;margin-right:auto}
+html:root:root #optWrap{order:3;flex:1 1 150px;min-width:0;align-items:center;gap:8px;font-size:12px}
+html:root:root #optWrap label{line-height:1.25}
+html:root:root .hdrctl{order:4;margin-left:auto;gap:8px!important}
+html:root:root .termwrap{margin-bottom:10px}
+html:root:root .tzoom{top:6px;right:8px}
+html:root:root .termbox{height:62vh;height:62svh;min-height:300px;padding:8px 10px;font-size:calc(10.5px*var(--tz,1))}
+html:root:root .toolrow{margin-bottom:10px}
+html:root:root .card{padding:12px 12px}
+html:root:root .top{flex-wrap:nowrap;align-items:flex-start}
+html:root:root .email{min-width:0;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
+html:root:root .btn-del .dl{display:none}
+html:root:root .acts .btn-del{padding:4px 8px}
+html:root:root.conly .termbox{padding:8px 10px 40px}
+html:root:root .dockpanel{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:10px 10px 12px}
+html:root:root .dchip{box-sizing:border-box;width:100%;gap:9px;padding:7px 10px}
+html:root:root .dmail{flex:1 1 auto;min-width:0;max-width:none}
+html:root:root .dmet{flex:none;min-width:62px}
+html:root:root .dmet .dml{white-space:nowrap}
+html:root:root .dmet .dtop{gap:6px}
+}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter></svg>
-<div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="gear" class="hdrgear" title="Модели">⚙</button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
-<div id="fsRoot">
-<div class="fsbar" id="fsBar"><span class="fsinfo" id="fsInfo"></span><div class="fsseg"><button type="button" id="fsMFit"></button><button type="button" id="fsMBig"></button></div><button type="button" class="iconbtn" id="fsClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="termwrap">
- <div class="termhead"><h2 id="consoleTitle">🖥 Консоль (только чтение)</h2><span class="termdot" id="termDot"></span><button type="button" class="iconbtn fsbtn" id="fsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button></div>
+ <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
 <span id="termCurrent">Загрузка…</span></pre>
 </div>
-<div class="fsacc" id="fsAcc"></div>
-</div>
-<div class="switchrow">
- <span id="autoWrap"><input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label></span>
- <button type="button" class="thrbtn" id="thrMinus">−</button><button type="button" class="thrbtn" id="thrPlus">+</button>
-</div>
-<div class="switchrow">
- <input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов (рулит сервис, ручные кнопки блокируются)</label>
-</div>
+<div class="toolrow"><div class="tgrp">
 <div id="mrow" class="mrowslim"></div>
+<div id="efrow" class="efrow"></div>
+</div></div>
 <div id="cards">Загрузка…</div>
-<div class="foot"><span id="upd"></span><button id="rf" style="margin-top:0">Обновить сейчас</button></div>
 <div id="msg"></div>
+<div class="dock"><div class="dockzone" id="dockZone"><div class="docktab" id="dockTab" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg><span id="dockTabLbl">Аккаунты</span></div><div class="dockpanel" id="dockPanel"></div></div></div>
 <div id="scrim" class="scrim" hidden>
  <div class="modal">
   <h3 id="modalTitle">Настройки</h3>
+  <div class="modalh" id="autoHdr">Авто-переключение</div>
+  <div class="switchrow"><span id="autoWrap"><input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label></span><button type="button" class="thrbtn" id="thrMinus" aria-label="−"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="thrbtn" id="thrPlus" aria-label="+"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
+  <div class="modalsub" id="autoNote" hidden></div>
   <div class="modalh" id="skinTitle">Оформление</div>
   <div class="skgrid" id="skinGrid" role="radiogroup"></div>
   <div class="modalh" id="updHdr">Обновления</div>
@@ -2871,10 +3017,9 @@ const I18N={
  ru:{
   title:'Claude — лимиты аккаунтов',
   h1:'⚡ Claude — лимиты аккаунтов',
-  console:'🖥 Консоль (только чтение)',
   loading:'Загрузка…',
   autoLbl:thr=>'Авто-переключение при <span id="thrLbl">'+thr+'</span>% сессии',
-  optLbl:'Оптимизация переключений лимитов (рулит сервис, ручные кнопки блокируются)',
+  optLbl:'Оптимизация переключений лимитов',
   optDisabledTitle:'Неактивно: включена оптимизация лимитов',
   refresh:'Обновить сейчас',
   updated:'Обновлено',
@@ -2920,6 +3065,8 @@ const I18N={
   relChecking:'Проверяю код…',
   relPrompt:email=>`Ссылка входа открылась в новой вкладке (и скопирована в буфер обмена — если вкладка не та или её заблокировал браузер, просто вставь ссылку в нужный профиль).\nВойди под ${email} и вставь код авторизации сюда:`,
   confirmSwitch:n=>`Переключить активный аккаунт на ${n}?`,
+  confirmModel:n=>`Сменить модель на ${n}?`,
+  confirmEffort:l=>`Изменить effort на «${l}»?`,
   autoOn:'Авто-переключение включено',autoOff:'Авто-переключение выключено',
   thrSet:v=>'Порог: '+v+'%',
   optOn:'Оптимизация лимитов включена — ручные переключения заблокированы',
@@ -2931,7 +3078,6 @@ const I18N={
   renewalSoon:'подписка: ожидаем обвал в PRO→FREE со дня на день',
   renewalChip:d=>`⏳ ${d} дн`,
   renewalChipToday:'⏳ сегодня',
-  loginWord:'логин',
   loginD:d=>`${d} дн`,
   loginH:h=>`${h} ч`,
   loginGone:'истёк',
@@ -3014,13 +3160,20 @@ const I18N={
   skinTitle:'Оформление',
   skin_classic:'Классика',skin_phosphor:'Phosphor',skin_aurora:'Aurora',skin_slate:'Slate',skin_blocks:'Blocks',
   skinSub_classic:'как раньше',skinSub_phosphor:'терминал, зелёный люминофор',skinSub_aurora:'тёмное стекло и свечение',skinSub_slate:'графит, тонкие линии',skinSub_blocks:'крупные блоки, жёсткие тени',
-  fsOpenTitle:'На весь экран',fsCloseTitle:'Выйти (Esc)',
-  fsFit:'Вся консоль',fsFitTitle:'Вся консоль целиком (шрифт не мельче 10 px — иначе нижние строки), аккаунты снизу',
-  fsBig:'Крупно',fsBigTitle:'Крупный шрифт на всю ширину консоли, аккаунты снизу',
-  fsInfo:(f,c,r,v)=>'шрифт '+f+' px · '+c+'×'+r+(v<r?' · видно '+v+' нижних строк':''),
   modelsSub:'Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»',
+  tzMinusTitle:'Шрифт консоли меньше',tzPlusTitle:'Шрифт консоли крупнее',tzResetTitle:'Размер шрифта консоли — клик вернёт 100%',
+  fsTitle:'Только консоль, во весь экран',fsExitTitle:'Вернуться к обычному виду (Esc)',dockTab:'Аккаунты',dockSes:'Сессия 5ч',dockWeek:'Неделя',autoHdr:'Авто-переключение',optHint:'Рулит сервис, ручные кнопки блокируются',
   modelsDone:'Готово',
   noModelsEnabled:'Ни одна модель не включена — открой ⚙',
+  efName:k=>({low:'низкий',medium:'средний',high:'высокий',xhigh:'очень высокий',max:'максимум'})[k]||k,
+  efMis:d=>' (дефолт в settings.json: '+d+')',
+  efNaTxt:'effort: эта модель не поддерживает',
+  efNaTitle:n=>(n||'Эта модель')+' не поддерживает уровни effort',
+  efOffTip:n=>' не поддерживается моделью '+(n||''),
+  efBlocked:(l,n)=>'⛔ Effort «'+l+'» не поддерживается моделью '+(n||'')+' — выбери другой уровень',
+  efChecking:' · проверяю…',
+  efDone:l=>'✅ Effort сессии: '+l,
+  efNoConfirm:'Команда отправлена, но сессия ещё не подтвердила уровень — возможно, была занята. Кликни ещё раз.',
   newBadge:'новая',
   checkNewModels:'🔄 Проверить новые модели',
   candSearching:'Ищу…',
@@ -3034,10 +3187,9 @@ const I18N={
  en:{
   title:'Claude — Account Limits',
   h1:'⚡ Claude — Account Limits',
-  console:'🖥 Console (read-only)',
   loading:'Loading…',
   autoLbl:thr=>'Auto-switch at <span id="thrLbl">'+thr+'</span>% of session',
-  optLbl:'Limit optimization (service decides, manual buttons blocked)',
+  optLbl:'Limit optimization',
   optDisabledTitle:'Inactive: limit optimization is on',
   refresh:'Refresh now',
   updated:'Updated',
@@ -3083,6 +3235,8 @@ const I18N={
   relChecking:'Checking code…',
   relPrompt:email=>`The login link opened in a new tab (and was copied to your clipboard — if it's the wrong tab or got blocked, just paste the link into the right browser profile).\nSign in as ${email} and paste the authorization code here:`,
   confirmSwitch:n=>`Switch the active account to ${n}?`,
+  confirmModel:n=>`Switch the model to ${n}?`,
+  confirmEffort:l=>`Change effort to “${l}”?`,
   autoOn:'Auto-switch enabled',autoOff:'Auto-switch disabled',
   thrSet:v=>'Threshold: '+v+'%',
   optOn:'Limit optimization enabled — manual switching blocked',
@@ -3094,7 +3248,6 @@ const I18N={
   renewalSoon:'subscription: expecting PRO→FREE drop any day now',
   renewalChip:d=>`⏳ ${d}d`,
   renewalChipToday:'⏳ today',
-  loginWord:'login',
   loginD:d=>`${d}d`,
   loginH:h=>`${h}h`,
   loginGone:'expired',
@@ -3177,13 +3330,20 @@ const I18N={
   skinTitle:'Appearance',
   skin_classic:'Classic',skin_phosphor:'Phosphor',skin_aurora:'Aurora',skin_slate:'Slate',skin_blocks:'Blocks',
   skinSub_classic:'as before',skinSub_phosphor:'terminal, green phosphor',skinSub_aurora:'dark glass and glow',skinSub_slate:'graphite, thin lines',skinSub_blocks:'bold blocks, hard shadows',
-  fsOpenTitle:'Full screen',fsCloseTitle:'Exit (Esc)',
-  fsFit:'Whole console',fsFitTitle:'The whole console at once (font not below 10 px — otherwise the bottom lines), accounts below',
-  fsBig:'Large',fsBigTitle:'Large font across the full console width, accounts below',
-  fsInfo:(f,c,r,v)=>'font '+f+' px · '+c+'×'+r+(v<r?' · showing the bottom '+v+' lines':''),
   modelsSub:'Pick which ones show as quick-switch buttons — applies instantly, no Save button',
+  tzMinusTitle:'Smaller console font',tzPlusTitle:'Larger console font',tzResetTitle:'Console font size — click to reset to 100%',
+  fsTitle:'Console only, full screen',fsExitTitle:'Back to the normal view (Esc)',dockTab:'Accounts',dockSes:'Session 5h',dockWeek:'Week',autoHdr:'Auto-switch',optHint:'The service decides, manual buttons are blocked',
   modelsDone:'Done',
   noModelsEnabled:'No models enabled — open ⚙',
+  efName:k=>({low:'low',medium:'medium',high:'high',xhigh:'extra high',max:'maximum'})[k]||k,
+  efMis:d=>' (default in settings.json: '+d+')',
+  efNaTxt:'effort: not supported by this model',
+  efNaTitle:n=>(n||'This model')+' does not support effort levels',
+  efOffTip:n=>' is not supported by '+(n||'this model'),
+  efBlocked:(l,n)=>'⛔ Effort “'+l+'” is not supported by '+(n||'this model')+' — pick another level',
+  efChecking:' · checking…',
+  efDone:l=>'✅ Session effort: '+l,
+  efNoConfirm:'Command sent, but the session has not confirmed the level yet — it may have been busy. Click again.',
   newBadge:'new',
   checkNewModels:'🔄 Check for new models',
   candSearching:'Searching…',
@@ -3208,15 +3368,15 @@ let THR=85,lastSnap=null,lastModel=null;
 function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);}
 function applyI18n(){
  document.title=tr('title');document.documentElement.lang=LANG;
- $('#h1').textContent=tr('h1');$('#consoleTitle').textContent=tr('console');
- $('#optLbl').textContent=tr('optLbl');$('#rf').textContent=tr('refresh');
+ $('#h1').textContent=tr('h1');
+ $('#optLbl').textContent=tr('optLbl');$('#rfBtn').title=tr('refresh');$('#rfBtn').setAttribute('aria-label',tr('refresh'));
  renderAutoLbl();renderLangSwitch();
  $('#gear').title=tr('modelsBtnTitle');$('#addAcct').title=tr('addBtnTitle');$('#addAcct').setAttribute('aria-label',tr('addBtnTitle'));$('#modalTitle').textContent=tr('modelsTitle');
  $('#modelsHdr').textContent=tr('modelsHdr');$('#skinTitle').textContent=tr('skinTitle');buildSkinGrid();
- $('#fsBtn').title=tr('fsOpenTitle');$('#fsClose').title=tr('fsCloseTitle');
- $('#fsMFit').textContent=tr('fsFit');$('#fsMFit').title=tr('fsFitTitle');$('#fsMBig').textContent=tr('fsBig');$('#fsMBig').title=tr('fsBigTitle');
- if(FS.on)fsFitSoon();
+ $('#tzMinus').title=tr('tzMinusTitle');$('#tzPlus').title=tr('tzPlusTitle');$('#tzVal').title=tr('tzResetTitle');
  $('#updHdr').textContent=tr('updHdr');
+ $('#autoHdr').textContent=tr('autoHdr');$('#optWrap').title=tr('optHint');$('#dockTabLbl').textContent=tr('dockTab');
+ $('#autoNote').textContent=tr('optDisabledTitle');setConly(document.documentElement.classList.contains('conly'),false);
  if(typeof updRender==='function'){updRender();updSettingsRender();}  // смена языка перерисовывает баннер и блок настроек
  $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
@@ -3224,14 +3384,23 @@ function applyI18n(){
  if(typeof ccpRender==='function')ccpRender();  // смена языка перерисовывает баннер без запроса
  if(lastSnap){
   renderCards(lastSnap);
-  $('#upd').textContent=tr('updated')+' '+new Date(lastSnap.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
+  setUpd(lastSnap.ts);
  }
  if(lastModel)renderModel(lastModel);
 }
+// линии из ─ шире консоли переносятся на несколько строк и рвутся: укорачиваем до числа колонок, которые помещаются (заметно на телефоне)
+function termCols(){
+ const b=$('#termBox'),cs=getComputedStyle(b),p=document.createElement('span');
+ p.textContent='0000000000';p.style.cssText='position:absolute;visibility:hidden;white-space:pre';b.appendChild(p);
+ const w=p.getBoundingClientRect().width/10;b.removeChild(p);
+ const avail=b.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+ return w>0?Math.max(10,Math.floor(avail/w)-1):0;
+}
+function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 async function ccConsoleHistory(){
  try{
   const r=await fetch(API+'console?token='+TOKEN+'&history=1');const d=await r.json();
-  if(d.ok&&d.history!=null){const box=$('#termBox');$('#termHistory').innerHTML=d.history;box.scrollTop=box.scrollHeight;}
+  if(d.ok&&d.history!=null){const box=$('#termBox');$('#termHistory').innerHTML=fitSep(d.history);box.scrollTop=box.scrollHeight;}
  }catch(e){}
 }
 async function ccConsole(){
@@ -3241,8 +3410,7 @@ async function ccConsole(){
   if(!d.ok||d.current==null){dot.className='termdot err';return;}
   dot.className='termdot';
   const atBottom=box.scrollTop+box.clientHeight>=box.scrollHeight-20;
-  $('#termCurrent').innerHTML=d.current||'';
-  if(FS.on)fsCheckDims();
+  $('#termCurrent').innerHTML=fitSep(d.current||'');
   if(atBottom)box.scrollTop=box.scrollHeight;
  }catch(e){dot.className='termdot err';}
 }
@@ -3261,108 +3429,78 @@ function applySkin(id,save){
  if(id==='classic')document.documentElement.removeAttribute('data-skin');else document.documentElement.setAttribute('data-skin',id);
  if(save){try{localStorage.setItem('cc_skin',id);}catch(e){}}
  document.querySelectorAll('#skinGrid .skopt').forEach(b=>{const on=b.dataset.skin===id;b.classList.toggle('on',on);b.setAttribute('aria-checked',on);});
- // у скина свой шрифт консоли: сбросить замер ширины символа и пересчитать полный экран
- FS.cw=0;if(FS.on)fsFit();
- if(document.fonts&&document.fonts.load){
-  const fam=getComputedStyle($('#termBox')).fontFamily;
-  Promise.all([document.fonts.load('12px '+fam),document.fonts.load('bold 12px '+fam)]).then(()=>{FS.cw=0;fsFitSoon();}).catch(()=>{});
- }
  const box=$('#termBox');box.scrollTop=box.scrollHeight;
 }
-// ---- полный экран: сверху консоль (≈70% высоты), снизу аккаунты (≈30%) ----
-// Шрифт консоли подбирается так, чтобы весь текущий экран сессии (rows×cols) влез по высоте
-// («Вся консоль», но не мельче FS_MIN) или по ширине («Крупно»). Выход: ✕, Esc, «назад», выход из браузерного fullscreen.
-const FS={on:false,mode:'fit',rows:0,cols:0,raf:0,browser:false,cw:0};
-try{FS.mode=localStorage.getItem('cc_fsmode')==='big'?'big':'fit';}catch(e){}
-const FS_LH=1.25,FS_MIN=10;
-function fsCharW(){  // ширина символа в долях font-size, замер по шрифту консоли текущего скина
- const fam=getComputedStyle($('#termBox')).fontFamily;
- if(FS.cw&&FS.cwFam===fam)return FS.cw;
- FS.cwFam=fam;
- const p=document.createElement('span');
- p.style.cssText='position:absolute;left:-9999px;visibility:hidden;white-space:pre;font:100px '+fam;
- p.textContent='M'.repeat(40);document.body.appendChild(p);
- FS.cw=p.getBoundingClientRect().width/4000||0.6;p.remove();
- return FS.cw;
+// ---- масштаб шрифта консоли: процент от базового размера, запоминается в браузере ----
+const TZ_STEPS=[50,60,70,80,90,100,110,125,150,175,200,250,300];
+let TZ=100;
+try{const _z=parseInt(localStorage.getItem('cc_termzoom'),10);if(TZ_STEPS.includes(_z))TZ=_z;}catch(e){}
+function applyTz(save){
+ document.documentElement.style.setProperty('--tz',TZ/100);
+ $('#tzVal').textContent=TZ+'%';
+ $('#tzMinus').disabled=TZ<=TZ_STEPS[0];$('#tzPlus').disabled=TZ>=TZ_STEPS[TZ_STEPS.length-1];
+ if(save){try{localStorage.setItem('cc_termzoom',TZ);}catch(e){}}
+ const box=$('#termBox');box.scrollTop=box.scrollHeight;
 }
-function fsDims(){
- const ls=($('#termCurrent').textContent||'').replace(/\n$/,'').split('\n');
- let c=0;for(const l of ls)if(l.length>c)c=l.length;
- return{rows:Math.max(ls.length,24),cols:Math.max(c,80)};
+function tzStep(d){const i=TZ_STEPS.indexOf(TZ)+d;if(i<0||i>=TZ_STEPS.length)return;TZ=TZ_STEPS[i];applyTz(true);}
+$('#tzMinus').addEventListener('click',()=>tzStep(-1));
+$('#tzPlus').addEventListener('click',()=>tzStep(1));
+$('#tzVal').addEventListener('click',()=>{TZ=100;applyTz(true);});
+applyTz(false);
+// консоль «прилипает» ко дну: пока читатель внизу, любая смена размера блока (выход из полноэкранного режима, поворот экрана) оставляет на виду последние строки
+let STICK=true;
+function stickBottom(){const b=$('#termBox');b.scrollTop=b.scrollHeight;}
+$('#termBox').addEventListener('scroll',()=>{const b=$('#termBox');STICK=b.scrollTop+b.clientHeight>=b.scrollHeight-20;},{passive:true});
+if(window.ResizeObserver)new ResizeObserver(()=>{if(STICK)stickBottom();}).observe($('#termBox'));
+
+// ---- режим «только консоль»: виден лишь терминал; у нижнего края — панель аккаунтов по наведению ----
+function setConly(on,save){
+ document.documentElement.classList.toggle('conly',on);
+ const b=$('#fsBtn');b.title=tr(on?'fsExitTitle':'fsTitle');b.setAttribute('aria-label',b.title);
+ if(save){try{localStorage.setItem('cc_conly',on?'1':'0');}catch(e){}}
+ $('#dockZone').classList.remove('pin');
+ try{if(!on&&document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}
+ STICK=true;stickBottom();
+ requestAnimationFrame(stickBottom);
+ setTimeout(stickBottom,350);
 }
-function fsFit(){
- if(!FS.on)return;
- const root=$('#fsRoot'),term=root.querySelector('.termwrap'),box=$('#termBox'),thead=term.querySelector('.termhead');
- const px=v=>parseFloat(v)||0,rcs=getComputedStyle(root);
- const SW=root.clientWidth-px(rcs.paddingLeft)-px(rcs.paddingRight);
- const phone=root.clientWidth<720;
- root.classList.toggle('phone',phone);
- box.style.height='';
- const dm=fsDims();FS.rows=dm.rows;FS.cols=dm.cols;
- const cw=fsCharW();
- const bcs=getComputedStyle(box),tcs=getComputedStyle(term),hcs=getComputedStyle(thead);
- const OW=px(bcs.paddingLeft)+px(bcs.paddingRight)+px(bcs.borderLeftWidth)+px(bcs.borderRightWidth)+9;  // + скроллбар 9px
- const OH=px(bcs.paddingTop)+px(bcs.paddingBottom)+px(bcs.borderTopWidth)+px(bcs.borderBottomWidth);
- const TX=px(tcs.paddingLeft)+px(tcs.paddingRight)+px(tcs.borderLeftWidth)+px(tcs.borderRightWidth);
- const TY=px(tcs.paddingTop)+px(tcs.paddingBottom);
- const availH=term.clientHeight-TY-thead.offsetHeight-px(hcs.marginBottom);
- const fW=(SW-OW-TX)/(dm.cols*cw);
- let f;
- if(phone)f=11.5;
- else if(FS.mode==='big')f=Math.min(40,fW);
- else f=Math.min(40,fW,Math.max(FS_MIN,(availH-OH)/(dm.rows*FS_LH)));
- box.style.height=Math.max(120,availH)+'px';
- root.style.setProperty('--fs-fz',f.toFixed(2)+'px');
- const vis=Math.min(dm.rows,Math.floor((availH-OH)/(f*FS_LH)));
- $('#fsInfo').textContent=tr('fsInfo',f.toFixed(1),dm.cols,dm.rows,vis);
- $('#fsMFit').classList.toggle('on',FS.mode==='fit');$('#fsMBig').classList.toggle('on',FS.mode==='big');
- // самокалибровка: реальные строки шире «40×M» (пиктограммы из запасных шрифтов) — уточняем ширину символа и пересчитываем раз
- const ov=box.scrollWidth-box.clientWidth;
- if(ov>1&&!FS.recal){FS.cw*=1+ov/(dm.cols*cw*f);FS.recal=true;try{fsFit();}finally{FS.recal=false;}return;}
- box.scrollTop=box.scrollHeight;
+function conlyToggle(){
+ const on=!document.documentElement.classList.contains('conly');
+ setConly(on,true);
+ try{if(on&&document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}
 }
-function fsFitSoon(){if(!FS.on||FS.raf)return;FS.raf=requestAnimationFrame(()=>{FS.raf=0;fsFit();});}
-function fsCheckDims(){const d=fsDims();if(d.rows!==FS.rows||d.cols!==FS.cols)fsFitSoon();}
-function fsMode(m){FS.mode=m;try{localStorage.setItem('cc_fsmode',m);}catch(e){}fsFit();}
-function fsOpen(){
- if(FS.on)return;
- $('#fsAcc').appendChild($('#cards'));  // аккаунты переезжают в нижнюю панель
- $('#fsRoot').classList.add('fs');document.body.classList.add('fs-on');
- FS.on=true;
- try{history.pushState({ccfs:1},'');}catch(e){}
- const el=document.documentElement;
- if(el.requestFullscreen)el.requestFullscreen().then(()=>{FS.browser=true;}).catch(()=>{});
- fsFit();
+$('#fsBtn').addEventListener('click',conlyToggle);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.documentElement.classList.contains('conly')){e.preventDefault();setConly(false,true);}});
+// Esc в полноэкранном режиме браузера закрывает его сам — вместе с ним выходим и из режима
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&document.documentElement.classList.contains('conly'))setConly(false,true);});
+// на сенсорных экранах панель открывается касанием язычка
+$('#dockTab').addEventListener('click',()=>$('#dockZone').classList.toggle('pin'));
+document.addEventListener('click',e=>{if(!e.target.closest('#dockZone'))$('#dockZone').classList.remove('pin');});
+function renderDock(d){
+ const el=$('#dockPanel');if(!el)return;
+ const met=(lbl,o)=>{const p=o&&o.pct;return `<span class="dmet"><span class="dtop"><span class="dml">${lbl}</span><b style="color:${col(p)}">${p==null?'?':p+'%'}</b></span><span class="bar dbar"><span class="fill" data-t="${tone(p)}" style="width:${p||0}%"></span></span></span>`};
+ el.innerHTML=Object.entries(d.accounts).map(([n,a])=>{
+  const plan=a.plan==='free'?'<span class="tag free">FREE</span>':a.plan?'<span class="tag plan">'+a.plan.toUpperCase()+'</span>':'';
+  const err=a.error?`<div class="err">⚠ ${a.error}</div>`:'';
+  const det=a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):'';
+  return `<div class="dchip${a.active?' act':''}${a.error?' er':''}"><span class="ddot"></span><span class="dmail">${a.email}</span>`
+   +(a.five_hour?met(tr('dockSes'),a.five_hour)+met(tr('dockWeek'),a.seven_day):'')
+   +`<div class="dpop"><div class="dpt"><span class="dpe">${a.email}</span>${plan}${a.active?'<span class="dpa">'+tr('active')+'</span>':''}</div>${err}${det}</div></div>`;
+ }).join('');
 }
-function fsClose(fromPop){
- if(!FS.on)return;
- FS.on=false;
- const root=$('#fsRoot'),box=$('#termBox'),foot=document.querySelector('.foot');
- root.classList.remove('fs','phone');root.style.removeProperty('--fs-fz');
- document.body.classList.remove('fs-on');
- box.style.height='';
- foot.parentNode.insertBefore($('#cards'),foot);
- if(FS.browser&&document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});
- FS.browser=false;
- if(!fromPop){try{if(history.state&&history.state.ccfs)history.back();}catch(e){}}
- box.scrollTop=box.scrollHeight;
-}
-$('#fsBtn').addEventListener('click',fsOpen);
-$('#fsClose').addEventListener('click',()=>fsClose());
-$('#fsMFit').addEventListener('click',()=>fsMode('fit'));
-$('#fsMBig').addEventListener('click',()=>fsMode('big'));
+// подсказка аккаунта не должна вылезать за края окна
+$('#dockPanel').addEventListener('mouseover',e=>{
+ const c=e.target.closest('.dchip');if(!c)return;
+ const p=c.querySelector('.dpop'),r=c.getBoundingClientRect(),w=Math.min(350,innerWidth*.92);
+ p.style.left=(Math.max(8,Math.min(r.left+r.width/2-w/2,innerWidth-w-8))-r.left)+'px';
+});
+setConly(document.documentElement.classList.contains('conly'),false);
 $('#skinGrid').addEventListener('click',e=>{const b=e.target.closest('.skopt');if(b)applySkin(b.dataset.skin,true);});
-window.addEventListener('resize',fsFitSoon);
-window.addEventListener('orientationchange',fsFitSoon);
-window.addEventListener('popstate',()=>{if(FS.on&&!(history.state&&history.state.ccfs))fsClose(true);});
-document.addEventListener('fullscreenchange',()=>{if(FS.on&&FS.browser&&!document.fullscreenElement)fsClose();});
 document.addEventListener('keydown',e=>{
  if(e.key!=='Escape')return;
  if(!$('#acctScrim').hidden){acctClose();return;}
  if(!$('#scrim').hidden){$('#scrim').hidden=true;return;}
- if(FS.on)fsClose();
 });
-new MutationObserver(fsFitSoon).observe($('#ccPause'),{attributes:true,attributeFilter:['hidden','class'],childList:true});
 buildSkinGrid();applySkin(SKIN,false);
 ccConsoleHistory();ccConsole();setInterval(ccConsole,2000);
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
@@ -3378,11 +3516,11 @@ function renewChip(iso){if(!iso)return'';const d=new Date(iso),ms=d-Date.now();
  return`<span class="chip${days<3?' urgent':''}" title="${title}">${tr('renewalChip',days)}</span>`}
 function loginChip(iso){if(!iso)return'';const d=new Date(iso),ms=d-Date.now();
  const when=d.toLocaleString(LANG==='en'?'en-GB':'ru',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
- if(ms<=0)return`<span class="chip login urgent" title="${tr('loginHintGone',when)}">${tr('loginWord')} <b>${tr('loginGone')}</b></span>`;
+ if(ms<=0)return`<span class="chip login urgent" title="${tr('loginHintGone',when)}"><svg class="lgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg><b>${tr('loginGone')}</b></span>`;
  const days=Math.floor(ms/86400000);
  const cls=days<=3?' urgent':days<=7?' warn':'';
  const left=days>=1?tr('loginD',days):tr('loginH',Math.max(1,Math.floor(ms/3600000)));
- return`<span class="chip login${cls}" title="${tr('loginHint',when)}">${tr('loginWord')} <b>${left}</b></span>`}
+ return`<span class="chip login${cls}" title="${tr('loginHint',when)}"><svg class="lgi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg><b>${left}</b></span>`}
 function urgCol(f){return f>.5?'var(--bad)':f>.2?'var(--warn)':'var(--ok)'}
 function frac(iso,windowSec){if(!iso)return 0;const remain=(new Date(iso)-Date.now())/1000;return Math.max(0,Math.min(1,remain/windowSec))}
 function ring(o,windowSec,size){o=o||{};size=size||34;const sw=Math.max(3,Math.round(size*.1));const rad=size/2-sw/2;const circ=2*Math.PI*rad;const f=frac(o.resets_at,windowSec);const uc=urgCol(f);const dash=(f*circ).toFixed(1);const c=size/2;
@@ -3404,20 +3542,23 @@ function renderCards(d){
    <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}',this)">${tr('relogin')}</button>
-   <button class="btn-del" title="${tr('delBtnTitle')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg>${tr('delBtn')}</button></div>
+   <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
   </div>`;
  }).join('');
+ renderDock(d);
 }
+// время последнего обновления данных — в подсказки зелёной точки и кнопки «Обновить»
+function setUpd(ts){const t=tr('updated')+' '+new Date(ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');$('#termDot').title=t;$('#rfBtn').title=tr('refresh')+' · '+t}
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
  lastSnap=d;
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
  const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
  $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';
- $('#autoWrap').title=opt?tr('optDisabledTitle'):'';
+ $('#autoWrap').title=opt?tr('optDisabledTitle'):'';$('#autoNote').hidden=!opt;
  if(d.config&&d.config.threshold)THR=d.config.threshold;
  renderAutoLbl();renderCards(d);
- $('#upd').textContent=tr('updated')+' '+new Date(d.ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');
+ setUpd(d.ts);
  renderModel(d.model);
 }
 let lastCandidates=[];
@@ -3451,8 +3592,53 @@ function renderModel(m){
  $('#mrow').innerHTML=en.length?en.map(x=>`<button class="mchip ${x.id===m.default?'active':''}" onclick="pickModel('${x.id}')">${x.name}</button>`).join('')
   :`<span style="color:var(--mut);font-size:12.5px">${tr('noModelsEnabled')}</span>`;
  renderPool();
+ $('#efrow').innerHTML=effortHtml(m);
+}
+const EF=['low','medium','high','xhigh','max'];
+const EF_COL={low:'#6f86b3',medium:'#3fae9e',high:'#7c5cff',xhigh:'#d9973a',max:'#e0574f'};
+let efPending=null;  // пока команда в пути, держим выбранный уровень — автообновление не откатит бегунок
+function effortHtml(m){
+ const sup=Array.isArray(m.effort_supported)?m.effort_supported:null;  // null = не знаем, не блокируем
+ if(sup&&!sup.length)return '<span class="eflbl na" title="'+ccpEsc(tr('efNaTitle',m.session_name))+'">'+tr('efNaTxt')+'</span>';
+ const cur=efPending||m.effort||m.effort_default,i=EF.indexOf(cur);
+ if(i<0)return '';
+ const pc=i*25,mis=!efPending&&m.effort&&m.effort_default&&m.effort!==m.effort_default;
+ const tip='Effort: '+cur+' · '+tr('efName',cur)+(mis?tr('efMis',m.effort_default):'');
+ const off=sup?EF.filter(e=>!sup.includes(e)):[];
+ return '<span class="eflbl'+(mis?' mis':'')+'" title="'+ccpEsc(tip)+'">effort <b style="--ef:'+EF_COL[cur]+'">'+cur+'</b></span>'
+  +'<div class="efB'+(efPending?' busy':'')+(off.length?' lock':'')+'" style="--ef:'+EF_COL[cur]+'" data-off="'+off.join(',')+'" data-model="'+ccpEsc(m.session_name||'')+'" onclick="effortClick(event,this)">'
+  +'<div class="tr"></div><div class="fl" style="width:'+pc+'%"></div>'
+  +EF.map((e,j)=>off.includes(e)?'<div class="tk off" style="left:'+j*25+'%" title="'+e+' ·'+ccpEsc(tr('efOffTip',m.session_name))+'"></div>'
+   :'<div class="tk'+(j<i?' pass':'')+'" style="left:'+j*25+'%" title="'+e+' · '+tr('efName',e)+'"></div>').join('')
+  +'<div class="th" style="left:'+pc+'%"></div></div>';
+}
+function effortClick(ev,el){
+ const r=el.getBoundingClientRect(),j=Math.max(0,Math.min(4,Math.round((ev.clientX-r.left)/r.width*4)));
+ if((el.dataset.off||'').split(',').includes(EF[j])){toast(tr('efBlocked',EF[j],el.dataset.model));return;}
+ if(efPending||(lastModel&&lastModel.effort===EF[j]))return;
+ if(!confirm(tr('confirmEffort',EF[j])))return;
+ setEffort(EF[j]);
+}
+async function setEffort(level){
+ if(efPending||(lastModel&&lastModel.effort===level))return;
+ efPending=level;if(lastModel)renderModel(lastModel);
+ try{
+  const r=await fetch(API+'effort?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({effort:level})});
+  const d=await r.json();
+  if(!d.ok){toast('⚠ '+(d.message||'error'));return;}
+  toast(d.message+tr('efChecking'));
+  for(let k=0;k<6;k++){
+   await new Promise(res=>setTimeout(res,2000));
+   const d2=await (await fetch(API+'limits?token='+TOKEN)).json();
+   if(d2.model&&d2.model.effort===level){toast(tr('efDone',level));break;}
+   if(k===5)toast(tr('efNoConfirm'));
+  }
+ }catch(e){toast('⚠ '+e);}
+ finally{efPending=null;load();}
 }
 async function pickModel(id){
+ const mi=lastModel&&lastModel.available.find(x=>x.id===id);
+ if(!confirm(tr('confirmModel',mi?mi.name:id)))return;
  const r=await fetch(API+'model?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:id})});
  const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+d.message);renderModel(d.model);
 }
@@ -3540,7 +3726,7 @@ async function relogin(n,btn){
  }catch(e){toast('⚠ '+e);}
  finally{btn.disabled=false;btn.textContent=orig;load();}
 }
-$('#rf').addEventListener('click',()=>{$('#rf').disabled=true;load(1).finally(()=>$('#rf').disabled=false)});
+$('#rfBtn').addEventListener('click',()=>{$('#rfBtn').disabled=true;load(1).finally(()=>$('#rfBtn').disabled=false)});
 
 // ---- добавление и удаление аккаунтов ----
 // Окно одно на оба сценария (#acctBox). Удаление необратимо: кнопка «Удалить навсегда»
@@ -3745,6 +3931,7 @@ function updErrText(code,raw){
  if(code&&I18N[LANG][k])return '<span'+(raw?' title="'+ccpEsc(raw)+'"':'')+'>'+ccpEsc(tr(k))+'</span>';
  return ccpEsc(raw||'');
 }
+function updNotesPick(L){return(LANG==='en'?(L.notes_en||L.notes_ru):(L.notes_ru||L.notes_en))||L.notes||'';}  // блок описания на языке интерфейса; без блоков — тело релиза целиком
 function updNotesText(t){return String(t||'').replace(/^#+\s*/gm,'').replace(/\*\*/g,'').replace(/`/g,'').trim().slice(0,1500);}
 function updRender(){
  const el=$('#updBanner');if(!el)return;
@@ -3769,7 +3956,7 @@ function updRender(){
   }
  }else if(d.available&&!d.skipped){
   cls='lvl-upd';title=tr('updBTitle',ccpEsc(L.version));sub=tr('updBSub',ccpEsc(d.version),ccpEsc(L.name&&L.name!==L.tag?L.name:''));
-  const notes=updNotesText(L.notes);
+  const notes=updNotesText(updNotesPick(L));
   if(notes)more='<details class="upd-notes"><summary>'+tr('updNotes')+'</summary><pre>'+ccpEsc(notes)+'</pre></details>';
   if(d.supported){
    acts='<button type="button" class="ccp-btn" onclick="updApply(this)">'+tr('updBtnNow')+'</button>'
@@ -3813,7 +4000,7 @@ function updSettingsRender(){
   +'<div class="updsub'+(d.last_error?' bad':'')+'">'+(d.last_error?updErrText(d.last_error_code,d.last_error):ccpEsc(line+when))+'</div></div>'
   +'<button type="button" class="ghostbtn" id="updCheckBtn">'+tr('updCheckBtn')+'</button></div>'
   +((d.available&&d.skipped&&d.supported&&!updBusy())?'<div class="updrow"><div class="updtxt"></div><button type="button" class="ghostbtn" id="updApplyBtn">'+tr('updBtnNow')+'</button></div>':'')
-  +'<div class="updrow"><div class="fsseg" role="radiogroup">'
+  +'<div class="updrow"><div class="segctl" role="radiogroup">'
   +['manual','auto'].map(m=>'<button type="button" role="radio" data-m="'+m+'" aria-checked="'+(d.mode===m)+'" class="'+(d.mode===m?'on':'')+'">'+tr(m==='auto'?'updAuto':'updManual')+'</button>').join('')+'</div></div>'
   +'<div class="modalsub" style="margin:0">'+tr(d.mode==='auto'?'updHintAuto':'updHintManual')+'</div>'
   +'<label class="updchk"><input type="checkbox" id="updChk"'+(d.check?' checked':'')+'><span>'+tr('updCheckLbl')+'</span></label>';

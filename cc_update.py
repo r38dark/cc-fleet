@@ -139,6 +139,24 @@ def fetch_latest(repo, api_base, etag=None, timeout=15):
         raise UpdateError("GitHub ответил %s" % e.code, "net")
 
 
+# тело релиза двуязычное: блоки «## English» и «## Русский» (старые релизы — без них, одним языком)
+_NOTES_HEAD = re.compile(r"^#{1,3}[ \t]*(English|EN|Русский|Russian|RU)[ \t]*$", re.I | re.M)
+
+
+def split_notes(body):
+    """Тело релиза → {"notes_en": …, "notes_ru": …}. Нет таких заголовков — оба поля пустые,
+    панель покажет тело как есть."""
+    body = (body or "").replace("\r\n", "\n")
+    out = {"notes_en": "", "notes_ru": ""}
+    ms = list(_NOTES_HEAD.finditer(body))
+    for i, m in enumerate(ms):
+        end = ms[i + 1].start() if i + 1 < len(ms) else len(body)
+        key = "notes_ru" if m.group(1).lower() in ("русский", "russian", "ru") else "notes_en"
+        if not out[key]:
+            out[key] = body[m.end():end].strip()[:4000]
+    return out
+
+
 def release_info(rel):
     """Нужное из ответа GitHub → компактный словарь или None, если версия не по semver."""
     tag = rel.get("tag_name") or ""
@@ -157,7 +175,7 @@ def release_info(rel):
         "version": fmt_ver(ver), "tag": tag,
         "name": (rel.get("name") or tag)[:200],
         "html_url": rel.get("html_url") or "",
-        "notes": (rel.get("body") or "")[:4000],
+        "notes": (rel.get("body") or "")[:8000],
         "published_at": rel.get("published_at") or "",
         "url": url or "", "sha256": digest[7:] if digest.startswith("sha256:") else "",
     }
@@ -456,7 +474,7 @@ class Updater:
             "ok": True, "version": self.version, "mode": self.mode(),
             "check": self.check_enabled(), "supported": not self.unsupported(),
             "unsupported_reason": self.unsupported(), "unsupported_code": "systemd" if self.unsupported() else "",
-            "latest": latest if available else None,
+            "latest": dict(latest, **split_notes(latest.get("notes"))) if available else None,
             "available": available,
             "skipped": bool(available and st.get("skipped") == latest.get("version")),
             "last_check": st.get("last_check"), "last_error": self.last_error or st.get("last_error"),

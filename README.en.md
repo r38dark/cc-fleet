@@ -44,10 +44,23 @@ Slate, Blocks. Switch them in "⚙ Settings"; the browser remembers the choice:
 
 ![cc-fleet skins](screenshots/skins.png)
 
-Full-screen console (the ⛶ button above the console) — the console takes
-≈70% of the height, the accounts sit below at ≈30%, the font fits the window:
+The page fits the window (v1.19.2) — the header, the console and the cards fit
+without page scrolling: the console takes all the free space, the accounts sit
+in a row. The "−/+" in the console corner change only the console font (click
+the percentage to reset to 100%):
 
-![Full screen](screenshots/fullscreen.png)
+![The page fits the window](screenshots/window.en.png)
+
+"Console only" mode (the ⛶ button in the console corner; leave it with the same
+button or Esc) — the console fills the screen, the accounts hide in a panel at
+the bottom edge:
+
+![Console only](screenshots/console-only.en.png)
+
+On a smartphone (left — the normal view, right — "console only" with the accounts
+panel open; on a phone it opens by tapping the tab):
+
+![Smartphone](screenshots/phone.en.png)
 
 Picking a look in settings:
 
@@ -106,11 +119,24 @@ gear, a "Delete" button on every card and the windows for both flows
   Gear → "Look": preview cards, the choice is remembered in the browser, no
   external fonts or requests — system typefaces only. Pure CSS driven by a
   `data-skin` attribute; the markup and logic are the same for every look.
-- ⛶ **Full-screen console** — a button next to the console title: the console
-  takes ≈70% of the height, the accounts ≈30% below. "Whole console" picks a
-  font (10 px and up) to fit as many lines as possible, "Large" gives a big
-  readable one. Close with ✕, Esc or the browser's Back; on a phone the
-  console fills the screen with the accounts underneath.
+- 🖥 **The page fits the window** (v1.19.2) — the header, the console and the
+  cards fit without page scrolling: the console takes the remaining height, the
+  account cards sit in a row across the window. The "−/+" in the console corner
+  change only the console font (remembered, click the percentage for 100%), and
+  the block sizes do not jump.
+- ⛶ **Console only** (v1.19.2) — the ⛶ button in the console corner: the console
+  fills the screen (and the browser's full screen where it supports it), the
+  accounts live in a panel at the bottom edge (on hover, on a phone — by tapping
+  the "Accounts" tab). Leave with the same button or Esc; the mode is remembered.
+  The console is scrolled to the latest lines by itself and does not jerk while
+  you read further up.
+- 📱 **Smartphone** (v1.19.2) — the header in two rows, the console ≈62% of the
+  screen height, `─` rules are fitted to the width, "−/+" and ⛶ sit inside the
+  console frame, the accounts panel in "console only" is a column.
+- ✋ **Confirmation for model and effort changes** (v1.19.2) — tapping a model
+  button or the effort bar asks "are you sure?", so they are not changed by
+  accident while scrolling (especially on a phone). Tapping the effort level that
+  is already selected does nothing.
 - 🎚 **Effort levels per model** — `/api/limits` returns, for every model, the
   list of effort levels it supports (read from the catalog baked into the
   Claude Code binary; an unknown model is never blocked), and setting a level
@@ -610,6 +636,24 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - HTTPS/certbot — a manual step after `install.sh`.
 
 ## Version history
+
+- **v1.19.2** — the page fits the window, "console only" mode, smartphone. The
+  page is no longer squeezed into a 640 px column: the header, the console and
+  the cards (in a row, across the window width) fit without page scrolling, and
+  the console takes the remaining height. Instead of the "full screen" above the
+  console there are "−/+" (console font, remembered) and a ⛶ "console only"
+  button: the console fills the screen, the accounts sit in a panel at the
+  bottom, opened by hover or by tapping the tab; the console is scrolled down by
+  itself and does not jerk while you read further up. The "Updated / Refresh
+  now" line is replaced by a refresh icon in the header, all icons are SVG, the
+  "login N d" chip is a shield and the term, coloured by urgency. Smartphone:
+  the header in two rows, the console ≈62% of the height, `─` rules fitted to
+  the width, the console controls inside its frame, the bottom panel as a
+  column. Changing the model or effort needs a confirmation. Card errors:
+  `_humanize_error` no longer fails on a reply shaped like
+  `{"error": {"type": …, "message": …}}`. The update banner shows the release
+  notes in the interface language: the release body is split by `## English` /
+  `## Русский` headings (older releases without them are shown whole).
 
 - **v1.19.1** — adding an account moved from a tile at the end of the list to a
   compact "+" button in the header next to the "Models" gear (RU/EN tooltip,
