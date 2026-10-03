@@ -6,7 +6,10 @@ import fcntl, html, json, os, re, shutil, struct, subprocess, tempfile, termios,
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pyte
 import cc_avail
+import cc_update
 import pexpect
+
+VERSION = "1.18.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -92,6 +95,10 @@ def tg_notify(text):
                   {"chat_id": chat_id, "text": text})
     except Exception as e:
         print(f"tg_notify fail: {e}", flush=True)
+
+
+# автообновление из GitHub Releases (cc_update.py): проверка раз в сутки, ручной/авто режим
+UPDATER = cc_update.Updater(BASE, VERSION, cfg, notify=tg_notify)
 
 
 def profile_names():
@@ -1873,6 +1880,10 @@ class H(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
             return self._send(200, pause_state())
+        if u.path == "/api/update":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            return self._send(200, UPDATER.status())
         if u.path == "/api/console":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -2004,11 +2015,26 @@ class H(BaseHTTPRequestHandler):
             d = pause_state()
             d.update(ok=ok, out=out)
             return self._send(200 if ok else 500, d)
+        if u.path == "/api/update/check":
+            return self._send(200, UPDATER.check(force=True))
+        if u.path == "/api/update/apply":
+            ok, msg = UPDATER.apply(body.get("version"))
+            d = UPDATER.status()
+            d.update(ok=ok, message=msg)
+            return self._send(200, d)
+        if u.path == "/api/update/skip":
+            return self._send(200, UPDATER.skip(str(body.get("version") or "")))
+        if u.path == "/api/update/ack":
+            return self._send(200, UPDATER.ack())
         if u.path == "/api/config":
             c = cfg()
             for k in ("autoswitch", "threshold", "optimize"):
                 if k in body:
                     c[k] = body[k]
+            if body.get("update_mode") in ("manual", "auto"):
+                c["update_mode"] = body["update_mode"]
+            if isinstance(body.get("update_check"), bool):
+                c["update_check"] = body["update_check"]
             if "enabled_models" in body:
                 # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
                 # хотя бы одна модель должна остаться доступной для переключения
@@ -2016,6 +2042,7 @@ class H(BaseHTTPRequestHandler):
                 if ids:
                     c["enabled_models"] = ids
             jsave(CONFIG, c)
+            UPDATER.kick()  # сменили режим обновлений — пусть петля пересмотрит сразу
             return self._send(200, {"ok": True, "autoswitch": c.get("autoswitch"),
                                     "threshold": c.get("threshold"), "optimize": c.get("optimize"),
                                     "model": model_info()})
@@ -2141,11 +2168,32 @@ button:disabled{opacity:.35;cursor:default}
 .ccpause.lvl-gate{--ccp-accent:#e8b93e;background:linear-gradient(90deg,rgba(232,185,62,.10),rgba(232,185,62,0) 55%),var(--card)}
 .ccpause.lvl-pause{--ccp-accent:#a78bfa;background:linear-gradient(90deg,rgba(167,139,250,.12),rgba(167,139,250,0) 55%),var(--card)}
 .ccpause.lvl-off{--ccp-accent:#5fd08a;background:linear-gradient(90deg,rgba(95,208,138,.10),rgba(95,208,138,0) 55%),var(--card)}
+.ccpause.lvl-upd{--ccp-accent:#4f9dff;background:linear-gradient(90deg,rgba(79,157,255,.12),rgba(79,157,255,0) 55%),var(--card)}
+.ccpause.lvl-updok{--ccp-accent:#5fd08a;background:linear-gradient(90deg,rgba(95,208,138,.10),rgba(95,208,138,0) 55%),var(--card)}
+.ccpause.lvl-upderr{--ccp-accent:#e05b5b;background:linear-gradient(90deg,rgba(224,91,91,.10),rgba(224,91,91,0) 55%),var(--card)}
 .ccp-actions{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .ccp-btn{font:inherit;font-size:12.5px;font-weight:600;padding:6px 14px;border-radius:8px;cursor:pointer;color:var(--txt);background:#1b2029;border:1px solid var(--ccp-accent)}
 .ccp-btn:hover{background:#232a36}
 .ccp-btn:disabled{opacity:.55;cursor:wait}
 .ccp-hint{font-size:11.5px;color:var(--mut)}
+/* баннер обновления и блок «Обновления» в настройках */
+html[data-skin] .ccp-btn.sec{border-color:rgba(127,127,127,.4);color:var(--mut);background:transparent}
+html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accent)}
+.ccp-link{font-size:12px;color:var(--mut);text-decoration:underline}
+.ccp-link:hover{color:var(--txt)}
+.upd-notes{margin-top:8px;font-size:12px;color:var(--mut)}
+.upd-notes summary{cursor:pointer;color:var(--txt);font-weight:600}
+.upd-notes pre{margin:6px 0 0;max-height:140px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11.5px/1.5 ui-monospace,Consolas,monospace;opacity:.9}
+.upd-bar{margin-top:10px;height:3px;border-radius:99px;background:rgba(127,127,127,.25);overflow:hidden}
+.upd-bar i{display:block;height:100%;width:35%;background:var(--ccp-accent);border-radius:99px;animation:updslide 1.4s ease-in-out infinite}
+@keyframes updslide{0%{margin-left:-35%}100%{margin-left:100%}}
+@media (prefers-reduced-motion:reduce){.upd-bar i{animation:none;width:100%;opacity:.45}}
+.updrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+.updtxt{min-width:0;font-size:13px}
+.updsub{font-size:12px;color:var(--mut);margin-top:2px}
+.updsub.bad{color:var(--bad)}
+.updchk{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--mut);margin-top:8px;cursor:pointer}
+.updchk input{margin-top:2px}
 .ccp-err{font-size:11.5px;color:#ffb1b1}
 .ccp-dot{flex:none;width:10px;height:10px;margin-top:5px;border-radius:50%;background:var(--ccp-accent);box-shadow:0 0 0 0 var(--ccp-accent);animation:ccp-pulse 2.4s ease-out infinite}
 @keyframes ccp-pulse{70%{box-shadow:0 0 0 7px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
@@ -2513,8 +2561,9 @@ html[data-skin="blocks"] .poolrow{border-color:var(--bk)}
 html[data-skin="blocks"] .newbadge{background:var(--bb);color:#fff;border-radius:0}
 html[data-skin="blocks"] .ghostbtn{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);font-weight:700;box-shadow:2px 2px 0 var(--bk)}
 html[data-skin="blocks"] #modalDone{background:var(--bk);color:var(--by);border-radius:0;box-shadow:3px 3px 0 var(--bb)}
-html[data-skin="blocks"] .ccpause,html[data-skin="blocks"] .ccpause.lvl-hard,html[data-skin="blocks"] .ccpause.lvl-gate,html[data-skin="blocks"] .ccpause.lvl-pause,html[data-skin="blocks"] .ccpause.lvl-off{background:#fff;color:var(--bk);border:3px solid var(--bk);border-left:12px solid var(--ccp-accent,var(--bk));border-radius:0;box-shadow:4px 4px 0 var(--bk)}
+html[data-skin="blocks"] .ccpause,html[data-skin="blocks"] .ccpause.lvl-hard,html[data-skin="blocks"] .ccpause.lvl-gate,html[data-skin="blocks"] .ccpause.lvl-pause,html[data-skin="blocks"] .ccpause.lvl-off,html[data-skin="blocks"] .ccpause.lvl-upd,html[data-skin="blocks"] .ccpause.lvl-updok,html[data-skin="blocks"] .ccpause.lvl-upderr{background:#fff;color:var(--bk);border:3px solid var(--bk);border-left:12px solid var(--ccp-accent,var(--bk));border-radius:0;box-shadow:4px 4px 0 var(--bk)}
 html[data-skin="blocks"] .ccp-title,html[data-skin="blocks"] .ccp-sub .num,html[data-skin="blocks"] .ccp-chip b{color:var(--bk)}
+html[data-skin="blocks"] .ccpause.lvl-upd .ccp-title b{color:#1f62c4}html[data-skin="blocks"] .ccpause.lvl-updok .ccp-title b{color:#18804a}html[data-skin="blocks"] .ccpause.lvl-upderr .ccp-title b{color:#c0392b}
 html[data-skin="blocks"] .ccp-sub,html[data-skin="blocks"] .ccp-hint,html[data-skin="blocks"] .ccp-timer .l{color:var(--mut)}
 html[data-skin="blocks"] .ccp-chip{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk)}
 html[data-skin="blocks"] .ccp-chip.hot{background:#ff3d3d;color:#fff}
@@ -2531,6 +2580,7 @@ html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:v
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter></svg>
 <div class="hdr"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><div style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="gear" class="hdrgear" title="Модели">⚙</button></div></div>
+<div class="ccpause" id="updBanner" hidden></div>
 <div id="fsRoot">
 <div class="fsbar" id="fsBar"><span class="fsinfo" id="fsInfo"></span><div class="fsseg"><button type="button" id="fsMFit"></button><button type="button" id="fsMBig"></button></div><button type="button" class="iconbtn" id="fsClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
 <div class="ccpause" id="ccPause" hidden></div>
@@ -2557,6 +2607,8 @@ html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:v
   <h3 id="modalTitle">Настройки</h3>
   <div class="modalh" id="skinTitle">Оформление</div>
   <div class="skgrid" id="skinGrid" role="radiogroup"></div>
+  <div class="modalh" id="updHdr">Обновления</div>
+  <div id="updBox"></div>
   <div class="modalh" id="modelsHdr">Модели</div>
   <div class="modalsub" id="modalSub">Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»</div>
   <div id="poolList"></div>
@@ -2607,6 +2659,53 @@ const I18N={
   loginGone:'истёк',
   loginHint:w=>`Логин истекает ${w}. После этого нужно «Войти заново»`,
   loginHintGone:w=>`Логин истёк ${w}. Нужно «Войти заново»`,
+  updHdr:'Обновления',
+  updVer:v=>`cc-fleet v${v}`,
+  updUpToDate:'Установлена последняя версия',
+  updNeverChecked:'Проверка ещё не выполнялась',
+  updCheckedAt:t=>`проверено в ${t}`,
+  updCheckBtn:'Проверить',
+  updAvailLine:v=>`Доступна версия ${v}`,
+  updSkippedLine:v=>`Версия ${v} пропущена`,
+  updManual:'Вручную',
+  updAuto:'Автоматически',
+  updHintManual:'Вручную: покажу баннер о новой версии, а ты решишь — обновляться или нет.',
+  updHintAuto:'Автоматически: сам скачаю релиз, проверю, заменю файлы и перезапущу панель. Перед заменой делается бэкап, при сбое файлы возвращаются.',
+  updCheckLbl:'Проверять новые версии раз в сутки (один запрос к GitHub, без токена)',
+  updAutoConfirm:v=>`Сейчас доступна версия ${v} — её поставят сразу. Включить автоматическое обновление?`,
+  updNoSupport:r=>`Автообновление здесь недоступно (${r}). Обнови вручную: sudo ./install.sh из архива релиза.`,
+  updBTitle:v=>`⬆ Вышла новая версия — <b>${v}</b>`,
+  updBSub:(cur,name)=>`У тебя ${cur}`+(name?` · ${name}`:''),
+  updBtnNow:'Обновить',
+  updBtnSkip:'Пропустить эту версию',
+  updBtnPage:'Страница релиза ↗',
+  updBtnOk:'Понятно',
+  updBtnRetry:'Повторить',
+  updNotes:'Что нового',
+  updAutoSoon:'Автообновление включено — поставлю при ближайшей проверке.',
+  updRunTitle:v=>`⬆ Обновляю до <b>${v}</b>`,
+  updPhDownloading:'Скачиваю релиз…',
+  updPhVerifying:'Проверяю архив…',
+  updPhInstalling:'Делаю бэкап и заменяю файлы…',
+  updPhRestarting:'Перезапускаю службу — панель вернётся через несколько секунд…',
+  updPhConfirm:'Новая версия запущена, проверяю, что всё работает…',
+  updOkTitle:v=>`✅ Обновлено до версии <b>${v}</b>`,
+  updOkSub:f=>`Было ${f}. Служба перезапущена и работает.`,
+  updErrTitle:v=>`⚠ Обновление до <b>${v}</b> не удалось`,
+  updRolled:'Прежняя версия возвращена — всё работает как раньше.',
+  updE_net:'Нет связи с GitHub — попробуй позже.',
+  updE_host:'Адрес загрузки не с GitHub — отказался качать.',
+  updE_sha:'Контрольная сумма архива не совпала — ничего не менялось.',
+  updE_archive:'Архив релиза повреждён или небезопасен — ничего не менялось.',
+  updE_manifest:'Манифест релиза некорректен — ничего не менялось.',
+  updE_check:'Файлы релиза не прошли проверку — ничего не менялось.',
+  updE_backup:'Бэкап непригоден — ничего не менялось.',
+  updE_restart:'Не удалось запланировать перезапуск службы (systemd-run).',
+  updE_needs_install:'В этом релизе изменилась установка — один раз запусти sudo ./install.sh из архива релиза.',
+  updE_boot:'Новая версия не подтвердила запуск вовремя.',
+  updE_rollback_failed:'Откат не удался — поставь заново: sudo ./install.sh.',
+  updE_systemd:'нужен systemd и юнит службы',
+  updToastSkipped:'Версия пропущена',
   ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
@@ -2695,6 +2794,53 @@ const I18N={
   loginGone:'expired',
   loginHint:w=>`Login expires ${w}. After that you need “Log in again”`,
   loginHintGone:w=>`Login expired ${w}. Use “Log in again”`,
+  updHdr:'Updates',
+  updVer:v=>`cc-fleet v${v}`,
+  updUpToDate:'You are on the latest version',
+  updNeverChecked:'Not checked yet',
+  updCheckedAt:t=>`checked at ${t}`,
+  updCheckBtn:'Check now',
+  updAvailLine:v=>`Version ${v} is available`,
+  updSkippedLine:v=>`Version ${v} skipped`,
+  updManual:'Manual',
+  updAuto:'Automatic',
+  updHintManual:'Manual: I show a banner about a new version and you decide whether to update.',
+  updHintAuto:'Automatic: I download the release, verify it, replace the files and restart the panel. A backup is made first; on failure the files are put back.',
+  updCheckLbl:'Check for new versions once a day (one request to GitHub, no token)',
+  updAutoConfirm:v=>`Version ${v} is available right now — it will be installed immediately. Turn on automatic updates?`,
+  updNoSupport:r=>`Auto-update is unavailable here (${r}). Update by hand: sudo ./install.sh from the release archive.`,
+  updBTitle:v=>`⬆ New version released — <b>${v}</b>`,
+  updBSub:(cur,name)=>`You have ${cur}`+(name?` · ${name}`:''),
+  updBtnNow:'Update',
+  updBtnSkip:'Skip this version',
+  updBtnPage:'Release page ↗',
+  updBtnOk:'Got it',
+  updBtnRetry:'Retry',
+  updNotes:'What’s new',
+  updAutoSoon:'Auto-update is on — it will be installed at the next check.',
+  updRunTitle:v=>`⬆ Updating to <b>${v}</b>`,
+  updPhDownloading:'Downloading the release…',
+  updPhVerifying:'Verifying the archive…',
+  updPhInstalling:'Backing up and replacing files…',
+  updPhRestarting:'Restarting the service — the panel will be back in a few seconds…',
+  updPhConfirm:'The new version is running, checking that everything works…',
+  updOkTitle:v=>`✅ Updated to version <b>${v}</b>`,
+  updOkSub:f=>`Was ${f}. The service restarted and is running.`,
+  updErrTitle:v=>`⚠ Update to <b>${v}</b> failed`,
+  updRolled:'The previous version was restored — everything works as before.',
+  updE_net:'Could not reach GitHub — try again later.',
+  updE_host:'The download address is not GitHub — refused to download.',
+  updE_sha:'Archive checksum mismatch — nothing was changed.',
+  updE_archive:'The release archive is broken or unsafe — nothing was changed.',
+  updE_manifest:'The release manifest is invalid — nothing was changed.',
+  updE_check:'Release files failed the check — nothing was changed.',
+  updE_backup:'The backup is unusable — nothing was changed.',
+  updE_restart:'Could not schedule the service restart (systemd-run).',
+  updE_needs_install:'This release changes the installation — run sudo ./install.sh from the release archive once.',
+  updE_boot:'The new version did not confirm startup in time.',
+  updE_rollback_failed:'Rollback failed — reinstall with sudo ./install.sh.',
+  updE_systemd:'systemd and the service unit are required',
+  updToastSkipped:'Version skipped',
   ccpPauseTitle:'⏸ Claude is <b>paused on limits</b> — it resumes on its own',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
@@ -2764,6 +2910,8 @@ function applyI18n(){
  $('#fsBtn').title=tr('fsOpenTitle');$('#fsClose').title=tr('fsCloseTitle');
  $('#fsMFit').textContent=tr('fsFit');$('#fsMFit').title=tr('fsFitTitle');$('#fsMBig').textContent=tr('fsBig');$('#fsMBig').title=tr('fsBigTitle');
  if(FS.on)fsFitSoon();
+ $('#updHdr').textContent=tr('updHdr');
+ if(typeof updRender==='function'){updRender();updSettingsRender();}  // смена языка перерисовывает баннер и блок настроек
  $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
@@ -3165,7 +3313,133 @@ async function ccpLoad(){
  try{const r=await fetch(API+'pause?token='+TOKEN);ccpData=await r.json();}catch(e){ccpData=null;}
  ccpRender();
 }
+
+// ---- автообновление: баннер «вышла версия», блок в настройках, ручной/авто режим ----
+let updData=null,updWait=null,updTimer=null,updDown=false;
+const updBusy=()=>!!(updWait||(updData&&(updData.phase!=='idle'||updData.pending)));
+const updAt=ts=>ts?new Date(ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'}):'';
+async function updPost(path,body){
+ const r=await fetch(API+'update/'+path+'?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+ return r.json();
+}
+async function updLoad(){
+ clearTimeout(updTimer);
+ try{
+  const r=await fetch(API+'update?token='+TOKEN);
+  if(!r.ok)throw new Error(r.status);
+  updData=await r.json();updDown=false;
+  if(updWait){
+   const res=updData.result;
+   // итог пришёл (успех — когда служба подтвердила запуск, сбой/откат — сразу) или ждём слишком долго
+   if((res&&res.to===updWait.to&&(!res.ok||updData.version===updWait.to))||Date.now()-updWait.ts>300000)updWait=null;
+  }
+ }catch(e){updDown=true;}  // служба перезапускается — просто ждём, баннер покажет это
+ updRender();updSettingsRender();
+ updTimer=setTimeout(updLoad,(updBusy()||updDown)?2000:60000);
+}
+// причина ошибки: код → текст на языке интерфейса (сырой текст бэкенда — в подсказке); нет перевода — показываем как есть
+function updErrText(code,raw){
+ const k='updE_'+code;
+ if(code&&I18N[LANG][k])return '<span'+(raw?' title="'+ccpEsc(raw)+'"':'')+'>'+ccpEsc(tr(k))+'</span>';
+ return ccpEsc(raw||'');
+}
+function updNotesText(t){return String(t||'').replace(/^#+\s*/gm,'').replace(/\*\*/g,'').replace(/`/g,'').trim().slice(0,1500);}
+function updRender(){
+ const el=$('#updBanner');if(!el)return;
+ const d=updData;
+ if(!d&&!updWait){el.hidden=true;return;}
+ const L=d&&d.latest,res=d&&d.result;
+ let cls,title,sub='',more='',acts='',bar=false;
+ if(updWait||(d&&(d.phase!=='idle'||d.pending))){
+  const to=updWait?updWait.to:((L&&L.version)||(res&&res.to)||'');
+  const k={downloading:'updPhDownloading',verifying:'updPhVerifying',installing:'updPhInstalling',restarting:'updPhRestarting'}[d?d.phase:''];
+  cls='lvl-upd';bar=true;title=tr('updRunTitle',ccpEsc(to));
+  sub=tr(k||(updDown?'updPhRestarting':'updPhConfirm'));
+ }else if(res){
+  if(res.ok){
+   cls='lvl-updok';title=tr('updOkTitle',ccpEsc(res.to));sub=tr('updOkSub',ccpEsc(res.from));
+   acts='<button type="button" class="ccp-btn" onclick="updAck()">'+tr('updBtnOk')+'</button>';
+  }else{
+   cls='lvl-upderr';title=tr('updErrTitle',ccpEsc(res.to));
+   sub=updErrText(res.code,res.error)+(res.rolled_back?'<br>'+tr('updRolled'):'');
+   acts='<button type="button" class="ccp-btn" onclick="updAck()">'+tr('updBtnOk')+'</button>'
+    +((d.available&&!res.needs_install&&d.supported)?'<button type="button" class="ccp-btn sec" onclick="updApply(this)">'+tr('updBtnRetry')+'</button>':'');
+  }
+ }else if(d.available&&!d.skipped){
+  cls='lvl-upd';title=tr('updBTitle',ccpEsc(L.version));sub=tr('updBSub',ccpEsc(d.version),ccpEsc(L.name&&L.name!==L.tag?L.name:''));
+  const notes=updNotesText(L.notes);
+  if(notes)more='<details class="upd-notes"><summary>'+tr('updNotes')+'</summary><pre>'+ccpEsc(notes)+'</pre></details>';
+  if(d.supported){
+   acts='<button type="button" class="ccp-btn" onclick="updApply(this)">'+tr('updBtnNow')+'</button>'
+    +'<button type="button" class="ccp-btn sec" onclick="updSkip()">'+tr('updBtnSkip')+'</button>';
+  }else acts='<span class="ccp-hint">'+ccpEsc(tr('updNoSupport',I18N[LANG]['updE_'+d.unsupported_code]?tr('updE_'+d.unsupported_code):d.unsupported_reason))+'</span>';
+  if(L.html_url)acts+='<a class="ccp-link" href="'+ccpEsc(L.html_url)+'" target="_blank" rel="noopener">'+tr('updBtnPage')+'</a>';
+  if(d.mode==='auto'&&d.supported)acts+='<span class="ccp-hint">'+tr('updAutoSoon')+'</span>';
+ }else{el.hidden=true;return;}
+ el.className='ccpause '+cls;el.hidden=false;
+ el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
+  +'<div class="ccp-sub">'+sub+'</div>'+(bar?'<div class="upd-bar"><i></i></div>':'')+more
+  +(acts?'<div class="ccp-actions">'+acts+'</div>':'')+'</div>';
+}
+async function updApply(btn){
+ if(btn)btn.disabled=true;
+ const to=updData&&updData.latest&&updData.latest.version;
+ try{
+  const d=await updPost('apply',{version:to});
+  if(!d.ok)throw new Error(d.message||'error');
+  updWait={to,ts:Date.now()};updData=d;
+ }catch(e){toast('⚠ '+e.message);if(btn)btn.disabled=false;}
+ updLoad();
+}
+async function updSkip(){
+ const v=updData&&updData.latest&&updData.latest.version;if(!v)return;
+ try{updData=await updPost('skip',{version:v});toast(tr('updToastSkipped'));}catch(e){}
+ updRender();updSettingsRender();
+}
+async function updAck(){
+ try{updData=await updPost('ack');}catch(e){}
+ updRender();updSettingsRender();
+}
+function updSettingsRender(){
+ const box=$('#updBox');if(!box||$('#scrim').hidden)return;
+ const d=updData;
+ if(!d){box.innerHTML='';return;}
+ const L=d.latest;
+ const line=d.available?tr(d.skipped?'updSkippedLine':'updAvailLine',L.version):tr(d.last_check?'updUpToDate':'updNeverChecked');
+ const when=(!d.available&&d.last_check)?' · '+tr('updCheckedAt',updAt(d.last_check)):'';
+ box.innerHTML='<div class="updrow"><div class="updtxt"><b>'+tr('updVer',ccpEsc(d.version))+'</b>'
+  +'<div class="updsub'+(d.last_error?' bad':'')+'">'+(d.last_error?updErrText(d.last_error_code,d.last_error):ccpEsc(line+when))+'</div></div>'
+  +'<button type="button" class="ghostbtn" id="updCheckBtn">'+tr('updCheckBtn')+'</button></div>'
+  +((d.available&&d.skipped&&d.supported&&!updBusy())?'<div class="updrow"><div class="updtxt"></div><button type="button" class="ghostbtn" id="updApplyBtn">'+tr('updBtnNow')+'</button></div>':'')
+  +'<div class="updrow"><div class="fsseg" role="radiogroup">'
+  +['manual','auto'].map(m=>'<button type="button" role="radio" data-m="'+m+'" aria-checked="'+(d.mode===m)+'" class="'+(d.mode===m?'on':'')+'">'+tr(m==='auto'?'updAuto':'updManual')+'</button>').join('')+'</div></div>'
+  +'<div class="modalsub" style="margin:0">'+tr(d.mode==='auto'?'updHintAuto':'updHintManual')+'</div>'
+  +'<label class="updchk"><input type="checkbox" id="updChk"'+(d.check?' checked':'')+'><span>'+tr('updCheckLbl')+'</span></label>';
+}
+$('#updBox').addEventListener('click',async e=>{
+ const d=updData;if(!d)return;
+ const m=e.target.closest('[data-m]');
+ if(m){
+  const mode=m.dataset.m;if(mode===d.mode)return;
+  if(mode==='auto'&&d.available&&!d.skipped&&d.supported&&!confirm(tr('updAutoConfirm',d.latest.version)))return;
+  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({update_mode:mode})});
+  return updLoad();
+ }
+ if(e.target.id==='updCheckBtn'){
+  e.target.disabled=true;
+  try{updData=await updPost('check');}catch(x){}
+  updRender();updSettingsRender();return;
+ }
+ if(e.target.id==='updApplyBtn')return updApply(e.target);
+});
+$('#updBox').addEventListener('change',async e=>{
+ if(e.target.id!=='updChk')return;
+ await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({update_check:e.target.checked})});
+ updLoad();
+});
+$('#gear').addEventListener('click',()=>{updSettingsRender();updLoad();});
 applyI18n();load();setInterval(()=>load(),60000);
+updLoad();
 ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
 </script></body></html>"""
 
@@ -3173,6 +3447,7 @@ ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
 if __name__ == "__main__":
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
+    threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
     port = cfg().get("port", 8877)
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     print(f"cc-limits up on 127.0.0.1:{port}", flush=True)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet v1.17.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
+# cc-fleet v1.18.0 — self-host ротация нескольких Pro/Max аккаунтов Claude Code:
 # мониторинг лимитов (5ч/неделя), авто-переключение по порогу, веб-панель
 # (карточки аккаунтов + переключение), read-only зеркало консоли живой
 # screen-сессии Claude Code, гейт лимитов для фоновых задач и пауза с
@@ -57,7 +57,7 @@ ask_yn() {
 [ "$(id -u)" = "0" ] || die "Запускай от root (sudo ./install.sh)."
 [ -f "$SCRIPT_DIR/cc_limits.py" ] || die "cc_limits.py не найден рядом со скриптом ($SCRIPT_DIR)."
 
-log "cc-fleet v1.17.0 — установка ротации Claude-аккаунтов"
+log "cc-fleet v1.18.0 — установка ротации Claude-аккаунтов"
 echo "Ставим на этот сервер как systemd-сервис + (опционально) nginx-панель."
 echo
 
@@ -114,10 +114,13 @@ apt-get install -y -qq $APT_PKGS
 command -v claude >/dev/null 2>&1 || warn "Бинарник 'claude' не найден в PATH — веб-кнопка 'Войти заново' работать не будет, пока не поставишь Claude Code (npm i -g @anthropic-ai/claude-code)."
 
 # ---------- сервис ----------
-log "Копирую cc_limits.py и cc_avail.py → $BASE"
+log "Копирую cc_limits.py, cc_update.py и cc_avail.py → $BASE"
 mkdir -p "$BASE"
 cp "$SCRIPT_DIR/cc_limits.py" "$BASE/cc_limits.py"
 chmod 644 "$BASE/cc_limits.py"
+# автообновление из GitHub Releases (проверка раз в сутки, ручной/авто режим — в ⚙ панели)
+cp "$SCRIPT_DIR/cc_update.py" "$BASE/cc_update.py"
+chmod 644 "$BASE/cc_update.py"
 # общее правило «когда аккаунт снова пригоден» — импортируют cc_limits.py, pause_ctl.py, limits_gate.py
 cp "$SCRIPT_DIR/cc_avail.py" "$BASE/cc_avail.py"
 chmod 644 "$BASE/cc_avail.py"
@@ -161,9 +164,9 @@ else
   HOOK_TOKEN="$(openssl rand -hex 24)"
   log "Генерирую config.json (hook_token сгенерирован случайно, храни в секрете)"
 fi
-python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$CHAT_ID" "$PORT" "$BOT_TOKEN" "$([ "$WANT_NGINX" = "y" ] && echo "$DOMAIN")" <<'PYEOF'
+python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$CHAT_ID" "$PORT" "$BOT_TOKEN" "$([ "$WANT_NGINX" = "y" ] && echo "$DOMAIN")" "$SERVICE_NAME" <<'PYEOF'
 import json, os, sys
-path, token, threshold, screen, chat_id, port, bot_token, domain = sys.argv[1:9]
+path, token, threshold, screen, chat_id, port, bot_token, domain, service = sys.argv[1:10]
 cfg = {
     "hook_token": token,
     "autoswitch": True,
@@ -182,6 +185,10 @@ if os.path.exists(path):
             cfg = old
     except Exception:
         pass
+# автообновление: по умолчанию ручное (кнопка в панели); режим уже выбранный пользователем не трогаем
+cfg.setdefault("update_mode", "manual")
+cfg.setdefault("update_check", True)
+cfg["service_name"] = service  # по нему обновлятор перезапускает службу
 if chat_id:
     cfg["chat_id"] = chat_id
 if domain:

@@ -53,6 +53,13 @@ Picking a look in settings:
 
 ![Look settings](screenshots/settings-skins.png)
 
+Updates from the panel (v1.18.0) — the "New version released" banner in three looks
+and the "Updates" block in "⚙ Settings" (manual / automatic; the screenshots show
+the Russian UI, the panel is bilingual):
+
+![Update banner](screenshots/update-banner.png)
+![Update settings](screenshots/update-settings.png)
+
 ## Features
 
 - 📊 **Multi-account limit monitoring** at once — 5-hour window and weekly
@@ -110,6 +117,14 @@ Picking a look in settings:
   under a day shows hours, past the date it says "expired"; the tooltip has the
   exact date. Tokens never reach `/api/limits`, only the `login_expires` date
   goes out. Fitted into all five looks.
+- 🔄 **Updates from the panel** (v1.18.0) — once a day the panel asks GitHub
+  whether a newer release exists and shows a banner "v1.18.1 is out — Update /
+  Skip this version". "⚙ Settings" has a **"Manual / Automatic"** switch
+  (manual by default): manual installs on a button press, automatic downloads
+  the archive, verifies it, replaces the files and restarts the service by
+  itself. A backup is made before replacing, and a failed start rolls back
+  automatically. Details are in "Updates from the panel". Fitted into all five
+  looks, RU/EN.
 - 🔔 **State banner** at the top of the panel (RU/EN): "limits reached —
   nothing to switch to", "active account is full — background jobs paused",
   "paused, resuming at 16:03" with a countdown. In normal operation there is
@@ -158,7 +173,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -377,13 +392,67 @@ It is wired up by an installer question (it edits `hooks.PreToolUse` in
 | `cc-switch list` | which profiles exist, which one is active |
 | `cc-switch <N>` / `cc-switch next` | manually switch the active session |
 | `/cc/` (or `curl 127.0.0.1:8877/api/limits?token=<hook_token>`) | limits, auto-switch, console mirror |
+| `curl 127.0.0.1:8877/api/update?token=<hook_token>` | update state: installed and available version, mode, stage, result of the last update |
 | `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`), pause, nearest reset |
 | `python3 /opt/cc-limits/limits_gate.py` | may a background job start right now (rc `0`/`10`) |
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
 | `python3 /opt/cc-limits/pause_ctl.py off\|on` | disable the pause (work past the threshold) / enable it back — same as the banner buttons |
 | `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | incoming messages queued while the limits held |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message` |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `update_mode`, `update_check`, `update_repo`, `service_name` |
 | `/opt/cc-limits/switch_log.jsonl` | audit log: one line per forced-mode moment in optimize mode (threshold crossed, switch blocked by cooldown, no candidate, actual switch) — v1.4.0 |
+
+## Updates from the panel (v1.18.0)
+
+Once a day (and on the "Check" button in "⚙ Settings → Updates") the panel makes
+**one** request, `GET https://api.github.com/repos/r38dark/cc-fleet/releases/latest`
+— no token, nothing about you is sent (with `If-None-Match`, so most of the time
+GitHub answers "304, unchanged"). If a newer release exists, a banner with the
+release notes and buttons appears at the top of the panel, and — if Telegram is
+configured — one message per version.
+
+| Mode | What happens |
+|---|---|
+| **Manual** (default) | banner + an **Update** button; **Skip this version** hides the banner until the next release (you can still install a skipped one from Settings) |
+| **Automatic** | the panel installs a found release by itself; a Telegram message says "updated" or "failed" |
+
+How an update goes (the banner shows the stages):
+
+1. the archive is downloaded **from GitHub only** (every redirect is checked,
+   30 MB cap); if GitHub supplies the asset's `sha256`, it is verified;
+2. the archive is unpacked into a temp folder with no symlinks and no paths
+   escaping it; the list of files to replace comes from the release's
+   `update_manifest.json`, writes are only allowed into `/opt/cc-limits` (and
+   `cc-switch` in `/usr/local/bin`); every `.py` is compiled and `VERSION` must
+   match the release version;
+3. a **backup** of the files being replaced goes to `/opt/cc-limits/update_backup/`
+   (the last 3 are kept), then the files are swapped and the service restarts;
+4. the new version confirms its own start after ≈20 seconds of running. If it
+   has not confirmed within 2 minutes (crashed, looping), a separate systemd
+   watchdog unit **puts the previous files back** and restarts the service; the
+   banner says "failed, the previous version was restored". The automatic mode
+   will not install a version that failed to start again by itself (manually —
+   the "Retry" button).
+
+Good to know:
+
+- **This runs someone else's code as root.** An update installs whatever is
+  published in the repository's release. If you don't want that, keep "Manual"
+  (the banner puts the release notes and a link to the page in front of you) or
+  turn the check off entirely: the "Check for new versions once a day" box in
+  Settings, or `"update_check": false` in `config.json`.
+- It needs systemd and an install made by `install.sh` (the unit
+  `/etc/systemd/system/<service>.service`; the service name is stored in
+  `config.json` as `service_name`). Otherwise the banner only announces the new
+  version and tells you to update by hand.
+- If a release changes the installation itself (unit, nginx, hooks), the
+  auto-update does not install it and asks you to run `sudo ./install.sh` from
+  the release archive once.
+- **Installs ≤ v1.17.0 need one manual step:** `git pull && sudo ./install.sh`
+  (they don't have the updater yet). After that — from the panel.
+- `config.json` keys: `update_mode` (`manual`/`auto`), `update_check`
+  (`true`/`false`), `update_repo` (default `r38dark/cc-fleet`, for forks),
+  `service_name`.
+- API: `GET /api/update` (state), `POST /api/update/check|apply|skip|ack`.
 
 ## Upgrading from a previous version
 
@@ -396,7 +465,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -457,6 +526,16 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.18.0** — updates from the panel. Once a day one request to GitHub
+  Releases (no token), a banner "New version released — Update / Skip this
+  version" with the release notes, a "Manual / Automatic" switch in "⚙ Settings"
+  and a box to turn the check off. Download from GitHub only (redirect checks,
+  size cap, the asset's `sha256`), unpacking without links or escaping paths, the
+  file list from `update_manifest.json`, `.py` compile and a `VERSION` check
+  before replacing; a backup in `update_backup/`, the new version confirms its
+  start, and a watchdog in a separate systemd unit rolls back if it did not come
+  up. The banner and settings are fitted into all five looks, RU/EN, failure
+  reasons are translated. Installs ≤ v1.17.0 need one manual `sudo ./install.sh`.
 - **v1.17.0** — login expiry on the account card. `/api/limits` returns
   `login_expires` (an ISO date from `refreshTokenExpiresAt`: for the active
   account from the CLI's live file, for the others from the profile file; no
