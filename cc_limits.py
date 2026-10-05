@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.3"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.4"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2704,7 +2704,7 @@ html[data-skin="phosphor"] .hdrgear:hover,html[data-skin="phosphor"] .iconbtn:ho
 html[data-skin="phosphor"] .tzval{color:var(--ph);text-transform:uppercase;letter-spacing:.06em}
 html[data-skin="phosphor"] .termdot{border-radius:0;background:var(--ph);box-shadow:0 0 8px var(--ph)}
 html[data-skin="phosphor"] .termdot.err{background:#ff6b5e;box-shadow:0 0 8px #ff6b5e}
-html[data-skin="phosphor"] .termbox{font-family:ui-monospace,"IBM Plex Mono","SF Mono","Cascadia Mono",Consolas,monospace;background:#010502;color:#c8d0dc;border:1px solid var(--phl);border-radius:2px;padding:12px 14px;filter:url(#ccPhosphor);box-shadow:inset 0 0 70px rgba(60,255,120,.10);scrollbar-color:#1f6b36 #010502}
+html[data-skin="phosphor"] .termbox{font-family:ui-monospace,"IBM Plex Mono","SF Mono","Cascadia Mono",Consolas,monospace;background:#010502;color:#c8d0dc;border:1px solid var(--phl);border-radius:2px;padding:12px 14px;filter:url(#ccPhosphorT);box-shadow:inset 0 0 70px rgba(60,255,120,.10);scrollbar-color:#1f6b36 #010502}
 html[data-skin="phosphor"] .termbox::-webkit-scrollbar-track{background:#010502}
 html[data-skin="phosphor"] .termbox::-webkit-scrollbar-thumb{background:#1f6b36;border:2px solid #010502;border-radius:0;background-clip:padding-box}
 html[data-skin="phosphor"] .termbox::-webkit-scrollbar-thumb:hover{background:#6dff9a;background-clip:padding-box}
@@ -2772,7 +2772,7 @@ html[data-skin="aurora"] .hdrgear,html[data-skin="aurora"] .iconbtn{background:r
 html[data-skin="aurora"] .hdrgear:hover,html[data-skin="aurora"] .iconbtn:hover{border-color:#7de7f7;color:#fff;box-shadow:0 0 14px -2px rgba(34,211,238,.6)}
 html[data-skin="aurora"] .termdot{width:9px;height:9px;background:#34d399;box-shadow:0 0 10px #34d399,0 0 22px rgba(52,211,153,.6)}
 html[data-skin="aurora"] .termdot.err{background:#fb7185;box-shadow:0 0 10px #fb7185}
-html[data-skin="aurora"] .termbox{font-family:"DM Mono",ui-monospace,Consolas,monospace;font-weight:500;background:rgba(3,4,12,.95);color:#eef0ff;border:1px solid rgba(160,150,255,.28);border-radius:18px;padding:14px 16px;filter:brightness(1.18) contrast(1.08);box-shadow:0 24px 60px -24px rgba(0,0,0,.9),0 0 0 1px rgba(124,92,255,.12),inset 0 1px 0 rgba(255,255,255,.08);scrollbar-color:rgba(124,92,255,.6) transparent}
+html[data-skin="aurora"] .termbox{font-family:"DM Mono",ui-monospace,Consolas,monospace;font-synthesis:none;background:rgba(3,4,12,.95);color:#eef0ff;border:1px solid rgba(160,150,255,.28);border-radius:18px;padding:14px 16px;box-shadow:0 24px 60px -24px rgba(0,0,0,.9),0 0 0 1px rgba(124,92,255,.12),inset 0 1px 0 rgba(255,255,255,.08);scrollbar-color:rgba(124,92,255,.6) transparent}
 html[data-skin="aurora"] .termbox::-webkit-scrollbar-track{background:transparent}
 html[data-skin="aurora"] .termbox::-webkit-scrollbar-thumb{background:linear-gradient(#7c5cff,#22d3ee);border:2px solid transparent;background-clip:padding-box}
 html[data-skin="aurora"] .switchrow{gap:9px;color:var(--mut);font-weight:600;cursor:pointer}
@@ -2834,7 +2834,7 @@ html[data-skin="slate"] .hdrgear,html[data-skin="slate"] .iconbtn{background:tra
 html[data-skin="slate"] .hdrgear:hover,html[data-skin="slate"] .iconbtn:hover{background:#1b1e24;border-color:#4d525d;color:#fff}
 html[data-skin="slate"] .termdot{width:7px;height:7px;background:var(--ok);box-shadow:0 0 0 3px rgba(62,207,142,.15)}
 html[data-skin="slate"] .termdot.err{background:var(--bad);box-shadow:0 0 0 3px rgba(239,106,106,.15)}
-html[data-skin="slate"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;background:#08090b;color:#e3e7ee;border:1px solid var(--sl-line);border-radius:10px;padding:14px 16px;filter:brightness(1.12) contrast(1.06);scrollbar-color:#3a3f48 transparent}
+html[data-skin="slate"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;background:#08090b;color:#e3e7ee;border:1px solid var(--sl-line);border-radius:10px;padding:14px 16px;scrollbar-color:#3a3f48 transparent}
 html[data-skin="slate"] .termbox::-webkit-scrollbar-track{background:transparent}
 html[data-skin="slate"] .termbox::-webkit-scrollbar-thumb{background:#3a3f48;border-color:#08090b}
 html[data-skin="slate"] .switchrow{gap:10px;color:var(--mut);font-size:12.5px;cursor:pointer}
@@ -2897,7 +2897,7 @@ html[data-skin="blocks"] .hdrgear:hover,html[data-skin="blocks"] .iconbtn:hover{
 html[data-skin="blocks"] .tzval{color:#fff;font-weight:700}
 html[data-skin="blocks"] .termdot{border-radius:0;width:11px;height:11px;background:#00d084;border:2px solid var(--bk)}
 html[data-skin="blocks"] .termdot.err{background:#ff3d3d}
-html[data-skin="blocks"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-weight:500;background:#0a0a0a;color:#fff;border:3px solid var(--bk);border-radius:0;padding:10px 14px;box-shadow:5px 5px 0 var(--bb),5px 5px 0 3px var(--bk);filter:brightness(1.18) contrast(1.1);scrollbar-color:#ffd84d #111}
+html[data-skin="blocks"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;background:#0a0a0a;color:#fff;border:3px solid var(--bk);border-radius:0;padding:10px 14px;box-shadow:5px 5px 0 var(--bb),5px 5px 0 3px var(--bk);scrollbar-color:#ffd84d #111}
 html[data-skin="blocks"] .termbox::-webkit-scrollbar-track{background:#111}
 html[data-skin="blocks"] .termbox::-webkit-scrollbar-thumb{background:#ffd84d;border:2px solid #111;border-radius:0;background-clip:padding-box}
 html[data-skin="blocks"] .termwrap{margin-bottom:22px}
@@ -3034,6 +3034,10 @@ html[data-skin="slate"] .efB .th{width:11px;height:11px;margin-left:-5.5px;top:2
 .dlgurl{word-break:break-all;font-size:11.5px;line-height:1.4;background:#0f1115;border:1px solid #2a3140;border-radius:9px;padding:8px 10px;color:var(--mut);max-height:62px;overflow:auto}
 .dlgrow{display:flex;gap:8px;margin-top:8px}
 .dlgrow button{margin-top:0}
+#acctScrim.side{justify-content:flex-end;align-items:stretch;padding:0}
+#acctScrim.side #acctBox{max-width:min(400px,92vw);height:100%;max-height:none;overflow-y:auto;border-radius:0;border-width:0 0 0 1px;box-shadow:-8px 0 24px rgba(0,0,0,.35);animation:acctSide .25s ease}
+#acctBox .modalfoot button{margin-top:0}
+@keyframes acctSide{from{transform:translateX(100%)}to{transform:none}}
 html[data-skin="phosphor"] .btn-del{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
 html[data-skin="phosphor"] .btn-del:hover:not(:disabled){border-color:#ff6b5e;color:#ff6b5e}
 html[data-skin="phosphor"] .dlgwarn{border:1px dashed #ff6b5e;border-radius:0;background:rgba(255,107,94,.06);color:#ffd9d4}
@@ -3241,7 +3245,7 @@ html:root:root .dmet .dml{white-space:nowrap}
 html:root:root .dmet .dtop{gap:6px}
 }
 </style></head><body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter></svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter><filter id="ccPhosphorT" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.075 0.255 0.0225 0 0  0.21 0.7125 0.075 0 0  0.12 0.39 0.0375 0 0  0 0 0 1 0"/></filter></svg>
 <div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
@@ -3326,9 +3330,11 @@ const I18N={
   delGo:'Удалить навсегда',
   delWorking:'Удаляю…',
   cancel:'Отмена',
-  relStarting:'Запускаю…',
+  relTitle:'Войти заново',
+  relStep1:email=>`Открой ссылку и войди под ${email}`,
+  relHint:'Если браузер предлагает другой аккаунт — выбери «Использовать другой аккаунт».',
+  relSubmit:'Подтвердить',
   relChecking:'Проверяю код…',
-  relPrompt:email=>`Ссылка входа открылась в новой вкладке (и скопирована в буфер обмена — если вкладка не та или её заблокировал браузер, просто вставь ссылку в нужный профиль).\nВойди под ${email} и вставь код авторизации сюда:`,
   confirmSwitch:n=>`Переключить активный аккаунт на ${n}?`,
   confirmModel:n=>`Сменить модель на ${n}?`,
   confirmEffort:l=>`Изменить effort на «${l}»?`,
@@ -3512,9 +3518,11 @@ const I18N={
   delGo:'Delete for good',
   delWorking:'Deleting…',
   cancel:'Cancel',
-  relStarting:'Starting…',
+  relTitle:'Log in again',
+  relStep1:email=>`Open the link and sign in as ${email}`,
+  relHint:'If the browser offers another account, choose “Use another account”.',
+  relSubmit:'Confirm',
   relChecking:'Checking code…',
-  relPrompt:email=>`The login link opened in a new tab (and was copied to your clipboard — if it's the wrong tab or got blocked, just paste the link into the right browser profile).\nSign in as ${email} and paste the authorization code here:`,
   confirmSwitch:n=>`Switch the active account to ${n}?`,
   confirmModel:n=>`Switch the model to ${n}?`,
   confirmEffort:l=>`Change effort to “${l}”?`,
@@ -3839,7 +3847,7 @@ function renderCards(d){
    ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
-   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}',this)">${tr('relogin')}</button>
+   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}')">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
   </div>`;
  }).join('');
@@ -4014,31 +4022,71 @@ async function recheck(n,btn){
  }catch(e){toast(tr('checkErr',e));}
  finally{btn.disabled=false;btn.innerHTML=orig;load();}
 }
-async function relogin(n,btn){
- btn.disabled=true;const orig=btn.textContent;btn.textContent=tr('relStarting');
- try{
-  const r=await fetch(API+'relogin/start?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
-  const d=await r.json();
-  if(!d.ok){toast('⚠ '+d.message);return;}
-  try{await navigator.clipboard.writeText(d.url);}catch(e){}
-  window.open(d.url,'_blank');
-  const code=prompt(tr('relPrompt',d.email||n));
-  if(code==null)return;
-  btn.textContent=tr('relChecking');
-  const r2=await fetch(API+'relogin/submit?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n,code,lang:LANG})});
-  const d2=await r2.json();toast(d2.ok?d2.message:'⚠ '+d2.message);
- }catch(e){toast('⚠ '+e);}
- finally{btn.disabled=false;btn.textContent=orig;load();}
+// «Войти заново» — боковая панель (#acctScrim.side): ссылка входа + поле для кода.
+// Без новой вкладки и prompt(): вкладку блокирует попап-блокер или она открывается
+// не в том профиле браузера, а prompt остаётся на исходной вкладке.
+function relogin(n){
+ const a=((lastSnap&&lastSnap.accounts)||{})[n]||{};
+ const who=a.email&&a.email!=='?'?a.email:n;
+ const head=`<h3>${tr('relTitle')}</h3><div class="modalsub"><b>${acctEsc(who)}</b> · ${acctEsc(n)}</div>`;
+ $('#acctScrim').classList.add('side');
+ acctShow(`${head}<div class="modalsub" id="relWait">${tr('addStarting')}</div><div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ acctBusy=true;
+ acctPost('relogin/start',{account:n}).then(d=>{
+  acctBusy=false;
+  if(!d.ok){$('#relWait').hidden=true;acctErr(d.message);return;}
+  reloginStep2(n,head,d);
+ }).catch(e=>{acctBusy=false;$('#relWait').hidden=true;acctErr(String(e));});
+}
+function reloginStep2(n,head,d){
+ acctShow(`${head}
+  <div class="dlgstep"><i>1</i><span>${tr('relStep1',acctEsc(d.email||n))}</span></div>
+  <div class="modalsub" style="margin:0 0 6px">${tr('relHint')}</div>
+  <div class="dlgurl">${acctEsc(d.url)}</div>
+  <div class="dlgrow"><button id="addOpen">${tr('addOpen')}</button><button class="ghostbtn" id="addCopy">${tr('addCopy')}</button></div>
+  <div class="dlgstep"><i>2</i><span>${tr('addStep2')}</span></div>
+  <input id="addCode" class="dlginp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${tr('addCodePh')}">
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button id="addSend">${tr('relSubmit')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ $('#addOpen').onclick=()=>window.open(d.url,'_blank');
+ $('#addCopy').onclick=()=>acctCopy($('#addCopy'),d.url);
+ const code=$('#addCode'),send=$('#addSend');
+ code.addEventListener('keydown',e=>{if(e.key==='Enter')send.click();});
+ send.onclick=async()=>{
+  if(acctBusy)return;
+  if(!code.value.trim()){acctErr(tr('addNeedCode'));return;}
+  acctBusy=true;send.disabled=true;send.textContent=tr('relChecking');acctErr('');
+  try{
+   const r=await acctPost('relogin/submit',{account:n,code:code.value.trim()});
+   acctBusy=false;
+   if(r.ok){acctClose();toast(r.message);load();return;}
+   // неудачная попытка на сервере уже сброшена — тот же код второй раз не пройдёт, нужна новая ссылка
+   acctErr(r.message);send.disabled=false;send.textContent=tr('addRestart');send.onclick=()=>relogin(n);
+  }catch(e){acctBusy=false;acctErr(String(e));send.disabled=false;send.textContent=tr('relSubmit');}
+ };
+ setTimeout(()=>code.focus(),30);
 }
 $('#rfBtn').addEventListener('click',()=>{$('#rfBtn').disabled=true;load(1).finally(()=>$('#rfBtn').disabled=false)});
 
 // ---- добавление и удаление аккаунтов ----
-// Окно одно на оба сценария (#acctBox). Удаление необратимо: кнопка «Удалить навсегда»
+// Окно одно на все сценарии (#acctBox); «Войти заново» открывает его боковой панелью (.side). Удаление необратимо: кнопка «Удалить навсегда»
 // оживает только после ввода слова; ту же проверку делает и сервер.
 const acctEsc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let acctBusy=false;
-function acctClose(){if(acctBusy)return;$('#acctScrim').hidden=true;$('#acctBox').innerHTML='';}
+function acctClose(){if(acctBusy)return;$('#acctScrim').hidden=true;$('#acctScrim').classList.remove('side');$('#acctBox').innerHTML='';}
 function acctShow(html){$('#acctBox').innerHTML=html;$('#acctScrim').hidden=false;}
+// navigator.clipboard есть только в защищённом контексте (https/localhost) — на http копируем через execCommand
+async function acctCopy(b,t){
+ let ok=false;
+ try{await navigator.clipboard.writeText(t);ok=true;}catch(e){
+  const ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;opacity:0';
+  document.body.appendChild(ta);ta.select();try{ok=document.execCommand('copy');}catch(e2){}ta.remove();
+ }
+ if(ok){b.textContent=tr('addCopied');setTimeout(()=>{b.textContent=tr('addCopy')},1800);}
+}
 function acctErr(t){const e=$('#acctErr');if(!e)return;e.textContent=t;e.hidden=!t;}
 async function acctPost(path,body){
  const r=await fetch(API+path+'?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({lang:LANG},body))});
@@ -4107,7 +4155,7 @@ function acctAddStep2(d){
   <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button id="addSend">${tr('addSubmit')}</button></div>`);
  $('#acctCancel').onclick=acctClose;
  $('#addOpen').onclick=()=>window.open(d.url,'_blank');
- $('#addCopy').onclick=async()=>{try{await navigator.clipboard.writeText(d.url);const b=$('#addCopy');b.textContent=tr('addCopied');setTimeout(()=>{b.textContent=tr('addCopy')},1800);}catch(e){}};
+ $('#addCopy').onclick=()=>acctCopy($('#addCopy'),d.url);
  const code=$('#addCode'),send=$('#addSend');
  code.addEventListener('keydown',e=>{if(e.key==='Enter')send.click();});
  send.onclick=async()=>{

@@ -664,6 +664,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.4** — “Log in again” opens a side panel with the login link,
+  “Open link” / “Copy” buttons and a code field, instead of a new tab and a
+  browser prompt; a wrong code offers “Start over”. The console in the
+  Phosphor, Aurora, Slate and Blocks themes no longer looks bold: the
+  brightness filters that thickened the text are gone.
 - **v1.21.3** — the version label no longer takes a line: in 1.21.2 it sat on
   its own line and pushed the cards and console up by 15 px; it now sits in
   the bottom padding under the cards, with the layout as before 1.21.2. 9 px

@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.4", "date": "2026-10-06",
+     "ru": {"t": "«Войти заново» — панель справа, тоньше шрифт консоли", "p": ["«Войти заново» больше не открывает вкладку и окно ввода: справа выезжает панель со ссылкой и полем для кода", "Ссылку можно открыть или скопировать; при неверном коде — кнопка «Начать заново»", "Консоль в Phosphor, Aurora, Slate и Blocks больше не выглядит жирной: убраны фильтры, утолщавшие буквы"]},
+     "en": {"t": "“Log in again” side panel, lighter console text", "p": ["“Log in again” no longer opens a tab and a prompt: a panel slides in on the right with the link and a code field", "Open or copy the link; a wrong code offers “Start over”", "The console in Phosphor, Aurora, Slate and Blocks no longer looks bold: the filters that thickened the text are gone"]}},
     {"v": "1.21.3", "date": "2026-10-03",
      "ru": {"t": "Подпись версии больше не занимает строку", "p": ["В 1.21.2 подпись стояла отдельной строкой и поднимала карточки и консоль на 15 px", "Теперь она в нижнем отступе под карточками: раскладка такая же, как до 1.21.2", "Шрифт мельче (9 px), подпись не кликается и не выделяется"]},
      "en": {"t": "The version label no longer takes a line", "p": ["In 1.21.2 the label sat on its own line and pushed the cards and console up by 15 px", "It now sits in the bottom padding under the cards: the layout is the same as before 1.21.2", "Smaller font (9 px); the label is not clickable or selectable"]}},
