@@ -664,6 +664,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.5** — clearer Telegram message about the weekly cap: when the
+  balancer moves off an account whose week hit the cap, the message says this
+  is a normal account switch, not a pause — “Pause at the weekly cap” only
+  acts when there is nowhere to switch.
 - **v1.21.4** — “Log in again” opens a side panel with the login link,
   “Open link” / “Copy” buttons and a code field, instead of a new tab and a
   browser prompt; a wrong code offers “Start over”. The console in the

@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.5", "date": "2026-10-07",
+     "ru": {"t": "Понятнее сообщение о недельном потолке", "p": ["Неделя аккаунта дошла до потолка и балансер ушёл на другой — Telegram пишет, что это обычная смена аккаунта", "«Пауза на недельном потолке» тут ни при чём: она срабатывает, только когда переключаться некуда"]},
+     "en": {"t": "Clearer weekly-cap message", "p": ["When an account hits the weekly cap and the balancer moves on, the Telegram message says this is a normal account switch", "It states that “Pause at the weekly cap” is not involved: it only acts when there is nowhere to switch"]}},
     {"v": "1.21.4", "date": "2026-10-06",
      "ru": {"t": "«Войти заново» — панель справа, тоньше шрифт консоли", "p": ["«Войти заново» больше не открывает вкладку и окно ввода: справа выезжает панель со ссылкой и полем для кода", "Ссылку можно открыть или скопировать; при неверном коде — кнопка «Начать заново»", "Консоль в Phosphor, Aurora, Slate и Blocks больше не выглядит жирной: убраны фильтры, утолщавшие буквы"]},
      "en": {"t": "“Log in again” side panel, lighter console text", "p": ["“Log in again” no longer opens a tab and a prompt: a panel slides in on the right with the link and a code field", "Open or copy the link; a wrong code offers “Start over”", "The console in Phosphor, Aurora, Slate and Blocks no longer looks bold: the filters that thickened the text are gone"]}},
