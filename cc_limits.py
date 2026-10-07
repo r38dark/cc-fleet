@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.5"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1635,12 +1635,15 @@ def autoswitch_check(snap):
             st["all_high_notified"] = False
             jsave(STATE, st)
             return
-        # ручной пин: пользователь сознательно выбрал забитый аккаунт — не трогать до сброса его сессии
-        hold = st.get("manual_hold") or {}
-        if hold.get("account") == act and time.time() < hold.get("until", 0):
+        # ручной выбор: человек сознательно взял забитый аккаунт (сессия выше порога или неделя
+        # на потолке) — не трогать до сброса этого окна или до 100%
+        if cc_avail.manual_pick(st.get("manual_hold"), act, accs[act]):
             return
-    # кулдаун против пинг-понга; с мёртвого (100% сессии/недели) уходим без него
-    if not _dead(accs[act]) and time.time() - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
+    # кулдаун против пинг-понга; с мёртвого (100% сессии/недели) и с недельного потолка
+    # уходим без него: неделя держит днями, вернуться туда балансер не сможет
+    week_full = not act_free and cur_w is not None and cur_w >= cap
+    if (not _dead(accs[act]) and not week_full
+            and time.time() - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600)):
         return
     # кандидаты: не активный, без ошибок, пригодный сейчас (сессия и неделя ниже порогов, не Free)
     cand = []
@@ -1668,6 +1671,8 @@ def autoswitch_check(snap):
     week_why = not act_free and "сессия" not in act_why
     if ok:
         st["known_active"] = target
+        if (st.get("manual_hold") or {}).get("account") == act:
+            st.pop("manual_hold", None)  # ручной выбор отработал: аккаунт дошёл до 100%
         if week_why:
             # это сообщение и есть предупреждение о недельном потолке — _week_cap_warn() второго не шлёт
             st.setdefault("week_warned", {})[act] = _week_key(accs[act].get("seven_day") or {})
@@ -1685,9 +1690,17 @@ def autoswitch_check(snap):
         tg_notify(f"⚠️ Claude: авто-переключение на {target} не удалось: {out}")
 
 
-def _dead(row):
-    # аккаунт упёрся в 100% сессии или недели — работать на нём нельзя совсем
-    return any(((row.get(k) or {}).get("pct") or 0) >= 100 for k in ("five_hour", "seven_day"))
+_dead = cc_avail.dead  # аккаунт упёрся в 100% сессии или недели — работать на нём нельзя совсем
+
+
+def _manual_until(row):
+    """До когда держать ручной выбор аккаунта: он не пригоден по сессии или неделе — до сброса
+    позднейшего из держащих окон (cc_avail знает, какие держат); пригоден или Free — 0, пина нет."""
+    c = cfg()
+    ok, ts, why = cc_avail.availability(row, c.get("threshold", 85), c.get("weekly_cap", 99))
+    if ok or why == "free" or row.get("error"):
+        return 0
+    return ts or time.time() + (5 * 3600 if why == "сессия" else 7 * 86400)
 
 
 def _hours_until(iso, default_h):
@@ -1822,9 +1835,10 @@ def _nowhere_text(accs, act, act_free=False):
         head += ("\nПауза отключена вручную на панели." if override else
                  f"\nОстановку на {cap:.0f}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».")
     elif lvl == "hard" and not override:
-        head = "⛔ Claude: все аккаунты выше порога сессии — переключаться некуда, Claude встаёт на паузу до сброса окна."
+        head = f"⛔ Claude: {ls.get('why') or 'все аккаунты выше порога сессии'} — Claude встаёт на паузу до сброса окна."
     elif lvl == "hard":
-        head = "⛔ Claude: все аккаунты выше порога сессии — переключаться некуда. Пауза отключена вручную: работа идёт до настоящего лимита аккаунта."
+        head = (f"⛔ Claude: {ls.get('why') or 'все аккаунты выше порога сессии'}. "
+                "Пауза отключена вручную: работа идёт до настоящего лимита аккаунта.")
     else:
         head = f"⛔ Claude: переключаться некуда — работа идёт дальше на {act} сверх порога, пока не освободится другой аккаунт."
     return head + tail, lvl
@@ -1895,9 +1909,9 @@ def _week_cap_warn(snap):
                         "переключись вручную, иначе он добьётся до 100%.")
             elif not c.get("optimize") and hold.get("account") == n and now < hold.get("until", 0):
                 from datetime import datetime
-                text = (f"{head} {n} закреплён вручную — балансер не уведёт с него до "
-                        f"{_local_hm(datetime.fromtimestamp(hold['until']).astimezone().isoformat())}; "
-                        "до тех пор заполнение до 100% — на твой риск.")
+                text = (f"{head} {n} выбран вручную — балансер не уведёт с него до "
+                        f"{_local_dhm(datetime.fromtimestamp(hold['until']).astimezone().isoformat())} "
+                        "или до 100%; заполнение до 100% — на твой риск.")
             else:
                 continue  # балансер уходит с него в ближайшие тики — предупредим, когда уйдёт
         warned[n] = key
@@ -2260,10 +2274,15 @@ class H(BaseHTTPRequestHandler):
                 if ts:
                     row["renewal_next"] = _renewal_next(ts)
             act_n = active_name()
+            hold = jload(STATE, {}).get("manual_hold") or {}
             for n, row in (snap.get("accounts") or {}).items():
                 le = _login_expires(n, act_n)
                 if le:
                     row["login_expires"] = le
+                # подпись «выбран вручную» на карточке — пока балансер держит ручной выбор
+                if (n == snap.get("active") and not cfg().get("optimize")
+                        and cc_avail.manual_pick(hold, n, row)):
+                    row["manual_until"] = float(hold.get("until") or 0)
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
             snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
             snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
@@ -2318,29 +2337,31 @@ class H(BaseHTTPRequestHandler):
                 if ok:
                     st = jload(STATE, {})
                     st["last_switch_ts"] = time.time()
-                    # ручной выбор ЗАБИТОГО аккаунта (≥порога) — пин до сброса его сессии,
-                    # авто не перебивает; выбор свободного — обычный авто-режим
+                    # ручной выбор ЗАБИТОГО аккаунта (сессия ≥порога или неделя на потолке) —
+                    # пин до сброса того окна, что держит, или до 100%: авто не перебивает;
+                    # выбор свободного — обычный авто-режим
                     act = snap.get("active")
                     st["known_active"] = act  # чтобы poll не принял за внешнее переключение
                     row = (snap.get("accounts") or {}).get(act, {})
                     fh = (row.get("five_hour") or {}).get("pct")
                     sd = (row.get("seven_day") or {}).get("pct")
-                    thr = cfg().get("threshold", 85)
-                    if fh is not None and fh >= thr:
-                        iso = (row.get("five_hour") or {}).get("resets_at")
-                        try:
-                            from datetime import datetime
-                            until = datetime.fromisoformat(iso).timestamp()
-                        except Exception:
-                            until = time.time() + 5 * 3600
+                    until = _manual_until(row)
+                    from datetime import datetime
+                    if until:
                         st["manual_hold"] = {"account": act, "until": until}
+                        if sd is not None and sd >= cfg().get("weekly_cap", 99):
+                            # о потолке недели скажет это сообщение — _week_cap_warn() второго не шлёт
+                            st.setdefault("week_warned", {})[act] = _week_key(row.get("seven_day") or {})
                     else:
                         st.pop("manual_hold", None)
                     jsave(STATE, st)
                     email = row.get("email", act)
                     tg_notify("👆 Claude: ручное переключение %s → %s (%s, сессия %s%%, неделя %s%%)."
                               % (prev_act or "?", act, email,
-                                 fh if fh is not None else "?", sd if sd is not None else "?"))
+                                 fh if fh is not None else "?", sd if sd is not None else "?")
+                              + (" Выбран вручную: балансер не уведёт с него до %s или до 100%%."
+                                 % _local_dhm(datetime.fromtimestamp(until).astimezone().isoformat())
+                                 if until else ""))
             return self._send(200 if ok else 500, {"ok": ok, "message": out, "snapshot": snap})
         if u.path == "/api/recheck":
             # мгновенная перепроверка плана одного аккаунта в обход 10-минутного
@@ -3425,7 +3446,13 @@ const I18N={
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
   ccpHardTitle:'⛔ Уперлись в лимиты — <b>переключаться некуда</b>',
-  ccpHardSub:(thr,na,held)=>`Все аккаунты упёрлись в сессионное окно (порог ${thr}%). Фоновые задачи не стартуют, чтобы не добить окно. `+(na?`Раньше всех освободится <b>${na}</b>`+' — балансер переключится на него сразу после сброса.':'Балансер переключится, как только освободится ближайший.'),
+  ccpHardAll:thr=>`Все аккаунты упёрлись в сессионное окно (порог ${thr}%).`,
+  ccpHardSome:(n,why,rest)=>`${n}: ${why}, а остальные не годятся: ${rest}.`,
+  ccpHardSub:(head,na,self)=>head+' Фоновые задачи не стартуют, чтобы не добить окно. '+(na?`Раньше всех освободится <b>${na}</b>`+(self?' — после сброса сессии работа продолжится на нём.':' — балансер переключится на него сразу после сброса.'):'Балансер переключится, как только освободится ближайший.'),
+  ccpWhySes:(p,thr)=>`сессия <span class="num">${p}</span> (порог ${thr}%)`,
+  ccpWhyWeek:(w,cap)=>`неделя <span class="num">${w}</span> — на потолке ${cap}%`,
+  ccpWhyWeekOk:w=>`неделя <span class="num">${w}</span>`,
+  ccpHeldSes:p=>`сессия ${p}`,ccpHeldWeek:w=>`неделя ${w}`,ccpHeldErr:'ошибка',
   ccpOffTitle:'▶ Пауза <b>отключена вручную</b> — Claude работает сверх порога',
   ccpOffSub:(na,at)=>'Входящие сообщения доходят сразу, инструменты не блокируются — до настоящего лимита аккаунта. Пауза включится сама, как только освободится окно'+(na&&at?` (раньше всех — <b>${na}</b> в <span class="num">${at}</span>)`:'')+', или по кнопке.',
   ccpBtnOff:'Отключить паузу',
@@ -3436,7 +3463,12 @@ const I18N={
   ccpHintOnFree:'окно уже свободно — пауза просто снова начнёт работать',
   ccpErr:e=>'не получилось: '+e,
   ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
-  ccpGateSub:(n,p,w,thr)=>`${n}: сессия <span class="num">${p}</span> (порог ${thr}%), неделя <span class="num">${w}</span>. Свободный аккаунт есть — балансер переключится на следующем тике, после него задачи пойдут сами.`,
+  ccpGateWeekTitle:'⏸ Неделя активного аккаунта <b>на потолке</b>',
+  ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'Свободный аккаунт есть — балансер переключится на следующем тике'+(bg?', после него задачи пойдут сами.':'.'):'Свободный аккаунт есть, но авто-переключение выключено — переключись вручную.'),
+  ccpManTitle:n=>`✋ ${n} <b>выбран вручную</b> — балансер не уводит с него`,
+  ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Работа идёт до 100% или до сброса окна`+(at?` в <span class="num">${at}</span>`:'')+' — паузы не будет. Вернуть авто-выбор — переключиться на свободный аккаунт.'+(bg?' Фоновые задачи не стартуют, пока сессия выше порога.':''),
+  ccpTillMan:'до сброса окна',
+  manTag:'Выбран вручную',manTagTitle:at=>`Выбран вручную — балансер не уведёт с него до ${at} или до 100%`,
   ccpWeek:w=>` · нед ${w}%`,
   ccpActive:' · активный',
   ccpChecks:n=>`перепроверок окна: <b>${n}</b>`,
@@ -3613,7 +3645,13 @@ const I18N={
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
   ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
-  ccpHardSub:(thr,na,held)=>`Every account is out of its session window (threshold ${thr}%). Background jobs stay down so they don't burn the rest of the window. `+(na?`<b>${na}</b> frees up first`+' — the balancer switches to it right after the reset.':'The balancer switches as soon as the nearest one frees up.'),
+  ccpHardAll:thr=>`Every account is out of its session window (threshold ${thr}%).`,
+  ccpHardSome:(n,why,rest)=>`${n}: ${why}, and none of the others will do: ${rest}.`,
+  ccpHardSub:(head,na,self)=>head+" Background jobs stay down so they don't burn the rest of the window. "+(na?`<b>${na}</b> frees up first`+(self?' — work continues on it once its session resets.':' — the balancer switches to it right after the reset.'):'The balancer switches as soon as the nearest one frees up.'),
+  ccpWhySes:(p,thr)=>`session <span class="num">${p}</span> (threshold ${thr}%)`,
+  ccpWhyWeek:(w,cap)=>`week <span class="num">${w}</span> — at the ${cap}% cap`,
+  ccpWhyWeekOk:w=>`week <span class="num">${w}</span>`,
+  ccpHeldSes:p=>`session ${p}`,ccpHeldWeek:w=>`week ${w}`,ccpHeldErr:'error',
   ccpOffTitle:'▶ Pause <b>disabled manually</b> — Claude works past the threshold',
   ccpOffSub:(na,at)=>'Incoming messages go straight through and tools are not blocked — up to the real account limit. The pause re-arms by itself once a window frees up'+(na&&at?` (first: <b>${na}</b> at <span class="num">${at}</span>)`:'')+', or with the button.',
   ccpBtnOff:'Disable pause',
@@ -3624,7 +3662,12 @@ const I18N={
   ccpHintOnFree:'window is already free — the pause simply works again',
   ccpErr:e=>'failed: '+e,
   ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
-  ccpGateSub:(n,p,w,thr)=>`${n}: session <span class="num">${p}</span> (threshold ${thr}%), week <span class="num">${w}</span>. A free account exists — the balancer switches on the next tick, after that jobs resume by themselves.`,
+  ccpGateWeekTitle:'⏸ Active account <b>at the weekly cap</b>',
+  ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'A free account exists — the balancer switches on the next tick'+(bg?', after that jobs resume by themselves.':'.'):'A free account exists, but auto-switching is off — switch manually.'),
+  ccpManTitle:n=>`✋ ${n} <b>picked manually</b> — the balancer keeps it`,
+  ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Work goes on up to 100% or until the window resets`+(at?` at <span class="num">${at}</span>`:'')+' — no pause. To bring back automatic choice, switch to a free account.'+(bg?' Background jobs stay down while the session is above the threshold.':''),
+  ccpTillMan:'until the window resets',
+  manTag:'Picked manually',manTagTitle:at=>`Picked manually — the balancer keeps it until ${at} or 100%`,
   ccpWeek:w=>` · wk ${w}%`,
   ccpActive:' · active',
   ccpChecks:n=>`window re-checks: <b>${n}</b>`,
@@ -3849,7 +3892,7 @@ function renderCards(d){
    ${a.active?'<span class="tag pin">'+tr('active')+'</span>':''}
    <div class="top"><span class="email">${a.email} ${plan}${a.renewal_next?renewChip(a.renewal_next):''}</span><div class="hdrright">${r}${icons}</div></div>
    ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
-   <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':''}>${a.active?tr('usingNow'):opt?tr('optimizeRules'):tr('switchTo')}</button>
+   <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}')">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
@@ -4191,6 +4234,24 @@ function ccpLeft(untilMs){
 }
 // дальше суток (пауза на неделе) — с днём недели, иначе «14:00» читается как сегодня
 function ccpAt(ms){return new Date(ms).toLocaleString(LANG==='en'?'en-GB':'ru',ms-Date.now()>20*3600e3?{weekday:'short',hour:'2-digit',minute:'2-digit'}:{hour:'2-digit',minute:'2-digit'});}
+// что держит аккаунт, подробно (для активного): «сессия 93% (порог 90%), неделя 60%»,
+// «неделя 99% — на потолке 99%»; held — из cc_avail: «сессия», «неделя», «сессия+неделя», «free»
+function ccpWhy(a,thr,wcap){
+ const h=a.held||'',p=a.pct==null?'?':Math.round(a.pct)+'%',w=a.wpct==null?'?':Math.round(a.wpct)+'%',out=[];
+ if(h==='free')return 'Free';
+ if(h.includes('сессия'))out.push(tr('ccpWhySes',p,thr));
+ if(h.includes('неделя'))out.push(tr('ccpWhyWeek',w,wcap));else out.push(tr('ccpWhyWeekOk',w));
+ return out.join(', ');
+}
+// то же коротко, для списка «остальные не годятся»: «неделя 100%», «сессия 91%, неделя 98%»
+function ccpHeld(a){
+ const h=a.held||'',out=[];
+ if(a.error)return tr('ccpHeldErr');
+ if(h==='free')return 'Free';
+ if(h.includes('сессия'))out.push(tr('ccpHeldSes',a.pct==null?'?':Math.round(a.pct)+'%'));
+ if(h.includes('неделя'))out.push(tr('ccpHeldWeek',a.wpct==null?'?':Math.round(a.wpct)+'%'));
+ return out.join(', ')||'?';
+}
 function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
@@ -4227,21 +4288,33 @@ function ccpRender(){
   }
   if(near){timer=near;tlabel=na?tr('ccpTillFree',ccpEsc(na)):tr('ccpTillNearest');}
  }else if(mode==='hard'){
-  const na=d.nearest&&d.nearest.acc;
-  title=tr('ccpHardTitle');sub=tr('ccpHardSub',thr,na?ccpEsc(na):'',na?ccpEsc(d.nearest.held||''):'');
+  const na=d.nearest&&d.nearest.acc,accs=d.accounts||{},a=accs[d.active]||{};
+  // все сессии забиты — старый текст; иначе называем, что держит каждый из остальных
+  const allSes=!Object.values(accs).some(x=>x.ses_ok);
+  const rest=Object.entries(accs).filter(([n])=>n!==d.active).sort(([x],[y])=>x<y?-1:1)
+   .map(([n,x])=>ccpEsc(n)+' — '+ccpHeld(x)).join(', ');
+  title=tr('ccpHardTitle');
+  sub=tr('ccpHardSub',allSes?tr('ccpHardAll',thr):tr('ccpHardSome',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),rest),
+   na?ccpEsc(na):'',na&&na===d.active);
   if(near){timer=near;tlabel=na?tr('ccpTillFree',ccpEsc(na)):tr('ccpTillNearest');}
   action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintHardOff')};
+ }else if(mode==='manual'){
+  const a=(d.accounts||{})[d.active]||{},n=ccpEsc(d.active||'?'),upMs=((d.manual||{}).until||0)*1000;
+  title=tr('ccpManTitle',n);
+  sub=tr('ccpManSub',n,ccpWhy(a,thr,wcap),upMs?ccpAt(upMs):'',!a.ses_ok);
+  if(upMs){timer=upMs;tlabel=tr('ccpTillMan');}
  }else{
-  const a=(d.accounts||{})[d.active]||{};
-  title=tr('ccpGateTitle');
-  // без таймера: сброс сессии активного тут ни при чём — балансер уходит на свободный сразу
-  sub=tr('ccpGateSub',ccpEsc(d.active||'?'),a.pct==null?'?':a.pct+'%',a.wpct==null?'?':Math.round(a.wpct)+'%',thr);
+  const a=(d.accounts||{})[d.active]||{},ses=(a.held||'').includes('сессия');
+  // фоновые задачи гейт держит только по сессии — на недельном потолке они идут
+  title=tr(ses?'ccpGateTitle':'ccpGateWeekTitle');
+  // без таймера: сброс окна активного тут ни при чём — балансер уходит на свободный сразу
+  sub=tr('ccpGateSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),d.autoswitch!==false,ses);
  }
  const chips=Object.entries(d.accounts||{}).map(([n,a])=>
   '<span class="ccp-chip'+(a.usable===false?' hot':'')+'">'+ccpEsc(n)
   +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b>'
   +(a.wpct!=null&&a.wpct>=90?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
- el.className='ccpause lvl-'+({week:'pause',weekrisk:'hard'}[mode]||mode);el.hidden=false;
+ el.className='ccpause lvl-'+({week:'pause',weekrisk:'hard',manual:'gate'}[mode]||mode);el.hidden=false;
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
   +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')

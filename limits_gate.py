@@ -38,6 +38,13 @@ def _default_threshold():
         return 90.0
 
 
+def _weekly_cap():
+    try:
+        return float(json.load(open(CONFIG)).get("weekly_cap") or 99)
+    except Exception:
+        return 99.0
+
+
 def main():
     ceil = float(sys.argv[1]) if len(sys.argv) > 1 else _default_threshold()
     try:
@@ -72,7 +79,13 @@ def main():
     # активным станет свежий и гейт откроется сам на следующем тике.
     active = d.get("active") or ""
     if active in usable and not usable[active]:
-        print("активный %s не пригоден (%s) — жду переключения балансера" % (active, line))
+        # уйти некуда, если у остальных забита сессия или неделя (на аккаунт с неделей на
+        # потолке балансер не переключает) — тогда ждать переключения бессмысленно
+        wcap = _weekly_cap()
+        other = any(cc_avail.availability(r, ceil, wcap)[0] for n, r in accs.items()
+                    if n != active and not r.get("error"))
+        print("активный %s не пригоден (%s) — %s" % (
+            active, line, "жду переключения балансера" if other else "переключаться некуда"))
         return 10
 
     if any(usable.values()):

@@ -41,6 +41,21 @@ def availability(row, ses_thr, week_cap, now=None):
     return False, max(times), "+".join(held)
 
 
+def dead(row):
+    """Аккаунт упёрся в 100% сессии или недели — работать на нём нельзя совсем."""
+    return any(((row.get(k) or {}).get("pct") or 0) >= 100 for k in ("five_hour", "seven_day"))
+
+
+def manual_pick(hold, name, row, now=None):
+    """Ручной выбор ещё в силе: аккаунт выбрали вручную, когда его сессия была выше порога
+    или неделя на потолке (state.json → manual_hold), это окно ещё не сбросилось и аккаунт
+    не упёрся в 100%. Пока так — балансер с него не уводит."""
+    now = time.time() if now is None else now
+    hold = hold or {}
+    return (bool(name) and hold.get("account") == name
+            and now < float(hold.get("until") or 0) and not dead(row or {}))
+
+
 def nearest(accs, ses_thr, week_cap, exclude=(), now=None):
     """(ts, имя, что держит) аккаунта, который раньше всех станет пригоден; None — не знаем."""
     best = None

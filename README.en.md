@@ -99,8 +99,9 @@ gear, a "Delete" button on every card and the windows for both flows
   script keeps cron runs and watchers from starting while the active account
   has already burned its window: otherwise they eat exactly the limit you
   need for yourself.
-- ⏸ **Limit pause with an alarm** (`pause_ctl.py`) — when every account is
-  above the 5-hour window threshold and there is nothing to switch to, work
+- ⏸ **Limit pause with an alarm** (`pause_ctl.py`) — when the active account
+  is above the 5-hour window threshold and there is nothing to switch to (the
+  others have their session or week full), work
   goes on pause, and a system cron lifts it at the nearest window reset and
   wakes the live session. The weekly cap triggers the pause only with "Pause at
   the weekly cap" enabled (v1.21.0). Nothing lives
@@ -174,8 +175,9 @@ gear, a "Delete" button on every card and the windows for both flows
   every version since v1.0.0 — date, title and a couple of points, newest first.
 - 🔔 **State banner** at the top of the panel (RU/EN): "limits reached —
   nothing to switch to", "active account is full — background jobs paused",
-  "paused, resuming at 16:03" with a countdown. In normal operation there is
-  no banner.
+  "acc1 picked manually", "paused, resuming at 16:03" with a countdown —
+  always with the real reason: session above the threshold or week at the cap.
+  In normal operation there is no banner.
 - 📨 **Telegram notifications** (optional): account switches, "nothing to
   switch to", the pause going up and the alarm lifting it — so you don't have
   to watch the panel. The bot token comes either from the Claude Code Telegram
@@ -369,9 +371,10 @@ cron script:
 python3 /opt/cc-limits/limits_gate.py || exit 0   # rc=10 — just don't start
 ```
 
-It blocks in two cases: the active account is above the threshold (wait for
-the balancer to move to a fresh one), or every account is above it (nothing
-to switch to). If `snapshot.json` is missing or stale, the gate **lets the
+It blocks while the active account's session is above the threshold: either
+waiting for the balancer to move to a fresh one, or there is nothing to switch
+to (the others have their session or week full — v1.21.6), and the verdict
+says which. If `snapshot.json` is missing or stale, the gate **lets the
 job through** (fail-open): an extra run beats a silently dead daemon.
 
 **The pause.** `pause_ctl.py` keeps its state in `pause_state.json` next to
@@ -430,8 +433,9 @@ python3 /opt/cc-limits/tg_queue.py take    # hand them over and mark as taken
 python3 /opt/cc-limits/tg_queue.py clear   # emergency reset of the queue
 ```
 
-Only the "there is genuinely nowhere to work" state blocks: every account
-above the threshold, or a pause already in place. If the active account is
+Only the "there is genuinely nowhere to work" state blocks: the active
+account above the threshold with nothing to switch to, or a pause already in
+place. If the active account is
 burnt but a free one exists, the message goes through as usual — the balancer
 will switch by itself. Plain terminal input (no `<channel>` tag) is never
 touched, and any error inside the hook also passes the prompt through
@@ -455,12 +459,18 @@ wiring the hook, otherwise it will not be called.
 
 ## Disable-pause button and the tool brake (v1.15.0)
 
-**The pause is driven by the 5-hour window only.** The "nothing to switch to"
-level (`hard`) means every account is above the threshold of the session
-window specifically. The weekly cap (`weekly_cap`) neither sets the pause nor
-holds the alarm: it still works in the balancer (an account at its weekly cap
-is not picked), but it stops neither the live session nor background jobs
-(the `limits_gate.py` gate, since v1.15.1).
+**The pause is driven by the active account's 5-hour window.** The "nothing
+to switch to" level (`hard`) means the active session is above the threshold
+and there is nowhere to go: every other account has its session above the
+threshold, its week at the cap, is on Free or has an error (since v1.21.6;
+before, only sessions counted, so an account with an empty session but a 100%
+week passed for a free one — no pause, and the active account filled up to
+100%). The banner and Telegram list what holds each account. The alarm lifts
+the pause when the active session resets or another account frees up. The
+active account's own week does not set the pause (except for the option
+below): the balancer leaves an account at the weekly cap by itself, at once,
+without the `switch_cooldown_sec` cooldown (v1.21.6), and background jobs (the
+`limits_gate.py` gate, since v1.15.1) are not held by it.
 
 **The exception is the "Pause at the weekly cap" option (v1.21.0).** When the
 active account reaches `weekly_cap` (99%) and nothing is fit to switch to, the
@@ -470,6 +480,15 @@ as there is somewhere to work (another account freed up or the week reset).
 With the option off (`"weekly_pause": false`, the default) the level is
 `weekrisk`: no pause, and the banner and Telegram warn that the balancer won't
 stop the account from filling up to 100%.
+
+**Manual pick (v1.21.6).** Switch manually (the card button or
+`/api/switch`) to an account whose session is above the threshold or whose
+week is at the cap, and the balancer keeps it until the window holding it
+resets or the account hits 100%. No pause meanwhile, the level is `manual`:
+the card shows "✋ Picked manually" instead of "In use now", the banner gives
+the reason and until when. To bring back automatic choice, switch to a free
+account. In optimize mode there are no manual switches, so the rule does not
+apply.
 
 **The button.** While the pause is up (or all windows are full), the panel
 banner shows a "Disable pause" button. Press it — the pause is lifted, the
@@ -664,6 +683,15 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.6** — "nothing to switch to" counts the week: when every other
+  account has its session or week full, the pause goes up (before, an account
+  with an empty session but a 100% week counted as free, the banner promised
+  "the balancer switches", and the active account filled up to 100%). The
+  banner names the real reason ("acc1: week 99% — at the 99% cap"), and for
+  "nothing to switch to" what holds each account. A manual pick of an account
+  with a full session or week holds until the window resets or 100%, labelled
+  "Picked manually". Without a manual pick the balancer leaves an account at
+  the weekly cap at once, without the cooldown.
 - **v1.21.5** — clearer Telegram message about the weekly cap: when the
   balancer moves off an account whose week hit the cap, the message says this
   is a normal account switch, not a pause — “Pause at the weekly cap” only

@@ -46,6 +46,7 @@ BASE = os.environ.get("CC_LIMITS_BASE", os.path.dirname(os.path.abspath(__file__
 STATE = os.path.join(BASE, "pause_state.json")
 SNAP = os.path.join(BASE, "snapshot.json")
 CONFIG = os.path.join(BASE, "config.json")
+CC_STATE = os.path.join(BASE, "state.json")  # состояние балансера (cc_limits.py): ручной выбор
 GATE = os.path.join(BASE, "limits_gate.py")
 TG_ENV = "/root/.claude/channels/telegram/.env"
 GRACE = 180  # будим не в секунду сброса, а через 3 минуты — окно отпускает не мгновенно
@@ -122,9 +123,20 @@ NO_WEEK = float("inf")  # сессионной паузе недельный п�
 
 
 def _nearest(week=False):
-    """(iso, имя, что держит) — кто раньше всех снова станет пригоден. week=False — смотрим
-    только сессионное окно; week=True — и недельный потолок (для паузы на неделе)."""
-    nb = cc_avail.nearest(accounts()[0], _threshold(), _weekly_cap() if week else NO_WEEK)
+    """(iso, имя, что держит) — когда снова будет где работать. week=True — пауза на недельном
+    потолке: неделю смотрим у всех. week=False — сессионная пауза: активный ждёт только сброса
+    своей сессии, а другой аккаунт — и сессии, и недели: на аккаунт с неделей на потолке
+    балансер не переключает, его пустая сессия работы не даст."""
+    accs, active, _ts = accounts()
+    thr, cap = _threshold(), _weekly_cap()
+    if week:
+        nb = cc_avail.nearest(accs, thr, cap)
+    else:
+        nbs = [cc_avail.nearest(accs, thr, cap, exclude=(active,))]
+        if active in accs:
+            nbs.append(cc_avail.nearest({active: accs[active]}, thr, NO_WEEK))
+        nbs = [x for x in nbs if x]
+        nb = min(nbs) if nbs else None
     if not nb:
         return "", "", ""
     return datetime.fromtimestamp(nb[0], tz=timezone.utc).isoformat(), nb[1], nb[2]
@@ -143,6 +155,33 @@ def _week_reason(s):
         s.get("active"), a.get("wpct") or 0, s.get("weekly_cap") or _weekly_cap())
 
 
+def _held_text(a):
+    """Что держит аккаунт: «сессия 91%», «неделя 100%», «сессия 93%, неделя 99%», «Free»."""
+    if a.get("error"):
+        return "ошибка"
+    held = a.get("held") or ""
+    if held == "free":
+        return "Free"
+    out = []
+    if "сессия" in held:
+        out.append("сессия %.0f%%" % (a.get("pct") or 0))
+    if "неделя" in held:
+        out.append("неделя %.0f%%" % (a.get("wpct") or 0))
+    return ", ".join(out) or "?"
+
+
+def _hard_reason(s):
+    """Причина паузы «переключаться некуда» — что держит каждый аккаунт."""
+    accs = s.get("accounts") or {}
+    if not any(a.get("ses_ok") for a in accs.values()):
+        return "все аккаунты выше порога сессии (%s), переключаться некуда" % (s.get("line") or "?")
+    act = s.get("active")
+    a = accs.get(act) or {}
+    rest = ", ".join("%s — %s" % (n, _held_text(r)) for n, r in sorted(accs.items()) if n != act)
+    return "%s: сессия %.0f%% (порог %.0f%%), переключаться некуда: %s" % (
+        act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest)
+
+
 def session_blocked():
     """(стоять?, строка) — решение будильника: все аккаунты выше сессионного порога или
     активный выше порога (балансер ещё не ушёл). Неделю смотрим, только если включена
@@ -152,9 +191,11 @@ def session_blocked():
         return False, "снимок лимитов устарел"
     line = s.get("line") or "?"
     if s.get("level") == "hard":
-        return True, "все аккаунты выше порога сессии (%s)" % line
+        return True, _hard_reason(s)
     if s.get("level") == "week":
         return True, _week_reason(s)
+    if s.get("level") == "manual":
+        return False, "активный %s выбран вручную — работа идёт до 100%% (%s)" % (s.get("active"), line)
     a = s["accounts"].get(s.get("active")) or {}
     if a and not a.get("ses_ok", True):
         return True, "активный %s выше порога сессии (%s) — жду переключения балансера" % (
@@ -174,7 +215,7 @@ def week_blocked():
         return False, "снимок лимитов устарел"
     line = s.get("line") or "?"
     if s.get("level") == "hard":
-        return True, "все аккаунты выше порога сессии (%s)" % line
+        return True, _hard_reason(s)
     if s.get("level") == "week":
         return True, _week_reason(s)
     a = s["accounts"].get(s.get("active")) or {}
@@ -187,8 +228,11 @@ def level_state():
     """Сводка для баннера на веб-панели — считается по тем же файлам, что и гейт,
     но без запуска подпроцесса (страницу опрашивают часто).
 
-    level: hard — все аккаунты выше порога сессионного окна, переключаться некуда —
-                  здесь встаёт пауза (неделя не участвует);
+    level: hard — активный выше порога сессии, и переключаться некуда: каждый другой
+                  аккаунт выше порога сессии, на недельном потолке, Free или с ошибкой —
+                  здесь встаёт пауза (неделя самого активного не участвует);
+           manual — активный не пригоден, но выбран вручную (state.json → manual_hold):
+                  балансер не уводит с него до сброса окна или до 100%, паузы нет;
            week — активный дошёл до недельного потолка, пригодных нет, и включена
                   «Пауза на недельном потолке» — здесь тоже встаёт пауза;
            weekrisk — то же, но опция выключена: паузы нет, заполнение до 100% никто
@@ -211,9 +255,12 @@ def level_state():
         "checks": st.get("checks") or 0,
         "kind": st.get("kind") or "session",
     }
+    c = _cfg()
     out = {"pause": pause, "threshold": thr, "level": "none", "accounts": {},
            "active": active, "stale": bool(not accs or (_now() - ts) > 900),
-           "weekly_cap": _weekly_cap(), "weekly_pause": _weekly_pause()}
+           "weekly_cap": _weekly_cap(), "weekly_pause": _weekly_pause(),
+           # уйдёт ли балансер с забитого сам: выключенное авто-переключение не уводит
+           "autoswitch": bool(c.get("optimize") or c.get("autoswitch", True))}
     if out["stale"]:
         return out
 
@@ -229,21 +276,35 @@ def level_state():
         out["accounts"][name] = {"pct": pct, "resets_at": fh.get("resets_at") or "",
                                  "wpct": (row.get("seven_day") or {}).get("pct"),
                                  "usable": ok, "held": why, "ses_ok": ses_ok[name],
+                                 "error": bool(row.get("error")),
                                  "email": row.get("email") or "", "active": name == active}
     a = accs.get(active) or {}
     aw = (a.get("seven_day") or {}).get("pct")
     week_full = a.get("plan") != "free" and aw is not None and aw >= cap
     # уйти есть куда — пригодный аккаунт без ошибки (на ошибочный балансер не переключает)
     other_ok = any(ok for n, ok in usable.items() if n != active and not accs[n].get("error"))
-    if ses_ok and not any(ses_ok.values()):
+    # ручной выбор забитого аккаунта балансер уважает (при оптимизации ручных переключений нет)
+    try:
+        hold = (json.load(open(CC_STATE)) or {}).get("manual_hold") or {}
+    except Exception:
+        hold = {}
+    if (active in usable and not usable[active] and not c.get("optimize")
+            and cc_avail.manual_pick(hold, active, a)):
+        out["manual"] = {"account": active, "until": float(hold.get("until") or 0)}
+    # до v1.21.6 «некуда» считалось только по сессиям: аккаунт с пустой сессией, но неделей
+    # на потолке сходил за свободный — паузы не было, и активный добивался до 100%
+    out["line"] = ", ".join("%s %.0f%%" % (n, p) for n, p in sorted(pcts.items()))
+    if out.get("manual"):
+        out["level"] = "manual"  # выбор человека: работа идёт до 100%, паузы нет
+    elif active in ses_ok and not ses_ok[active] and not other_ok:
         out["level"] = "hard"
+        out["why"] = _hard_reason(out)
     elif week_full and not other_ok:
         out["level"] = "week" if out["weekly_pause"] else "weekrisk"
     elif active in usable and not usable[active]:
         out["level"] = "gate"
     iso, who, held = _nearest(out["level"] in ("week", "weekrisk"))
     out["nearest"] = {"acc": who, "resets_at": iso, "held": held}
-    out["line"] = ", ".join("%s %.0f%%" % (n, p) for n, p in sorted(pcts.items()))
     return out
 
 
@@ -334,8 +395,10 @@ def cmd_set(a):
     st = {
         "active": True,
         "since": _now(),
-        # очередь и хук передают общую «сессионную» причину — на неделе пишем настоящую
-        "reason": _week_reason(ls) if week else (a.reason or "лимиты сессионного окна"),
+        # очередь и хук передают общую «сессионную» причину — пишем настоящую: что держит
+        # активный и почему переключаться некуда
+        "reason": (_week_reason(ls) if week else ls.get("why") if ls.get("level") == "hard"
+                   and not ls.get("stale") else (a.reason or "лимиты сессионного окна")),
         "kind": "week" if week else "session",
         "note": a.note or "",
         "resume_at": resume_ts,
@@ -512,7 +575,8 @@ def cmd_on(a):
     if not ls.get("stale") and ls.get("level") in ("hard", "week"):
         return cmd_set(argparse.Namespace(reason="включена вручную", resume_at="",
                                           note="окно забито (%s)" % (ls.get("line") or "")))
-    _tg("⏸ Claude: пауза снова работает — встанет, когда все аккаунты упрутся в сессионное окно"
+    _tg("⏸ Claude: пауза снова работает — встанет, когда активный упрётся в сессионное окно, "
+        "а переключаться будет некуда"
         + (" или активный дойдёт до недельного потолка без запасного аккаунта." if _weekly_pause() else "."))
     return 0
 
