@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.7"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.8"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3969,7 +3969,7 @@ function familyRank(f){return f==='haiku'?1:0;}
 function unifiedRows(m,candidates){
  const rows={};
  ((m&&m.available)||[]).forEach(a=>{rows[a.id]={id:a.id,name:a.name,enabled:a.enabled!==false,isNew:!!a.new,known:true};});
- (candidates||[]).forEach(c=>{if(!rows[c.id])rows[c.id]={id:c.id,name:c.guess_name,enabled:false,isNew:false,known:false};});
+ (candidates||[]).forEach(c=>{if(!rows[c.id])rows[c.id]={id:c.id,name:c.guess_name,enabled:false,isNew:true,known:false};});
  return Object.values(rows).sort((a,b)=>{
   const fa=familyOf(a.name),fb=familyOf(b.name);
   if(fa!==fb){const ra=familyRank(fa),rb=familyRank(fb);if(ra!==rb)return ra-rb;return fa<fb?-1:1;}

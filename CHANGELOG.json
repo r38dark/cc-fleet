@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.8", "date": "2026-10-09",
+     "ru": {"t": "Новые модели сразу помечаются «новая»", "p": ["«Проверить новые модели» помечает найденные модели меткой «новая» сразу, не дожидаясь галочки"]},
+     "en": {"t": "New models are marked “new” as soon as they are found", "p": ["“Check for new models” marks every model it finds as new right away, without waiting for a tick"]}},
     {"v": "1.21.7", "date": "2026-10-09",
      "ru": {"t": "Дребезг Pro/Free не спамит, free-аккаунт не долбится как активный", "p": ["Смена плана Pro↔Free уведомляет только после 2 одинаковых чтений подряд — гасит дребезг на грани подписки", "Неактивный free-аккаунт опрашивается не чаще раза в inactive_poll_sec, даже если кэш «протух» по времени", "Кнопка «Я продлил» больше не обходит паузу после 429 — показывает понятное сообщение вместо повтора"]},
      "en": {"t": "Pro/Free flapping no longer spams, free account polled less", "p": ["A Pro/Free change notifies only after 2 consecutive matching reads — kills flapping at subscription edges", "An inactive free account is polled no more than once per inactive_poll_sec, even if the cache looks stale", "The \"I renewed\" button no longer bypasses the post-429 pause — shows a clear message instead of retrying"]}},

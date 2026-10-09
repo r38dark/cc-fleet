@@ -683,6 +683,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.8** — “Check for new models” marks every model it finds with the
+  “new” badge right away, not only after the model is added to the list.
 - **v1.21.7** — Pro/Free flapping at the edge of a subscription no longer
   spams notifications: a plan change only counts after 2 consecutive matching
   reads. An inactive Free account is now polled no more often than
