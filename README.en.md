@@ -683,6 +683,14 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.7** — Pro/Free flapping at the edge of a subscription no longer
+  spams notifications: a plan change only counts after 2 consecutive matching
+  reads. An inactive Free account is now polled no more often than
+  `inactive_poll_sec`, even if the cache's session/week reset already looks
+  "stale" by time — before, that made it get hit almost as often as the
+  active account. The "I renewed" button no longer bypasses the post-429
+  pause — while it's active, it shows a clear message instead of hitting
+  Anthropic again.
 - **v1.21.6** — "nothing to switch to" counts the week: when every other
   account has its session or week full, the pause goes up (before, an account
   with an empty session but a 100% week counted as free, the banner promised

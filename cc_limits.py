@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.7"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -537,11 +537,18 @@ def collect(force=False, force_account=None):
         old = good.get(n) or {}
         # Кэш не годится, если в нём уже наступил сброс окна: аккаунт мог только что
         # освободиться, и балансеру это нужно знать сразу, а не через inactive_poll_sec.
+        # Free-план это правило не касается: ему окна сессии/недели не помогают стать
+        # пригодным (cc_avail.availability всё равно вернёт False при plan=="free"),
+        # а их resets_at у нетронутого аккаунта почти всегда уже в прошлом — без этой
+        # оговорки free-аккаунт опрашивался бы почти так же часто, как активный
+        # (09.10.26: так неактивный free-аккаунт продолбился сутками как активный).
         stale_ok = (n != act and n != force_account and old.get("ts")
                     and time.time() - old["ts"] < cfg().get("inactive_poll_sec", 300)
-                    and not cc_avail.reset_passed(old))
-        # после 429 этот аккаунт не трогаем до конца его паузы — показываем кэш
-        if n != force_account and old.get("ts") and time.time() < backoff_until.get(n, 0):
+                    and (old.get("plan") == "free" or not cc_avail.reset_passed(old)))
+        # после 429 этот аккаунт не трогаем до конца его паузы — показываем кэш.
+        # Без исключения для force_account: кнопка "Я продлил" раньше била мимо
+        # паузы и могла продлевать 429 повторным запросом (та же дыра из 52631).
+        if old.get("ts") and time.time() < backoff_until.get(n, 0):
             stale_ok = True
         if stale_ok:
             row["five_hour"] = old.get("five_hour")
@@ -600,28 +607,59 @@ def collect(force=False, force_account=None):
                       % (st0["known_active"], act, email))
         st0["known_active"] = act
         jsave(STATE, st0)
-    # смена плана (Pro истёк / продлён) — уведомить один раз на переход
+    # смена плана (Pro истёк / продлён) — уведомить только после 2 одинаковых
+    # подряд чтений. Anthropic у себя не мгновенно консистентен на грани подписки
+    # (похоже на повторные попытки списания/отмены) — одиночные чтения дребезжали
+    # pro/free каждые ~4 минуты 27+ часов, 08-09.10.26.
     st = jload(STATE, {})
     prev = st.get("plans") or {}
+    pending = st.get("plan_pending") or {}
     cur = {n: r.get("plan") for n, r in accounts.items() if r.get("plan")}
+    plans_changed = False
+    pending_changed = False
     for n, p in cur.items():
         was = prev.get(n)
-        if was and was != p:
-            email = accounts[n].get("email", n)
-            if p == "free":
-                tg_notify(f"⛔ Claude: аккаунт {n} ({email}) слетел с Pro в Free — пора продлевать подписку. Из ротации исключён.")
-            else:
-                tg_notify(f"✅ Claude: аккаунт {n} ({email}) снова {p.upper()} — вернул в ротацию.")
-                if was == "free":
-                    # продление, замеченное фоном (кнопка «Я продлил» могла не
-                    # дождаться Anthropic) — якорь таймера = момент нажатия, если был
-                    click = (st.get("renew_click") or {}).get(n, 0)
-                    anchor = click if time.time() - click < 6 * 3600 else time.time()
-                    st.setdefault("renewal", {})[n] = {"confirmed_ts": anchor}
-                    (st.get("renew_click") or {}).pop(n, None)
-                    jsave(STATE, st)
-    if cur != prev:
-        st["plans"] = {**prev, **cur}
+        if not was:
+            # первое наблюдение этого аккаунта — фиксируем сразу, без дебаунса
+            prev[n] = p
+            plans_changed = True
+            if pending.pop(n, None) is not None:
+                pending_changed = True
+            continue
+        if p == was:
+            if pending.pop(n, None) is not None:
+                pending_changed = True
+            continue
+        cand = pending.get(n) or {}
+        cnt = (cand.get("count", 0) + 1) if cand.get("plan") == p else 1
+        if cnt < 2:
+            pending[n] = {"plan": p, "count": cnt}
+            pending_changed = True
+            continue
+        pending.pop(n, None)
+        pending_changed = True
+        email = accounts[n].get("email", n)
+        if p == "free":
+            tg_notify(f"⛔ Claude: аккаунт {n} ({email}) слетел с Pro в Free — пора продлевать подписку. Из ротации исключён.")
+        else:
+            tg_notify(f"✅ Claude: аккаунт {n} ({email}) снова {p.upper()} — вернул в ротацию.")
+            if was == "free":
+                # продление, замеченное фоном (кнопка «Я продлил» могла не
+                # дождаться Anthropic) — якорь таймера = момент нажатия, если был
+                click = (st.get("renew_click") or {}).get(n, 0)
+                anchor = click if time.time() - click < 6 * 3600 else time.time()
+                st.setdefault("renewal", {})[n] = {"confirmed_ts": anchor}
+                (st.get("renew_click") or {}).pop(n, None)
+        prev[n] = p
+        plans_changed = True
+    if plans_changed:
+        st["plans"] = prev
+    if pending_changed:
+        if pending:
+            st["plan_pending"] = pending
+        else:
+            st.pop("plan_pending", None)
+    if plans_changed or pending_changed:
         jsave(STATE, st)
     return snap
 
@@ -2370,6 +2408,15 @@ class H(BaseHTTPRequestHandler):
             name = body.get("account", "")
             if name not in profile_names():
                 return self._send(400, {"ok": False, "message": "неизвестный аккаунт"})
+            # аккаунт недавно словил 429 — повторный реальный запрос сейчас же его
+            # только продлит; collect() с этого цикла сам отдаст кэш (force_account
+            # больше не обходит backoff_until), здесь просто говорим пользователю,
+            # почему свежих данных не будет (раньше recheck пробивал паузу
+            # насквозь при каждом клике)
+            wait_left = backoff_until.get(name, 0) - time.time()
+            if wait_left > 0:
+                return self._send(200, {"ok": False, "message":
+                    f"⏳ Anthropic недавно ограничил частоту запросов для этого аккаунта — подожди ~{int(wait_left)} сек и попробуй снова."})
             _plan_cache.pop(name, None)
             with lock:
                 st = jload(STATE, {})

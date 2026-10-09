@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.7", "date": "2026-10-09",
+     "ru": {"t": "Дребезг Pro/Free не спамит, free-аккаунт не долбится как активный", "p": ["Смена плана Pro↔Free уведомляет только после 2 одинаковых чтений подряд — гасит дребезг на грани подписки", "Неактивный free-аккаунт опрашивается не чаще раза в inactive_poll_sec, даже если кэш «протух» по времени", "Кнопка «Я продлил» больше не обходит паузу после 429 — показывает понятное сообщение вместо повтора"]},
+     "en": {"t": "Pro/Free flapping no longer spams, free account polled less", "p": ["A Pro/Free change notifies only after 2 consecutive matching reads — kills flapping at subscription edges", "An inactive free account is polled no more than once per inactive_poll_sec, even if the cache looks stale", "The \"I renewed\" button no longer bypasses the post-429 pause — shows a clear message instead of retrying"]}},
     {"v": "1.21.6", "date": "2026-10-07",
      "ru": {"t": "«Переключаться некуда» с учётом недели, ручной выбор до 100%", "p": ["Некуда переключаться, если у остальных забита сессия или неделя, — встаёт пауза, а не добивание до 100%", "Баннер называет настоящую причину: «acc1: неделя 99% — на потолке 99%» и что держит каждый аккаунт", "Выбранный вручную держится до сброса окна или 100% («Выбран вручную»); без него с потолка недели — сразу"]},
      "en": {"t": "“Nothing to switch to” counts the week, manual pick holds to 100%", "p": ["Nothing to switch to when the others have a full session or week — the pause goes up, no filling to 100%", "The banner names the real reason: “acc1: week 99% — at the 99% cap” and what holds each account", "A manual pick holds until its window resets or 100% (“Picked manually”); otherwise the week cap is left at once"]}},
