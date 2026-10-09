@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.8"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.9"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1220,10 +1220,11 @@ def model_info():
     models = all_models()
     enabled = c.get("enabled_models") or list(models.keys())  # ничего не скрыто, пока не сузили в панели
     added_ts = c.get("model_added_ts") or {}
+    hidden = set(c.get("model_hidden") or [])
     now = time.time()
     return {"session": sess, "session_name": models.get(sess, sess),
             "default": dflt, "default_name": models.get(dflt, dflt),
-            "available": [{"id": k, "name": v, "enabled": k in enabled,
+            "available": [{"id": k, "name": v, "enabled": k in enabled, "hidden": k in hidden,
                            "new": now - added_ts.get(k, 0) < 14 * 86400,
                            "efforts": effort_support(k)}
                           for k, v in models.items()],
@@ -2508,6 +2509,24 @@ class H(BaseHTTPRequestHandler):
                 ids = [m for m in body["enabled_models"] if m in all_models()]
                 if ids:
                     c["enabled_models"] = ids
+                    c["model_hidden"] = [m for m in (c.get("model_hidden") or []) if m not in ids]
+            if isinstance(body.get("hide"), dict):
+                # скрытая модель выключена и не в чипах; снять скрытие = вернуть в строй. Пустой набор не сохраняем
+                hidden = set(c.get("model_hidden") or [])
+                enabled = list(c.get("enabled_models") or all_models().keys())
+                for mid, flag in body["hide"].items():
+                    if mid not in all_models() or not isinstance(flag, bool):
+                        continue
+                    if flag:
+                        hidden.add(mid)
+                        enabled = [m for m in enabled if m != mid]
+                    elif mid in hidden:
+                        hidden.discard(mid)
+                        if mid not in enabled:
+                            enabled.append(mid)
+                if enabled:
+                    c["enabled_models"] = enabled
+                    c["model_hidden"] = sorted(hidden)
             jsave(CONFIG, c)
             UPDATER.kick()  # сменили режим обновлений — пусть петля пересмотрит сразу
             return self._send(200, {"ok": True, "autoswitch": c.get("autoswitch"),
@@ -3545,6 +3564,7 @@ const I18N={
   efDone:l=>'✅ Effort сессии: '+l,
   efNoConfirm:'Команда отправлена, но сессия ещё не подтвердила уровень — возможно, была занята. Кликни ещё раз.',
   newBadge:'новая',
+  hideModelLbl:'скрыть',
   checkNewModels:'🔄 Проверить новые модели',
   candSearching:'Ищу…',
   candFound:'Найдено новых моделей: {n} — отметь нужные',
@@ -3744,6 +3764,7 @@ const I18N={
   efDone:l=>'✅ Session effort: '+l,
   efNoConfirm:'Command sent, but the session has not confirmed the level yet — it may have been busy. Click again.',
   newBadge:'new',
+  hideModelLbl:'hide',
   checkNewModels:'🔄 Check for new models',
   candSearching:'Searching…',
   candFound:'New models found: {n} — tick the ones you want',
@@ -3964,12 +3985,13 @@ async function load(refresh){
  renderModel(d.model);
 }
 let lastCandidates=[];
+let poolScanned=false;
 function familyOf(name){return (name||'').split(' ')[0].toLowerCase();}
 function familyRank(f){return f==='haiku'?1:0;}
 function unifiedRows(m,candidates){
  const rows={};
- ((m&&m.available)||[]).forEach(a=>{rows[a.id]={id:a.id,name:a.name,enabled:a.enabled!==false,isNew:!!a.new,known:true};});
- (candidates||[]).forEach(c=>{if(!rows[c.id])rows[c.id]={id:c.id,name:c.guess_name,enabled:false,isNew:true,known:false};});
+ ((m&&m.available)||[]).forEach(a=>{rows[a.id]={id:a.id,name:a.name,enabled:a.enabled!==false,isNew:!!a.new,known:true,hidden:!!a.hidden};});
+ (candidates||[]).forEach(c=>{if(!rows[c.id])rows[c.id]={id:c.id,name:c.guess_name,enabled:false,isNew:true,known:false,hidden:false};});
  return Object.values(rows).sort((a,b)=>{
   const fa=familyOf(a.name),fb=familyOf(b.name);
   if(fa!==fb){const ra=familyRank(fa),rb=familyRank(fb);if(ra!==rb)return ra-rb;return fa<fb?-1:1;}
@@ -3977,13 +3999,14 @@ function unifiedRows(m,candidates){
  });
 }
 function renderPool(){
- $('#poolList').innerHTML=unifiedRows(lastModel,lastCandidates).map(r=>
-  `<div class="poolrow" data-id="${r.id}" data-known="${r.known?1:0}" style="flex-direction:column;align-items:stretch;gap:5px;cursor:default">
+ $('#poolList').innerHTML=unifiedRows(lastModel,lastCandidates).filter(r=>poolScanned||!r.hidden).map(r=>
+  `<div class="poolrow" data-id="${r.id}" data-known="${r.known?1:0}" style="flex-direction:column;align-items:stretch;gap:5px;cursor:default${r.hidden?';opacity:.6':''}">
     <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;margin:0">
      <input type="checkbox" class="poolchk" ${r.enabled?'checked':''}>
      <span style="word-break:break-all">${r.id}</span>${r.isNew?' <span class="newbadge" style="margin-left:0">'+tr('newBadge')+'</span>':''}
     </label>
     <input type="text" class="poolname" value="${r.name}">
+    ${r.known?`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:12px;color:var(--mut)"><input type="checkbox" class="hidechk-in" ${r.hidden?'checked':''}>${tr('hideModelLbl')}</label>`:''}
    </div>`
  ).join('');
 }
@@ -4045,6 +4068,12 @@ async function pickModel(id){
  const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+d.message);renderModel(d.model);
 }
 $('#poolList').addEventListener('change',async e=>{
+ if(e.target.classList.contains('hidechk-in')){
+  const id=e.target.closest('[data-id]').dataset.id;
+  const r=await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hide:{[id]:e.target.checked}})});
+  const d=await r.json();if(d&&d.model)renderModel(d.model);
+  return;
+ }
  if(!e.target.classList.contains('poolchk'))return;
  const row=e.target.closest('[data-id]'),id=row.dataset.id,known=row.dataset.known==='1';
  const name=row.querySelector('.poolname').value.trim()||id;
@@ -4061,6 +4090,7 @@ $('#poolList').addEventListener('change',async e=>{
  if(d&&d.model)renderModel(d.model);
 });
 async function checkNewModels(){
+ poolScanned=true;
  $('#poolList').innerHTML='<div style="color:var(--mut);font-size:12.5px;padding:6px 2px">'+tr('candSearching')+'</div>';
  try{
   const r=await fetch(API+'models/candidates?token='+TOKEN);
@@ -4072,8 +4102,8 @@ async function checkNewModels(){
 }
 $('#checkNew').addEventListener('click',checkNewModels);
 $('#gear').addEventListener('click',()=>{$('#scrim').hidden=false});
-$('#modalDone').addEventListener('click',()=>{$('#scrim').hidden=true;});
-$('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')$('#scrim').hidden=true});
+$('#modalDone').addEventListener('click',()=>{$('#scrim').hidden=true;poolScanned=false;renderPool();});
+$('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim'){$('#scrim').hidden=true;poolScanned=false;renderPool();}});
 function toast(t){const m=$('#msg');m.textContent=t;m.style.display='block';setTimeout(()=>m.style.display='none',4000)}
 async function sw(n){
  if(!confirm(tr('confirmSwitch',n)))return;

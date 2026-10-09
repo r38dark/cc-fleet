@@ -683,6 +683,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.9** — a “hide” tick on each model in the settings: a hidden model
+  leaves the list and the chips, but shows up after “Check for new models”
+  and goes back into use when the tick is removed.
 - **v1.21.8** — “Check for new models” marks every model it finds with the
   “new” badge right away, not only after the model is added to the list.
 - **v1.21.7** — Pro/Free flapping at the edge of a subscription no longer

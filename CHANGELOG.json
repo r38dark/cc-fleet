@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.9", "date": "2026-10-09",
+     "ru": {"t": "Скрытие моделей из списка", "p": ["Галочка «скрыть» убирает модель из списка настроек и из чипов", "После «Проверить новые модели» скрытые видны полупрозрачными, галочка возвращает их в строй", "Скрыть все модели нельзя: одна должна остаться"]},
+     "en": {"t": "Hide models from the list", "p": ["The “hide” tick removes a model from the settings list and from the chips", "After “Check for new models” hidden models show faded; untick one to bring it back", "All models cannot be hidden: at least one must stay"]}},
     {"v": "1.21.8", "date": "2026-10-09",
      "ru": {"t": "Новые модели сразу помечаются «новая»", "p": ["«Проверить новые модели» помечает найденные модели меткой «новая» сразу, не дожидаясь галочки"]},
      "en": {"t": "New models are marked “new” as soon as they are found", "p": ["“Check for new models” marks every model it finds as new right away, without waiting for a tick"]}},
