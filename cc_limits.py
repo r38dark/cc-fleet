@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.9"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.10"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4001,12 +4001,14 @@ function unifiedRows(m,candidates){
 function renderPool(){
  $('#poolList').innerHTML=unifiedRows(lastModel,lastCandidates).filter(r=>poolScanned||!r.hidden).map(r=>
   `<div class="poolrow" data-id="${r.id}" data-known="${r.known?1:0}" style="flex-direction:column;align-items:stretch;gap:5px;cursor:default${r.hidden?';opacity:.6':''}">
-    <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;margin:0">
-     <input type="checkbox" class="poolchk" ${r.enabled?'checked':''}>
-     <span style="word-break:break-all">${r.id}</span>${r.isNew?' <span class="newbadge" style="margin-left:0">'+tr('newBadge')+'</span>':''}
-    </label>
+    <div style="display:flex;align-items:center;gap:8px">
+     <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;margin:0;min-width:0">
+      <input type="checkbox" class="poolchk" ${r.enabled?'checked':''}>
+      <span style="word-break:break-all">${r.id}</span>${r.isNew?' <span class="newbadge" style="margin-left:0">'+tr('newBadge')+'</span>':''}
+     </label>
+     ${r.known?`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0 0 0 auto;font-size:12px;color:var(--mut);white-space:nowrap"><input type="checkbox" class="hidechk-in" ${r.hidden?'checked':''}>${tr('hideModelLbl')}</label>`:''}
+    </div>
     <input type="text" class="poolname" value="${r.name}">
-    ${r.known?`<label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;font-size:12px;color:var(--mut)"><input type="checkbox" class="hidechk-in" ${r.hidden?'checked':''}>${tr('hideModelLbl')}</label>`:''}
    </div>`
  ).join('');
 }

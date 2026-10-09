@@ -683,6 +683,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.10** — the “hide” tick sits right-aligned on the same line as the
+  model name, not on a separate line below.
 - **v1.21.9** — a “hide” tick on each model in the settings: a hidden model
   leaves the list and the chips, but shows up after “Check for new models”
   and goes back into use when the tick is removed.
