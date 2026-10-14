@@ -683,6 +683,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.11** — the effort row no longer disappears when the level is unknown:
+  it shows “not set” with the scale, and a click on a level sets it.
 - **v1.21.10** — the “hide” tick sits right-aligned on the same line as the
   model name, not on a separate line below.
 - **v1.21.9** — a “hide” tick on each model in the settings: a hidden model

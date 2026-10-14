@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.11", "date": "2026-10-14",
+     "ru": {"t": "Строка effort видна, даже если уровень не определён", "p": ["Уровня нет ни в транскрипте, ни в settings.json, ни в статус-строке — видно «не задан» и шкалу, уровень задаётся кликом"]},
+     "en": {"t": "The effort row stays visible when the level is unknown", "p": ["No level in the transcript, settings.json or status line — the row shows “not set” and a scale; click to set it"]}},
     {"v": "1.21.10", "date": "2026-10-09",
      "ru": {"t": "Кнопка «скрыть» рядом с названием модели", "p": ["Галочка «скрыть» стоит справа в одной строке с названием модели, а не отдельной строкой снизу"]},
      "en": {"t": "The “hide” tick sits on the model name line", "p": ["The “hide” tick is now right-aligned on the same line as the model name, not on a separate line below"]}},

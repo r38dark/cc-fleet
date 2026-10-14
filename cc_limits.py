@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.10"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.11"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3066,6 +3066,7 @@ html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:v
 .efB.busy{opacity:.6;pointer-events:none}
 .efB.lock{cursor:not-allowed}
 .efB.lock .th{opacity:.55}
+.efB.unk .fl,.efB.unk .th{display:none}
 .efB .tr{position:absolute;left:0;right:0;top:6px;height:4px;border-radius:99px;background:#242b38}
 .efB .fl{position:absolute;left:0;top:6px;height:4px;border-radius:99px;background:linear-gradient(90deg,#6f86b3,var(--ef));transition:width .25s}
 .efB .tk{position:absolute;top:5px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#3a4250}
@@ -3557,6 +3558,8 @@ const I18N={
   efName:k=>({low:'низкий',medium:'средний',high:'высокий',xhigh:'очень высокий',max:'максимум'})[k]||k,
   efMis:d=>' (дефолт в settings.json: '+d+')',
   efNaTxt:'effort: эта модель не поддерживает',
+  efUnk:'не задан',
+  efUnkTip:'Уровень effort не найден ни в транскрипте, ни в settings.json, ни в статус-строке консоли — выбери его на шкале',
   efNaTitle:n=>(n||'Эта модель')+' не поддерживает уровни effort',
   efOffTip:n=>' не поддерживается моделью '+(n||''),
   efBlocked:(l,n)=>'⛔ Effort «'+l+'» не поддерживается моделью '+(n||'')+' — выбери другой уровень',
@@ -3757,6 +3760,8 @@ const I18N={
   efName:k=>({low:'low',medium:'medium',high:'high',xhigh:'extra high',max:'maximum'})[k]||k,
   efMis:d=>' (default in settings.json: '+d+')',
   efNaTxt:'effort: not supported by this model',
+  efUnk:'not set',
+  efUnkTip:'Effort level was not found in the transcript, settings.json or the console status line — pick one on the scale',
   efNaTitle:n=>(n||'This model')+' does not support effort levels',
   efOffTip:n=>' is not supported by '+(n||'this model'),
   efBlocked:(l,n)=>'⛔ Effort “'+l+'” is not supported by '+(n||'this model')+' — pick another level',
@@ -4027,13 +4032,12 @@ let efPending=null;  // пока команда в пути, держим выб
 function effortHtml(m){
  const sup=Array.isArray(m.effort_supported)?m.effort_supported:null;  // null = не знаем, не блокируем
  if(sup&&!sup.length)return '<span class="eflbl na" title="'+ccpEsc(tr('efNaTitle',m.session_name))+'">'+tr('efNaTxt')+'</span>';
- const cur=efPending||m.effort||m.effort_default,i=EF.indexOf(cur);
- if(i<0)return '';
- const pc=i*25,mis=!efPending&&m.effort&&m.effort_default&&m.effort!==m.effort_default;
- const tip='Effort: '+cur+' · '+tr('efName',cur)+(mis?tr('efMis',m.effort_default):'');
+ const cur=efPending||m.effort||m.effort_default,i=EF.indexOf(cur),unk=i<0;  // unk: уровень нигде не найден — шкалу всё равно показываем, чтобы его можно было задать
+ const pc=unk?0:i*25,mis=!efPending&&m.effort&&m.effort_default&&m.effort!==m.effort_default,col=unk?'#7c9aff':EF_COL[cur];
+ const tip=unk?tr('efUnkTip'):'Effort: '+cur+' · '+tr('efName',cur)+(mis?tr('efMis',m.effort_default):'');
  const off=sup?EF.filter(e=>!sup.includes(e)):[];
- return '<span class="eflbl'+(mis?' mis':'')+'" title="'+ccpEsc(tip)+'">effort <b style="--ef:'+EF_COL[cur]+'">'+cur+'</b></span>'
-  +'<div class="efB'+(efPending?' busy':'')+(off.length?' lock':'')+'" style="--ef:'+EF_COL[cur]+'" data-off="'+off.join(',')+'" data-model="'+ccpEsc(m.session_name||'')+'" onclick="effortClick(event,this)">'
+ return '<span class="eflbl'+(mis?' mis':'')+'" title="'+ccpEsc(tip)+'">effort <b style="--ef:'+col+'">'+(unk?tr('efUnk'):cur)+'</b></span>'
+  +'<div class="efB'+(efPending?' busy':'')+(off.length?' lock':'')+(unk?' unk':'')+'" style="--ef:'+col+'" data-off="'+off.join(',')+'" data-model="'+ccpEsc(m.session_name||'')+'" onclick="effortClick(event,this)">'
   +'<div class="tr"></div><div class="fl" style="width:'+pc+'%"></div>'
   +EF.map((e,j)=>off.includes(e)?'<div class="tk off" style="left:'+j*25+'%" title="'+e+' ·'+ccpEsc(tr('efOffTip',m.session_name))+'"></div>'
    :'<div class="tk'+(j<i?' pass':'')+'" style="left:'+j*25+'%" title="'+e+' · '+tr('efName',e)+'"></div>').join('')
