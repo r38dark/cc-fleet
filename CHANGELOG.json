@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.21.12", "date": "2026-10-19",
+     "ru": {"t": "Кнопки над консолью — по правому краю", "p": ["Блок «− 100% + ⛶» прижат к правому краю консоли, вровень с кнопками шапки"]},
+     "en": {"t": "Console buttons are flush right", "p": ["The “− 100% + ⛶” block now sits against the right edge of the console, in line with the header buttons"]}},
     {"v": "1.21.11", "date": "2026-10-14",
      "ru": {"t": "Строка effort видна, даже если уровень не определён", "p": ["Уровня нет ни в транскрипте, ни в settings.json, ни в статус-строке — видно «не задан» и шкалу, уровень задаётся кликом"]},
      "en": {"t": "The effort row stays visible when the level is unknown", "p": ["No level in the transcript, settings.json or status line — the row shows “not set” and a scale; click to set it"]}},
