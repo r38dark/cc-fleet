@@ -683,6 +683,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.13** — the “−/+/⛶” block above the console is inset 8 px from the
+  right edge instead of touching it.
 - **v1.21.12** — the “−/+/⛶” block above the console is flush with the right
   edge, in line with the header buttons.
 - **v1.21.11** — the effort row no longer disappears when the level is unknown:

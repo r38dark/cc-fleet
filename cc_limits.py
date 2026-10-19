@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.12"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.13"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2660,7 +2660,7 @@ button:disabled{opacity:.35;cursor:default}
 #msg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#232a36;padding:10px 18px;border-radius:12px;font-size:14px;display:none;max-width:92vw;z-index:20}
 .termwrap{position:relative;display:flex;flex-direction:column;min-height:130px;margin-bottom:18px}
 .termdot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
-.tzoom{position:absolute;top:7px;right:0;z-index:2;display:flex;align-items:center;gap:4px;padding:2px 0 2px 2px;border-radius:9px 0 0 9px;background:rgba(0,0,0,.6)}
+.tzoom{position:absolute;top:7px;right:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
 .hdrl{display:flex;align-items:center;gap:10px;min-width:0}
 .hdrgear:disabled svg{animation:ccspin .8s linear infinite}
 .tzval{margin:0;padding:0 4px;min-width:48px;background:transparent;border:0;color:var(--mut);font-family:inherit;font-size:12.5px;font-weight:600;text-align:center;cursor:pointer}
