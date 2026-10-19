@@ -683,6 +683,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.21.14** — model and effort show up without a custom status line: the panel
+  finds the session transcript by the folder Claude Code was started in (not only
+  `/root`), and with neither a status line nor a transcript it takes the model
+  from `settings.json`. Sonnet 5.5 and Haiku 5.5 are added to the model list.
 - **v1.21.13** — the “−/+/⛶” block above the console is inset 8 px from the
   right edge instead of touching it.
 - **v1.21.12** — the “−/+/⛶” block above the console is flush with the right

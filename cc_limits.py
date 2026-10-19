@@ -9,7 +9,7 @@ import cc_avail
 import cc_update
 import pexpect
 
-VERSION = "1.21.13"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.21.14"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -672,7 +672,9 @@ MODELS = {  # id → короткое имя для UI
     "claude-opus-5": "Opus 5",
     "claude-opus-5-5": "Opus 5.5",
     "claude-sonnet-5": "Sonnet 5",
+    "claude-sonnet-5-5": "Sonnet 5.5",
     "claude-haiku-4-5-20251001": "Haiku 4.5",
+    "claude-haiku-5-5": "Haiku 5.5",
 }
 
 # Необязательный источник для кнопки "Проверить новые модели": если рядом крутится
@@ -921,6 +923,62 @@ def _current_screen_pid(scr):
         return m.group(1) if m else None
     except Exception:
         return None
+
+
+_tdir_cache = {"ts": 0.0, "dir": None}
+
+
+def _session_cwd():
+    # папка запуска Claude Code в screen-сессии: идём вглубь по потомкам PID screen и берём
+    # cwd первого процесса с "claude" в командной строке (иначе — самого глубокого потомка)
+    pid = _current_screen_pid(cfg().get("screen_session", "claude"))
+    if not pid:
+        return None
+    last, level = None, [pid]
+    for _ in range(4):
+        nxt = []
+        for p in level:
+            try:
+                nxt += subprocess.run(["pgrep", "-P", p], capture_output=True, timeout=5, text=True).stdout.split()
+            except Exception:
+                pass
+        if not nxt:
+            break
+        for p in nxt:
+            try:
+                cwd = os.readlink(f"/proc/{p}/cwd")
+                with open(f"/proc/{p}/cmdline", "rb") as f:
+                    cmd = f.read().decode("utf-8", "replace")
+            except OSError:
+                continue
+            if "claude" in cmd:
+                return cwd
+            last = cwd
+        level = nxt
+    return last
+
+
+def transcripts_dir():
+    # Каталог транскриптов живой сессии. Claude Code кладёт их в projects/<cwd, где всё кроме
+    # букв и цифр заменено на "-">: из /root это -root, из /root/trade — -root-trade. Порядок:
+    # явный ключ transcripts_dir в config.json → cwd Claude Code в screen-сессии → прежний -root.
+    d = cfg().get("transcripts_dir")
+    if d:
+        return d
+    now = time.time()
+    if _tdir_cache["dir"] and now - _tdir_cache["ts"] < 20:
+        return _tdir_cache["dir"]
+    d = TRANSCRIPTS
+    try:
+        cwd = _session_cwd()
+        if cwd:
+            cand = os.path.join(os.path.dirname(SETTINGS), "projects", re.sub(r"[^A-Za-z0-9]", "-", cwd))
+            if os.path.isdir(cand):
+                d = cand
+    except Exception:
+        pass
+    _tdir_cache.update(ts=now, dir=d)
+    return d
 
 
 def _console_ensure_logging():
@@ -1192,14 +1250,15 @@ def session_model():
             if re.search(r"\b" + re.escape(name) + r"\b\s+\d+%\s+root", line):
                 return mid
     # запасной путь — последний assistant в свежем транскрипте
+    model = None
     try:
-        files = [os.path.join(TRANSCRIPTS, f) for f in os.listdir(TRANSCRIPTS) if f.endswith(".jsonl")]
+        td = transcripts_dir()
+        files = [os.path.join(td, f) for f in os.listdir(td) if f.endswith(".jsonl")]
         newest = max(files, key=os.path.getmtime)
         with open(newest, "rb") as f:
             f.seek(0, 2)
             f.seek(max(0, f.tell() - 300_000))
             tail = f.read().decode("utf-8", "replace")
-        model = None
         for line in tail.splitlines():
             try:
                 d = json.loads(line)
@@ -1208,9 +1267,11 @@ def session_model():
             m = (d.get("message") or {}).get("model")
             if d.get("type") == "assistant" and m:
                 model = m
-        return model
     except Exception:
-        return None
+        pass
+    # ни статус-строки, ни транскрипта (панель без своей статус-строки, сессия ещё без ответов) —
+    # модель по умолчанию из settings.json: туда пишет и /model, и кнопки панели
+    return model or (jload(SETTINGS, {}) or {}).get("model")
 
 
 def model_info():
@@ -1255,7 +1316,8 @@ def transcript_effort():
     # «max — this session only», которого нет в settings.json), а у каждой реплики
     # ассистента есть поле "effort". Берём то, что встретилось последним.
     try:
-        files = [os.path.join(TRANSCRIPTS, f) for f in os.listdir(TRANSCRIPTS) if f.endswith(".jsonl")]
+        td = transcripts_dir()
+        files = [os.path.join(td, f) for f in os.listdir(td) if f.endswith(".jsonl")]
         newest = max(files, key=os.path.getmtime)
         with open(newest, "rb") as f:
             f.seek(0, 2)
