@@ -166,7 +166,7 @@ gear, a "Delete" button on every card and the windows for both flows
   there as dead weight. Confirmation is typing the word "confirm"; there is no
   recycle bin and no undo. Telegram reports both actions. Fitted into all five
   looks, RU/EN.
-- 🔄 **Updates from the panel** (v1.18.0) — once a day the panel asks GitHub
+- 🔄 **Updates from the panel** (v1.18.0) — every 6 hours (once a day before v1.22.1) the panel asks GitHub
   whether a newer release exists and shows a banner "v1.18.1 is out — Update /
   Skip this version". "⚙ Settings" has a **"Manual / Automatic"** switch
   (manual by default): manual installs on a button press, automatic downloads
@@ -586,7 +586,7 @@ Claude Code 2.1.x; check it on another version. We have not had a confirmed
 failure caused by this race — it is prevention.
 
 Tests (standard library only, no `pytest`; live files are not touched):
-`python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock`.
+`python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock test_cc_update_banner`.
 
 ## Management
 
@@ -608,7 +608,7 @@ Tests (standard library only, no `pytest`; live files are not touched):
 
 ## Updates from the panel (v1.18.0)
 
-Once a day (and on the "Check" button in "⚙ Settings → Updates") the panel makes
+Every 6 hours (and on the "Check" button in "⚙ Settings → Updates") the panel makes
 **one** request, `GET https://api.github.com/repos/r38dark/cc-fleet/releases/latest`
 — no token, nothing about you is sent (with `If-None-Match`, so most of the time
 GitHub answers "304, unchanged"). If a newer release exists, a banner with the
@@ -646,7 +646,7 @@ Good to know:
 - **This runs someone else's code as root.** An update installs whatever is
   published in the repository's release. If you don't want that, keep "Manual"
   (the banner puts the release notes and a link to the page in front of you) or
-  turn the check off entirely: the "Check for new versions once a day" box in
+  turn the check off entirely: the "Check for new versions every 6 hours" box in
   Settings, or `"update_check": false` in `config.json`.
 - It needs systemd and an install made by `install.sh` (the unit
   `/etc/systemd/system/<service>.service`; the service name is stored in
@@ -743,6 +743,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.22.1** — auto-updates arrive sooner: a new version is checked every 6
+  hours instead of once a day, so automatic mode installs it within 6 hours of
+  the release. The “Updated to version …” banner now has a “What's new” block —
+  the same notes as in the change history.
 - **v1.22.0** — adaptive limit-polling pace: slower when the numbers sit still,
   faster near the threshold, at most 20 requests an hour per account; after a 429
   it waits for `Retry-After` (without it 300 → 1800 s). A `usage_fail.jsonl`

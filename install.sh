@@ -118,7 +118,7 @@ log "Копирую cc_limits.py, cc_update.py, cc_avail.py, cc_poll.py и cc_lo
 mkdir -p "$BASE"
 cp "$SCRIPT_DIR/cc_limits.py" "$BASE/cc_limits.py"
 chmod 644 "$BASE/cc_limits.py"
-# автообновление из GitHub Releases (проверка раз в сутки, ручной/авто режим — в ⚙ панели)
+# автообновление из GitHub Releases (проверка раз в 6 часов, ручной/авто режим — в ⚙ панели)
 cp "$SCRIPT_DIR/cc_update.py" "$BASE/cc_update.py"
 chmod 644 "$BASE/cc_update.py"
 # общее правило «когда аккаунт снова пригоден» — импортируют cc_limits.py, pause_ctl.py, limits_gate.py

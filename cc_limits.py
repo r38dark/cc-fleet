@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.22.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.22.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -98,7 +98,7 @@ def tg_notify(text):
         print(f"tg_notify fail: {e}", flush=True)
 
 
-# автообновление из GitHub Releases (cc_update.py): проверка раз в сутки, ручной/авто режим
+# автообновление из GitHub Releases (cc_update.py): проверка раз в 6 часов, ручной/авто режим
 UPDATER = cc_update.Updater(BASE, VERSION, cfg, notify=tg_notify)
 
 
@@ -2860,6 +2860,11 @@ html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accen
 .upd-notes{margin-top:8px;font-size:12px;color:var(--mut)}
 .upd-notes summary{cursor:pointer;color:var(--txt);font-weight:600}
 .upd-notes pre{margin:6px 0 0;max-height:140px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11.5px/1.5 ui-monospace,Consolas,monospace;opacity:.9}
+.upd-ok-notes b{color:var(--txt);font-weight:600}
+.upd-ok-notes .uo-t{margin-top:4px;color:var(--txt)}
+.upd-ok-notes ul{margin:4px 0 0;padding-left:16px;max-height:140px;overflow:auto}
+.upd-ok-notes li{line-height:1.45;margin:2px 0}
+.upd-ok-notes code{font:.95em ui-monospace,Consolas,monospace}
 .upd-bar{margin-top:10px;height:3px;border-radius:99px;background:rgba(127,127,127,.25);overflow:hidden}
 .upd-bar i{display:block;height:100%;width:35%;background:var(--ccp-accent);border-radius:99px;animation:updslide 1.4s ease-in-out infinite}
 @keyframes updslide{0%{margin-left:-35%}100%{margin-left:100%}}
@@ -3637,7 +3642,7 @@ const I18N={
   updAuto:'Автоматически',
   updHintManual:'Вручную: покажу баннер о новой версии, а ты решишь — обновляться или нет.',
   updHintAuto:'Автоматически: сам скачаю релиз, проверю, заменю файлы и перезапущу панель. Перед заменой делается бэкап, при сбое файлы возвращаются.',
-  updCheckLbl:'Проверять новые версии раз в сутки (один запрос к GitHub, без токена)',
+  updCheckLbl:'Проверять новые версии раз в 6 часов (один запрос к GitHub, без токена)',
   updAutoConfirm:v=>`Сейчас доступна версия ${v} — её поставят сразу. Включить автоматическое обновление?`,
   updNoSupport:r=>`Автообновление здесь недоступно (${r}). Обнови вручную: sudo ./install.sh из архива релиза.`,
   updBTitle:v=>`⬆ Вышла новая версия — <b>${v}</b>`,
@@ -3839,7 +3844,7 @@ const I18N={
   updAuto:'Automatic',
   updHintManual:'Manual: I show a banner about a new version and you decide whether to update.',
   updHintAuto:'Automatic: I download the release, verify it, replace the files and restart the panel. A backup is made first; on failure the files are put back.',
-  updCheckLbl:'Check for new versions once a day (one request to GitHub, no token)',
+  updCheckLbl:'Check for new versions every 6 hours (one request to GitHub, no token)',
   updAutoConfirm:v=>`Version ${v} is available right now — it will be installed immediately. Turn on automatic updates?`,
   updNoSupport:r=>`Auto-update is unavailable here (${r}). Update by hand: sudo ./install.sh from the release archive.`,
   updBTitle:v=>`⬆ New version released — <b>${v}</b>`,
@@ -4662,7 +4667,7 @@ function updRender(){
   sub=tr(k||(updDown?'updPhRestarting':'updPhConfirm'));
  }else if(res){
   if(res.ok){
-   cls='lvl-updok';title=tr('updOkTitle',ccpEsc(res.to));sub=tr('updOkSub',ccpEsc(res.from));
+   cls='lvl-updok';title=tr('updOkTitle',ccpEsc(res.to));sub=tr('updOkSub',ccpEsc(res.from));more=updOkNotes(res.to);
    acts='<button type="button" class="ccp-btn" onclick="updAck()">'+tr('updBtnOk')+'</button>';
    if(updStale()){
     sub+='<br>'+tr(updHeld?'updStaleHeld':'updStaleSub');
@@ -4742,6 +4747,26 @@ function updLogNode(){
  updLogEl.querySelector('summary').textContent=tr('updLog');
  if(updLogData&&updLogKey!==LANG+'|'+(updData&&updData.version))updLogList();
  return updLogEl;
+}
+// «Что нового» в плашке после обновления: запись версии из CHANGELOG.json (та же, что в истории изменений)
+let updOkTry='';
+function updOkNotes(v){
+ const e=((updLogData&&updLogData.versions)||[]).find(x=>x.v===v);
+ if(!e){
+  if(updOkTry!==v){updOkTry=v;updOkLoad();}  // списка ещё нет или он старее этой версии — один раз перечитать
+  return '';
+ }
+ const x=(LANG==='en'?(e.en||e.ru):(e.ru||e.en))||{},p=Array.isArray(x.p)?x.p:[];
+ if(!x.t&&!p.length)return '';
+ return '<div class="upd-notes upd-ok-notes"><b>'+tr('updNotes')+'</b>'+(x.t?'<div class="uo-t">'+updLogTxt(x.t)+'</div>':'')
+  +(p.length?'<ul>'+p.map(t=>'<li>'+updLogTxt(t)+'</li>').join('')+'</ul>':'')+'</div>';
+}
+async function updOkLoad(){
+ try{
+  const r=await fetch(API+'changelog?token='+TOKEN);if(!r.ok)throw new Error(r.status);
+  updLogData=await r.json();
+ }catch(e){return;}
+ updRender();
 }
 function updSettingsRender(){
  const box=$('#updBox');if(!box||$('#scrim').hidden)return;

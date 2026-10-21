@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.22.1", "date": "2026-10-21",
+     "ru": {"t": "Автообновление приходит быстрее, описание видно после установки", "p": ["Новая версия проверяется раз в 6 часов, а не раз в сутки: авто-режим ставит её в течение 6 часов после выхода", "В плашке «Обновлено до версии …» теперь есть «Что нового» — то же описание, что в истории изменений"]},
+     "en": {"t": "Auto-updates arrive sooner, release notes show after install", "p": ["New versions are checked every 6 hours, not once a day: automatic mode installs one within 6 hours of release", "The \"Updated to version …\" banner now has \"What's new\" — the same notes as in the change history"]}},
     {"v": "1.22.0", "date": "2026-10-21",
      "ru": {"t": "Адаптивный опрос лимитов и безопасная запись логина", "p": ["Опрос реже в покое, чаще у порога, не больше 20 запросов/ч на аккаунт; после 429 ждём Retry-After", "Журнал сбоев usage_fail.jsonl; adaptive_poll=false возвращает прежний темп", "cc-switch и обновление токена пишут логин атомарно, под замками Claude Code, с откатом"]},
      "en": {"t": "Adaptive limit polling and safe login writes", "p": ["Polls slower when idle, faster near the threshold, max 20 requests/h per account; after a 429 it waits Retry-After", "Failure log usage_fail.jsonl; adaptive_poll=false restores the old pace", "cc-switch and token refresh write the login atomically, under Claude Code's locks, with rollback"]}},
