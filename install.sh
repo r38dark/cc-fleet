@@ -114,7 +114,7 @@ apt-get install -y -qq $APT_PKGS
 command -v claude >/dev/null 2>&1 || warn "Бинарник 'claude' не найден в PATH — веб-кнопка 'Войти заново' работать не будет, пока не поставишь Claude Code (npm i -g @anthropic-ai/claude-code)."
 
 # ---------- сервис ----------
-log "Копирую cc_limits.py, cc_update.py и cc_avail.py → $BASE"
+log "Копирую cc_limits.py, cc_update.py, cc_avail.py, cc_poll.py и cc_lock.py → $BASE"
 mkdir -p "$BASE"
 cp "$SCRIPT_DIR/cc_limits.py" "$BASE/cc_limits.py"
 chmod 644 "$BASE/cc_limits.py"
@@ -124,6 +124,12 @@ chmod 644 "$BASE/cc_update.py"
 # общее правило «когда аккаунт снова пригоден» — импортируют cc_limits.py, pause_ctl.py, limits_gate.py
 cp "$SCRIPT_DIR/cc_avail.py" "$BASE/cc_avail.py"
 chmod 644 "$BASE/cc_avail.py"
+# темп опроса usage-эндпоинта (адаптивный, чистые функции) — импортирует cc_limits.py
+cp "$SCRIPT_DIR/cc_poll.py" "$BASE/cc_poll.py"
+chmod 644 "$BASE/cc_poll.py"
+# атомарная запись логина и замки Claude Code — импортируют cc_limits.py и cc-switch
+cp "$SCRIPT_DIR/cc_lock.py" "$BASE/cc_lock.py"
+chmod 644 "$BASE/cc_lock.py"
 # история изменений для «⚙ Настройки → Обновления» (дальше приезжает с обновлениями)
 cp "$SCRIPT_DIR/CHANGELOG.json" "$BASE/CHANGELOG.json"
 chmod 644 "$BASE/CHANGELOG.json"

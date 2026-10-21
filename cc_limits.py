@@ -2,14 +2,16 @@
 # cc-limits — мониторинг лимитов Pro/Max-аккаунтов Claude Code + авто-переключение.
 # Запуск: systemd unit (порт задаётся в config.json, ключ "port", по умолчанию 8877;
 # снаружи — через nginx /cc/, см. install.sh).
-import fcntl, html, json, os, re, shutil, struct, subprocess, tempfile, termios, threading, time, urllib.request, urllib.error
+import fcntl, html, json, os, random, re, shutil, struct, subprocess, tempfile, termios, threading, time, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pyte
 import cc_avail
+import cc_lock
+import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.21.14"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.22.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -23,6 +25,8 @@ CONFIG = os.path.join(BASE, "config.json")
 SNAPSHOT = os.path.join(BASE, "snapshot.json")
 STATE = os.path.join(BASE, "state.json")
 SWITCH_LOG = os.path.join(BASE, "switch_log.jsonl")  # аудит forced-веток optimize_check
+POLL_STATE = os.path.join(BASE, "poll_state.json")  # расписание опроса по аккаунтам (cc_poll)
+FAIL_LOG = os.path.join(BASE, "usage_fail.jsonl")  # журнал сбоев опроса: подбирать константы cc_poll
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"  # публичный client_id Claude Code
 # абсолютный путь: у systemd-сервиса нет ~/.bashrc с PATH — ищем claude в типичных местах,
 # в install.sh прописывается точный путь, найденный на конкретной машине
@@ -45,11 +49,8 @@ def jload(path, default=None):
 
 
 def jsave(path, data):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=1, ensure_ascii=False)
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)
+    # tmp с pid и потоком: два писателя (поток опроса и HTTP-запрос панели) не делят один .tmp
+    cc_lock.atomic_write(path, json.dumps(data, indent=1, ensure_ascii=False), 0o600)
 
 
 def cfg():
@@ -117,17 +118,31 @@ def active_name():
     return None
 
 
-def refresh_tokens(creds_path):
-    # Обмен refresh-токена на свежую пару; сохраняет на место атомарно
-    c = jload(creds_path)["claudeAiOauth"]
+def _exchange_tokens(creds_path, full):
+    # Обмен refresh-токена на свежую пару; сохраняет на место атомарно. Прочие ключи файла
+    # (например mcpOAuth, которые ведёт сам Claude Code) остаются как были.
+    c = full["claudeAiOauth"]
     r = http_json("https://platform.claude.com/v1/oauth/token",
                   {"grant_type": "refresh_token", "refresh_token": c["refreshToken"],
                    "client_id": CLIENT_ID})
     c["accessToken"] = r["access_token"]
     c["refreshToken"] = r.get("refresh_token", c["refreshToken"])
     c["expiresAt"] = int(time.time() * 1000) + int(r.get("expires_in", 28800)) * 1000
-    jsave(creds_path, {"claudeAiOauth": c})
+    jsave(creds_path, full)
     return c
+
+
+def refresh_tokens(creds_path):
+    if creds_path != LIVE_CREDS:  # профильные файлы пишем только мы
+        return _exchange_tokens(creds_path, jload(creds_path))
+    # Живой файл делит с нами сам Claude Code, а refresh-токен одноразовый: два одновременных
+    # обмена — один из них получит invalid_grant и сбросит логин. Поэтому берём тот же замок,
+    # что и CLI, и читаем файл заново уже под замком: пока ждали, CLI мог обновить токен сам.
+    with cc_lock.oauth_lock(os.path.dirname(LIVE_CREDS), os.path.dirname(LIVE_CFG)):
+        full = jload(creds_path)
+        if full["claudeAiOauth"]["expiresAt"] / 1000 - time.time() >= 120:
+            return full["claudeAiOauth"]
+        return _exchange_tokens(creds_path, full)
 
 
 def _login_expires(name, act):
@@ -248,6 +263,7 @@ def relogin_submit(name, code, new=False, lang="ru"):
                          "Логин не завершился — код мог быть неверным, просроченным или ещё не подтверждён в браузере. Попробуй ещё раз (кнопка «Войти заново» заново) или проверь, что вход в браузере точно завершён.",
                          "Sign-in did not complete — the code may be wrong, expired, or not yet confirmed in the browser. Try again (the Log in again button) or make sure the browser sign-in really finished."), None
     with lock:  # один захват на весь критический участок — collect() ниже lock уже не берёт
+        keep_login = False
         try:
             creds = jload(creds_path)
             oa = (jload(os.path.join(home, ".claude.json"), {}) or {}).get("oauthAccount")
@@ -272,15 +288,19 @@ def relogin_submit(name, code, new=False, lang="ru"):
                 jsave(f"{PROFILES}/{name}/oauth_account.json", oa)
             act = active_name()
             if act == name:  # перелогинили АКТИВНЫЙ профиль — продублировать в live-файлы
-                jsave(LIVE_CREDS, creds)
-                if oa:
-                    live = jload(LIVE_CFG, {})
-                    live["oauthAccount"] = oa
-                    jsave(LIVE_CFG, live)
+                try:
+                    cc_lock.swap_live(LIVE_CREDS, creds, LIVE_CFG, oa,
+                                      os.path.dirname(LIVE_CREDS), os.path.dirname(LIVE_CFG))
+                except cc_lock.LockTimeout:
+                    keep_login = True  # вход уже выполнен — оставляем его, повтор подхватит те же файлы
+                    return False, _t(lang,
+                                     "Вход выполнен, но Claude Code сейчас обновляет логин — живая сессия не тронута. Нажми «Отправить» ещё раз через минуту.",
+                                     "Signed in, but Claude Code is refreshing its login right now — the live session was left untouched. Press Submit again in a minute."), None
         finally:
-            _relogin_cleanup(name)
+            if not keep_login:
+                _relogin_cleanup(name)
         _plan_cache.pop(name, None)
-        snap = collect(force=True)
+        snap = collect(force=True, force_account=name)  # перелогиненный аккаунт читаем заново, не из кэша
     row = (snap.get("accounts") or {}).get(name, {})
     email = row.get("email", name)
     if new:
@@ -466,6 +486,38 @@ GOOD = os.path.join(BASE, "last_good.json")
 # увидел бы с опозданием, пока активный ловит 429.
 backoff_until = {}
 
+_FAIL_LOG_MAX = 1024 * 1024  # при превышении старый журнал уходит в .1 (один поколением), новый начинается заново
+
+
+def _http_info(e):
+    """(код, сырой Retry-After) из исключения опроса; (None, None) — это не HTTP-ответ."""
+    if isinstance(e, urllib.error.HTTPError):
+        try:
+            return e.code, e.headers.get("Retry-After")
+        except Exception:
+            return e.code, None
+    return None, None
+
+
+def fail_log(name, stage, e, calls_1h=None, interval=None):
+    """Строка в usage_fail.jsonl на каждый сбой опроса: аккаунт, этап, код, Retry-After, сколько
+    запросов было за последний час и какой интервал стоял. Токенов и почты здесь нет.
+    Сбой журнала не должен ломать опрос."""
+    try:
+        code, ra = _http_info(e)
+        rec = {"ts": int(time.time()), "at": time.strftime("%Y-%m-%d %H:%M:%S"), "account": name,
+               "stage": stage, "code": code, "retry_after": ra,
+               "error": None if code else type(e).__name__, "calls_1h": calls_1h, "interval": interval}
+        try:
+            if os.path.getsize(FAIL_LOG) > _FAIL_LOG_MAX:
+                os.replace(FAIL_LOG, FAIL_LOG + ".1")
+        except OSError:
+            pass
+        with open(FAIL_LOG, "a") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception as ex:
+        print(f"fail_log: {ex}", flush=True)
+
 
 # Карточки показывали сырой текст исключения ("HTTP Error 400: Bad Request") —
 # непонятно без похода в код (см. ERRORS.md). Переводим частые, документированные
@@ -508,6 +560,8 @@ def _humanize_error(e):
         if "timed out" in low or "timeout" in low:
             return "Anthropic не отвечает (таймаут)"
         return "Нет связи с Anthropic (сеть)"
+    if isinstance(e, cc_lock.LockTimeout):
+        return "Claude Code сейчас обновляет логин — повторю при следующем опросе"
     return str(e)
 
 
@@ -523,10 +577,17 @@ def collect(force=False, force_account=None):
     act = active_name()
     good = jload(GOOD, {})
     accounts = {}
+    # адаптивный опрос (cc_poll): у каждого аккаунта свой срок следующего запроса к usage;
+    # adaptive_poll=false в config.json — прежнее поведение (раз в poll_sec активный, раз в
+    # inactive_poll_sec остальные)
+    ap = cc_poll.enabled(cfg())
+    ap_p = cc_poll.params(cfg()) if ap else None
+    sched = (jload(POLL_STATE, {}) or {}) if ap else {}
     for n in profile_names():
         oa = jload(f"{PROFILES}/{n}/oauth_account.json", {})
         row = {"email": oa.get("emailAddress", "?"), "active": n == act}
         errs = []
+        fails = []  # [(этап, исключение)] — для Retry-After и журнала сбоев
         access = None
         # неактивный аккаунт не расходует свою квоту сам по себе — незачем
         # дёргать его usage/profile так же часто, как активный. При poll_sec,
@@ -542,9 +603,17 @@ def collect(force=False, force_account=None):
         # а их resets_at у нетронутого аккаунта почти всегда уже в прошлом — без этой
         # оговорки free-аккаунт опрашивался бы почти так же часто, как активный
         # (09.10.26: так неактивный free-аккаунт продолбился сутками как активный).
-        stale_ok = (n != act and n != force_account and old.get("ts")
-                    and time.time() - old["ts"] < cfg().get("inactive_poll_sec", 300)
-                    and (old.get("plan") == "free" or not cc_avail.reset_passed(old)))
+        if ap:
+            sched[n] = cc_poll.retarget(sched.get(n), n == act, ap_p) or {}
+            hist = sched[n].get("hist") or []
+            # force_account (кнопка «Я продлил», перелогин, «обновить» в панели) обходит расписание,
+            # но не чаще min_interval — прежний «дедуп 30 с»
+            forced = (n == force_account and (not hist or time.time() - max(hist) >= ap_p["min_interval"]))
+            stale_ok = bool(old.get("ts")) and not forced and not cc_poll.due(sched[n], time.time())
+        else:
+            stale_ok = (n != act and n != force_account and old.get("ts")
+                        and time.time() - old["ts"] < cfg().get("inactive_poll_sec", 300)
+                        and (old.get("plan") == "free" or not cc_avail.reset_passed(old)))
         # после 429 этот аккаунт не трогаем до конца его паузы — показываем кэш.
         # Без исключения для force_account: кнопка "Я продлил" раньше била мимо
         # паузы и могла продлевать 429 повторным запросом (та же дыра из 52631).
@@ -561,6 +630,7 @@ def collect(force=False, force_account=None):
             access = get_access(n, act)
         except Exception as e:
             errs.append(_humanize_error(e))
+            fails.append(("token", e))
         # (plan-freshness 2026-07-21) usage и plan запрашиваются НЕЗАВИСИМО. Раньше
         # plan вообще не запрашивался, если fetch_usage падал первым (напр. 429) —
         # значит pro→free переход (см. tg_notify ниже) и исключение из авто-кандидатов
@@ -573,17 +643,29 @@ def collect(force=False, force_account=None):
                 row.update(fetch_usage(access))
             except Exception as e:
                 errs.append(_humanize_error(e))
+                fails.append(("usage", e))
             try:
                 row["plan"] = fetch_plan(n, access)
             except Exception as e:
                 errs.append(_humanize_error(e))
+                fails.append(("profile", e))
+        got_usage = "five_hour" in row  # до подстановки кэша ниже
         if "five_hour" in row and "plan" in row:
             good[n] = {"five_hour": row["five_hour"], "seven_day": row["seven_day"],
                        "plan": row["plan"], "ts": int(time.time())}
         if errs:
             row["error"] = " | ".join(errs)[:200]
             if any("429" in e for e in errs):
-                backoff_until[n] = time.time() + cfg().get("poll_sec", 120) * 2
+                if ap:
+                    # ждём сколько просит сервер (Retry-After + запас), а не вслепую 2×poll_sec;
+                    # без заголовка — растущая пауза 300 → 450 → … → 1800 с
+                    ras = [cc_poll.parse_retry_after(_http_info(e)[1]) for _st, e in fails if _http_info(e)[0] == 429]
+                    ras = [r for r in ras if r is not None]
+                    wait429 = cc_poll.backoff_seconds(max(ras) if ras else None,
+                                                      (sched.get(n) or {}).get("fails", 0) + 1, ap_p)
+                    backoff_until[n] = time.time() + wait429
+                else:
+                    backoff_until[n] = time.time() + cfg().get("poll_sec", 120) * 2
             # разовый сбой (429 и т.п.) не должен стирать карточку — показать
             # последние удачные цифры из отдельного кэша с пометкой возраста
             # (только для того, что реально не получили в этом цикле)
@@ -592,7 +674,26 @@ def collect(force=False, force_account=None):
                 if row.get(k) is None and old.get(k) is not None:
                     row[k] = old[k]
             row["stale_ts"] = old.get("ts")
+        if ap and not stale_ok:
+            nowt = time.time()
+            w429 = wait429 if any("429" in e for e in errs) else None
+            pcts = ((row["five_hour"] or {}).get("pct"), (row["seven_day"] or {}).get("pct")) if got_usage else None
+            nr = cc_avail.next_reset_ts({n: row}, nowt)
+            c = cfg()
+            sched[n] = cc_poll.after_poll(
+                sched.get(n), nowt, ok=got_usage, pcts=pcts,
+                resets_in=(nr - nowt) if nr is not None else None, is_active=(n == act),
+                limits=(c.get("threshold", 85), c.get("weekly_cap", 99)), wait429=w429,
+                p=ap_p, unit=random.random())
+            sched[n]["active"] = n == act
+            for stage, e in fails:
+                fail_log(n, stage, e, calls_1h=len(sched[n].get("hist") or []), interval=sched[n].get("interval"))
+        elif fails:
+            for stage, e in fails:
+                fail_log(n, stage, e)
         accounts[n] = row
+    if ap:
+        jsave(POLL_STATE, {k: v for k, v in sched.items() if k in accounts})
     jsave(GOOD, good)
     snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
     jsave(SNAPSHOT, snap)
@@ -2271,10 +2372,14 @@ def poll_loop():
         # Просыпаемся не только по poll_sec, но и сразу после ближайшего сброса окна
         # любого аккаунта (+15с запаса): освободившийся аккаунт подхватываем в первую
         # же минуту, а не через несколько тиков и inactive_poll_sec кэша неактивных.
-        wait = cfg().get("poll_sec", 120)
-        nr = cc_avail.next_reset_ts((snap or {}).get("accounts") or {})
-        if nr is not None:
-            wait = min(wait, max(nr - time.time() + 15, 5))
+        if cc_poll.enabled(cfg()):
+            # просыпаемся к ближайшему сроку опроса любого аккаунта (сброс окна в нём уже учтён)
+            wait = cc_poll.sleep_for(jload(POLL_STATE, {}), time.time())
+        else:
+            wait = cfg().get("poll_sec", 120)
+            nr = cc_avail.next_reset_ts((snap or {}).get("accounts") or {})
+            if nr is not None:
+                wait = min(wait, max(nr - time.time() + 15, 5))
         # раньше срока будит _busy_tick: отложенное плановое переключение дождалось паузы
         _POLL_WAKE.wait(wait)
         _POLL_WAKE.clear()
@@ -2368,7 +2473,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(403, {"error": "forbidden"})
             q = parse_qs(u.query)
             with lock:
-                snap = collect(force=True) if q.get("refresh") else (jload(SNAPSHOT) or collect())
+                snap = collect(force=True, force_account=active_name()) if q.get("refresh") else (jload(SNAPSHOT) or collect())
                 renewal = jload(STATE, {}).get("renewal", {})
             for n, row in (snap.get("accounts") or {}).items():
                 ts = (renewal.get(n) or {}).get("confirmed_ts")

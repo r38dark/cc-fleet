@@ -82,7 +82,9 @@ gear, a "Delete" button on every card and the windows for both flows
 ## Features
 
 - 📊 **Multi-account limit monitoring** at once — 5-hour window and weekly
-  quota, with a countdown to reset.
+  quota, with a countdown to reset. The polling pace is adaptive (v1.22.0):
+  slower when the numbers sit still, faster near the threshold, at most 20
+  requests an hour per account, and after a 429 it waits what the server asks.
 - 🔁 **Auto-switch** the active account at a configurable session-usage
   threshold (checkbox in the panel, threshold as a slider/field).
 - 🎯 **Limit optimization mode** — the service itself decides which account
@@ -222,7 +224,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -530,6 +532,62 @@ It is wired up by an installer question (it edits `hooks.PreToolUse` in
   "command": "CC_LIMITS_DIR=/opt/cc-limits /usr/bin/python3 /opt/cc-limits/hooks/pause_tool_gate.py" } ] } ] } }
 ```
 
+## Polling pace and safe login writes (v1.22.0)
+
+### Polling pace
+
+Every account used to be polled on a timer: the active one every `poll_sec`
+(120 s), the others every `inactive_poll_sec` (300 s). The usage endpoint is
+rate-limited; community measurements put it at roughly 30 requests an hour per
+account (we have not verified the exact number ourselves), and overloading it
+returns 429 for up to an hour. 120 s is exactly 30 an hour — right on the
+ceiling. Each account now has its own schedule (`poll_state.json`):
+
+| Situation | Wait before the next poll |
+|---|---|
+| active account | 180 s; if the numbers did not move for 3 polls in a row — smoothly up to 300 s |
+| spare account | 300 s; if nothing changes — smoothly up to 600 s |
+| window rising, under 15 points to the threshold | 60 s — reacting for a switch matters more than saving requests |
+| nearest window reset comes sooner | 15 s after the reset |
+| always | ±10 % jitter (spreads accounts and installs sharing an IP); never faster than 30 s; at most 20 usage requests in a rolling hour per account, failed attempts count too |
+
+After a 429: if the server sent `Retry-After` — wait for it plus 30 s (an hour
+at most); with no header or with zero — 300 → 450 → 675 … up to 1800 s. The
+“Recheck” and “I renewed” buttons still do not bypass a pause after a 429.
+
+The price: right at the threshold the reaction to filling up is 60–180 s instead
+of the former 120.
+
+`config.json` key `adaptive_poll`: `true` (default), `false` — the old behaviour,
+or an object overriding constants (`base_active`, `idle_active`, `base_spare`,
+`idle_spare`, `near_poll`, `near_margin`, `budget_per_hour`, `min_interval`,
+`jitter`, …; values and their reasons are at the top of `cc_poll.py`).
+`poll_sec` and `inactive_poll_sec` set above the base count as a deliberate
+“slower” and become the base; the old `poll_sec: 120` does not lower it.
+
+Every polling failure is appended to `usage_fail.jsonl`, so you can tune the
+constants to your own account.
+
+### Writing the live login
+
+The live Claude Code login is two files (`~/.claude/.credentials.json` and
+`~/.claude.json`) written by Claude Code itself, `cc-switch`, the panel's token
+refresh and “Log in again”. They now all write the same way (`cc_lock.py`): via a
+temporary file and a rename, under the same locks Claude Code takes
+(`~/.claude/.oauth_refresh.lock`, `~/.claude.lock`, `~/.claude.json.lock`). If the
+second write fails, the first is rolled back, so the session is never left with
+one account's tokens and another account's data. If a lock is not obtained
+within 9 seconds nothing changes: `cc-switch` asks you to retry in a minute, the
+panel retries on the next poll, and “Log in again” keeps the finished sign-in and
+waits for you to submit again. Token refresh re-reads the file under the lock: if
+Claude Code already refreshed the login, the one-time refresh token is not
+exchanged a second time. The stale-lock rule (60 s and 10 s) is taken from
+Claude Code 2.1.x; check it on another version. We have not had a confirmed
+failure caused by this race — it is prevention.
+
+Tests (standard library only, no `pytest`; live files are not touched):
+`python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock`.
+
 ## Management
 
 | Command / URL | What it does |
@@ -543,7 +601,9 @@ It is wired up by an installer question (it edits `hooks.PreToolUse` in
 | `python3 /opt/cc-limits/pause_ctl.py set\|status\|clear` | limit pause with an automatic wake-up |
 | `python3 /opt/cc-limits/pause_ctl.py off\|on` | disable the pause (work past the threshold) / enable it back — same as the banner buttons |
 | `python3 /opt/cc-limits/tg_queue.py count\|list\|take\|clear` | incoming messages queued while the limits held |
-| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `weekly_cap`, `weekly_pause`, `update_mode`, `update_check`, `update_repo`, `service_name`, `opt_defer_max_sec` |
+| `/opt/cc-limits/config.json` | `autoswitch`, `threshold`, `optimize`, `poll_sec`, `adaptive_poll`, `switch_cooldown_sec`, `chat_id`, `bot_token`, `pause_notify`, `screen_session`, `port`, `pause_wake_message`, `queue_ack`, `queue_ack_message`, `weekly_cap`, `weekly_pause`, `update_mode`, `update_check`, `update_repo`, `service_name`, `opt_defer_max_sec` |
+| `/opt/cc-limits/poll_state.json` | per-account polling schedule: when the next request is due, the interval, requests in the last hour, consecutive 429s — v1.22.0 |
+| `/opt/cc-limits/usage_fail.jsonl` | polling failure log: time, account, stage (`token`/`usage`/`profile`), HTTP code, `Retry-After`, requests in the last hour, interval; no tokens; rolls over to `.1` at 1 MB — v1.22.0 |
 | `/opt/cc-limits/switch_log.jsonl` | audit log: one line per forced-mode moment in optimize mode (threshold crossed, switch blocked by cooldown, no candidate, actual switch) — v1.4.0; `deferred_busy` — a planned switch waits for a pause, `switch` carries `waited_sec`/`busy` — v1.19.3 |
 
 ## Updates from the panel (v1.18.0)
@@ -618,7 +678,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -683,6 +743,13 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.22.0** — adaptive limit-polling pace: slower when the numbers sit still,
+  faster near the threshold, at most 20 requests an hour per account; after a 429
+  it waits for `Retry-After` (without it 300 → 1800 s). A `usage_fail.jsonl`
+  failure log, the schedule in `poll_state.json`, the `adaptive_poll` key
+  (`false` — as before). `cc-switch`, token refresh and “Log in again” write the
+  login atomically, under Claude Code's locks, rolling back if the second write
+  fails.
 - **v1.21.14** — model and effort show up without a custom status line: the panel
   finds the session transcript by the folder Claude Code was started in (not only
   `/root`), and with neither a status line nor a transcript it takes the model

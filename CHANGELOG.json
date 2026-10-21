@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.22.0", "date": "2026-10-21",
+     "ru": {"t": "Адаптивный опрос лимитов и безопасная запись логина", "p": ["Опрос реже в покое, чаще у порога, не больше 20 запросов/ч на аккаунт; после 429 ждём Retry-After", "Журнал сбоев usage_fail.jsonl; adaptive_poll=false возвращает прежний темп", "cc-switch и обновление токена пишут логин атомарно, под замками Claude Code, с откатом"]},
+     "en": {"t": "Adaptive limit polling and safe login writes", "p": ["Polls slower when idle, faster near the threshold, max 20 requests/h per account; after a 429 it waits Retry-After", "Failure log usage_fail.jsonl; adaptive_poll=false restores the old pace", "cc-switch and token refresh write the login atomically, under Claude Code's locks, with rollback"]}},
     {"v": "1.21.14", "date": "2026-10-19",
      "ru": {"t": "Модель и effort видны без личной статус-строки", "p": ["Панель находит историю сессии по папке запуска Claude Code, а не только в /root", "Нет статус-строки и истории — модель берётся из settings.json, effort больше не «не задан»", "В список моделей добавлены Sonnet 5.5 и Haiku 5.5"]},
      "en": {"t": "Model and effort show without a custom status line", "p": ["The panel finds the session transcript by the folder Claude Code was started in, not only /root", "With no status line and no transcript the model comes from settings.json, so effort is no longer \"not set\"", "Sonnet 5.5 and Haiku 5.5 added to the model list"]}},

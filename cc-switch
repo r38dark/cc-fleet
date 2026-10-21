@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 # cc-switch — переключение аккаунтов Claude Code без /login.
 # Запуск: cc-switch list | save <N> | <N> | next   (N = 1..3 или имя accN)
-import json, os, shutil, sys, time
+import json, os, sys, time
 
-HOME = "/root"
+# Замки Claude Code и атомарная запись — в cc_lock.py рядом с cc_limits.py (ставится вместе с ним).
+# Нет модуля — работаем как раньше (без замков), но запись всё равно через временный файл.
+BASE = os.environ.get("CC_LIMITS_BASE", "/opt/cc-limits")  # переопределение — только для тестов
+sys.path.append(BASE)  # append, не insert: модули из BASE не должны затенять стандартные
+try:
+    import cc_lock
+except Exception:
+    cc_lock = None
+
+HOME = os.environ.get("CC_SWITCH_HOME", "/root")  # переопределение — только для тестов
 LIVE_CREDS = os.path.join(HOME, ".claude", ".credentials.json")
 LIVE_CFG = os.path.join(HOME, ".claude.json")
 PROFILES = os.path.join(HOME, ".claude-profiles")
@@ -14,12 +23,24 @@ def jload(path):
         return json.load(f)
 
 
-def jsave(path, data, mode=0o600):
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+def atomic_write(path, raw, mode=0o600):
+    if cc_lock:
+        return cc_lock.atomic_write(path, raw, mode)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "wb") as f:
+        f.write(raw.encode() if isinstance(raw, str) else raw)
     os.chmod(tmp, mode)
     os.replace(tmp, path)
+
+
+def jsave(path, data, mode=0o600):
+    atomic_write(path, json.dumps(data, indent=2, ensure_ascii=False), mode)
+
+
+def copy_atomic(src, dst):
+    # вместо shutil.copy2: тот сначала обрезает файл назначения — читатель (CLI) мог увидеть пустой
+    with open(src, "rb") as f:
+        atomic_write(dst, f.read(), 0o600)
 
 
 def name_of(arg):
@@ -30,7 +51,7 @@ def profile_dir(name):
     return os.path.join(PROFILES, name)
 
 
-CC_LIMITS_SNAPSHOT = "/opt/cc-limits/snapshot.json"
+CC_LIMITS_SNAPSHOT = os.path.join(BASE, "snapshot.json")
 
 
 def known_plan(name):
@@ -74,7 +95,7 @@ def sync_back():
     # Живой refresh-токен мог обновиться — вернуть его в профиль текущего аккаунта
     act = active_profile()
     if act and os.path.isfile(LIVE_CREDS):
-        shutil.copy2(LIVE_CREDS, os.path.join(profile_dir(act), "credentials.json"))
+        copy_atomic(LIVE_CREDS, os.path.join(profile_dir(act), "credentials.json"))
         return act
     return None
 
@@ -85,7 +106,7 @@ def cmd_save(name):
     cfg = jload(LIVE_CFG)
     if "oauthAccount" not in cfg:
         sys.exit("Нет oauthAccount в ~/.claude.json — сначала /login")
-    shutil.copy2(LIVE_CREDS, os.path.join(d, "credentials.json"))
+    copy_atomic(LIVE_CREDS, os.path.join(d, "credentials.json"))
     jsave(os.path.join(d, "oauth_account.json"), cfg["oauthAccount"])
     print(f"Сохранён профиль {name}: {cfg['oauthAccount']['emailAddress']}")
 
@@ -124,21 +145,43 @@ def cmd_switch(name, force=False):
             f"переключение живой сессии на него её сломает. Продли Pro, либо "
             f"cc-switch {name} --force, если уверен что план уже актуализировался."
         )
-    synced = sync_back()
-    if synced is None and current_uuid():
-        # Текущий аккаунт не сохранён ни в одном профиле — не дать потерять токены
-        bak = os.path.join(PROFILES, f"_unsaved_{int(time.time())}")
-        os.makedirs(bak, exist_ok=True)
-        shutil.copy2(LIVE_CREDS, os.path.join(bak, "credentials.json"))
-        cfg0 = jload(LIVE_CFG)
-        if "oauthAccount" in cfg0:
-            jsave(os.path.join(bak, "oauth_account.json"), cfg0["oauthAccount"])
-        print(f"⚠️ Текущий аккаунт не был сохранён как профиль — токены убраны в {bak}")
-    shutil.copy2(creds_src, LIVE_CREDS)
-    os.chmod(LIVE_CREDS, 0o600)
+    oa_new = jload(oa_src)
+
+    def save_current():
+        # под замком Claude Code: пока он наш, CLI не обновит токен между копией и подменой
+        synced = sync_back()
+        if synced is None and current_uuid():
+            # Текущий аккаунт не сохранён ни в одном профиле — не дать потерять токены
+            bak = os.path.join(PROFILES, f"_unsaved_{int(time.time())}")
+            os.makedirs(bak, exist_ok=True)
+            copy_atomic(LIVE_CREDS, os.path.join(bak, "credentials.json"))
+            cfg0 = jload(LIVE_CFG)
+            if "oauthAccount" in cfg0:
+                jsave(os.path.join(bak, "oauth_account.json"), cfg0["oauthAccount"])
+            print(f"⚠️ Текущий аккаунт не был сохранён как профиль — токены убраны в {bak}")
+
+    with open(creds_src, "rb") as f:
+        creds_raw = f.read()
+    if cc_lock:
+        # оба замка Claude Code, атомарные записи, откат credentials.json, если ~/.claude.json не записался
+        try:
+            cc_lock.swap_live(LIVE_CREDS, creds_raw, LIVE_CFG, oa_new,
+                              os.path.dirname(LIVE_CREDS), HOME, before=save_current)
+        except cc_lock.LockTimeout as e:
+            sys.exit(f"⛔ Claude Code сейчас обновляет логин ({e}) — ничего не изменено, повтори через минуту.")
+    else:
+        save_current()
+        prev = open(LIVE_CREDS, "rb").read() if os.path.isfile(LIVE_CREDS) else None
+        atomic_write(LIVE_CREDS, creds_raw)
+        try:
+            cfg = jload(LIVE_CFG)
+            cfg["oauthAccount"] = oa_new
+            jsave(LIVE_CFG, cfg, mode=0o644)
+        except Exception:
+            if prev is not None:
+                atomic_write(LIVE_CREDS, prev)
+            raise
     cfg = jload(LIVE_CFG)
-    cfg["oauthAccount"] = jload(oa_src)
-    jsave(LIVE_CFG, cfg, mode=0o644)
     print(f"✅ Переключено на {name}: {cfg['oauthAccount']['emailAddress']}")
     print("Живая сессия подхватит токены на лету — рестарт не нужен (проверено 11.07.26).")
 
