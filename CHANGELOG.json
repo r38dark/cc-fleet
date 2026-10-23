@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.22.4", "date": "2026-10-23",
+     "ru": {"t": "Счётчик обвала в Free не зависает в прошлом", "p": ["Прогноз «⏳ до Free» теперь докручивается на месяцы вперёд, если подписка продлилась тихо, без видимого Free", "Раньше якорь даты не обновлялся без явного обвала — чип навечно висел на «ждём сегодня»"]},
+     "en": {"t": "Renewal countdown no longer freezes in the past", "p": ["The \"until Free\" estimate now rolls forward by months when the plan renewed quietly, with no visible Free dip", "Before, the anchor date never advanced without a real drop — the chip stuck on \"any day now\" forever"]}},
     {"v": "1.22.3", "date": "2026-10-23",
      "ru": {"t": "Бейдж Free/Pro не мигает от дребезга Anthropic", "p": ["Снимок и бейдж показывают план только после 2 одинаковых подряд чтений — та же защита, что уже была у уведомлений", "Найдено живьём: бейдж на карточке мигал free/pro каждые ~минуты, хотя подтверждённый статус был стабилен"]},
      "en": {"t": "Free/Pro badge no longer flickers on Anthropic's flapping reads", "p": ["The snapshot now shows the plan only after 2 identical consecutive reads — the same protection notifications had", "Found live: the card badge flickered free/pro every ~minute even though the confirmed status was stable"]}},

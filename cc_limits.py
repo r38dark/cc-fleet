@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.22.3"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.22.4"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1968,7 +1968,15 @@ def _renewal_next(confirmed_ts):
     from datetime import datetime, timedelta, timezone
     from dateutil.relativedelta import relativedelta
     anchor = datetime.fromtimestamp(confirmed_ts, tz=timezone.utc) - timedelta(minutes=30)
-    return (anchor + relativedelta(months=1)).isoformat()
+    now = datetime.now(timezone.utc)
+    nxt = anchor + relativedelta(months=1)
+    # если подписка продлилась тихо, без видимого обвала в Free (анкор не
+    # обновился ни авто-детектом, ни кнопкой «Я продлил») — предсказанная дата
+    # уезжает в прошлое и виснет там навсегда. Докручиваем на календарные
+    # месяцы, пока не попадём в будущее — иначе на экране вечно "ждём сегодня".
+    while nxt <= now:
+        nxt += relativedelta(months=1)
+    return nxt.isoformat()
 
 
 def _local_hm(iso):
