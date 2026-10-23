@@ -1,9 +1,12 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.22.6", "date": "2026-10-24",
+     "ru": {"t": "Счётчик до Free не тикает у аккаунта, который уже Free", "p": ["Чип «⏳ до Free» теперь показывается только пока план реально Pro — после обвала он пропадает", "Найдено живьём: экран одновременно показывал «FREE» и «⏳ 29 дн», хотя обвал уже произошёл"]},
+     "en": {"t": "Countdown no longer ticks for an account already on Free", "p": ["The \"⏳ until Free\" chip now shows only while the plan is actually Pro — it disappears after the drop", "Found live: the screen showed \"FREE\" and \"⏳ 29d\" at the same time, even though the drop had already happened"]}},
     {"v": "1.22.5", "date": "2026-10-23",
-     "ru": {"t": "План читается свежим даже при бэкоффе usage", "p": ["Pro/Free теперь перепроверяется каждый цикл опроса, даже когда usage-эндпойнт в паузе после 403/429", "Найдено живьём: при постоянном бэкоффе дебаунс «2 подряд» никогда не видел свежих чтений плана и не мог подтвердить настоящий переход Pro→Free"]},
-     "en": {"t": "Plan keeps refreshing even during usage backoff", "p": ["Pro/Free is now re-checked every poll cycle, even while the usage endpoint is paused after a 403/429", "Found live: under constant backoff the \"2 in a row\" debounce never saw fresh plan reads, so a real Pro→Free switch could never be confirmed"]}},
+     "ru": {"t": "План читается свежим даже при бэкоффе usage", "p": ["Pro/Free теперь перепроверяется каждый цикл опроса, даже когда usage-эндпойнт в паузе после 403/429", "Найдено живьём: при бэкоффе дебаунс «2 подряд» не видел свежих чтений плана, не мог подтвердить переход Pro→Free"]},
+     "en": {"t": "Plan keeps refreshing even during usage backoff", "p": ["Pro/Free is now re-checked every poll cycle, even while the usage endpoint is paused after a 403/429", "Found live: under backoff the \"2 in a row\" debounce never saw fresh reads, so a real Pro→Free switch went unconfirmed"]}},
     {"v": "1.22.4", "date": "2026-10-23",
      "ru": {"t": "Счётчик обвала в Free не зависает в прошлом", "p": ["Прогноз «⏳ до Free» теперь докручивается на месяцы вперёд, если подписка продлилась тихо, без видимого Free", "Раньше якорь даты не обновлялся без явного обвала — чип навечно висел на «ждём сегодня»"]},
      "en": {"t": "Renewal countdown no longer freezes in the past", "p": ["The \"until Free\" estimate now rolls forward by months when the plan renewed quietly, with no visible Free dip", "Before, the anchor date never advanced without a real drop — the chip stuck on \"any day now\" forever"]}},

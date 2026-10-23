@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.22.5"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.22.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1989,6 +1989,15 @@ def _renewal_next(confirmed_ts):
     return nxt.isoformat()
 
 
+def _renewal_applicable(row):
+    # Чип "⏳ до PRO→FREE" осмыслен только пока аккаунт реально Pro — это
+    # прогноз КОГДА подписка упадёт в Free. Если план уже free, обвал уже
+    # случился: показывать новый отсчёт до следующего "обвала" до нажатия
+    # «Я продлил» — путает (обвал уже произошёл, значения больше нет),
+    # найдено живьём 24.10: экран одновременно показывал FREE и "⏳ 29 дн".
+    return row.get("plan") == "pro"
+
+
 def _local_hm(iso):
     # время сброса, коротко: «07:40». Если self-host крутится не в твоём
     # часовом поясе (сервер в одном регионе, ты в другом) — голый
@@ -2512,7 +2521,7 @@ class H(BaseHTTPRequestHandler):
                 renewal = jload(STATE, {}).get("renewal", {})
             for n, row in (snap.get("accounts") or {}).items():
                 ts = (renewal.get(n) or {}).get("confirmed_ts")
-                if ts:
+                if ts and _renewal_applicable(row):
                     row["renewal_next"] = _renewal_next(ts)
             act_n = active_name()
             hold = jload(STATE, {}).get("manual_hold") or {}

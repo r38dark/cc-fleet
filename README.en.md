@@ -743,6 +743,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.22.6** — the "⏳ until Free" chip now shows only while the plan is
+  actually Pro: it disappears once the account drops to Free, instead of
+  ticking on until the next "I renewed".
 - **v1.22.4** — the "until Free" estimate (the expected Pro→Free drop date)
   no longer freezes in the past: if the plan renewed quietly, with no
   visible Free dip, the date now rolls forward by calendar months.

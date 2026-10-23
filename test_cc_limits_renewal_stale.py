@@ -39,5 +39,19 @@ class RenewalStale(unittest.TestCase):
         self.assertLess(nxt, now + timedelta(days=32))
 
 
+class RenewalApplicable(unittest.TestCase):
+    # Чип "⏳ до PRO→FREE" не должен показываться, если план уже упал в free —
+    # обвал уже случился, новый отсчёт до следующего бессмыслен до «Я продлил»
+    # (живая находка 24.10: "FREE ⏳ 29 дн" на экране одновременно — сломанная механика).
+    def test_pro_shows_chip(self):
+        self.assertTrue(L._renewal_applicable({"plan": "pro"}))
+
+    def test_free_hides_chip(self):
+        self.assertFalse(L._renewal_applicable({"plan": "free"}))
+
+    def test_missing_plan_hides_chip(self):
+        self.assertFalse(L._renewal_applicable({}))
+
+
 if __name__ == "__main__":
     unittest.main()
