@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.22.2", "date": "2026-10-23",
+     "ru": {"t": "Бэкофф и на 403, не только на 429", "p": ["Опрос usage/profile теперь ждёт после 403 (запрет доступа), а не долбит эндпойнт каждый цикл до своего 429", "Найдено живьём: аккаунт сутки отдавал 403 без паузы — цифры лимита всё это время были замороженным кэшем"]},
+     "en": {"t": "Back off on 403 too, not only 429", "p": ["Usage/profile polling now backs off after a 403 (forbidden) too, not just a 429, instead of hammering it every cycle", "Found live: an account returned 403 for a day straight with no pause, so its limit numbers were a frozen cache"]}},
     {"v": "1.22.1", "date": "2026-10-21",
      "ru": {"t": "Автообновление приходит быстрее, описание видно после установки", "p": ["Новая версия проверяется раз в 6 часов, а не раз в сутки: авто-режим ставит её в течение 6 часов после выхода", "В плашке «Обновлено до версии …» теперь есть «Что нового» — то же описание, что в истории изменений"]},
      "en": {"t": "Auto-updates arrive sooner, release notes show after install", "p": ["New versions are checked every 6 hours, not once a day: automatic mode installs one within 6 hours of release", "The \"Updated to version …\" banner now has \"What's new\" — the same notes as in the change history"]}},

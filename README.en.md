@@ -743,6 +743,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.22.2** — limit polling now backs off after a 403 (forbidden) too,
+  instead of hammering `/api/oauth/usage`/`profile` at the normal pace until
+  it hits a real 429 from Anthropic on its own. The pause grows the same way
+  as for a 429 without `Retry-After` (300 → 1800 s).
 - **v1.22.1** — auto-updates arrive sooner: a new version is checked every 6
   hours instead of once a day, so automatic mode installs it within 6 hours of
   the release. The “Updated to version …” banner now has a “What's new” block —

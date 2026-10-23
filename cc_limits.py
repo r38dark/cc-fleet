@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.22.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.22.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -655,7 +655,11 @@ def collect(force=False, force_account=None):
                        "plan": row["plan"], "ts": int(time.time())}
         if errs:
             row["error"] = " | ".join(errs)[:200]
-            if any("429" in e for e in errs):
+            # 403 (доступ запрещён) бэкофф не ставил — опрос долбил заблокированный
+            # эндпойнт каждый цикл без паузы, пока сам не упирался в реальный 429
+            # Anthropic (найдено 23.10.26, acc2 trading-VM: usage 403 24ч подряд,
+            # sd/fh всё это время — замороженный кэш, не живые цифры).
+            if any("429" in e or "403" in e for e in errs):
                 if ap:
                     # ждём сколько просит сервер (Retry-After + запас), а не вслепую 2×poll_sec;
                     # без заголовка — растущая пауза 300 → 450 → … → 1800 с
@@ -676,7 +680,7 @@ def collect(force=False, force_account=None):
             row["stale_ts"] = old.get("ts")
         if ap and not stale_ok:
             nowt = time.time()
-            w429 = wait429 if any("429" in e for e in errs) else None
+            w429 = wait429 if any("429" in e or "403" in e for e in errs) else None
             pcts = ((row["five_hour"] or {}).get("pct"), (row["seven_day"] or {}).get("pct")) if got_usage else None
             nr = cc_avail.next_reset_ts({n: row}, nowt)
             c = cfg()

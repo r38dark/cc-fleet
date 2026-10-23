@@ -45,6 +45,12 @@ class Fake(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"error": {"type": "rate_limit_error", "message": "slow down"}}')
             return
+        if kind == "403" and self.path.startswith("/api/oauth/usage"):
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"error": {"type": "permission_error", "message": "forbidden"}}')
+            return
         if self.path.startswith("/api/oauth/usage"):
             body = {"five_hour": {"utilization": arg, "resets_at": "2099-01-01T00:00:00+00:00"},
                     "seven_day": {"utilization": 5, "resets_at": "2099-01-05T00:00:00+00:00"}}
@@ -261,6 +267,26 @@ class CollectPoll(unittest.TestCase):
         t0 = time.time()
         L.collect(force=True)
         self.assertTrue(297 <= self.state()["acc1"]["next"] - t0 <= 303)
+
+    # --- 403 (постоянный запрет, не rate-limit): 23.10.26, acc2 trading-VM —
+    # usage отдавал 403 на каждом опросе 24ч подряд без паузы, пока сам не
+    # ловил реальный 429 от Anthropic за частые повторы. Бэкофф должен
+    # расти так же, как при 429 без Retry-After.
+    def test_403_backs_off_like_429_without_retry_after(self):
+        L.collect(force=True)
+        Fake.mode["tokA"] = ("403", None)
+        waits = []
+        for _ in range(3):
+            self.make_due("acc1")
+            L.backoff_until.clear()
+            t0 = time.time()
+            snap = L.collect(force=True)
+            waits.append(round(self.state()["acc1"]["next"] - t0))
+        self.assertEqual(waits, [300, 450, 675])
+        self.assertIn("403", snap["accounts"]["acc1"]["error"])
+        rows = self.fail_rows()
+        self.assertEqual([(r["account"], r["stage"], r["code"]) for r in rows],
+                          [("acc1", "usage", 403)] * 3)
 
     def test_recovery_resets_fail_counter(self):
         L.collect(force=True)
