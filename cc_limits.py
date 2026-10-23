@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.22.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.22.3"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -699,8 +699,6 @@ def collect(force=False, force_account=None):
     if ap:
         jsave(POLL_STATE, {k: v for k, v in sched.items() if k in accounts})
     jsave(GOOD, good)
-    snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
-    jsave(SNAPSHOT, snap)
     # детект внешнего переключения: cc-switch из консоли мимо этого сервиса.
     # Переключения через /api/switch и авто/оптимизацию сами обновляют
     # known_active — сюда попадает только то, что сделали руками извне.
@@ -712,10 +710,14 @@ def collect(force=False, force_account=None):
                       % (st0["known_active"], act, email))
         st0["known_active"] = act
         jsave(STATE, st0)
-    # смена плана (Pro истёк / продлён) — уведомить только после 2 одинаковых
-    # подряд чтений. Anthropic у себя не мгновенно консистентен на грани подписки
-    # (похоже на повторные попытки списания/отмены) — одиночные чтения дребезжали
-    # pro/free каждые ~4 минуты 27+ часов, 08-09.10.26.
+    # смена плана (Pro истёк / продлён) — уведомить и показать в снимке только
+    # после 2 одинаковых подряд чтений. Anthropic у себя не мгновенно консистентен
+    # на грани подписки (похоже на повторные попытки списания/отмены) — одиночные
+    # чтения дребезжали pro/free каждые ~4 минуты 27+ часов, 08-09.10.26. До 23.10.26
+    # дебаунс защищал только уведомления и state.json["plans"] — снимок (SNAPSHOT)
+    # писался раньше этого блока сырым accounts[n]["plan"], и именно сырое значение
+    # видели бейдж в UI и cc_avail.availability() (бейдж аккаунта acc2
+    # мигал free/pro вслед за дребезгом Anthropic, хотя state.json уже был стабилен).
     st = jload(STATE, {})
     prev = st.get("plans") or {}
     pending = st.get("plan_pending") or {}
@@ -766,6 +768,17 @@ def collect(force=False, force_account=None):
             st.pop("plan_pending", None)
     if plans_changed or pending_changed:
         jsave(STATE, st)
+    # снимок несёт ПОДТВЕРЖДЁННЫЙ план (prev[n] после дебаунса выше), не сырое
+    # чтение этого цикла — иначе бейдж и availability() всё равно мигают, пока
+    # уведомление уже молчит. На первом наблюдении (prev[n] выставлен без
+    # дебаунса парой строк выше) и во время "pending" (cnt<2) здесь остаётся
+    # прежний подтверждённый план — ровно то, что нужно.
+    for n, row in accounts.items():
+        confirmed = prev.get(n)
+        if confirmed:
+            row["plan"] = confirmed
+    snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
+    jsave(SNAPSHOT, snap)
     return snap
 
 

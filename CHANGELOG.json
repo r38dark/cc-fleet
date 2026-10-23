@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.22.3", "date": "2026-10-23",
+     "ru": {"t": "Бейдж Free/Pro не мигает от дребезга Anthropic", "p": ["Снимок и бейдж показывают план только после 2 одинаковых подряд чтений — та же защита, что уже была у уведомлений", "Найдено живьём: бейдж на карточке мигал free/pro каждые ~минуты, хотя подтверждённый статус был стабилен"]},
+     "en": {"t": "Free/Pro badge no longer flickers on Anthropic's flapping reads", "p": ["The snapshot now shows the plan only after 2 identical consecutive reads — the same protection notifications had", "Found live: the card badge flickered free/pro every ~minute even though the confirmed status was stable"]}},
     {"v": "1.22.2", "date": "2026-10-23",
      "ru": {"t": "Бэкофф и на 403, не только на 429", "p": ["Опрос usage/profile теперь ждёт после 403 (запрет доступа), а не долбит эндпойнт каждый цикл до своего 429", "Найдено живьём: аккаунт сутки отдавал 403 без паузы — цифры лимита всё это время были замороженным кэшем"]},
      "en": {"t": "Back off on 403 too, not only 429", "p": ["Usage/profile polling now backs off after a 403 (forbidden) too, not just a 429, instead of hammering it every cycle", "Found live: an account returned 403 for a day straight with no pause, so its limit numbers were a frozen cache"]}},

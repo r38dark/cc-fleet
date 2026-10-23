@@ -743,6 +743,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.22.3** — the Free/Pro badge and auto-switch now show the plan only
+  after 2 identical consecutive reads — the same protection against
+  Anthropic's flapping reads near a subscription boundary that notifications
+  already had, instead of this cycle's raw read.
 - **v1.22.2** — limit polling now backs off after a 403 (forbidden) too,
   instead of hammering `/api/oauth/usage`/`profile` at the normal pace until
   it hits a real 429 from Anthropic on its own. The pause grows the same way
