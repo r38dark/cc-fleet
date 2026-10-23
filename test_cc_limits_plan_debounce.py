@@ -78,6 +78,39 @@ class PlanDebounce(unittest.TestCase):
         self.assertTrue(ok, "неподтверждённый free не должен блокировать доступность")
         self.assertNotEqual(why, "free")
 
+    # (plan-vs-backoff 23.10.26) acc2 на торговой ВМ: usage сутками 403, backoff_until
+    # держит стейл почти постоянно. До фикса stale_ok выходил из collect() ДО вызова
+    # fetch_plan() и подставлял замороженный good[n]["plan"] — живой profile честно
+    # отдавал "free", но дебаунс "2 подряд" никогда не видел этого свежего чтения и
+    # сбрасывался обратно в 0 на следующем же стейл-цикле. План должен читаться
+    # свежим даже под бэкоффом usage — это независимый эндпойнт.
+    def collect_stale_usage_with_plan(self, plan):
+        calls = {"usage": 0}
+
+        def boom(_access):
+            calls["usage"] += 1
+            raise AssertionError("fetch_usage не должен вызываться во время бэкоффа usage")
+
+        with mock.patch.object(L, "get_access", lambda n, act: "tok"), \
+                mock.patch.object(L, "fetch_usage", boom), \
+                mock.patch.object(L, "fetch_plan", lambda n, access: plan):
+            snap = L.collect(force=True)
+        self.assertEqual(calls["usage"], 0)
+        return snap
+
+    def test_plan_keeps_refreshing_during_usage_backoff(self):
+        self.collect_with_plan("pro")  # удачный цикл: good["acc1"]["ts"] выставлен
+        self.assertEqual(self.snap_plan(), "pro")
+
+        L.backoff_until["acc1"] = time.time() + 1000  # как после живого 403 на usage
+
+        self.collect_stale_usage_with_plan("free")  # первое дребезг-чтение под бэкоффом
+        self.assertEqual(self.snap_plan(), "pro", "один свежий free под бэкоффом — ещё не подтверждение")
+
+        self.collect_stale_usage_with_plan("free")  # второе подряд — под тем же бэкоффом
+        self.assertEqual(self.snap_plan(), "free",
+                          "план обязан подтвердиться даже когда usage всё время в бэкоффе")
+
 
 if __name__ == "__main__":
     unittest.main()

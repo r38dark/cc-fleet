@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.22.4"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.22.5"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -622,10 +622,7 @@ def collect(force=False, force_account=None):
         if stale_ok:
             row["five_hour"] = old.get("five_hour")
             row["seven_day"] = old.get("seven_day")
-            row["plan"] = old.get("plan")
             row["stale_ts"] = old.get("ts")
-            accounts[n] = row
-            continue
         try:
             access = get_access(n, act)
         except Exception as e:
@@ -639,16 +636,29 @@ def collect(force=False, force_account=None):
         # (21.07, "organization has disabled Claude subscription access") — карточка
         # показывала кэшированный "pro", хотя аккаунт уже был Free.
         if access is not None:
-            try:
-                row.update(fetch_usage(access))
-            except Exception as e:
-                errs.append(_humanize_error(e))
-                fails.append(("usage", e))
+            if not stale_ok:
+                try:
+                    row.update(fetch_usage(access))
+                except Exception as e:
+                    errs.append(_humanize_error(e))
+                    fails.append(("usage", e))
+            # (plan-vs-backoff 23.10.26) план читаем всегда, даже когда usage в
+            # стейле/бэкоффе — это разные эндпойнты, у fetch_plan свой кэш (10 мин).
+            # Раньше stale_ok выходил из цикла ДО этого вызова и подставлял
+            # замороженный good[n]["plan"] — на acc2 он не обновлялся 30+ часов
+            # (сутками 403 на usage держал стейл), и этот замороженный "pro" каждый
+            # фоновый цикл сбивал дебаунс "2 подряд" для free обратно в 0, хотя сам
+            # profile всё это время честно отдавал free.
             try:
                 row["plan"] = fetch_plan(n, access)
             except Exception as e:
                 errs.append(_humanize_error(e))
                 fails.append(("profile", e))
+        if stale_ok:
+            if row.get("plan") is None:
+                row["plan"] = old.get("plan")
+            accounts[n] = row
+            continue
         got_usage = "five_hour" in row  # до подстановки кэша ниже
         if "five_hour" in row and "plan" in row:
             good[n] = {"five_hour": row["five_hour"], "seven_day": row["seven_day"],
