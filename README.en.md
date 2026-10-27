@@ -339,7 +339,8 @@ auto-switching — nothing to configure by hand.
   `accN` number.
 - The same account cannot be added twice: "already in the rotation as accN".
 - A Free account is added but stays out of auto-switching until it is Pro
-  (Telegram warns about it).
+  (Telegram warns about it). Since v1.23.0 it is also marked "inactive" and is not
+  polled at all until you press "I renewed".
 - An abandoned attempt (link fetched, code never entered) is dropped by itself
   after about 10 minutes (checked on every limits poll) or by a new attempt.
 
@@ -696,7 +697,8 @@ What the bot sends:
   how many times the alarm was pushed back) — v1.2.1;
 - an account re-logged in through the web button;
 - an account **added to the rotation** or **deleted for good** (v1.19.0);
-- an account dropping from Pro to Free, and coming back.
+- an account dropping from Pro to Free, and coming back; the drop message says the
+  account's polling is stopped until you press "I renewed" (v1.23.0).
 
 Who to write to — the `chat_id` key in `config.json` (`install.sh` asks for
 it). The bot token is looked up in two places, in this order:
@@ -743,6 +745,15 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.23.0** — an account that dropped from Pro to Free (plan confirmed by two reads
+  in a row) is marked "inactive": a red frame on its card and dock chip, an
+  "INACTIVE" tag and a note with the drop time (in all five skins). Polling
+  Anthropic for it (usage, profile, token refresh) stops completely: Anthropic
+  reports "Pro" even for an unpaid account, and constant requests only fed the
+  plan flapping. The panel's refresh and a re-login do not wake it — only the
+  "I renewed" button does: it makes one poll and, on Pro, puts the account
+  straight back to normal work. Accounts that were already Free before the
+  update stop in the first cycle.
 - **v1.22.6** — the "⏳ until Free" chip now shows only while the plan is
   actually Pro: it disappears once the account drops to Free, instead of
   ticking on until the next "I renewed".

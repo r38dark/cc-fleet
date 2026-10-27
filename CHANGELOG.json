@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.23.0", "date": "2026-10-27",
+     "ru": {"t": "Слетевший с Pro аккаунт помечается и не опрашивается", "p": ["Аккаунт, перешедший на Free, получает красную рамку и метку «НЕАКТИВНЫЙ» — его легко отличить от Pro", "Опрос такого аккаунта в Anthropic стоит, пока не нажмёшь «Я продлил»; после нажатия — обычная работа"]},
+     "en": {"t": "An account that dropped from Pro is marked and no longer polled", "p": ["An account that fell to Free gets a red frame and an \"INACTIVE\" tag, so it is easy to tell from Pro", "Polling it at Anthropic stops until you press \"I renewed\"; after the press, normal work resumes"]}},
     {"v": "1.22.6", "date": "2026-10-24",
      "ru": {"t": "Счётчик до Free не тикает у аккаунта, который уже Free", "p": ["Чип «⏳ до Free» теперь показывается только пока план реально Pro — после обвала он пропадает", "Найдено живьём: экран одновременно показывал «FREE» и «⏳ 29 дн», хотя обвал уже произошёл"]},
      "en": {"t": "Countdown no longer ticks for an account already on Free", "p": ["The \"⏳ until Free\" chip now shows only while the plan is actually Pro — it disappears after the drop", "Found live: the screen showed \"FREE\" and \"⏳ 29d\" at the same time, even though the drop had already happened"]}},

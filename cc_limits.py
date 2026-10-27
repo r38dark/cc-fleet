@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.22.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.23.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -429,7 +429,7 @@ def delete_account(name, confirm, lang="ru"):
         if good.pop(name, None) is not None:
             jsave(GOOD, good)
         st = jload(STATE, {})
-        for k in ("plans", "renewal", "renew_click"):
+        for k in ("plans", "renewal", "renew_click", "lapsed", "plan_pending"):
             if isinstance(st.get(k), dict):
                 st[k].pop(name, None)
         if (st.get("manual_hold") or {}).get("account") == name:
@@ -565,7 +565,7 @@ def _humanize_error(e):
     return str(e)
 
 
-def collect(force=False, force_account=None):
+def collect(force=False, force_account=None, renew_account=None):
     prev = jload(SNAPSHOT) or {}
     # дедуп: не дёргать Anthropic чаще раза в 30с (иначе 429 Too Many Requests),
     # UI-запросы между опросами получают свежий снапшот с актуальным active.
@@ -583,9 +583,26 @@ def collect(force=False, force_account=None):
     ap = cc_poll.enabled(cfg())
     ap_p = cc_poll.params(cfg()) if ap else None
     sched = (jload(POLL_STATE, {}) or {}) if ap else {}
+    st_pre = jload(STATE, {}) or {}
+    lapsed_pre = st_pre.get("lapsed") or {}
+    plans_pre = st_pre.get("plans") or {}
     for n in profile_names():
         oa = jload(f"{PROFILES}/{n}/oauth_account.json", {})
         row = {"email": oa.get("emailAddress", "?"), "active": n == act}
+        # (lapsed) аккаунт, слетевший с Pro на Free (план подтверждён, см. блок ниже), не опрашиваем
+        # совсем — ни usage, ни profile, ни обновление токена — пока человек не нажмёт «Я продлил»
+        # (/api/recheck передаёт renew_account). «Обновить» в панели и перелогин его не будят:
+        # на грани подписки Anthropic отдаёт то Pro, то Free, и вечный опрос только разгонял дребезг.
+        if n in lapsed_pre and n != renew_account:
+            old = good.get(n) or {}
+            row["five_hour"] = old.get("five_hour")
+            row["seven_day"] = old.get("seven_day")
+            if old.get("ts"):
+                row["stale_ts"] = old["ts"]
+            row["plan"] = plans_pre.get(n) or "free"
+            accounts[n] = row
+            sched.pop(n, None)  # иначе устаревший срок опроса будил бы цикл вхолостую
+            continue
         errs = []
         fails = []  # [(этап, исключение)] — для Retry-After и журнала сбоев
         access = None
@@ -749,6 +766,8 @@ def collect(force=False, force_account=None):
             continue
         cand = pending.get(n) or {}
         cnt = (cand.get("count", 0) + 1) if cand.get("plan") == p else 1
+        if n == renew_account and p != "free":
+            cnt = 2  # явное «Я продлил»: человек сам подтвердил оплату, второго чтения не ждём
         if cnt < 2:
             pending[n] = {"plan": p, "count": cnt}
             pending_changed = True
@@ -757,7 +776,7 @@ def collect(force=False, force_account=None):
         pending_changed = True
         email = accounts[n].get("email", n)
         if p == "free":
-            tg_notify(f"⛔ Claude: аккаунт {n} ({email}) слетел с Pro в Free — пора продлевать подписку. Из ротации исключён.")
+            tg_notify(f"⛔ Claude: аккаунт {n} ({email}) слетел с Pro в Free — пора продлевать подписку. Из ротации исключён, опрос остановлен до нажатия «Я продлил».")
         else:
             tg_notify(f"✅ Claude: аккаунт {n} ({email}) снова {p.upper()} — вернул в ротацию.")
             if was == "free":
@@ -776,7 +795,27 @@ def collect(force=False, force_account=None):
             st["plan_pending"] = pending
         else:
             st.pop("plan_pending", None)
-    if plans_changed or pending_changed:
+    # слетевшие: подтверждённый Free = неактивный (опрос стоит, см. начало collect); подтверждённый
+    # не-Free снимает отметку. Заодно подхватывает аккаунты, что уже были Free до появления отметки
+    lapsed = st.get("lapsed") or {}
+    lapsed_changed = False
+    for n in accounts:
+        p = prev.get(n)
+        if p == "free" and n not in lapsed:
+            lapsed[n] = {"since": int(time.time())}
+            lapsed_changed = True
+        elif p and p != "free" and n in lapsed:
+            lapsed.pop(n)
+            lapsed_changed = True
+    for n in [k for k in lapsed if k not in accounts]:
+        lapsed.pop(n)
+        lapsed_changed = True
+    if lapsed_changed:
+        if lapsed:
+            st["lapsed"] = lapsed
+        else:
+            st.pop("lapsed", None)
+    if plans_changed or pending_changed or lapsed_changed:
         jsave(STATE, st)
     # снимок несёт ПОДТВЕРЖДЁННЫЙ план (prev[n] после дебаунса выше), не сырое
     # чтение этого цикла — иначе бейдж и availability() всё равно мигают, пока
@@ -787,6 +826,9 @@ def collect(force=False, force_account=None):
         confirmed = prev.get(n)
         if confirmed:
             row["plan"] = confirmed
+        if n in lapsed:
+            row["lapsed"] = True
+            row["lapsed_since"] = (lapsed[n] or {}).get("since")
     snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
     jsave(SNAPSHOT, snap)
     return snap
@@ -2634,7 +2676,7 @@ class H(BaseHTTPRequestHandler):
                 st = jload(STATE, {})
                 st.setdefault("renew_click", {})[name] = time.time()
                 jsave(STATE, st)
-                snap = collect(force=True, force_account=name)
+                snap = collect(force=True, force_account=name, renew_account=name)
             row = (snap.get("accounts") or {}).get(name, {})
             plan = row.get("plan")
             email = row.get("email", name)
@@ -2662,7 +2704,7 @@ class H(BaseHTTPRequestHandler):
                     "message": f"План снова {plan.upper()}, но данные по использованию ещё недоступны ({err}) — в ротацию пока не включён."})
             if plan == "free":
                 return self._send(200, {"ok": False, "plan": plan,
-                    "message": "⏳ Anthropic ещё не обновил план (всё ещё Free) — попробуй через минуту."})
+                    "message": "⏳ Anthropic ещё не обновил план (всё ещё Free) — аккаунт остаётся неактивным, опрос стоит. Нажми «Я продлил» снова, когда оплата пройдёт."})
             return self._send(200, {"ok": False, "plan": plan,
                 "message": "Не удалось проверить план: " + (row.get("error") or "?")})
         if u.path == "/api/model":
@@ -3552,6 +3594,20 @@ html:root:root .dmet{flex:none;min-width:62px}
 html:root:root .dmet .dml{white-space:nowrap}
 html:root:root .dmet .dtop{gap:6px}
 }
+/* ---- слетевший с Pro на Free аккаунт: красная рамка и «неактивный» — во всех скинах (!important
+   перебивает рамки .card/.card.active скинов; рамка = border + кольцо box-shadow, как у .card.active) ---- */
+html[data-skin] .card.lapsed,.card.lapsed{border-color:#e5484d !important;box-shadow:0 0 0 1px #e5484d,0 0 22px -6px rgba(229,72,77,.75) !important}
+html[data-skin="blocks"] .card.lapsed{box-shadow:4px 4px 0 #e5484d !important}
+html[data-skin] .tag.lpt,.tag.lpt{background:#e5484d !important;color:#fff !important;border-color:#e5484d !important}
+.lpnote{display:flex;align-items:flex-start;gap:8px;margin:9px 0 2px;padding:7px 10px;border-radius:8px;background:rgba(229,72,77,.13);border:1px solid rgba(229,72,77,.5);color:#ffaaa6;font-size:12.5px;line-height:1.35}
+.lpnote svg{flex:none;width:16px;height:16px;margin-top:1px;display:block}
+.lpnote b{color:#ff8d88}
+html[data-skin="phosphor"] .lpnote{border-radius:0;color:#ff9d94}
+html[data-skin="blocks"] .lpnote{border-radius:0;background:#fde8e6;border:2px solid #e5484d;color:#7a1812}
+html[data-skin="blocks"] .lpnote b{color:#b3261e}
+html[data-skin] .dchip.lapsed,.dchip.lapsed{border-color:#e5484d !important;box-shadow:0 0 0 1px #e5484d !important}
+.dchip.lapsed .ddot{background:#e5484d;box-shadow:0 0 0 3px rgba(229,72,77,.22)}
+html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter><filter id="ccPhosphorT" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.075 0.255 0.0225 0 0  0.21 0.7125 0.075 0 0  0.12 0.39 0.0375 0 0  0 0 0 1 0"/></filter></svg>
 <div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
@@ -3609,6 +3665,10 @@ const I18N={
   switchTo:'Переключиться',
   switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
   extended:'Я продлил',
+  lapsedTag:'НЕАКТИВНЫЙ',
+  lapsedTitle:'Аккаунт неактивный',
+  lapsedNote:'подписка закончилась, в ротации не участвует. Опрос остановлен, пока не нажмёшь «Я продлил»',
+  lapsedSince:t=>` (с ${t})`,
   relogin:'🔑 Войти заново',
   addBtnTitle:'Добавить аккаунт',
   addTitle:'Добавить аккаунт в ротацию',
@@ -3811,6 +3871,10 @@ const I18N={
   switchTo:'Switch to this',
   switchBlockedTitle:'Blocked: limit-switch optimization is on',
   extended:'I renewed',
+  lapsedTag:'INACTIVE',
+  lapsedTitle:'Account inactive',
+  lapsedNote:'the subscription has ended, so it is out of the rotation. Polling is stopped until you press “I renewed”',
+  lapsedSince:t=>` (since ${t})`,
   relogin:'🔑 Log in again',
   addBtnTitle:'Add an account',
   addTitle:'Add an account to the rotation',
@@ -4124,10 +4188,11 @@ function renderDock(d){
  el.innerHTML=Object.entries(d.accounts).map(([n,a])=>{
   const plan=a.plan==='free'?'<span class="tag free">FREE</span>':a.plan?'<span class="tag plan">'+a.plan.toUpperCase()+'</span>':'';
   const err=a.error?`<div class="err">⚠ ${a.error}</div>`:'';
-  const det=a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):'';
-  return `<div class="dchip${a.active?' act':''}${a.error?' er':''}"><span class="ddot"></span><span class="dmail">${a.email}</span>`
-   +(a.five_hour?met(tr('dockSes'),a.five_hour)+met(tr('dockWeek'),a.seven_day):'')
-   +`<div class="dpop"><div class="dpt"><span class="dpe">${a.email}</span>${plan}${a.active?'<span class="dpa">'+tr('active')+'</span>':''}</div>${err}${det}</div></div>`;
+  const det=a.five_hour&&!a.lapsed?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):'';
+  const lpd=a.lapsed?'<span class="tag lpt">'+tr('lapsedTag')+'</span>':'';
+  return `<div class="dchip${a.active?' act':''}${a.error?' er':''}${a.lapsed?' lapsed':''}"><span class="ddot"></span><span class="dmail">${a.email}</span>`
+   +(a.five_hour&&!a.lapsed?met(tr('dockSes'),a.five_hour)+met(tr('dockWeek'),a.seven_day):'')
+   +`<div class="dpop"><div class="dpt"><span class="dpe">${a.email}</span>${plan}${lpd}${a.active?'<span class="dpa">'+tr('active')+'</span>':''}</div>${err}${det}</div></div>`;
  }).join('');
 }
 // подсказка аккаунта не должна вылезать за края окна
@@ -4175,12 +4240,16 @@ function renderCards(d){
     <button class="iconbtn" title="${tr('compactTitle')}" onclick="sessionCmd('compact')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button>
     <button class="iconbtn" title="${tr('newSessionTitle')}" onclick="sessionCmd('new')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button>
    </div>`:'';
-  const r=a.five_hour?ring(a.five_hour,18000):'';
+  const lp=!!a.lapsed;  // слетел с Pro на Free: опрос остановлен до «Я продлил»
+  const r=a.five_hour&&!lp?ring(a.five_hour,18000):'';
+  const lpTag=lp?'<span class="tag lpt">'+tr('lapsedTag')+'</span> ':'';
+  const lpNote=lp?`<div class="lpnote" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span><b>${tr('lapsedTitle')}</b> — ${tr('lapsedNote')}${a.lapsed_since?tr('lapsedSince',new Date(a.lapsed_since*1000).toLocaleString(LANG==='en'?'en-GB':'ru',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):''}</span></div>`:'';
   return `
-  <div class="card ${a.active?'active':''}">
+  <div class="card ${a.active?'active':''}${lp?' lapsed':''}">
    ${a.active?'<span class="tag pin">'+tr('active')+'</span>':''}
-   <div class="top"><span class="email">${a.email} ${plan}${a.renewal_next?renewChip(a.renewal_next):''}</span><div class="hdrright">${r}${icons}</div></div>
-   ${a.error?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
+   <div class="top"><span class="email">${a.email} ${plan}${lpTag}${a.renewal_next?renewChip(a.renewal_next):''}</span><div class="hdrright">${r}${icons}</div></div>
+   ${lpNote}
+   ${a.error&&!lp?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour&&!lp?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}')">${tr('relogin')}</button>
