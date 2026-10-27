@@ -11,7 +11,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.23.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.23.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4250,7 +4250,7 @@ function renderCards(d){
    <div class="top"><span class="email">${a.email} ${plan}${lpTag}${a.renewal_next?renewChip(a.renewal_next):''}</span><div class="hdrright">${r}${icons}</div></div>
    ${lpNote}
    ${a.error&&!lp?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour&&!lp?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
-   <div class="acts"><button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>
+   <div class="acts">${lp&&!a.active?'':`<button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>`}
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}')">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>

@@ -745,6 +745,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.23.1** — an inactive account (one that fell to Free) no longer shows the
+  "Switch to this" button: its card keeps only "I renewed", "Log in again" and delete.
 - **v1.23.0** — an account that dropped from Pro to Free (plan confirmed by two reads
   in a row) is marked "inactive": a red frame on its card and dock chip, an
   "INACTIVE" tag and a note with the drop time (in all five skins). Polling
