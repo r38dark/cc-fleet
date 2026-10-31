@@ -20,6 +20,7 @@ DEFAULT_CHAT = lambda: None  # chat_id из config.json, если в карто�
 RESERVED_TOKENS = lambda: []  # токены, которые мосту брать нельзя (бот телеграм-канала Claude): два потребителя одного токена перебивают друг друга
 NOW = time.time  # в тестах подменяется
 ENTER_DELAY = 0.6  # пауза между текстом и Enter при печати в консоль Claude
+CONSOLE = None  # cc_limits подставляет cc_codex_console: разговор идёт в консоли Codex; None — отдельный `codex exec`
 TG_API = "https://api.telegram.org"  # на стенде — локальная заглушка Bot API
 TG_TIMEOUT = 10  # длинный опрос getUpdates, секунд
 RUN_TIMEOUT = 20 * 60  # один запуск codex
@@ -372,6 +373,9 @@ def reset_thread():
         st = _state()
         st["threads"] = {}
         _state_save(st)
+    if CONSOLE is not None:
+        BRIDGE.cancel.set()  # идущий запрос в консоли снимается, консоль останавливается и забывает разговор
+        CONSOLE.forget()
 
 
 # ---------------------------------------------------------------- Telegram
@@ -540,9 +544,39 @@ class RunError(Exception):
     pass
 
 
+class Stopped(RunError):
+    """Запрос снят по /stop или /new: человеку уже ответили, повторно ошибку не шлём."""
+
+
+def _run_console(prompt, s):
+    """Сообщение уходит в живую консоль Codex (screen cc-codex), ответ читается из файла её сессии: консоль и
+    Telegram — один разговор. → (ответ, thread_id)."""
+    BRIDGE.cancel.clear()
+    BRIDGE.in_console = True
+    try:
+        answer, tid = CONSOLE.ask(prompt, abort=BRIDGE.cancel, timeout=RUN_TIMEOUT)
+    except CONSOLE.Aborted:
+        raise Stopped("")
+    except CONSOLE.ConsoleError as e:
+        raise RunError(str(e)[:600])
+    finally:
+        BRIDGE.in_console = False
+    if tid:  # тот же разговор подхватит запасной codex exec, если консоль станет недоступна
+        sandbox, cwd = plan(s)
+        key = f"{s['mode']}|{cwd}"
+        with _lock:
+            st = _state()
+            if st["threads"].get(key) != tid:
+                st["threads"][key] = tid
+                _state_save(st)
+    return answer, tid
+
+
 def run_codex(prompt, s=None):
-    """Один запуск codex exec (новый разговор или resume). → (ответ, thread_id)."""
+    """Один запуск: через консоль Codex, а если её нет — отдельным codex exec (новый разговор или resume). → (ответ, thread_id)."""
     s = s or load()
+    if CONSOLE is not None and CONSOLE.usable():
+        return _run_console(prompt, s)
     b = BIN()
     if not b:
         raise RunError("Codex не установлен на сервере.")
@@ -677,6 +711,8 @@ class Bridge:
         self.watch_t = None
         self.worker = None
         self.proc = None
+        self.cancel = threading.Event()  # /stop и /new: прервать запрос, идущий в консоли
+        self.in_console = False
         self.warned = set()
 
     def busy(self):
@@ -720,6 +756,7 @@ class Bridge:
             return self.send("Разговор начат заново.")
         if low in ("/stop", "стоп", "stop"):
             p = self.proc
+            c = self.in_console
             with _lock:
                 st = _state()
                 had = bool(st["pending"])
@@ -727,7 +764,10 @@ class Bridge:
                 _state_save(st)
             if p:
                 cc_codex._kill(p)
-            if p or had:
+            if c:
+                self.cancel.set()
+                CONSOLE.interrupt()  # Esc в консоль: Codex бросает ход
+            if p or c or had:
                 return self.send("Остановил." + (" Задание, ждавшее «да», снято." if had else ""))
             return self.send("Сейчас ничего не запущено.")
         if low == "/status":
@@ -763,6 +803,8 @@ class Bridge:
             pass
         try:
             answer, _ = run_codex(text, s)
+        except Stopped:
+            return
         except RunError as e:
             return self.send(f"⚠️ {e}")
         except Exception as e:

@@ -52,7 +52,8 @@ class Base(unittest.TestCase):
         os.environ["FAKE_LOG"] = self.log
         os.environ.pop("FAKE_DRAFT", None)
         self.saved = (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
-                      br.RESERVED_TOKENS, br.ACK_TIMEOUT)
+                      br.RESERVED_TOKENS, br.ACK_TIMEOUT, br.CONSOLE)
+        br.CONSOLE = None
         br.BASE = j("base")
         os.makedirs(br.BASE)
         cc_codex.PROFILES = j("profiles")
@@ -88,7 +89,7 @@ class Base(unittest.TestCase):
             if t:
                 t.join(5)
         (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
-         br.RESERVED_TOKENS, br.ACK_TIMEOUT) = self.saved
+         br.RESERVED_TOKENS, br.ACK_TIMEOUT, br.CONSOLE) = self.saved
 
     def say(self, text, chat=100200300):
         br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": chat}, "text": text}})
@@ -652,6 +653,121 @@ class Orchestrator(Base):
         self.assertEqual(self.console, [])
         self.say("стоп")
         self.assertIn("ничего не запущено", self.sent[-1])
+
+
+class FakeConsole:
+    """Подставная консоль Codex: ask() отдаёт заранее заданное или ждёт, пока её прервут."""
+    class ConsoleError(Exception):
+        pass
+
+    class Aborted(ConsoleError):
+        pass
+
+    def __init__(self):
+        self.asked, self.interrupted, self.forgotten = [], 0, 0
+        self.ok = True
+        self.script = [("ответ из консоли", "TID-CON")]
+        self.started = threading.Event()
+        self.hold = None  # Event: ask ждёт его или abort
+
+    def usable(self):
+        return self.ok
+
+    def ask(self, prompt, abort=None, timeout=None):
+        self.asked.append(prompt)
+        self.started.set()
+        if self.hold is not None:
+            t0 = time.time()
+            while not self.hold.is_set() and time.time() - t0 < 10:
+                if abort is not None and abort.is_set():
+                    raise self.Aborted("остановлено")
+                time.sleep(0.01)
+        item = self.script.pop(0) if self.script else ("ещё ответ", "TID-CON")
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def interrupt(self):
+        self.interrupted += 1
+        return True
+
+    def forget(self):
+        self.forgotten += 1
+
+
+class ConsoleChat(Base):
+    """Разговор Telegram ↔ консоль Codex: мост вводит сообщения в живой Codex, а не гоняет отдельный codex exec."""
+
+    def setUp(self):
+        super().setUp()
+        self.con = FakeConsole()
+        br.CONSOLE = self.con
+
+    def test_answer_comes_from_console_not_exec(self):
+        self.say("Привет из Telegram")
+        self.assertEqual(self.sent[-1], "ответ из консоли")
+        self.assertEqual(self.con.asked, ["Привет из Telegram"])
+        self.assertEqual(self.runs(), [], "codex exec не запускался")
+        self.assertEqual(br._state()["threads"], {"mediator|" + self.ex: "TID-CON"})
+        self.assertFalse(br.BRIDGE.in_console)
+
+    def test_console_not_usable_falls_back_to_exec(self):
+        self.con.ok = False
+        self.say("вопрос 1")
+        self.assertEqual(self.sent[-1], "ответ: вопрос 1")
+        self.assertEqual(self.con.asked, [])
+        self.assertEqual(len(self.runs()), 1)
+
+    def test_console_error_is_reported(self):
+        self.con.script = [FakeConsole.ConsoleError("Консоль Codex закрылась, пока он отвечал.")]
+        self.say("вопрос")
+        self.assertEqual(self.sent[-1], "⚠️ Консоль Codex закрылась, пока он отвечал.")
+        self.assertEqual(self.runs(), [])
+        self.assertFalse(br.BRIDGE.in_console)
+
+    def test_stop_presses_escape_and_stays_quiet_about_error(self):
+        self.con.hold = threading.Event()
+        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "text": "долгий вопрос"}})
+        self.assertTrue(self.con.started.wait(5))
+        for _ in range(100):
+            if br.BRIDGE.in_console:
+                break
+            time.sleep(0.01)
+        self.assertTrue(br.BRIDGE.in_console)
+        br.BRIDGE.handle_update({"update_id": 2, "message": {"chat": {"id": 100200300}, "text": "/stop"}})
+        br.BRIDGE.worker.join(10)
+        self.assertEqual(self.con.interrupted, 1)
+        self.assertEqual(self.sent, ["Остановил."], "ни «⚠️», ни пустого ответа")
+        self.assertFalse(br.BRIDGE.in_console)
+
+    def test_stop_with_nothing_running(self):
+        self.say("/stop")
+        self.assertIn("ничего не запущено", self.sent[-1])
+        self.assertEqual(self.con.interrupted, 0)
+
+    def test_new_forgets_conversation_in_console(self):
+        self.say("вопрос")
+        self.say("/new")
+        self.assertEqual(self.con.forgotten, 1)
+        self.assertEqual(br._state()["threads"], {})
+        self.assertIn("начат заново", self.sent[-1])
+
+    def test_new_drops_request_in_flight(self):
+        self.con.hold = threading.Event()
+        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "text": "долгий вопрос"}})
+        self.assertTrue(self.con.started.wait(5))
+        for _ in range(100):
+            if br.BRIDGE.in_console:
+                break
+            time.sleep(0.01)
+        br.BRIDGE.handle_update({"update_id": 2, "message": {"chat": {"id": 100200300}, "text": "/new"}})
+        br.BRIDGE.worker.join(10)
+        self.assertEqual(self.sent, ["Разговор начат заново."], "ответ на снятый запрос не уходит")
+
+    def test_self_mode_thread_key_follows_workdir(self):
+        br.save({"mode": "self", "access": "write", "workdir": self.proj})
+        self.say("правь")
+        self.assertEqual(br._state()["threads"], {"self|" + self.proj: "TID-CON"})
 
 
 class LimitAlerts(Base):

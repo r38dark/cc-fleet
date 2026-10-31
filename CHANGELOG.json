@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.5", "date": "2026-10-31",
+     "ru": {"t": "Codex: консоль и Telegram — один разговор", "p": ["Сообщения из Telegram мост вводит в живую консоль Codex, ответ читает из файла сессии: на вкладке виден диалог", "«/stop» нажимает Esc в консоли, «/new» перезапускает консоль с чистым разговором; консоль идёт с «-a never»", "Закрытую или запущенную с другими правами консоль мост поднимает сам и продолжает тот же разговор (resume)"]},
+     "en": {"t": "Codex: console and Telegram are one conversation", "p": ["The bridge types Telegram messages into the live Codex console and reads the reply from its session file", "/stop presses Esc in the console, /new restarts it with a clean conversation; the console runs with -a never", "A closed console, or one started with other rights, is restarted by the bridge and resumes the same conversation"]}},
     {"v": "1.25.4", "date": "2026-10-31",
      "ru": {"t": "Codex: консоль стартует сама, ленты нет, пуши лимитов при «Выключен»", "p": ["Консоль Codex запускается сама при открытии вкладки; кнопка «Запустить» осталась запасной, после «Стоп»", "Лента работы моста убрана совсем: на вкладке Codex только экран; в шапке чип модели и усилия", "Пуши лимитов и конца подписки приходят и при профиле «Выключен», пока подключён Telegram-бот"]},
      "en": {"t": "Codex: console starts by itself, no feed, limit pushes while Off", "p": ["The Codex console starts by itself when you open its tab; Start remains a fallback after Stop", "The bridge activity feed is gone: the Codex tab shows only the screen; header chip for model and effort", "Limit and subscription pushes arrive even with the Off profile while the Telegram bot is connected"]}},

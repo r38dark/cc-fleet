@@ -14,7 +14,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.4"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.5"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -131,6 +131,7 @@ cc_codex_console.BASE = BASE
 cc_codex_console.BIN = codex_bin
 cc_codex_console.PLAN = _codex_console_plan
 cc_codex_console.pyte = pyte
+cc_codex_bridge.CONSOLE = cc_codex_console  # мост ведёт разговор в консоли Codex, а не отдельным запуском
 
 
 # автообновление из GitHub Releases (cc_update.py): проверка раз в 6 часов, ручной/авто режим
