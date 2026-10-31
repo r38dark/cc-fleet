@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.11", "date": "2026-10-31",
+     "ru": {"t": "Codex: меньше ручных настроек, правило для другого сервера", "p": ["Убраны «Собрать свой профиль…» и списки режим/доступ/права: режим задаёт профиль, полный доступ — только аварийный режим", "В форме моста остались аккаунт, проект, рабочая папка, токен, чат и выключатель; свои профили прежних версий применяются и удаляются", "Аварийный режим: на другом сервере править точечно, от пользователя приложения (sudo -u), после root — chown"]},
+     "en": {"t": "Codex: fewer manual settings, a rule for another server", "p": ["\"Build your own profile…\" and the mode/access/rights lists are gone: the profile sets the mode, full access comes only from the emergency mode", "The bridge form keeps the account, project, working folder, token, chat and the switch; own profiles from earlier versions can still be applied and deleted", "Emergency mode: on another server edit surgically, as the application's user (sudo -u), chown after editing as root"]}},
     {"v": "1.25.10", "date": "2026-10-31",
      "ru": {"t": "Codex: аварийный режим можно включать без срока", "p": ["hours: 0 в codex_emergency — режим без срока: сам не выключается, пока его не снимет человек", "Карточка показывает «без срока · включён с …», окно подтверждения говорит об этом прямо", "Без ключа hours по-прежнему 24 ч; снять — кнопкой или /emergency_off"]},
      "en": {"t": "Codex: emergency mode can run without a time limit", "p": ["hours: 0 in codex_emergency means no deadline: it stays on until a person turns it off", "The card shows \"no time limit · on since …\" and the confirmation window says so plainly", "Without the hours key it is still 24 h; turn off with the button or /emergency_off"]}},

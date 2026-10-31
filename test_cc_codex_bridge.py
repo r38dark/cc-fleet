@@ -533,13 +533,18 @@ class Profiles(Base):
             self.assertNotEqual(d.get("access"), "full", pid)
             self.assertNotEqual(d.get("task_rights"), "full", pid)
 
-    def test_custom_save_apply_delete_and_full_word(self):
-        self.assertTrue(br.save({"mode": "self", "access": "full", "confirm": "подтверждаю"})[0])
-        self.assertTrue(br.save_profile("  Мой\nполный  ")[0])
-        c = br.load()["profiles"][0]
-        self.assertEqual((c["id"], c["name"], c["access"]), ("c1", "Мой полный", "full"))
+    def seed_custom(self, pid, name, mode, access, rights):
+        """Свой профиль прежней версии панели: новые не собираются, но сохранённые должны работать."""
+        with br._lock:
+            s = br.load()
+            s["profiles"] = (s.get("profiles") or []) + [
+                {"id": pid, "name": name, "mode": mode, "access": access, "task_rights": rights}]
+            br._save(s)
+
+    def test_legacy_custom_apply_delete_and_full_word(self):
+        self.seed_custom("c1", "Мой полный", "self", "full", "dev")
         self.assertTrue(br.apply_profile("orchestrator")[0])
-        ok, msg = br.apply_profile("c1")  # снова поднимать до полного — только со словом
+        ok, msg = br.apply_profile("c1")  # поднимать до полного — только со словом
         self.assertFalse(ok)
         self.assertIn("подтверждаю", msg)
         self.assertEqual(br.load()["mode"], "orchestrator")
@@ -551,35 +556,10 @@ class Profiles(Base):
         self.assertEqual(br.load()["profiles"], [])
         self.assertEqual(br.public()["profile"], "")
 
-    def test_custom_name_replaced_and_limited(self):
-        self.assertFalse(br.save_profile("  ")[0])
-        for i in range(br.MAX_CUSTOM_PROFILES):
-            self.assertTrue(br.save_profile(f"p{i}")[0])
-        self.assertFalse(br.save_profile("лишний")[0])
-        self.assertTrue(br.save_profile("P3")[0])  # то же имя заменяет, а не добавляет
-        self.assertEqual(len(br.load()["profiles"]), br.MAX_CUSTOM_PROFILES)
-
-    def test_custom_from_spec_keeps_live_settings(self):
-        """Состав, собранный в панели, запоминается как есть и живые настройки моста не трогает."""
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        before = {k: br.load()[k] for k in ("mode", "access", "task_rights", "enabled")}
-        self.assertTrue(br.save_profile("Читатель", spec={"mode": "self", "access": "write", "task_rights": "read"})[0])
-        c = br.load()["profiles"][0]
-        self.assertEqual((c["mode"], c["access"], c["task_rights"]), ("self", "write", "read"))
-        self.assertEqual({k: br.load()[k] for k in before}, before)
-        self.assertEqual(br.public()["profile"], "orchestrator")  # выбор не сдвинулся: состав другой
-        # доступ Codex вне режима «Самостоятельно» не значим — как у встроенных, read
-        self.assertTrue(br.save_profile("Ведёт", spec={"mode": "orchestrator", "access": "full", "task_rights": "dev"})[0])
-        self.assertEqual(br.load()["profiles"][1]["access"], "read")
-        # совпал с живыми настройками → становится выбранным
-        self.assertTrue(br.save_profile("Как сейчас", spec={"mode": "orchestrator", "access": "read", "task_rights": "dev"})[0])
-        self.assertEqual(br.public()["profile"], br.load()["profiles"][2]["id"])
-
-    def test_custom_spec_rejects_garbage(self):
-        n = len(br.load()["profiles"])
-        for bad in ({"mode": "root"}, {"access": "god"}, {"task_rights": "prod"}):
-            self.assertFalse(br.save_profile("Мусор", spec=bad)[0])
-        self.assertEqual(len(br.load()["profiles"]), n)
+    def test_save_profile_is_gone(self):
+        """Сборка своего профиля убрана: ни функции, ни лимита."""
+        self.assertFalse(hasattr(br, "save_profile"))
+        self.assertFalse(hasattr(br, "MAX_CUSTOM_PROFILES"))
 
     def test_manual_edit_drops_profile_mark(self):
         self.assertTrue(br.apply_profile("orchestrator")[0])
@@ -591,8 +571,9 @@ class Profiles(Base):
         pub = br.public()
         self.assertEqual([p["id"] for p in pub["profiles"]], ["orchestrator", "codex"])
         self.assertTrue(all(p["builtin"] for p in pub["profiles"]))
-        br.save_profile("Свой")
+        self.seed_custom("c1", "Свой", "self", "write", "dev")
         self.assertEqual(br.public()["profiles"][-1]["name"], "Свой")
+        self.assertFalse(br.public()["profiles"][-1]["builtin"])
 
 
 class Orchestrator(Base):

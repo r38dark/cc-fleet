@@ -35,15 +35,14 @@ SUB_STEPS = (7, 3, 1, 0)  # за сколько дней до конца под�
 MODES = ("mediator", "orchestrator", "self")
 # Профили — наборы настроек, которые применяются одним кликом; доступ (access) важен только в «self».
 # Встроенных два: «Оркестратор» (Codex ведёт, Claude исполняет) и «Codex» (работает сам в своей рабочей папке).
-# Выключатель бота — отдельная настройка enabled, не профиль. Полный доступ во встроенные не входит: он включается
-# только в своём профиле и со словом-подтверждением.
+# Выключатель бота — отдельная настройка enabled, не профиль. Полный доступ во встроенные не входит: его даёт только
+# аварийный режим (cc_codex_emergency). Свои профили прежних версий остаются: применяются и удаляются, новые не собираются.
 BUILTIN_PROFILES = (
     ("orchestrator", {"mode": "orchestrator", "access": "read", "task_rights": "dev"}),
     ("codex", {"mode": "self", "access": "write", "task_rights": "dev"}),
 )
 # профили прежних версий → нынешние (где состав совпадал); остальные выбором не считаются — настройки остаются как были
 LEGACY_PROFILES = {"standby": "codex"}
-MAX_CUSTOM_PROFILES = 10
 ACCESS = ("read", "write", "full")
 RIGHTS = ("read", "dev", "full")
 RIGHTS_RU = {"read": "Чтение", "dev": "Дев", "full": "Полные"}
@@ -299,44 +298,6 @@ def apply_profile(pid, confirm="", lang="ru"):
             s["profile"] = pid
             _save(s)
     return ok, msg
-
-
-def save_profile(name, lang="ru", spec=None):
-    """Сохранить режим, доступ и права под своим именем. → (ok, сообщение).
-    spec — состав {mode, access, task_rights}, собранный в панели; без него берутся текущие настройки моста.
-    Живые настройки состав не меняет: профиль только запоминается, применяется отдельно."""
-    name = re.sub(r"\s+", " ", re.sub(r"[\x00-\x1f]", " ", str(name or ""))).strip()[:40]
-    if not name:
-        return False, _t(lang, "Дай профилю имя.", "Give the profile a name.")
-    with _lock:
-        s = load()
-        mode, access, rights = s["mode"], s["access"], s["task_rights"]
-        if spec:
-            mode = spec.get("mode", mode)
-            access = spec.get("access", access)
-            rights = spec.get("task_rights", rights)
-            if mode not in MODES or access not in ACCESS or rights not in RIGHTS:
-                return False, _t(lang, "Недопустимое значение режима, доступа или прав.",
-                                 "Invalid mode, access or rights value.")
-            if mode != "self":
-                access = "read"  # доступ Codex важен только в режиме «Самостоятельно»; как у встроенных профилей
-        custom = [c for c in s.get("profiles") or [] if c.get("name", "").lower() != name.lower()]
-        if len(custom) >= MAX_CUSTOM_PROFILES:
-            return False, _t(lang, f"Своих профилей не больше {MAX_CUSTOM_PROFILES}.",
-                             f"At most {MAX_CUSTOM_PROFILES} custom profiles.")
-        used = {c["id"] for c in custom}
-        n = 1
-        while f"c{n}" in used:
-            n += 1
-        pid = f"c{n}"
-        custom.append({"id": pid, "name": name, "mode": mode, "access": access, "task_rights": rights})
-        s["profiles"] = custom
-        # выбранным профиль становится, только если совпал с живыми настройками; иначе выбор не трогаем
-        same = mode == s["mode"] and rights == s["task_rights"] and (mode != "self" or access == s["access"])
-        if same:
-            s["profile"] = pid
-        _save(s)
-    return True, _t(lang, "Профиль сохранён.", "Profile saved.")
 
 
 def delete_profile(pid, lang="ru"):

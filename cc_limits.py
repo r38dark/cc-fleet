@@ -15,7 +15,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.10"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.11"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2741,10 +2741,6 @@ class H(BaseHTTPRequestHandler):
         if action == "bridge/profile/apply":
             ok, message = cc_codex_bridge.apply_profile(body.get("id", ""), body.get("confirm", ""), lang=lang)
             return self._send(200, {"ok": ok, "message": message})
-        if action == "bridge/profile/save":
-            spec = {k: body[k] for k in ("mode", "access", "task_rights") if k in body}
-            ok, message = cc_codex_bridge.save_profile(body.get("name", ""), lang=lang, spec=spec)
-            return self._send(200, {"ok": ok, "message": message})
         if action == "bridge/profile/delete":
             ok, message = cc_codex_bridge.delete_profile(body.get("id", ""), lang=lang)
             return self._send(200, {"ok": ok, "message": message})
@@ -3847,9 +3843,6 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxprof .cxpx{flex:none;margin:-4px -6px 0 0;padding:2px 8px;background:transparent;color:var(--mut);border:0;font-size:18px;line-height:1;border-radius:8px;cursor:pointer}
 .cxprof .cxpx:hover{color:var(--bad)}
 .cxpmanual{font-size:12px;color:var(--warn);margin-top:8px;line-height:1.4}
-.cxpsave{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.cxpsave .dlginp{flex:1 1 180px;width:auto;min-width:0;margin-top:0}
-.cxpsave button{margin-top:0}
 /* значок ⓘ и раскрывающееся пояснение профиля */
 .cxprof .cxpi{flex:none;margin:-5px -4px 0 0;padding:4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:var(--mut);border-radius:8px;cursor:pointer}
 .cxprof .cxpi svg{width:17px;height:17px}
@@ -3900,8 +3893,6 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxpinfo .cxpik{display:inline;color:var(--mut)}
 .cxpinfo .cxpid{display:block;color:var(--mut)}
 .cxpinfo .cxpwhen{margin-top:8px;padding-top:6px;border-top:1px dashed #2a3140}
-.cxpnew{display:block;width:100%;margin:10px 0 0;padding:8px 10px;background:transparent;border:1px dashed #2a3140;color:var(--mut);font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;text-align:center}
-.cxpnew:hover{color:var(--acc);border-color:var(--acc)}
 /* аварийный режим: красная карточка под профилями */
 .cxw.rd{color:var(--bad);background:rgba(224,91,91,.12);border-color:rgba(224,91,91,.5)}
 .cxemg{display:flex;align-items:flex-start;gap:10px;position:relative;overflow:hidden;margin:8px 0 0;padding:10px 12px 10px 15px;border:1px solid rgba(224,91,91,.5);border-radius:12px;background:rgba(224,91,91,.07)}
@@ -3926,21 +3917,6 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxeul{margin:0 0 12px;padding-left:18px;font-size:13px;line-height:1.5}
 .cxeul li{margin:2px 0}
 #cxeGo{background:var(--bad);color:#fff;border-color:var(--bad)}
-/* сборка своего профиля */
-.cxog{margin-top:12px}
-.cxogl{font-size:12px;font-weight:700;color:var(--mut);margin-bottom:6px}
-.cxopt{display:flex;align-items:flex-start;gap:10px;width:100%;margin:0 0 6px;padding:8px 10px;text-align:left;background:transparent;border:1px solid #2a3140;color:var(--txt);border-radius:10px;cursor:pointer;font-weight:500}
-.cxopt:hover{border-color:var(--acc)}
-.cxopt.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);background:rgba(124,154,255,.08)}
-.cxopt .cxor{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid var(--mut);margin-top:2px;position:relative}
-.cxopt.on .cxor{border-color:var(--acc)}
-.cxopt.on .cxor::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--acc)}
-.cxopt .cxot{flex:1;min-width:0;display:block}
-.cxopt .cxot b{display:block;font-size:13px}
-.cxopt .cxot span{display:block;font-size:12px;color:var(--mut);line-height:1.4;margin-top:1px;font-weight:400}
-.cxpcsum{margin:12px 0 0;font-size:13px}
-.cxpcsum span{color:var(--mut)}
-.cxpcdup{font-size:12px;color:var(--warn);margin-top:6px;line-height:1.4}
 /* счётчики лимитов в кнопке шапки: 5 ч · неделя, в одну строку; цвет по занятости */
 .cxlim{display:inline-flex;align-items:center;gap:9px;font-size:11px;font-weight:600;line-height:1;white-space:nowrap}
 .cxlim:empty{display:none}
@@ -4065,7 +4041,6 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
  <div class="cxphead"><b id="cxPopTitle">Codex</b><span class="cxsub" id="cxPopSt"></span><button type="button" class="hdrgear" id="cxPopX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
  <div class="cxpbody">
   <div class="cxacc" id="cxAccW"><button type="button" class="cxacch" data-sec="acc"><span id="cxAccT"></span><span class="cxsum" id="cxAccS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cx" class="cxsec" hidden></div></div>
-  <div class="cxacc" id="cxPrW"><button type="button" class="cxacch" data-sec="pr"><span id="cxPrT"></span><span class="cxsum" id="cxPrS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cxpc" class="cxsec" hidden></div></div>
   <div class="cxacc" id="cxBrW"><button type="button" class="cxacch" data-sec="br"><span id="cxBrT"></span><span class="cxsum" id="cxBrS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cxb" class="cxsec" hidden></div></div>
  </div>
 </div>
@@ -4339,7 +4314,7 @@ const I18N={
   cxDelWarn:'<b>Это безвозвратно.</b> Токен входа будет стёрт с сервера и отозван у OpenAI, выбранные модель и режимы пропадут. Вернуть можно только новым входом по коду.',
   cxWin:h=>'Окно '+h+' ч',
   cxbTitle:'Мост Telegram ↔ Codex',
-  cxbHint:'Пишешь Codex в своём боте. «Посредник» сам проект не меняет — оформляет задание Claude, ты подтверждаешь «да/нет». «Оркестратор» ведёт задачу к цели: Claude исполняет шаг, результат возвращается Codex, следующий шаг уходит Claude только после твоего «да». «Самостоятельно» — Codex работает сам по выбранному доступу.',
+  cxbHint:'Пишешь Codex в своём боте. Как он работает, задаёт профиль в меню Codex в шапке: «Оркестратор» — Codex ведёт цель, а Claude исполняет шаги только после твоего «да»; «Codex» — работает сам, без Claude. Здесь — аккаунт, папки, токен и чат.',
   cxbMode:'Режим',
   cxbModeMed:'Посредник (задания Claude)',
   cxbModeOrch:'Оркестратор (Codex ведёт, Claude исполняет)',
@@ -4379,14 +4354,11 @@ const I18N={
   cxpBotOffToast:'Бот выключен',
   cxpManual:'Настройки изменены вручную — ни один профиль не выбран.',
   cxpManualShort:'Свои настройки',
-  cxpNamePh:'Название профиля',
-  cxpSaveBtn:'Сохранить',
   cxpDel:'Удалить профиль',
   cxpDelAsk:n=>'Удалить профиль «'+n+'»?',
   cxpApply:'Применить',
   cxpConfTitle:'Профиль с полным доступом',
   cxpClose:'Закрыть',
-  cxpNew:'Собрать свой профиль…',
   cxpInfo:'Что делает этот профиль',
   cxpWhenLbl:'Когда выбрать:',
   cxpWhen_orchestrator:'Большая цель в несколько шагов: Codex планирует и проверяет, Claude делает.',
@@ -4431,13 +4403,6 @@ const I18N={
   cxoRt_full:'Claude может менять и прод — по обычным правилам: сначала бэкап.',
   cxpBrief:(m,r)=>m+' · задания: '+r.toLowerCase(),
   cxpBriefSelf:(m,a)=>m+' · доступ: '+a.toLowerCase(),
-  cxPrSec:'Свой профиль',
-  cxpcCnt:n=>'сохранено: '+n,
-  cxpcHint:'Выбери, из чего состоит профиль, дай ему имя и сохрани — он появится в меню профилей. Текущие настройки моста от этого не меняются.',
-  cxpcWill:'Будет сохранено:',
-  cxpcLive:'Взять, как сейчас в мосте',
-  cxpcFull:'⚠ Полный вариант — на твоей ответственности: при выборе такого профиля попросим слово «подтверждаю».',
-  cxpcDup:n=>'Такой набор уже есть: «'+n+'».',
   cxLimUntil:t=>'до '+t,
   cxLimLogin:'вход!',
   cxLimLoginTip:'Нужен повторный вход в ChatGPT',
@@ -4464,7 +4429,6 @@ const I18N={
   cxbProjHint:'Папка проекта, о котором говорит Codex. Менять её он не может — правит Claude. Пусто — берётся рабочая папка.',
   cxbDir:'Рабочая папка Codex',
   cxbDirSelf:'Здесь Codex пишет сам. Пусто — своя папка по умолчанию; в режиме «Запись» писать он может только в ней.',
-  cxbRights:'Потолок прав для заданий Claude',
   cxbRRead:'Чтение — ничего не менять',
   cxbRDev:'Дев — правки и коммиты на деве',
   cxbRFull:'Полные — включая прод',
@@ -4744,7 +4708,7 @@ const I18N={
   cxDelWarn:'<b>This cannot be undone.</b> The sign-in token is wiped from the server and revoked at OpenAI; the chosen model and modes are lost. The only way back is a new device-code sign-in.',
   cxWin:h=>h+' h window',
   cxbTitle:'Telegram ↔ Codex bridge',
-  cxbHint:'You message Codex in your own bot. "Mediator" never changes the project itself — it drafts a task for Claude and you confirm yes/no. "Orchestrator" drives a goal: Claude does a step, the result goes back to Codex, and the next step reaches Claude only after your "yes". "Standalone" — Codex works on its own with the access you pick.',
+  cxbHint:'You message Codex in your own bot. How it works is set by the profile in the Codex menu in the header: "Orchestrator" — Codex drives the goal and Claude does steps only after your "yes"; "Codex" — works on its own, without Claude. Here: account, folders, token and chat.',
   cxbMode:'Mode',
   cxbModeMed:'Mediator (tasks for Claude)',
   cxbModeOrch:'Orchestrator (Codex leads, Claude executes)',
@@ -4784,14 +4748,11 @@ const I18N={
   cxpBotOffToast:'Bot is off',
   cxpManual:'Settings were changed by hand — no profile is selected.',
   cxpManualShort:'Custom settings',
-  cxpNamePh:'Profile name',
-  cxpSaveBtn:'Save',
   cxpDel:'Delete profile',
   cxpDelAsk:n=>'Delete profile "'+n+'"?',
   cxpApply:'Apply',
   cxpConfTitle:'Profile with full access',
   cxpClose:'Close',
-  cxpNew:'Build your own profile…',
   cxpInfo:'What this profile does',
   cxpWhenLbl:'When to pick it:',
   cxpWhen_orchestrator:'A big goal in several steps: Codex plans and checks, Claude does.',
@@ -4836,13 +4797,6 @@ const I18N={
   cxoRt_full:'Claude may change prod too — by the usual rules: backup first.',
   cxpBrief:(m,r)=>m+' · tasks: '+r.toLowerCase(),
   cxpBriefSelf:(m,a)=>m+' · access: '+a.toLowerCase(),
-  cxPrSec:'Your own profile',
-  cxpcCnt:n=>'saved: '+n,
-  cxpcHint:'Pick what the profile consists of, name it and save — it will appear in the profiles menu. The current bridge settings stay as they are.',
-  cxpcWill:'Will be saved:',
-  cxpcLive:'Take what the bridge has now',
-  cxpcFull:'⚠ The full option is at your own responsibility: picking such a profile asks for the word "confirm".',
-  cxpcDup:n=>'This set already exists: "'+n+'".',
   cxLimUntil:t=>'until '+t,
   cxLimLogin:'login!',
   cxLimLoginTip:'Sign in to ChatGPT again',
@@ -4869,7 +4823,6 @@ const I18N={
   cxbProjHint:'The project folder Codex talks about. It cannot change it — Claude does. Empty — the working folder is used.',
   cxbDir:'Codex working folder',
   cxbDirSelf:'Codex writes here on its own. Empty — its own default folder; in "Write" mode it can write only here.',
-  cxbRights:'Rights ceiling for Claude tasks',
   cxbRRead:'Read — change nothing',
   cxbRDev:'Dev — edits and commits on dev',
   cxbRFull:'Full — including production',
@@ -5589,14 +5542,10 @@ const CXB_ST={sent:'→',accepted:'👀',done:'✅',timeout:'⏱'};
 function cxbVal(id){const e=$('#'+id);return e?e.value:'';}
 // «Проект» в форме: в режиме «Самостоятельно» без своего проекта он совпадает с рабочей папкой — тогда поле пустое
 function cxbProjVal(b){return b.mode==='self'&&b.project===b.workdir?'':(b.project||'');}
+// рабочая папка нужна только профилю «Codex» (самостоятельная работа); режим задаёт профиль, не форма
 function cxbSync(){
- const mode=cxbVal('cxbMode'),acc=cxbVal('cxbAcc'),rights=cxbVal('cxbRights'),b=(cxbData&&cxbData.bridge)||{};
- const self=mode==='self';
- $('#cxbAccRow').hidden=!self;
- $('#cxbDirRow').hidden=!self;
- // слово-подтверждение нужно, только пока полный доступ/права ещё не включены на сервере
- const needs=(self&&acc==='full'&&!(b.mode==='self'&&b.access==='full'))||(rights==='full'&&b.task_rights!=='full');
- $('#cxbConfRow').hidden=!needs;
+ const b=(cxbData&&cxbData.bridge)||{};
+ $('#cxbDirRow').hidden=b.mode!=='self';
 }
 function cxbStatus(b){
  const st=(b.running?'🟢 <b>'+tr('cxbRunning')+'</b>':'⚪ '+tr('cxbOff'))+(b.busy?tr('cxbBusy'):'')+(b.pending?tr('cxbPending'):'');
@@ -5616,12 +5565,6 @@ function cxbRender(force){
  el.innerHTML=`<div class="cxsub" style="margin:10px 0 8px">${tr('cxbHint')}</div>
  <div class="card">
   <div class="cxbgrid">
-   <div><label class="dlglbl" for="cxbMode">${tr('cxbMode')}</label>
-    <select class="dlginp" id="cxbMode" onchange="cxbSync()">${o('mediator',tr('cxbModeMed'),b.mode)}${o('orchestrator',tr('cxbModeOrch'),b.mode)}${o('self',tr('cxbModeSelf'),b.mode)}</select></div>
-   <div id="cxbAccRow"><label class="dlglbl" for="cxbAcc">${tr('cxbAccess')}</label>
-    <select class="dlginp" id="cxbAcc" onchange="cxbSync()">${o('read',tr('cxbAccRead'),b.access)}${o('write',tr('cxbAccWrite'),b.access)}${o('full',tr('cxbAccFull'),b.access)}</select></div>
-   <div><label class="dlglbl" for="cxbRights">${tr('cxbRights')}</label>
-    <select class="dlginp" id="cxbRights" onchange="cxbSync()">${o('read',tr('cxbRRead'),b.task_rights)}${o('dev',tr('cxbRDev'),b.task_rights)}${o('full',tr('cxbRFull'),b.task_rights)}</select></div>
    <div><label class="dlglbl" for="cxbSlot">${tr('cxbSlot')}</label>${slots}</div>
   </div>
   <label class="dlglbl" for="cxbProj">${tr('cxbProject')}</label>
@@ -5636,7 +5579,6 @@ function cxbRender(force){
    :`<div class="cxbrow"><input id="cxbTok" class="dlginp" type="password" autocomplete="off" spellcheck="false" placeholder="${acctEsc(tr('cxbTokPh'))}"><button onclick="cxbTokSet()">${tr('cxbConnect')}</button></div>`}
   <label class="dlglbl" for="cxbChat" style="margin-top:14px">${tr('cxbChat')}</label>
   <input id="cxbChat" class="dlginp" inputmode="numeric" autocomplete="off" value="${acctEsc(b.chat_id||'')}">
-  <div id="cxbConfRow" hidden><label class="dlglbl" for="cxbConf">${tr('cxbConfirm')}</label><input id="cxbConf" class="dlginp" autocomplete="off" spellcheck="false"></div>
   <div class="cxbrow"><label class="cxfast"><input type="checkbox" id="cxbOn"${b.enabled?' checked':''}${b.token_set?'':' disabled'}><span>${tr('cxbOn')}</span></label>
    <button id="cxbSave" onclick="cxbSave()">${tr('cxbSave')}</button><button class="ghostbtn" onclick="cxbReset()">${tr('cxbNew')}</button></div>
   <div class="cxbstat" id="cxbStat">${cxbStatus(b)}</div>
@@ -5655,8 +5597,7 @@ async function cxbSave(){
  const btn=$('#cxbSave');btn.disabled=true;
  try{
   const on=$('#cxbOn'),b=(cxbData&&cxbData.bridge)||{},pj=cxbVal('cxbProj').trim();
-  const body={mode:cxbVal('cxbMode'),access:cxbVal('cxbAcc'),task_rights:cxbVal('cxbRights'),slot:cxbVal('cxbSlot'),
-   workdir:cxbVal('cxbDir').trim(),chat_id:cxbVal('cxbChat').trim(),enabled:!!(on&&on.checked),confirm:cxbVal('cxbConf').trim()};
+  const body={slot:cxbVal('cxbSlot'),workdir:cxbVal('cxbDir').trim(),chat_id:cxbVal('cxbChat').trim(),enabled:!!(on&&on.checked)};
   if(pj!==cxbProjVal(b))body.project=pj;  // проект уходит, только если его поменяли
   const r=await acctPost('chatgpt/bridge/save',body);
   toast(r.ok?tr('cxbSaved'):'⚠ '+r.message);
@@ -5674,7 +5615,7 @@ async function cxbReset(){try{await acctPost('chatgpt/bridge/reset',{});toast('�
 // ---- Codex в шапке: значок с точкой статуса + выпадающее окно (профили, лимиты, мост) ----
 // На странице Codex места не занимает: всё, что он показывал под карточками, живёт в окне по клику.
 let cxpBusy=false;
-const CXP_SEC={acc:false,pr:false,br:false};
+const CXP_SEC={acc:false,br:false};
 try{Object.assign(CXP_SEC,JSON.parse(localStorage.getItem('cxpSec')||'{}'));}catch(e){}
 function cxAvail(){return!!((cxData&&cxData.available)||(cxbData&&cxbData.available));}
 function cxpName(p){return p.builtin?tr('cxpN_'+p.id):p.name;}
@@ -5914,48 +5855,18 @@ function cxpRender(){
  el.innerHTML=`${cxpBotHtml(b)}<div class="cxhead"><h2>${tr('cxpTitle')}</h2><span class="cxsub">${tr('cxpHint')}</span></div>
   <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}</div>
   ${cxeHtml(cxbData.emergency)}
-  ${!b.profile&&b.enabled?`<div class="cxpmanual">${tr('cxpManual')}</div>`:''}
-  <button type="button" class="cxpnew" id="cxpNewBtn">${tr('cxpNew')}</button>`;
-}
-// «Свой профиль» в окне ⚙: состав собирается здесь и запоминается под именем; живые настройки моста не трогаются
-let cxpDraft=null;  // {mode,access,task_rights,name}; null — ещё не начинали
-function cxpDraftLive(keepName){
- const b=cxbData&&cxbData.bridge;if(!b)return;
- cxpDraft={mode:b.mode,access:b.access,task_rights:b.task_rights,name:(keepName&&cxpDraft?cxpDraft.name:'')};
-}
-function cxpcRender(force){
- const el=$('#cxpc'),b=cxbData&&cxbData.bridge;
- if(!el)return;
- if(!b){el.hidden=true;el.innerHTML='';return;}
- el.hidden=false;
- const f=document.activeElement;
- if(!force&&f&&el.contains(f)&&f.tagName==='INPUT')return;  // не затираем набираемое имя
- if(!cxpDraft)cxpDraftLive(false);
- const d=cxpDraft,self=d.mode==='self';
- const grp=(g,label,vals,cur,nm,dk,warn)=>`<div class="cxog" role="radiogroup" aria-label="${acctEsc(label)}"><div class="cxogl">${acctEsc(label)}</div>${vals.map(v=>`<button type="button" class="cxopt${cur===v?' on':''}" role="radio" aria-checked="${cur===v}" data-g="${g}" data-v="${v}"><span class="cxor"></span><span class="cxot"><b>${acctEsc(nm(v))}${warn===v?' ⚠':''}</b><span>${acctEsc(tr(dk+v))}</span></span></button>`).join('')}</div>`;
- const same=(b.profiles||[]).find(p=>p.mode===d.mode&&p.task_rights===d.task_rights&&(d.mode!=='self'||p.access===d.access));
- const full=self?d.access==='full':d.task_rights==='full';
- el.innerHTML=`<div class="cxsub" style="margin:10px 0 0">${tr('cxpcHint')}</div>
-  ${grp('mode',tr('cxbMode'),['mediator','orchestrator','self'],d.mode,cxoMode,'cxoMode_')}
-  ${self?grp('access',tr('cxbAccess'),['read','write','full'],d.access,cxoAcc,'cxoAcc_','full'):grp('task_rights',tr('cxoRtLbl'),['read','dev','full'],d.task_rights,cxoRt,'cxoRt_','full')}
-  <div class="cxpcsum"><span>${tr('cxpcWill')}</span> <b>${acctEsc(cxpBrief(d))}</b></div>
-  ${full?`<div class="cxbwarn">${tr('cxpcFull')}</div>`:''}
-  ${same?`<div class="cxpcdup">${acctEsc(tr('cxpcDup',cxpName(same)))}</div>`:''}
-  <div class="cxpsave"><input class="dlginp" id="cxpName" maxlength="40" autocomplete="off" placeholder="${acctEsc(tr('cxpNamePh'))}" value="${acctEsc(d.name||'')}"><button type="button" id="cxpSaveBtn">${tr('cxpSaveBtn')}</button></div>
-  <div class="cxbrow"><button type="button" class="ghostbtn" id="cxpLiveBtn">${tr('cxpcLive')}</button></div>`;
+  ${!b.profile&&b.enabled?`<div class="cxpmanual">${tr('cxpManual')}</div>`:''}`;
 }
 function cxAll(){
  cxHdr();consTabs();
- const aw=$('#cxAccW'),pw=$('#cxPrW'),bw=$('#cxBrW');
- aw.hidden=!(cxData&&cxData.available);pw.hidden=bw.hidden=!(cxbData&&cxbData.available);
- aw.classList.toggle('open',!!CXP_SEC.acc);pw.classList.toggle('open',!!CXP_SEC.pr);bw.classList.toggle('open',!!CXP_SEC.br);
- $('#cxAccT').textContent=tr('cxAccSec');$('#cxPrT').textContent=tr('cxPrSec');$('#cxBrT').textContent=tr('cxBrSec');
+ const aw=$('#cxAccW'),bw=$('#cxBrW');
+ aw.hidden=!(cxData&&cxData.available);bw.hidden=!(cxbData&&cxbData.available);
+ aw.classList.toggle('open',!!CXP_SEC.acc);bw.classList.toggle('open',!!CXP_SEC.br);
+ $('#cxAccT').textContent=tr('cxAccSec');$('#cxBrT').textContent=tr('cxBrSec');
  $('#cxAccS').textContent=cxAccSummary();
  const b=cxbData&&cxbData.bridge;
  $('#cxBrS').textContent=b?(b.token_set?'@'+(b.bot||'?'):''):'';
- const nc=b?(b.profiles||[]).filter(p=>!p.builtin).length:0;
- $('#cxPrS').textContent=nc?tr('cxpcCnt',nc):'';
- cxpRender();cxpcRender();
+ cxpRender();
  if(!$('#cxPop').hidden)cxPopPlace();
  if(!$('#cxMenu').hidden)cxMenuPlace();
  if(!$('#cxQ').hidden){cxQRender();cxQPlace();}
@@ -6085,17 +5996,6 @@ function cxpConfirm(id){
  go.onclick=()=>{const w=inp.value.trim();acctClose();cxpApply(id,w||'-');};
  setTimeout(()=>inp.focus(),30);
 }
-async function cxpSave(){
- const inp=$('#cxpName'),btn=$('#cxpSaveBtn');if(!inp||!cxpDraft)return;
- cxpDraft.name=inp.value;btn.disabled=true;
- try{
-  const d=cxpDraft,r=await acctPost('chatgpt/bridge/profile/save',{name:d.name,mode:d.mode,access:d.access,task_rights:d.task_rights});
-  toast(r.ok?r.message:'⚠ '+r.message);
-  if(r.ok)cxpDraft.name='';
- }catch(e){toast('⚠ '+e);}
- btn.disabled=false;
- inp.blur();await cxbLoad(true);cxpcRender(true);
-}
 async function cxpDelete(id){
  const p=((cxbData&&cxbData.bridge&&cxbData.bridge.profiles)||[]).find(x=>x.id===id);
  if(!p||!confirm(tr('cxpDelAsk',cxpName(p))))return;
@@ -6128,31 +6028,12 @@ $('#cxp').addEventListener('click',e=>{
  const em=e.target.closest('[data-emg]');
  if(em){e.stopPropagation();em.dataset.emg==='on'?cxeOn():cxeOff();return;}
  if(e.target.closest('.cxemg'))return;
- if(e.target.closest('#cxpNewBtn')){cxpGoCompose();return;}
- const r=e.target.closest('.cxprof');if(r){cxMenuClose();cxpApply(r.dataset.id);}
+  const r=e.target.closest('.cxprof');if(r){cxMenuClose();cxpApply(r.dataset.id);}
 });
 $('#cxp').addEventListener('keydown',e=>{
  const r=e.target.closest&&e.target.closest('.cxprof');
  if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();cxMenuClose();cxpApply(r.dataset.id);}
 });
-// из меню профилей — в окно ⚙ сразу на сборку своего профиля
-function cxpGoCompose(){
- CXP_SEC.pr=true;try{localStorage.setItem('cxpSec',JSON.stringify(CXP_SEC));}catch(e){}
- cxMenuClose();cxPopOpen();
- setTimeout(()=>{const w=$('#cxPrW');if(w)w.scrollIntoView({block:'nearest'});},60);
-}
-$('#cxpc').addEventListener('click',e=>{
- const o=e.target.closest('.cxopt');
- if(o&&cxpDraft){
-  cxpDraft[o.dataset.g]=o.dataset.v;cxpcRender(true);
-  const nb=$('#cxpc').querySelector('.cxopt[data-g="'+o.dataset.g+'"][data-v="'+o.dataset.v+'"]');if(nb)nb.focus();
-  return;
- }
- if(e.target.closest('#cxpSaveBtn')){cxpSave();return;}
- if(e.target.closest('#cxpLiveBtn')){cxpDraftLive(true);cxpcRender(true);}
-});
-$('#cxpc').addEventListener('input',e=>{if(e.target.id==='cxpName'&&cxpDraft)cxpDraft.name=e.target.value;});
-$('#cxpc').addEventListener('keydown',e=>{if(e.target.id==='cxpName'&&e.key==='Enter')cxpSave();});
 document.querySelectorAll('.cxacch').forEach(h=>h.addEventListener('click',()=>{
  const k=h.dataset.sec;CXP_SEC[k]=!CXP_SEC[k];
  try{localStorage.setItem('cxpSec',JSON.stringify(CXP_SEC));}catch(e){}

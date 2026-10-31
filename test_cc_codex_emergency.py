@@ -166,6 +166,9 @@ class Enable(Base):
         self.assertEqual(em.env_extra(), {"GIT_CONFIG_GLOBAL": p["gitconfig"]})
         self.assertTrue(get(self.agents()).startswith(em.MARK))
         self.assertIn("svc-web.service", get(self.agents()))
+        # на другом сервере — от пользователя приложения, не от root, с возвратом владельца
+        self.assertIn("sudo -u <пользователь>", get(self.agents()))
+        self.assertIn("chown <пользователь>", get(self.agents()))
         # мост: самостоятельно + полный доступ в проекте режима; прежнее запомнено
         s = br.load()
         self.assertEqual((s["mode"], s["access"], s["workdir"]), ("self", "full", p["mnt"]))

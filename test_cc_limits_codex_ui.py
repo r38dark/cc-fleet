@@ -89,7 +89,7 @@ class Page(unittest.TestCase):
         form = re.search(r"function cxbRender\(force\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
         self.assertIn('id="cxbProj"', form)
         self.assertIn('id="cxbDirRow"', form)
-        self.assertIn("$('#cxbDirRow').hidden=!self", re.search(r"function cxbSync\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0))
+        self.assertIn("$('#cxbDirRow').hidden=b.mode!=='self'", re.search(r"function cxbSync\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0))
         save = re.search(r"async function cxbSave\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
         self.assertIn("if(pj!==cxbProjVal(b))body.project=pj", save)
 
@@ -158,21 +158,29 @@ class Page(unittest.TestCase):
             self.assertIn(pid, L.PAGE[L.PAGE.index("const CXP_META="):][:600])
 
 
-class Compose(unittest.TestCase):
-    def test_save_block_moved_from_menu_to_popover(self):
+class NoComposer(unittest.TestCase):
+    """Сборщик своего профиля и ручные списки режим/доступ/права убраны: профиль задаёт режим."""
+
+    def test_composer_and_manual_lists_are_gone(self):
         page = L.PAGE
+        for bad in ('id="cxpc"', 'id="cxPrW"', "cxpNewBtn", "cxpcRender", "cxpDraft", "cxpSave", "cxpGoCompose",
+                    "profile/save", 'id="cxbMode"', 'id="cxbAcc"', 'id="cxbRights"', 'id="cxbConf"', "cxbConfRow"):
+            self.assertNotIn(bad, page, bad)
         menu = re.search(r'<div id="cxMenu".*?</div></div>', page, re.S).group(0)
         self.assertNotIn("cxpc", menu)
-        self.assertGreater(page.index('id="cxpc"'), page.index('id="cxPop"'))
         self.assertEqual(page.count('id="cxLim"'), 1)
-        # старый блок «Сохранить текущие настройки» из меню профилей убран
-        self.assertNotIn("cxpSaveLbl", page)
-        self.assertNotIn("cxpCustom", page)
 
-    def test_save_sends_composed_set_not_live_settings(self):
-        m = re.search(r"async function cxpSave\(\)\{.*?\n\}\n", L.PAGE, re.S)
+    def test_bridge_form_keeps_slot_folders_token_chat_switch(self):
+        page = L.PAGE
+        for need in ('id="cxbSlot"', 'id="cxbProj"', 'id="cxbDir"', 'id="cxbTok"', 'id="cxbChat"', 'id="cxbOn"'):
+            self.assertIn(need, page, need)
+
+    def test_save_sends_no_mode_fields(self):
+        """Форма моста не шлёт режим/доступ/права — профиль не сбрасывается при сохранении токена, чата, папок."""
+        m = re.search(r"async function cxbSave\(\)\{.*?\n\}\n", L.PAGE, re.S)
         self.assertTrue(m)
-        self.assertIn("mode:d.mode,access:d.access,task_rights:d.task_rights", m.group(0))
+        for bad in ("cxbMode", "cxbAcc", "cxbRights", "task_rights", "confirm"):
+            self.assertNotIn(bad, m.group(0), bad)
 
 
 LIM_JS = """
@@ -561,13 +569,12 @@ class Routes(unittest.TestCase):
 
     def test_profile_routes_delegate_to_bridge(self):
         with mock.patch.object(L.cc_codex_bridge, "apply_profile", return_value=(True, "ok")) as ap, \
-                mock.patch.object(L.cc_codex_bridge, "save_profile", return_value=(True, "saved")) as sv, \
                 mock.patch.object(L.cc_codex_bridge, "delete_profile", return_value=(False, "no")) as dl:
             self.assertEqual(self.post("bridge/profile/apply", {"id": "orchestrator", "confirm": "x", "lang": "en"}),
                              (200, {"ok": True, "message": "ok"}))
             ap.assert_called_once_with("orchestrator", "x", lang="en")
-            self.assertEqual(self.post("bridge/profile/save", {"name": "Ночной"}), (200, {"ok": True, "message": "saved"}))
-            sv.assert_called_once_with("Ночной", lang=None, spec={})
+            # сборка своего профиля убрана — маршрута больше нет
+            self.assertEqual(self.post("bridge/profile/save", {"name": "Ночной"})[0], 404)
             self.assertEqual(self.post("bridge/profile/delete", {"id": "c1"}), (200, {"ok": False, "message": "no"}))
             dl.assert_called_once_with("c1", lang=None)
 
