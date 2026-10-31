@@ -808,6 +808,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.14** — the Orchestrator answers questions about the project itself: it reads the project and explains.
+  It drafts a step for Claude only when a change or a run is needed; without a "yes" nothing is sent, as before.
+  Rights and profiles are unchanged.
 - **v1.25.13** — header: the Refresh, Settings and "+" buttons now sit on the left, next to "Limit
   optimization"; the Codex block moved right and the RU·EN language switch is at the far right edge. The buttons
   work as before.

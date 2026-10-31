@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.14", "date": "2026-10-31",
+     "ru": {"t": "Оркестратор отвечает на вопросы по проекту", "p": ["В инструкцию «Оркестратора» добавлено правило: на вопросы по проекту он отвечает сам, читая проект", "Шаг для Claude он оформляет, только когда нужна правка или запуск; без «да» шаг по-прежнему не уходит", "Права, профили и остальные настройки не менялись"]},
+     "en": {"t": "Orchestrator answers questions about the project", "p": ["The Orchestrator instructions now say: answer questions about the project yourself by reading it", "A step for Claude is drafted only when a change or a run is needed; without a \"yes\" nothing is sent, as before", "Rights, profiles and other settings are unchanged"]}},
     {"v": "1.25.13", "date": "2026-10-31",
      "ru": {"t": "Шапка: кнопки слева, Codex и язык справа", "p": ["Кнопки «Обновить», «Настройки» и «+» стоят слева, рядом с «Оптимизацией переключений лимитов»", "Блок Codex сдвинут вправо, переключатель языка RU·EN — в самом правом краю", "Работа кнопок и блока Codex не менялась, только их расположение"]},
      "en": {"t": "Header: buttons on the left, Codex and language on the right", "p": ["The Refresh, Settings and \"+\" buttons now sit on the left, next to \"Limit optimization\"", "The Codex block moved right and the RU·EN language switch is at the far right edge", "Buttons and the Codex block work as before — only their position changed"]}},

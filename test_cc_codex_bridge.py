@@ -600,6 +600,7 @@ class Orchestrator(Base):
         t = get(os.path.join(self.ex, "AGENTS.md"))
         self.assertIn("оркестратор", t)
         self.assertIn("RESULT OF TASK", t)
+        self.assertIn("На вопросы по проекту", t)  # на вопросы отвечает сам, шаг для Claude — только когда нужна правка или запуск
 
     def test_agents_back_to_secretary(self):
         self.assertTrue(br.save({"mode": "mediator"})[0])
