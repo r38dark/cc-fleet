@@ -34,13 +34,23 @@ class Page(unittest.TestCase):
         self.assertGreater(page.index('id="cxb" '), pop)
         self.assertRegex(page, r'<div id="cxPop"[^>]*\bhidden\b')
 
-    def test_button_is_left_of_language_switch(self):
-        self.assertLess(L.PAGE.index('id="cxBtn"'), L.PAGE.index('id="langSwitch"'))
-
-    def test_header_buttons_left_codex_and_language_right(self):
-        # ↻ ⚙ + стоят слева, у «Оптимизации»; блок Codex и RU·EN — в правой группе, язык в самом краю
+    def test_header_has_no_language_switch(self):
+        # переключатель RU·EN из шапки убран (на телефоне занимал целую строку): ни элемента, ни кнопок смены
         page = L.PAGE
-        order = [page.index(k) for k in ('id="optWrap"', 'id="rfBtn"', 'id="gear"', 'id="addAcct"', 'id="cxGrp"', 'id="langSwitch"')]
+        for bad in ('id="langSwitch"', 'setLang(', 'renderLangSwitch'):
+            self.assertNotIn(bad, page, bad)
+
+    def test_language_comes_from_link_or_saved_choice(self):
+        # без кнопки язык задаётся ссылкой ?lang=en|ru (и запоминается), иначе сохранённый выбор, иначе русский
+        page = L.PAGE
+        self.assertIn("localStorage.getItem('cc_lang')||'ru'", page)
+        self.assertIn("new URLSearchParams(location.search).get('lang')", page)
+        self.assertIn("q==='ru'||q==='en'", page)
+
+    def test_header_buttons_left_and_codex_right(self):
+        # ↻ ⚙ + стоят слева, у «Оптимизации»; блок Codex — в правой группе, последним
+        page = L.PAGE
+        order = [page.index(k) for k in ('id="optWrap"', 'id="rfBtn"', 'id="gear"', 'id="addAcct"', 'id="cxGrp"')]
         self.assertEqual(order, sorted(order))
         self.assertLess(page.index('class="hdrbtns"'), page.index('class="hdrctl"'))
         self.assertGreater(page.index('id="rfBtn"'), page.index('class="hdrbtns"'))
@@ -49,7 +59,7 @@ class Page(unittest.TestCase):
     def test_header_split_group_profile_menu_and_gear(self):
         # «>_ Профиль ▾» и шестерёнка — одна группа; меню профилей и окно настроек — разные панели
         page = L.PAGE
-        grp = re.search(r'<div class="cxgrp" id="cxGrp"[^>]*>(.*?)</div><div id="langSwitch"', page, re.S)
+        grp = re.search(r'<div class="cxgrp" id="cxGrp"[^>]*>(.*?)</div></div></div>\s*<div class="ccpause"', page, re.S)
         self.assertTrue(grp)
         self.assertLess(grp.group(1).index('id="cxBtn"'), grp.group(1).index('id="cxGear"'))
         menu = re.search(r'<div id="cxMenu".*?</div></div>', page, re.S).group(0)
@@ -65,7 +75,7 @@ class Page(unittest.TestCase):
 
     def test_quick_model_chip_between_profile_and_gear(self):
         page = L.PAGE
-        grp = re.search(r'<div class="cxgrp" id="cxGrp"[^>]*>(.*?)</div><div id="langSwitch"', page, re.S).group(1)
+        grp = re.search(r'<div class="cxgrp" id="cxGrp"[^>]*>(.*?)</div></div></div>\s*<div class="ccpause"', page, re.S).group(1)
         self.assertLess(grp.index('id="cxBtn"'), grp.index('id="cxMod"'))
         self.assertLess(grp.index('id="cxMod"'), grp.index('id="cxGear"'))
         self.assertEqual(page.count('id="cxQ"'), 1)

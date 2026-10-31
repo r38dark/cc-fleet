@@ -63,6 +63,21 @@ class SwitchProc(unittest.TestCase):
         self.assertEqual(oct(os.stat(self.live).st_mode & 0o777), "0o600")
         self.assertEqual(self.leftovers(), [])
 
+    def test_mcp_oauth_survives_switch_there_and_back(self):
+        # вход в MCP-серверы лежит в том же файле, но от аккаунта не зависит: туда-обратно не слетает и не устаревает
+        doc = json.load(open(self.live))
+        doc["mcpOAuth"] = {"srv|1": {"accessToken": "mcp-1"}}
+        json.dump(doc, open(self.live, "w"))
+        self.assertEqual(self.run_switch("acc2").returncode, 0)
+        doc = json.load(open(self.live))
+        self.assertEqual(doc["mcpOAuth"]["srv|1"]["accessToken"], "mcp-1")
+        doc["mcpOAuth"]["srv|1"]["accessToken"] = "mcp-2"  # CLI обновил токен MCP, пока шла сессия на acc2
+        json.dump(doc, open(self.live, "w"))
+        self.assertEqual(self.run_switch("acc1").returncode, 0)
+        doc = json.load(open(self.live))
+        self.assertEqual(self.live_tok(), "tok-acc1-REFRESHED")
+        self.assertEqual(doc["mcpOAuth"]["srv|1"]["accessToken"], "mcp-2")
+
     def test_waits_for_cli_lock_then_succeeds(self):
         lock = K.DirLock(os.path.join(self.home, ".claude", ".oauth_refresh.lock"), 60)
         lock.acquire()

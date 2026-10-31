@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.16", "date": "2026-11-01",
+     "ru": {"t": "Шапка без RU·EN; вход в MCP не слетает при смене аккаунта", "p": ["Из шапки убран переключатель RU·EN (на телефоне занимал строку). Английский — ссылкой ?lang=en", "Смена аккаунта больше не стирает вход в MCP-серверы (Notion и др.): меняется только вход в Claude"]},
+     "en": {"t": "No header language switch; MCP sign-ins survive account switch", "p": ["RU·EN switch removed from the header (it took a row on phones). English via the ?lang=en link", "Switching accounts no longer wipes MCP sign-ins (Notion etc.): only the Claude sign-in is replaced"]}},
     {"v": "1.25.15", "date": "2026-11-01",
      "ru": {"t": "Codex: кнопки «Сжать контекст» и «Новая сессия»", "p": ["На вкладке Codex рядом с кнопкой «стоп» появились две кнопки: «Сжать контекст» (команда /compact) и «Новая сессия»", "«Новая сессия» работает как /new в Telegram: разговор забывается, консоль стартует заново, старый остаётся на диске; перед началом — вопрос", "На телефоне кнопки действий стоят второй строкой под вкладками и не заходят под масштаб"]},
      "en": {"t": "Codex: Compact context and New session buttons", "p": ["The Codex tab now has two buttons next to Stop: Compact context (the /compact command) and New session", "New session works like /new in Telegram: the conversation is forgotten and the console starts afresh, the old one stays on disk; it asks first", "On a phone the action buttons sit in a second row under the tabs and no longer slide under the zoom controls"]}},

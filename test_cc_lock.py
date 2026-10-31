@@ -139,6 +139,21 @@ class SwapLive(Base):
         self.assertFalse(os.path.exists(os.path.join(self.claude_dir, ".oauth_refresh.lock")))
         self.assertFalse(os.path.exists(self.cfg + ".lock"))
 
+    def test_mcp_oauth_of_live_file_survives_swap(self):
+        # вход в MCP-серверы (mcpOAuth) общий для всех аккаунтов: подмена меняет только claudeAiOauth
+        live = {"claudeAiOauth": {"accessToken": "OLD"}, "mcpOAuth": {"srv|1": {"accessToken": "LIVE"}}}
+        K.atomic_write(self.creds, json.dumps(live), 0o600)
+        K.swap_live(self.creds, {"claudeAiOauth": {"accessToken": "NEW"}, "mcpOAuth": {"srv|1": {"accessToken": "STALE"}}},
+                    self.cfg, {"emailAddress": "new@x"}, self.claude_dir, self.d)
+        got = json.load(open(self.creds))
+        self.assertEqual(got["claudeAiOauth"]["accessToken"], "NEW")
+        self.assertEqual(got["mcpOAuth"], live["mcpOAuth"])
+
+    def test_swap_without_extras_writes_profile_bytes_as_is(self):
+        raw = '{"claudeAiOauth":   {"accessToken": "NEW"}}'
+        K.swap_live(self.creds, raw, self.cfg, {"emailAddress": "new@x"}, self.claude_dir, self.d)
+        self.assertEqual(open(self.creds).read(), raw)
+
     def test_second_write_failure_rolls_back_credentials(self):
         open(self.cfg, "w").write("{ битый json")  # вторая запись упадёт при чтении
         with self.assertRaises(ValueError):

@@ -808,6 +808,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.16** — the RU·EN language switch is gone from the header (on a phone it took a whole row). The default is still
+  Russian; English is a link with `?lang=en` (`?lang=ru` brings Russian back), the choice is remembered in the browser.
+  Switching accounts no longer wipes the MCP sign-ins (`mcpOAuth` in `~/.claude/.credentials.json`): a swap replaces only
+  `claudeAiOauth`, every other key is taken from the live file.
 - **v1.25.15** — the Codex tab: two buttons next to Stop — Compact context (the /compact command) and New session
   (like /new in Telegram: the conversation is forgotten and the console starts afresh, the old one stays on disk;
   it asks first). On a phone the action buttons sit in a second row under the tabs and no longer slide under the zoom controls.

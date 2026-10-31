@@ -149,6 +149,22 @@ def _file_mode(path, default):
         return default
 
 
+def _keep_live_extras(raw, prev):
+    """Всё, кроме claudeAiOauth, остаётся из живого файла: mcpOAuth (вход в MCP-серверы) общий
+    для всех аккаунтов, а в профилях его нет или лежит устаревшая копия. Не разобрать — raw как есть."""
+    try:
+        new, old = json.loads(raw), json.loads(prev)
+    except (TypeError, ValueError):
+        return raw
+    if not (isinstance(new, dict) and isinstance(old, dict)):
+        return raw
+    extras = {k: v for k, v in old.items() if k != "claudeAiOauth"}
+    if not extras:
+        return raw
+    new.update(extras)
+    return json.dumps(new, indent=2, ensure_ascii=False)
+
+
 def swap_live(creds_path, creds, cfg_path, oauth_account, claude_dir, home, timeout=TIMEOUT, before=None):
     """Подменить живой логин: credentials.json целиком + oauthAccount в ~/.claude.json.
 
@@ -166,6 +182,8 @@ def swap_live(creds_path, creds, cfg_path, oauth_account, claude_dir, home, time
                 prev = f.read()
         except OSError:
             prev = None
+        if prev is not None:
+            raw = _keep_live_extras(raw, prev)
         atomic_write(creds_path, raw, 0o600)
         if oauth_account is None:  # аккаунт в ~/.claude.json не меняется — вторая запись не нужна
             return
