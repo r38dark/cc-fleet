@@ -808,6 +808,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.15** — the Codex tab: two buttons next to Stop — Compact context (the /compact command) and New session
+  (like /new in Telegram: the conversation is forgotten and the console starts afresh, the old one stays on disk;
+  it asks first). On a phone the action buttons sit in a second row under the tabs and no longer slide under the zoom controls.
 - **v1.25.14** — the Orchestrator answers questions about the project itself: it reads the project and explains.
   It drafts a step for Claude only when a change or a run is needed; without a "yes" nothing is sent, as before.
   Rights and profiles are unchanged.

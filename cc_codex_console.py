@@ -28,6 +28,8 @@ PROMPT_WAIT = 25  # после старта ждём, пока консоль н
 START_WAIT = 40  # консоль должна принять сообщение (начать ход), секунд
 PASTE_DELAY = 1.0  # пауза между вставкой и Enter: длинная вставка принимается не мгновенно
 POLL = 0.5
+CMD_DELAY = 1.5  # между набранной командой (/compact) и Enter
+CMD_WAIT = 15  # сколько ждать, что Codex начал ход после команды, секунд
 TAIL = 512 * 1024  # сколько хвоста rollout смотреть, определяя «идёт ход»
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
@@ -362,6 +364,41 @@ def forget(lang="ru"):
             cc_codex.own(_meta_path())
     if _pid():
         stop(lang)
+
+
+def compact(lang="ru"):
+    """Кнопка «Сжать контекст»: /compact вводится в консоль, как это сделал бы человек (команда, затем Enter —
+    вставкой она не сработала бы, см. _paste_text). Посреди хода или без консоли не вводим. → (ok, сообщение)."""
+    t = lambda ru, en: cc_codex._t(lang, ru, en)
+    if not _pid():
+        return False, t("Консоль Codex не запущена.", "The Codex console is not running.")
+    busy = (False, t("Codex сейчас отвечает: дождись ответа или останови его.", "Codex is replying right now: wait for the reply or stop it."))
+    if not _ask_lock.acquire(blocking=False):
+        return busy
+    try:
+        meta = _meta()
+        tid = (meta.get("tids") or {}).get(os.path.realpath(str(meta.get("cwd") or "")))
+        path = find_rollout(meta.get("slot") or "", tid) if tid else None
+        if path and _turn_open(path, meta.get("started") or 0):
+            return busy
+        off = os.path.getsize(path) if path else 0
+        if _ctl(["-S", NAME, "-p", "0", "-X", "stuff", "/compact"]).returncode != 0:
+            return False, t("Не удалось напечатать в консоль Codex.", "Could not type into the Codex console.")
+        time.sleep(CMD_DELAY)  # пока набрана не вся команда, Enter выбрал бы подсказку списка
+        if _ctl(["-S", NAME, "-p", "0", "-X", "stuff", "\r"]).returncode != 0:
+            return False, t("Не удалось напечатать в консоль Codex.", "Could not type into the Codex console.")
+        if not path:
+            return True, t("Команда /compact отправлена в консоль Codex.", "The /compact command was sent to the Codex console.")
+        end = time.time() + CMD_WAIT
+        while time.time() < end:  # сжатие — обычный ход с событием compacted: убеждаемся, что Codex его начал
+            evs, off = _events(path, off)
+            if any((e.get("payload") or {}).get("type") == "task_started" for e in evs):
+                return True, t("Сжатие запущено: Codex заменяет разговор краткой выжимкой.",
+                               "Compaction started: Codex is replacing the conversation with a short summary.")
+            time.sleep(POLL)
+        return False, t("Команда отправлена, но Codex не начал сжатие — повтори.", "The command was sent but Codex did not start compacting — try again.")
+    finally:
+        _ask_lock.release()
 
 
 def ask(prompt, abort=None, timeout=1200, lang="ru"):

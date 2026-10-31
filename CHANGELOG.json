@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.15", "date": "2026-11-01",
+     "ru": {"t": "Codex: кнопки «Сжать контекст» и «Новая сессия»", "p": ["На вкладке Codex рядом с кнопкой «стоп» появились две кнопки: «Сжать контекст» (команда /compact) и «Новая сессия»", "«Новая сессия» работает как /new в Telegram: разговор забывается, консоль стартует заново, старый остаётся на диске; перед началом — вопрос", "На телефоне кнопки действий стоят второй строкой под вкладками и не заходят под масштаб"]},
+     "en": {"t": "Codex: Compact context and New session buttons", "p": ["The Codex tab now has two buttons next to Stop: Compact context (the /compact command) and New session", "New session works like /new in Telegram: the conversation is forgotten and the console starts afresh, the old one stays on disk; it asks first", "On a phone the action buttons sit in a second row under the tabs and no longer slide under the zoom controls"]}},
     {"v": "1.25.14", "date": "2026-10-31",
      "ru": {"t": "Оркестратор отвечает на вопросы по проекту", "p": ["В инструкцию «Оркестратора» добавлено правило: на вопросы по проекту он отвечает сам, читая проект", "Шаг для Claude он оформляет, только когда нужна правка или запуск; без «да» шаг по-прежнему не уходит", "Права, профили и остальные настройки не менялись"]},
      "en": {"t": "Orchestrator answers questions about the project", "p": ["The Orchestrator instructions now say: answer questions about the project yourself by reading it", "A step for Claude is drafted only when a change or a run is needed; without a \"yes\" nothing is sent, as before", "Rights, profiles and other settings are unchanged"]}},

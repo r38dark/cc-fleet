@@ -320,6 +320,7 @@ class Ask(Rollout):
                   mock.patch.object(C, "_pid", return_value="77"),
                   mock.patch.object(C, "_ctl", self.fc.ctl),
                   mock.patch.object(C, "PASTE_DELAY", 0), mock.patch.object(C, "POLL", 0.01),
+                  mock.patch.object(C, "CMD_DELAY", 0), mock.patch.object(C, "CMD_WAIT", 0.3),
                   mock.patch.object(C, "START_WAIT", 0.6), mock.patch.object(C, "PROMPT_WAIT", 0.05)):
             p.start()
             self.addCleanup(p.stop)
@@ -521,6 +522,54 @@ class Ask(Rollout):
         self.assertEqual(cc_codex.jload(C._meta_path(), {})["tids"], {})
         sp.assert_called_once()
 
+    def typed(self):
+        return [a[-1] for a in self.fc.calls if "stuff" in a]
+
+    def test_compact_types_command_then_enter_and_sees_the_turn_start(self):
+        path = self.make(self.TID, self.work)
+        self.meta(tids={os.path.realpath(self.work): self.TID})
+        self.fc.script = [lambda: append(path, evt("task_started", turn_id="T2"))]
+        ok, msg = C.compact()
+        self.assertTrue(ok, msg)
+        self.assertEqual(self.typed(), ["/compact", "\r"])  # команда и Enter порознь: вставка стала бы текстом
+        self.assertFalse(self.fc.pasted)
+        self.assertIn("Сжатие запущено", msg)
+
+    def test_compact_says_when_codex_did_not_start(self):
+        path = self.make(self.TID, self.work)
+        self.meta(tids={os.path.realpath(self.work): self.TID})
+        ok, msg = C.compact()
+        self.assertFalse(ok)
+        self.assertIn("не начал сжатие", msg)
+
+    def test_compact_without_known_conversation_just_sends(self):
+        ok, msg = C.compact()
+        self.assertTrue(ok)
+        self.assertEqual(self.typed(), ["/compact", "\r"])
+
+    def test_compact_not_typed_into_busy_console(self):
+        path = self.make(self.TID, self.work)
+        self.meta(tids={os.path.realpath(self.work): self.TID})
+        append(path, evt("task_started", turn_id="T9"))  # ход открыт
+        ok, msg = C.compact()
+        self.assertFalse(ok)
+        self.assertIn("отвечает", msg)
+        self.assertEqual(self.typed(), [])
+
+    def test_compact_not_typed_while_bridge_message_is_being_typed(self):
+        with C._ask_lock:
+            ok, msg = C.compact(lang="en")
+        self.assertFalse(ok)
+        self.assertIn("replying", msg)
+        self.assertEqual(self.typed(), [])
+
+    def test_compact_without_console(self):
+        with mock.patch.object(C, "_pid", return_value=None):
+            ok, msg = C.compact()
+        self.assertFalse(ok)
+        self.assertIn("не запущена", msg)
+        self.assertEqual(self.typed(), [])
+
     def test_usable_needs_codex_and_screen(self):
         with mock.patch.object(C.shutil, "which", return_value="/usr/bin/screen"):
             self.assertTrue(C.usable())
@@ -592,7 +641,73 @@ class Routes(unittest.TestCase):
         self.assertEqual(got[1], (200, {"running": True, "ok": False, "message": "no"}))
 
 
+class CmdRoute(unittest.TestCase):
+    def post(self, body):
+        got = []
+
+        class Fake:
+            def _send(self, code, obj):
+                got.append((code, obj))
+        with mock.patch.object(L, "codex_bin", return_value="/x/codex"), \
+                mock.patch.object(C, "status", return_value={"running": True}):
+            L.H._chatgpt_post(Fake(), "console/cmd", body)
+        return got[0]
+
+    def test_compact(self):
+        with mock.patch.object(C, "compact", return_value=(True, "ok")) as cp, \
+                mock.patch.object(L.cc_codex_bridge, "reset_thread") as rt:
+            self.assertEqual(self.post({"cmd": "compact", "lang": "en"}), (200, {"running": True, "ok": True, "message": "ok"}))
+        cp.assert_called_once_with(lang="en")
+        rt.assert_not_called()
+
+    def test_new_forgets_the_conversation_and_starts_clean(self):
+        order = []
+        with mock.patch.object(L.cc_codex_bridge, "reset_thread", side_effect=lambda: order.append("reset")), \
+                mock.patch.object(C, "start", side_effect=lambda lang=None: order.append("start") or (True, "go")):
+            code, obj = self.post({"cmd": "new"})
+        self.assertEqual(order, ["reset", "start"])  # сначала разговор забыт, потом консоль заново
+        self.assertEqual((code, obj["ok"]), (200, True))
+        self.assertIn("прошлый разговор забыт", obj["message"])
+
+    def test_new_reports_start_failure(self):
+        with mock.patch.object(L.cc_codex_bridge, "reset_thread"), \
+                mock.patch.object(C, "start", return_value=(False, "нет входа")):
+            code, obj = self.post({"cmd": "new"})
+        self.assertEqual((obj["ok"], obj["message"]), (False, "нет входа"))
+
+    def test_unknown_command(self):
+        self.assertEqual(self.post({"cmd": "rm"})[0], 400)
+
+
 class Page(unittest.TestCase):
+    def test_compact_and_new_buttons_sit_next_to_stop_and_follow_it(self):
+        tabs = L.PAGE[L.PAGE.index('id="cTabs"'):L.PAGE.index('id="cxCons"')]
+        self.assertLess(tabs.index('id="ctStop"'), tabs.index('id="ctCompact"'))
+        self.assertLess(tabs.index('id="ctCompact"'), tabs.index('id="ctNew"'))
+        self.assertRegex(tabs, r'id="ctCompact" hidden')
+        self.assertRegex(tabs, r'id="ctNew" hidden')
+        self.assertIn("$('#ctCompact').hidden=$('#ctNew').hidden=$('#ctStop').hidden;", L.PAGE)  # видны, пока консоль идёт
+
+    def test_action_buttons_wrap_into_second_row_on_phone_without_clashing_with_card_acts(self):
+        tabs = L.PAGE[L.PAGE.index('id="cTabs"'):L.PAGE.index('id="cxCons"')]
+        wrap = tabs[tabs.index('<span class="ctacts">'):]
+        for i in ("ctStop", "ctCompact", "ctNew"):
+            self.assertIn('id="%s"' % i, wrap)  # три кнопки действий лежат в одной обёртке
+        self.assertIn(".ctacts{display:contents}", L.PAGE)  # на широком экране обёртка не влияет на раскладку
+        self.assertIn("html:root:root .ctabs.cacts .ctacts{display:flex;gap:4px;grid-column:1/-1}", L.PAGE)
+        self.assertIn("html:root:root .termwrap.hascacts .termbox{padding-top:92px}", L.PAGE)
+        # класс .acts уже занят карточкой аккаунта (flex, отступы, padding у button) — для панели берём свой
+        self.assertNotRegex(L.PAGE, r"classList\.(toggle|add|remove)\('(has)?acts'")
+        self.assertIn("$('#cTabs').classList.toggle('cacts',!$('#ctStop').hidden)", L.PAGE)
+        # при смене вкладки (на Claude) прячутся все три кнопки, а не только «стоп»
+        self.assertIn("$('#ctStop').hidden=$('#ctCompact').hidden=$('#ctNew').hidden=true;$('#cTabs').classList.remove('cacts')", L.PAGE)
+
+    def test_buttons_post_to_console_cmd_and_new_asks_first(self):
+        self.assertIn("acctPost('chatgpt/console/cmd',{cmd})", L.PAGE)
+        self.assertIn("if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;", L.PAGE)
+        self.assertIn("cxConsCmd('compact')", L.PAGE)
+        self.assertIn("cxConsCmd('new')", L.PAGE)
+
     def test_tabs_are_hidden_until_codex_is_available(self):
         self.assertRegex(L.PAGE, r'<div class="ctabs" id="cTabs"[^>]*\bhidden\b')
         self.assertIn("$('#cTabs').hidden=!av", L.PAGE)  # av = cxAvail(): Codex установлен

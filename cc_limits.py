@@ -15,7 +15,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.14"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.15"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2726,6 +2726,18 @@ class H(BaseHTTPRequestHandler):
         if action == "console/stop":
             ok, message = cc_codex_console.stop(lang=lang)
             return self._send(200, dict(cc_codex_console.status(), ok=ok, message=message))
+        if action == "console/cmd":  # кнопки «Сжать контекст» и «Новая сессия» вкладки Codex
+            cmd = body.get("cmd")
+            if cmd == "compact":
+                ok, message = cc_codex_console.compact(lang=lang)
+            elif cmd == "new":  # как /new в Telegram: разговор забыт, консоль стартует заново чистой
+                cc_codex_bridge.reset_thread()
+                ok, message = cc_codex_console.start(lang=lang)
+                if ok:
+                    message = _t(lang, "Новая сессия Codex: прошлый разговор забыт.", "New Codex session: the previous conversation is forgotten.")
+            else:
+                return self._send(400, {"ok": False, "message": "unknown command"})
+            return self._send(200, dict(cc_codex_console.status(), ok=ok, message=message))
         if action == "bridge/save":
             ok, message = cc_codex_bridge.save(body, lang=lang)
             return self._send(200, {"ok": ok, "message": message})
@@ -3064,6 +3076,7 @@ button:disabled{opacity:.35;cursor:default}
 /* вкладки консолей Claude | Codex: плашка того же вида, что масштаб, но слева; показывается, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
 .ctabs[hidden],.ctstop[hidden],.cxcons[hidden]{display:none}
+.ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
 .iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
 .iconbtn.ctab.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
 .termwrap.hastabs .termbox{padding-top:42px}
@@ -3749,6 +3762,9 @@ html:root:root .iconbtn.ctab,html:root:root .iconbtn.ctstop{height:34px}
 html:root:root .iconbtn.ctab{padding:0 14px;font-size:13px}
 html:root:root .iconbtn.ctstop{width:34px}
 html:root:root .termwrap.hastabs .termbox{padding-top:50px}
+html:root:root .ctabs.cacts:not([hidden]){display:grid;grid-template-columns:auto auto}
+html:root:root .ctabs.cacts .ctacts{display:flex;gap:4px;grid-column:1/-1}
+html:root:root .termwrap.hascacts .termbox{padding-top:92px}
 html:root:root .termbox{height:62vh;height:62svh;min-height:300px;padding:8px 10px;font-size:calc(10.5px*var(--tz,1))}
 html:root:root .toolrow{margin-bottom:10px}
 html:root:root .card{padding:12px 12px}
@@ -3758,6 +3774,7 @@ html:root:root .btn-del .dl{display:none}
 html:root:root .acts .btn-del{padding:4px 8px}
 html:root:root.conly .termbox{padding:8px 10px 40px}
 html:root:root.conly .termwrap.hastabs .termbox{padding-top:50px}
+html:root:root.conly .termwrap.hascacts .termbox{padding-top:92px}
 html:root:root .dockpanel{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:10px 10px 12px}
 html:root:root .dchip{box-sizing:border-box;width:100%;gap:9px;padding:7px 10px}
 html:root:root .dmail{flex:1 1 auto;min-width:0;max-width:none}
@@ -4024,7 +4041,7 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="termwrap">
- <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude">Claude</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><button type="button" class="iconbtn ctstop" id="ctStop" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button></div>
+ <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude">Claude</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctStop" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
  <div class="cxcons" id="cxCons" hidden><div class="cxcmsg" id="cxConsMsg"></div><div class="cxcsub" id="cxConsSub"></div><button type="button" id="cxConsGo"></button></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
@@ -4459,6 +4476,9 @@ const I18N={
   cxcStart:'Запустить',
   cxcStarting:'Запускаю консоль Codex…',
   cxcStopTip:'Остановить консоль Codex',
+  cxcCompactTip:'Сжать контекст (/compact)',
+  cxcNewTip:'Новая сессия Codex',
+  cxcNewQ:'Начать новую сессию Codex? Прошлый разговор забудется — и в консоли, и в Telegram; на диске он останется. Продолжить?',
   cxcStopQ:'Остановить консоль Codex? Всё, что в ней выполняется, прервётся.',
   cxcSbRead:'только чтение',
   cxcSbWrite:'запись в рабочей папке',
@@ -4855,6 +4875,9 @@ const I18N={
   cxcStart:'Start',
   cxcStarting:'Starting the Codex console…',
   cxcStopTip:'Stop the Codex console',
+  cxcCompactTip:'Compact context (/compact)',
+  cxcNewTip:'New Codex session',
+  cxcNewQ:'Start a new Codex session? The previous conversation is forgotten — in the console and in Telegram; it stays on disk. Continue?',
   cxcStopQ:'Stop the Codex console? Anything running in it will be interrupted.',
   cxcSbRead:'read only',
   cxcSbWrite:'write in the working folder',
@@ -4927,6 +4950,8 @@ let cxStarting=false;
 function cxConsUi(d){
  const on=consCur()==='codex'&&!!d&&d.available!==false;
  $('#ctStop').hidden=!(on&&d.running);
+ $('#ctCompact').hidden=$('#ctNew').hidden=$('#ctStop').hidden;
+ $('#cTabs').classList.toggle('cacts',!$('#ctStop').hidden);$('.termwrap').classList.toggle('hascacts',!$('#ctStop').hidden);
  if(on&&d.running)$('#ctStop').title=tr('cxcStopTip')+' — '+cxConsSb(d.sandbox);
  const ov=$('#cxCons');
  ov.hidden=!(on&&!d.running);
@@ -5056,11 +5081,12 @@ function consTabs(){
   b.title=on?'':tr('cxcSw')+b.textContent;
  });
  $('#ctStop').setAttribute('aria-label',tr('cxcStopTip'));
+ for(const [id,k] of [['#ctCompact','cxcCompactTip'],['#ctNew','cxcNewTip']]){const b=$(id);b.title=tr(k);b.setAttribute('aria-label',tr(k));}
  const key=cur;
  if(key!==consShown){
   consShown=key;cxConsRun=null;
   $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
-  $('#cxCons').hidden=true;$('#ctStop').hidden=true;
+  $('#cxCons').hidden=true;$('#ctStop').hidden=$('#ctCompact').hidden=$('#ctNew').hidden=true;$('#cTabs').classList.remove('cacts');$('.termwrap').classList.remove('hascacts');
   STICK=true;ccConsoleHistory();ccConsole();
  }
 }
@@ -5083,6 +5109,18 @@ async function cxConsAct(path,quiet){
 }
 $('#cxConsGo').addEventListener('click',()=>cxConsAct('start'));
 $('#ctStop').addEventListener('click',()=>{if(confirm(tr('cxcStopQ'))){cxAutoGo=false;cxConsAct('stop');}});
+async function cxConsCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Codex
+ if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;
+ const bs=[$('#ctCompact'),$('#ctNew'),$('#ctStop')];bs.forEach(b=>b.disabled=true);
+ try{
+  const r=await acctPost('chatgpt/console/cmd',{cmd});
+  toast(r.ok?'✅ '+r.message:'⚠ '+r.message);
+  if(cmd==='new'&&r.ok){cxConsRun=null;cxConsUi(r);$('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';await ccConsole();ccConsoleHistory();}
+ }catch(e){toast('⚠ '+e);}
+ bs.forEach(b=>b.disabled=false);
+}
+$('#ctCompact').addEventListener('click',()=>cxConsCmd('compact'));
+$('#ctNew').addEventListener('click',()=>cxConsCmd('new'));
 setTimeout(()=>{ccConsoleHistory();ccConsole();},0);setInterval(ccConsole,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
 function tone(p){return p==null?'na':p<60?'ok':p<85?'warn':'bad'}
