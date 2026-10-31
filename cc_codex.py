@@ -22,6 +22,7 @@ DELETE_WORDS = ("подтверждаю", "confirm")
 
 NOTIFY = None  # cc_limits подставляет tg_notify: сообщение в телеграм, когда вход завершён
 RUN_AS = None  # имя или функция → имя; cc_limits подставляет config.json "codex_user": codex запускается от этого пользователя ОС, а не от root
+EXTRA_ENV = lambda: {}  # cc_limits подставляет cc_codex_emergency.env_extra: переменные окружения для каждого запуска codex
 _PASS_ENV = ("PATH", "LANG", "LC_ALL", "TERM", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
              "http_proxy", "https_proxy", "all_proxy", "no_proxy")
 _lock = threading.Lock()  # состояние входов (_logins) и кэш карточек (_cache)
@@ -143,7 +144,7 @@ def runas_user():
 def wrap(argv, home, extra=None):
     """→ (argv, env) для Popen. От RUN_AS — через runuser с чистым окружением (секреты root не наследуются);
     иначе как есть: окружение панели + CODEX_HOME."""
-    extra = dict(extra or {}, CODEX_HOME=home)
+    extra = dict(dict(EXTRA_ENV() or {}, **(extra or {})), CODEX_HOME=home)
     u = runas_user()
     if not u:
         return list(argv), dict(os.environ, **extra)

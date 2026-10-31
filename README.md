@@ -212,7 +212,7 @@ Auth, нужны ли уведомления в Telegram. Дальше сам:
 
 1. поставит `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils`,
    если выбран веб-домен),
-2. скопирует `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `limits_gate.py`, `pause_ctl.py` →
+2. скопирует `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `limits_gate.py`, `pause_ctl.py` →
    `/opt/cc-limits`, `cc-switch` → `/usr/local/bin/cc-switch`,
 3. заведёт N пустых слотов-профилей в `/root/.claude-profiles/accN`,
 4. сгенерирует `config.json` со случайным `hook_token` (при повторном запуске
@@ -598,7 +598,32 @@ python3 /opt/cc-limits/pause_ctl.py on  --by "я"   # включить обра�
 - Каталог профилей аккаунтов ChatGPT задаётся ключом `"codex_profiles"` в `config.json` (раньше — только переменной окружения `CC_CODEX_PROFILES`).
 - Если не удалось записать задание в общую папку, оно не теряется: мост сообщает причину и снова ждёт «да».
 
-Тесты: `python3 -m unittest test_cc_codex_bridge test_cc_limits_codex_ui test_cc_codex_console` (поддельные codex и Bot API, сеть не нужна).
+Тесты: `python3 -m unittest test_cc_codex_bridge test_cc_limits_codex_ui test_cc_codex_console test_cc_codex_emergency` (поддельные codex и Bot API, сеть не нужна).
+
+## Аварийный режим Codex (v1.25.9)
+
+Когда Claude недоступен (лимиты, бан, сбой), Codex может на время получить **полный доступ к одному проекту**: править файлы, коммитить, перезапускать указанные сервисы. По умолчанию режима нет — он появляется в окне Codex только после настройки.
+
+Настройка — ключ `"codex_emergency"` в `config.json`:
+
+```json
+"codex_emergency": {
+  "project": "/srv/myproject",
+  "services": ["myapp", "myapp-worker"],
+  "files": ["/srv/myproject/.env"],
+  "ssh_key": "/root/.ssh/id_ed25519",
+  "hours": 24
+}
+```
+
+`project` — папка проекта; `services` — юниты systemd, которые Codex сможет перезапускать; `files` — файлы с доступами, которые ему нужны для работы (копии); `ssh_key` — ключ SSH (копия); `hours` — срок режима, 1–72 (по умолчанию 24). Нужен `codex_user` — отдельный пользователь ОС для Codex.
+
+- **Включение — только человеком.** Красная карточка «АВАРИЙНЫЙ» в окне Codex, кнопка «Включить…», в окне подтверждения нужно ввести слово `аварийный`. Из Telegram включить нельзя. Окно честно перечисляет, что откроется, и предупреждает: всё, что Codex читает, уходит на серверы OpenAI.
+- **Что открывается.** Проект подключается в домашнюю папку пользователя Codex и выдаётся ему на запись; узкое правило sudo — только `systemctl restart` для перечисленных юнитов (файл в `/etc/sudoers.d`, проверяется `visudo`); копии перечисленных файлов и ключа; мост и консоль переключаются на «самостоятельно + полный доступ» в этом проекте (прежние настройки запоминаются, на время режима заморожены). Оговорка: если юниты запускаются от root, перезапуск их кодом тоже идёт с правами root — Codex может подменить код сервиса. Перечисляй только то, что готов отдать.
+- **Выключение.** Кнопкой «Выключить сейчас», командой `/emergency_off` в боте или само по сроку. Настройки возвращаются, процессы Codex в проекте останавливаются, снимаются sudo, ACL, копии (затираются) и bind-mount; файлы, созданные Codex, возвращаются прежнему владельцу. Состояние лежит в файле, поэтому перезапуск панели или сервера режим не продлевает и не забывает.
+- **Сигналы.** Красная карточка и красный значок в шапке, пуш в Telegram при включении, за час до конца и при выключении, журнал `codex_emergency.log` (последние строки видны в карточке). Коммиты Codex в проекте идут от имени «Codex».
+
+Тесты: `python3 -m unittest test_cc_codex_emergency` (боевых mount, sudo и systemctl нет — всё подменено).
 
 ## Управление
 
@@ -687,7 +712,7 @@ sudo ./install.sh          # ответы можно оставить прежн
 `config.json` сохраняются, профили аккаунтов не трогаются. Обновятся файлы в
 `/opt/cc-limits`, systemd-unit, cron-будильник и nginx-конфиг (если выбирал
 nginx). Если ставить установщик повторно не хочется — достаточно скопировать
-`cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py`,
+`cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py`,
 `hooks/queue_on_limits.py` и `hooks/pause_tool_gate.py` в `/opt/cc-limits`, положить cron-строку из
 `install.sh` и перезапустить сервис.
 
@@ -750,6 +775,11 @@ nginx). Если ставить установщик повторно не хо�
 
 ## История версий
 
+- **v1.25.9** — Codex: аварийный режим — полный доступ к одному проекту на время (до 72 ч, по умолчанию 24),
+  когда Claude недоступен. Включается только кнопкой в панели вводом слова «аварийный»; узкое sudo
+  на перезапуск перечисленных сервисов, копии доступов и ключа SSH; выключение кнопкой, командой
+  `/emergency_off` или по сроку возвращает всё как было; красная карточка, пуши и журнал. Без настройки
+  `codex_emergency` режима нет.
 - **v1.25.8** — Codex: «Второй ИИ» переименован в Codex; пять готовых профилей заменены двумя карточками —
   «ОРКЕСТРАТОР (Codex ➜ Claude)» и «Codex (нативный ИИ)» — со стрелками потока, цветными чипами главных
   функций и новыми пояснениями; профиль «Выключен» заменён переключателем «Бот в Telegram»

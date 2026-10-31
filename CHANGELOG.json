@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.9", "date": "2026-10-31",
+     "ru": {"t": "Codex: аварийный режим — полный доступ к проекту на время", "p": ["Когда Claude недоступен, Codex на срок (по умолчанию 24 ч) получает проект на запись и перезапуск сервисов", "Включается только кнопкой вводом слова «аварийный»; выключение — кнопкой, /emergency_off или по сроку", "Красная карточка, пуши и журнал; без настройки codex_emergency режима нет"]},
+     "en": {"t": "Codex: emergency mode — full project access for a while", "p": ["When Claude is unavailable, Codex gets write access to the project and service restarts for a set time (24 h by default)", "Enabled only with the button by typing the word \"emergency\"; off by button, /emergency_off or the deadline", "A red card, pushes and a journal; without the codex_emergency setting there is no mode"]}},
     {"v": "1.25.8", "date": "2026-10-31",
      "ru": {"t": "Codex: два профиля со стрелками и бот одним переключателем", "p": ["«Второй ИИ» стал Codex; два профиля — «ОРКЕСТРАТОР (Codex ➜ Claude)» и «Codex (нативный ИИ)» со стрелками и цветом", "Профиль «Выключен» заменён переключателем «Бот в Telegram»; пуши лимитов идут и при выключенном боте", "В форме моста «Проект» (Codex его только читает) отдельно от рабочей папки Codex"]},
      "en": {"t": "Codex: two profiles with arrows and a bot switch", "p": ["\"Second AI\" is now Codex; two profiles — \"ORCHESTRATOR (Codex ➜ Claude)\" and \"Codex (native AI)\" with arrows", "The \"Off\" profile is now a \"Telegram bot\" switch; limit pushes still arrive with the bot off", "In the bridge form \"Project\" (read-only for Codex) is separate from Codex's working folder"]}},

@@ -381,6 +381,119 @@ const pick=c=>({name:c.name,eff:c.eff,ef:c.ef,known:c.known});
 """
 
 
+EMG_JS = """
+const LISTS={cxeRoute:2,cxeF:4,cxeFlow:5};
+const tr=(k,...a)=>LISTS[k]?Array.from({length:LISTS[k]},(_,i)=>k+i):a.length?k+'('+a.join(',')+')':k;
+const acctEsc=s=>String(s==null?'':s);
+const CXP_INFO=new Set();
+const cxClock=iso=>'CLK';
+const posts=[],shown=[],toasts=[];
+let confirmAnswer=true,cxbData={emergency:null},loads=0;
+const confirm=()=>confirmAnswer;
+const els={};
+const $=s=>els[s]||(els[s]={value:'',disabled:false,addEventListener(){},focus(){}});
+async function acctPost(p,b){posts.push([p,b]);return{ok:true,message:'ok'};}
+const acctShow=h=>shown.push(h);
+const acctClose=()=>{};
+const cxMenuClose=()=>{};
+const toast=t=>toasts.push(t);
+async function cxbLoad(){loads++;}
+%s
+%s
+(async()=>{
+ const o={};
+ const cfg={configured:true,active:false,hours:24,services:['svc-a.service','svc-b.service'],files:2,ssh:true,word:'аварийный',journal:[],last:null};
+ o.hiddenWhenNone=cxeHtml(null)+'|'+cxeHtml({configured:false,active:false});
+ o.idle=cxeHtml(cfg);
+ o.idleBad=cxeHtml(Object.assign({},cfg,{last:{problems:['ACL','владельцы']}}));
+ o.on=cxeHtml(Object.assign({},cfg,{active:true,until:2000,now:1000,journal:['a','b']}));
+ o.activeEvenIfNotConfigured=cxeHtml({configured:false,active:true,until:2000,now:1000,services:[],files:0,ssh:false});
+ cxbData={emergency:cfg};
+ cxeOn();
+ o.dialog=shown[0];
+ o.dialogNoSvc=(()=>{shown.length=0;cxbData={emergency:Object.assign({},cfg,{services:[],files:0,ssh:false})};cxeOn();return shown[0];})();
+ cxbData={emergency:Object.assign({},cfg,{active:true})};
+ const n=shown.length;cxeOn();o.noDialogWhenActive=shown.length===n;
+ cxbData={emergency:cfg};
+ await cxeOff();
+ confirmAnswer=false;await cxeOff();
+ o.posts=posts;o.loads=loads;
+ console.log(JSON.stringify(o));
+})();
+"""
+
+
+@unittest.skipUnless(__import__("shutil").which("node"), "нет node")
+class Emergency(unittest.TestCase):
+    """Красная карточка «Аварийный»: скрыта без настройки, включается только через окно со словом, выключается кнопкой."""
+
+    @classmethod
+    def setUpClass(cls):
+        i = L.PAGE.index("const CXP_ARR=")
+        j = L.PAGE.index("function cxpNameHtml(")
+        k = L.PAGE.index("function cxeLeftTxt(")
+        k2 = L.PAGE.index("function cxpRender(){")
+        path = os.path.join(TMP, "emg.js")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(EMG_JS % (L.PAGE[i:j], L.PAGE[k:k2]))
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+        cls.o = json.loads(r.stdout)
+
+    def test_hidden_until_configured(self):
+        self.assertEqual(self.o["hiddenWhenNone"], "|")
+        self.assertIn('id="cxEmg"', self.o["activeEvenIfNotConfigured"])   # включённый режим видно всегда, даже если настройку убрали
+
+    def test_idle_card_has_only_turn_on_button(self):
+        h = self.o["idle"]
+        self.assertIn('data-emg="on"', h)
+        self.assertNotIn('data-emg="off"', h)
+        self.assertNotIn("cxemg on", h)
+        self.assertIn("cxeS(24)", h)
+        self.assertEqual(h.count("<i>"), 4)               # четыре цветные функции
+        self.assertEqual(self.o["idleBad"].count("cxeLastBad"), 1)
+        self.assertIn("ACL; владельцы", self.o["idleBad"])
+
+    def test_active_card_is_red_with_time_and_off_button(self):
+        h = self.o["on"]
+        self.assertIn('class="cxemg on"', h)
+        self.assertIn('data-emg="off"', h)
+        self.assertNotIn('data-emg="on"', h)
+        self.assertIn("cxeUntil(CLK,", h)
+        self.assertIn("cxeStat(2,2,true)", h)
+        self.assertIn('class="cxemj"', h)
+
+    def test_confirm_dialog_lists_what_opens_and_asks_for_word(self):
+        d = self.o["dialog"]
+        for k in ("cxeConfProj", "cxeConfSvc(svc-a.service, svc-b.service)", "cxeConfFiles", "cxeConfRoot", "cxeConfEnd(24)", "cxeConfWord(аварийный)"):
+            self.assertIn(k, d)
+        self.assertIn('id="cxeWord"', d)
+        self.assertIn('id="cxeGo"', d)
+        # без сервисов и файлов в списке нет лишних пунктов (про root и доступы молчим, когда их нет)
+        n = self.o["dialogNoSvc"]
+        self.assertNotIn("cxeConfSvc", n)
+        self.assertNotIn("cxeConfRoot", n)
+        self.assertNotIn("cxeConfFiles", n)
+        self.assertTrue(self.o["noDialogWhenActive"])
+
+    def test_off_asks_first_and_posts_only_on_yes(self):
+        self.assertEqual(self.o["posts"], [["chatgpt/emergency/off", {}]])   # «нет» в подтверждении запроса не шлёт
+        self.assertEqual(self.o["loads"], 1)
+
+    def test_click_routes_and_no_word_in_page_state(self):
+        self.assertIn("em.dataset.emg==='on'?cxeOn():cxeOff()", L.PAGE)
+        self.assertEqual(L.PAGE.count("'chatgpt/emergency/on'"), 1)
+        self.assertEqual(L.PAGE.count("'chatgpt/emergency/off'"), 1)
+        self.assertIn("${cxeHtml(cxbData.emergency)}", L.PAGE)
+
+    def test_server_routes_exist(self):
+        with open(L.__file__, encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn('action == "emergency/on"', src)
+        self.assertIn('action == "emergency/off"', src)
+        self.assertIn('"emergency": cc_codex_emergency.public()', src)
+
+
 @unittest.skipUnless(__import__("shutil").which("node"), "нет node")
 class QuickSwitch(unittest.TestCase):
     @classmethod

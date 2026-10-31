@@ -21,6 +21,7 @@ RESERVED_TOKENS = lambda: []  # токены, которые мосту брат
 NOW = time.time  # в тестах подменяется
 ENTER_DELAY = 0.6  # пауза между текстом и Enter при печати в консоль Claude
 CONSOLE = None  # cc_limits подставляет cc_codex_console: разговор идёт в консоли Codex; None — отдельный `codex exec`
+EMERGENCY = None  # cc_limits подставляет cc_codex_emergency: пока аварийный режим включён, права и папка заморожены
 TG_API = "https://api.telegram.org"  # на стенде — локальная заглушка Bot API
 TG_TIMEOUT = 10  # длинный опрос getUpdates, секунд
 RUN_TIMEOUT = 20 * 60  # один запуск codex
@@ -235,6 +236,10 @@ def save(body, lang="ru"):
             proj, err = check_workdir(proj.strip())
             if err:
                 return False, _t(lang, "Проект: " + err, "Project: " + err)
+        if EMERGENCY is not None and EMERGENCY.active() and \
+                (mode, access, rights, slot, wd, proj) != (s["mode"], s["access"], s["task_rights"], s["slot"], s["workdir"], s["project"]):
+            return False, _t(lang, "Включён аварийный режим: права и папка заморожены. Сначала выключи его.",
+                             "Emergency mode is on: access and folder are frozen. Turn it off first.")
         # полный доступ Codex и полные права заданий включаются только словом-подтверждением
         raises_full = (mode == "self" and access == "full" and old_eff != ("self", "full")) or \
                       (rights == "full" and s["task_rights"] != "full")
@@ -819,6 +824,11 @@ class Bridge:
 
     def handle_text(self, text):
         low = text.lower()
+        if low == "/emergency_off":  # снять права можно и из телеграма; включить — только кнопкой в панели
+            if EMERGENCY is None or not EMERGENCY.active():
+                return self.send("Аварийный режим не включён.")
+            ok, msg = EMERGENCY.off("команда из телеграма")
+            return self.send(msg)
         if low in ("/start", "/help"):
             return self.send("Пишу в Codex. Команды: /new — начать разговор заново, /stop — прервать текущий запуск, "
                              "/status — режим и доступ. Задание Claude: «да» / «нет» после того, как я его покажу. «Стоп» — снять всё.")
@@ -845,7 +855,8 @@ class Bridge:
             s = load()
             sb, cwd = plan(s)
             mode = {"mediator": "Посредник", "orchestrator": "Оркестратор"}.get(s["mode"], "Самостоятельно")
-            return self.send(f"Режим: {mode}\nПесочница: {sb}\nПапка: {cwd}\nПрава заданий Claude (потолок): "
+            emg = EMERGENCY.status_line() if EMERGENCY is not None else ""
+            return self.send((emg + "\n" if emg else "") + f"Режим: {mode}\nПесочница: {sb}\nПапка: {cwd}\nПрава заданий Claude (потолок): "
                              f"{RIGHTS_RU[s['task_rights']]}")
         r = _RETRY.match(text)
         if r:

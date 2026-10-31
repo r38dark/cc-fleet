@@ -9,12 +9,13 @@ import cc_avail
 import cc_codex
 import cc_codex_bridge
 import cc_codex_console
+import cc_codex_emergency
 import cc_lock
 import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.8"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.9"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -132,6 +133,12 @@ cc_codex_console.BIN = codex_bin
 cc_codex_console.PLAN = _codex_console_plan
 cc_codex_console.pyte = pyte
 cc_codex_bridge.CONSOLE = cc_codex_console  # мост ведёт разговор в консоли Codex, а не отдельным запуском
+# аварийный режим Codex: полный доступ к проекту на время, когда Claude недоступен (config.json → "codex_emergency")
+cc_codex_emergency.BASE = BASE
+cc_codex_emergency.CONFIG = lambda: cfg().get("codex_emergency") or {}
+cc_codex_emergency.NOTIFY = tg_notify
+cc_codex.EXTRA_ENV = cc_codex_emergency.env_extra
+cc_codex_bridge.EMERGENCY = cc_codex_emergency
 
 
 # автообновление из GitHub Releases (cc_update.py): проверка раз в 6 часов, ручной/авто режим
@@ -2671,7 +2678,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(403, {"error": "forbidden"})
             if not codex_bin():
                 return self._send(200, {"ok": True, "available": False})
-            return self._send(200, {"ok": True, "available": True, "bridge": cc_codex_bridge.public()})
+            return self._send(200, {"ok": True, "available": True, "bridge": cc_codex_bridge.public(),
+                                    "emergency": cc_codex_emergency.public()})
         if u.path == "/api/chatgpt":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -2739,6 +2747,12 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, {"ok": ok, "message": message})
         if action == "bridge/profile/delete":
             ok, message = cc_codex_bridge.delete_profile(body.get("id", ""), lang=lang)
+            return self._send(200, {"ok": ok, "message": message})
+        if action == "emergency/on":
+            ok, message = cc_codex_emergency.on(body.get("word", ""), lang=lang)
+            return self._send(200, {"ok": ok, "message": message})
+        if action == "emergency/off":
+            ok, message = cc_codex_emergency.off("кнопка в панели", lang=lang)
             return self._send(200, {"ok": ok, "message": message})
         return self._send(404, {"error": "not found"})
 
@@ -3888,6 +3902,30 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxpinfo .cxpwhen{margin-top:8px;padding-top:6px;border-top:1px dashed #2a3140}
 .cxpnew{display:block;width:100%;margin:10px 0 0;padding:8px 10px;background:transparent;border:1px dashed #2a3140;color:var(--mut);font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;text-align:center}
 .cxpnew:hover{color:var(--acc);border-color:var(--acc)}
+/* аварийный режим: красная карточка под профилями */
+.cxw.rd{color:var(--bad);background:rgba(224,91,91,.12);border-color:rgba(224,91,91,.5)}
+.cxemg{display:flex;align-items:flex-start;gap:10px;position:relative;overflow:hidden;margin:8px 0 0;padding:10px 12px 10px 15px;border:1px solid rgba(224,91,91,.5);border-radius:12px;background:rgba(224,91,91,.07)}
+.cxemg::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--bad),#f0905f)}
+.cxemg.on{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad);background:rgba(224,91,91,.15)}
+.cxemg .cxemm{flex:1;min-width:0;display:block}
+.cxemg .cxen{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.cxemg .cxen .cxpnm{color:var(--bad)}
+.cxemg .cxes{display:block;font-size:12px;color:var(--mut);line-height:1.4;margin-top:2px;font-weight:400}
+.cxemg .cxpf{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.cxemg .cxpi{flex:none;margin:-5px -4px 0 0;padding:4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:var(--mut);border-radius:8px;cursor:pointer}
+.cxemg .cxpi svg{width:17px;height:17px}
+.cxemg .cxpi:hover,.cxemg .cxpi.on{color:var(--bad)}
+.cxemg .cxpinfo{background:rgba(224,91,91,.08)}
+.cxemg .cxembtn{display:block;margin:10px 0 0;padding:7px 14px;font-size:13px;font-weight:700;border-radius:10px;cursor:pointer;background:transparent;color:var(--bad);border:1px solid var(--bad)}
+.cxemg .cxembtn:hover{background:rgba(224,91,91,.14)}
+.cxemg .cxembtn.off{background:var(--bad);color:#fff}
+.cxemg .cxemtime{margin-top:4px;font-size:13px;font-weight:700;color:var(--bad)}
+.cxemg .cxemj{margin-top:8px;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.18);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);white-space:pre-wrap;word-break:break-word}
+.cxdot.emg{background:var(--bad);animation:cxpulse 1.1s ease-in-out infinite}
+#cxBtn.emg{border-color:var(--bad)}
+.cxeul{margin:0 0 12px;padding-left:18px;font-size:13px;line-height:1.5}
+.cxeul li{margin:2px 0}
+#cxeGo{background:var(--bad);color:#fff;border-color:var(--bad)}
 /* сборка своего профиля */
 .cxog{margin-top:12px}
 .cxogl{font-size:12px;font-weight:700;color:var(--mut);margin-bottom:6px}
@@ -3977,6 +4015,9 @@ html[data-skin="blocks"] .cxprof,html[data-skin="blocks"] .cxacch,html[data-skin
 html[data-skin="blocks"] .cxprof,html[data-skin="blocks"] .cxqm,html[data-skin="blocks"] .cxqe{border:2px solid var(--bk);border-radius:0}
 html[data-skin="blocks"] .cxprof.act{background:var(--bl);box-shadow:3px 3px 0 var(--bk)}
 html[data-skin="phosphor"] .cxprof{border-radius:0;border-color:var(--phl)}
+html[data-skin="phosphor"] .cxemg,html[data-skin="phosphor"] .cxemg .cxembtn{border-radius:0}
+html[data-skin="blocks"] .cxemg{border:2px solid var(--bk);border-radius:0;color:var(--bk);background:#ffd6d6}
+html[data-skin="blocks"] .cxw.rd{background:#ffb3b3}
 html[data-skin="phosphor"] .cxw,html[data-skin="phosphor"] .cxpf>span,html[data-skin="phosphor"] .cxbot,html[data-skin="phosphor"] .cxsw{border-radius:0}
 html[data-skin="blocks"] .cxw,html[data-skin="blocks"] .cxpf>span{color:var(--bk);border:2px solid var(--bk);border-radius:0}
 html[data-skin="blocks"] .cxw.cx,html[data-skin="blocks"] .cxpf .g{background:#7ff0d6}
@@ -4350,6 +4391,33 @@ const I18N={
   cxpWhenLbl:'Когда выбрать:',
   cxpWhen_orchestrator:'Большая цель в несколько шагов: Codex планирует и проверяет, Claude делает.',
   cxpWhen_codex:'Нужен отдельный помощник: разобрать код, подготовить текст или скрипт, дать второе мнение — пока Claude занят своим.',
+  cxeN:'Аварийный',
+  cxeHdr:'🆘 Аварийный',
+  cxeRoute:['Codex','Полный доступ к проекту'],
+  cxeS:h=>'Когда Claude недоступен: Codex сам чинит проект — правит файлы, коммитит, перезапускает сервисы. Включается только вводом слова, выключается кнопкой или само через '+h+' ч.',
+  cxeF:['Пишет в проект','Перезапускает сервисы','Само выключится по сроку','Снять — кнопкой или /emergency_off'],
+  cxeFlow:['Ты','Слово «аварийный»','Codex: полный доступ','Срок или «Выключить»','Доступы сняты'],
+  cxeCan:'Править и создавать файлы проекта, коммитить, запускать скрипты, перезапускать выбранные сервисы, читать файлы с доступами и ключ SSH для другого сервера.',
+  cxeNot:'Работать после срока и получить больше, чем показано при включении. Перезапуск сервисов запускает код проекта от root — по сути это полный доступ к серверу. Всё, что Codex читает, уходит на серверы OpenAI.',
+  cxeWhen:'Claude недоступен (лимиты, блокировка, сбой), а чинить нужно сейчас.',
+  cxeBtn:'Включить…',
+  cxeOnT:'АВАРИЙНЫЙ режим ВКЛЮЧЁН',
+  cxeUntil:(t,l)=>'до '+t+' · осталось '+l,
+  cxeStat:(n,f,k)=>'Перезапуск сервисов: '+n+' · файлов с доступами: '+f+(k?' · ключ SSH':''),
+  cxeOffBtn:'Выключить сейчас',
+  cxeOffAsk:'Выключить аварийный режим? Codex потеряет полный доступ, незавершённая работа остановится.',
+  cxeConfTitle:'Включить аварийный режим?',
+  cxeConfIntro:'Codex получит ПОЛНЫЙ доступ к проекту. Всё, что он прочитает, уходит на серверы OpenAI.',
+  cxeConfProj:'Проект открывается Codex на запись, пока режим включён.',
+  cxeConfSvc:l=>'Сможет перезапускать сервисы: '+l+'.',
+  cxeConfFiles:'Получит копии файлов с доступами и ключ SSH для другого сервера.',
+  cxeConfRoot:'Перезапуск сервисов запускает код проекта от root — это фактически доступ ко всему серверу.',
+  cxeConfEnd:h=>'Само выключится через '+h+' ч, все доступы снимутся.',
+  cxeConfWord:w=>'Чтобы включить, введи слово «'+w+'».',
+  cxeGo:'Включить',
+  cxeLog:'Журнал',
+  cxeLastBad:'⚠ В прошлый раз не всё снялось: ',
+  cxeOnToast:'Аварийный режим включён',
   cxoRtLbl:'Права заданий Claude',
   cxoMode_mediator:'Codex сам проект не меняет: оформляет задание для Claude, а ты подтверждаешь «да» или «нет».',
   cxoMode_orchestrator:'Codex ведёт задачу к цели, Claude исполняет по шагу. Каждый следующий шаг — только после твоего «да», «стоп» останавливает.',
@@ -4727,6 +4795,33 @@ const I18N={
   cxpWhenLbl:'When to pick it:',
   cxpWhen_orchestrator:'A big goal in several steps: Codex plans and checks, Claude does.',
   cxpWhen_codex:'You need a separate helper: go through code, prepare a text or script, give a second opinion — while Claude is busy.',
+  cxeN:'Emergency',
+  cxeHdr:'🆘 Emergency',
+  cxeRoute:['Codex','Full access to the project'],
+  cxeS:h=>'When Claude is unavailable: Codex fixes the project itself — edits files, commits, restarts services. Turns on only by typing a word, turns off with a button or on its own after '+h+' h.',
+  cxeF:['Writes to the project','Restarts services','Turns off by itself','Cancel — button or /emergency_off'],
+  cxeFlow:['You','The word "emergency"','Codex: full access','Time up or "Turn off"','Access removed'],
+  cxeCan:'Edit and create project files, commit, run scripts, restart the listed services, read the files with credentials and the SSH key for another server.',
+  cxeNot:'Work after the deadline or get more than shown when turning it on. Restarting services runs project code as root — effectively full access to the server. Everything Codex reads goes to OpenAI servers.',
+  cxeWhen:'Claude is unavailable (limits, a ban, an outage) and the fix cannot wait.',
+  cxeBtn:'Turn on…',
+  cxeOnT:'EMERGENCY mode is ON',
+  cxeUntil:(t,l)=>'until '+t+' · '+l+' left',
+  cxeStat:(n,f,k)=>'Service restarts: '+n+' · credential files: '+f+(k?' · SSH key':''),
+  cxeOffBtn:'Turn off now',
+  cxeOffAsk:'Turn off emergency mode? Codex loses full access and unfinished work stops.',
+  cxeConfTitle:'Turn on emergency mode?',
+  cxeConfIntro:'Codex gets FULL access to the project. Everything it reads goes to OpenAI servers.',
+  cxeConfProj:'The project is opened to Codex for writing while the mode is on.',
+  cxeConfSvc:l=>'It will be able to restart services: '+l+'.',
+  cxeConfFiles:'It gets copies of the credential files and an SSH key for another server.',
+  cxeConfRoot:'Restarting services runs project code as root — effectively access to the whole server.',
+  cxeConfEnd:h=>'Turns off by itself after '+h+' h, all access is removed.',
+  cxeConfWord:w=>'To turn it on, type the word "'+w+'".',
+  cxeGo:'Turn on',
+  cxeLog:'Log',
+  cxeLastBad:'⚠ Last time not everything was removed: ',
+  cxeOnToast:'Emergency mode is on',
   cxoRtLbl:'Rights for Claude tasks',
   cxoMode_mediator:'Codex never changes the project itself: it drafts a task for Claude and you confirm "yes" or "no".',
   cxoMode_orchestrator:'Codex drives the goal, Claude executes step by step. Each next step only after your "yes"; "stop" halts it.',
@@ -5652,8 +5747,11 @@ function cxHdr(){
  const b=cxbData&&cxbData.bridge,cur=cxpCur();
  let cls='';
  if(b){if(b.last_error)cls='err';else if(b.running)cls=b.busy?'busy':'on';}
+ const emg=!!(cxbData&&cxbData.emergency&&cxbData.emergency.active);
+ if(emg)cls='emg';
+ btn.classList.toggle('emg',emg);
  $('#cxDot').className='cxdot '+cls;
- const name=cur?cxpName(cur):(b&&b.enabled?tr('cxpManualShort'):'');
+ const name=emg?tr('cxeHdr'):cur?cxpName(cur):(b&&b.enabled?tr('cxpManualShort'):'');
  $('#cxBtnName').textContent=name;
  const st=b?(b.last_error?'⚠ '+b.last_error:b.running?tr('cxbRunning'):tr('cxbOff')):'';
  const la=cxLimAcc(),lim=$('#cxLim');
@@ -5732,6 +5830,73 @@ function cxAccSummary(){
   return a.login_required?nm+': !':nm+(a.lapsed?' ⛔ Free':'')+' '+tr('cxS5')+' '+f(w5)+' · '+tr('cxS7')+' '+f(w7);
  }).join(' | ');
 }
+// ---- аварийный режим: красная карточка под профилями; включение — только словом, выключение — кнопкой ----
+function cxeLeftTxt(e){
+ const m=Math.max(0,Math.round((e.until-e.now)/60)),h=Math.floor(m/60);
+ return h?tr('cxHM',h,m%60):tr('cxMin',m);
+}
+function cxeInfoHtml(e){
+ const kv=(c,k,v)=>`<span class="cxpirow"><span class="cxpik ${c}">${acctEsc(k)}</span> ${acctEsc(v)}</span>`;
+ const m={fl:['me','rd','rd','cl','ok']};
+ return`<span class="cxpinfo"><span class="cxpirow"><span class="cxpik">${acctEsc(tr('cxpFlowLbl'))}:</span><span class="cxflow">${cxpSeq(tr('cxeFlow').map((t,i)=>cxpChip(m.fl[i],t)))}</span></span>`
+  +kv('can',tr('cxpCanL'),tr('cxeCan'))+kv('not',tr('cxpNotL'),tr('cxeNot'))
+  +`<span class="cxpwhen"><b>${tr('cxpWhenLbl')}</b> ${acctEsc(tr('cxeWhen'))}</span></span>`;
+}
+function cxeHtml(e){
+ if(!e||!(e.configured||e.active))return'';
+ const open=CXP_INFO.has('emergency'),on=!!e.active;
+ const rc=['cx','rd'],fc=['r','o','b','g'],fi=['🔓','🔁','⏱','🛑'];
+ const infoBtn=`<button type="button" class="cxpi${open?' on':''}" data-info="emergency" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r=".7" fill="currentColor"/></svg></button>`;
+ const name=`<span class="cxen"><span class="cxpnm caps">${on?acctEsc(tr('cxeOnT')):'🆘 '+acctEsc(tr('cxeN'))}</span>${on?'':`<span class="cxroute">${cxpSeq(tr('cxeRoute').map((t,i)=>cxpChip(rc[i],t)))}</span>`}</span>`;
+ let body;
+ if(on){
+  const jr=(e.journal||[]).slice(-6).join('\n');
+  body=`<span class="cxemtime">${acctEsc(tr('cxeUntil',cxClock(new Date(e.until*1000).toISOString()),cxeLeftTxt(e)))}</span>
+   <span class="cxes">${acctEsc(tr('cxeStat',(e.services||[]).length,e.files||0,e.ssh))}</span>
+   <button type="button" class="cxembtn off" data-emg="off">${acctEsc(tr('cxeOffBtn'))}</button>
+   ${jr?`<div class="cxemj" title="${acctEsc(tr('cxeLog'))}">${acctEsc(jr)}</div>`:''}`;
+ }else{
+  const bad=e.last&&e.last.problems&&e.last.problems.length?`<span class="cxbwarn">${acctEsc(tr('cxeLastBad')+e.last.problems.join('; '))}</span>`:'';
+  body=`<span class="cxes">${acctEsc(tr('cxeS',e.hours))}</span>
+   <span class="cxpf">${tr('cxeF').map((t,i)=>`<span class="${fc[i]}"><i>${fi[i]}</i>${acctEsc(t)}</span>`).join('')}</span>
+   ${bad}<button type="button" class="cxembtn" data-emg="on">${acctEsc(tr('cxeBtn'))}</button>`;
+ }
+ return`<div class="cxemg${on?' on':''}" id="cxEmg"><span class="cxemm">${name}${body}${open?cxeInfoHtml(e):''}</span>${infoBtn}</div>`;
+}
+function cxeOn(){
+ const e=cxbData&&cxbData.emergency;if(!e||!e.configured||e.active)return;
+ const li=[tr('cxeConfProj')];
+ if((e.services||[]).length)li.push(tr('cxeConfSvc',e.services.join(', ')));
+ if(e.files||e.ssh)li.push(tr('cxeConfFiles'));
+ if((e.services||[]).length)li.push(tr('cxeConfRoot'));
+ li.push(tr('cxeConfEnd',e.hours));
+ cxMenuClose();
+ acctShow(`<h3>${tr('cxeConfTitle')}</h3>
+  <div class="modalsub">${tr('cxeConfIntro')}</div>
+  <ul class="cxeul">${li.map(t=>`<li>${acctEsc(t)}</li>`).join('')}</ul>
+  <div class="modalsub">${acctEsc(tr('cxeConfWord',e.word))}</div>
+  <input id="cxeWord" class="dlginp" autocomplete="off" spellcheck="false">
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button id="cxeGo">${tr('cxeGo')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ const inp=$('#cxeWord'),go=$('#cxeGo');
+ inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')go.click();});
+ go.onclick=async()=>{
+  const w=inp.value.trim();go.disabled=true;
+  try{
+   const r=await acctPost('chatgpt/emergency/on',{word:w});
+   toast(r.ok?tr('cxeOnToast'):'⚠ '+r.message);
+   if(r.ok)acctClose();else go.disabled=false;
+  }catch(err){toast('⚠ '+err);go.disabled=false;}
+  await cxbLoad(true);
+ };
+ setTimeout(()=>inp.focus(),30);
+}
+async function cxeOff(){
+ if(!confirm(tr('cxeOffAsk')))return;
+ try{const r=await acctPost('chatgpt/emergency/off',{});toast(r.ok?r.message:'⚠ '+r.message);}
+ catch(err){toast('⚠ '+err);}
+ await cxbLoad(true);
+}
 function cxpRender(){
  const el=$('#cxp'),b=cxbData&&cxbData.bridge;
  if(!el)return;
@@ -5745,6 +5910,7 @@ function cxpRender(){
  }).join('');
  el.innerHTML=`${cxpBotHtml(b)}<div class="cxhead"><h2>${tr('cxpTitle')}</h2><span class="cxsub">${tr('cxpHint')}</span></div>
   <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}</div>
+  ${cxeHtml(cxbData.emergency)}
   ${!b.profile&&b.enabled?`<div class="cxpmanual">${tr('cxpManual')}</div>`:''}
   <button type="button" class="cxpnew" id="cxpNewBtn">${tr('cxpNew')}</button>`;
 }
@@ -5956,6 +6122,9 @@ $('#cxp').addEventListener('click',e=>{
  if(e.target.closest('.cxpinfo'))return;
  if(e.target.closest('[data-bot]')){e.stopPropagation();cxpBotToggle();return;}
  if(e.target.closest('.cxbot'))return;
+ const em=e.target.closest('[data-emg]');
+ if(em){e.stopPropagation();em.dataset.emg==='on'?cxeOn():cxeOff();return;}
+ if(e.target.closest('.cxemg'))return;
  if(e.target.closest('#cxpNewBtn')){cxpGoCompose();return;}
  const r=e.target.closest('.cxprof');if(r){cxMenuClose();cxpApply(r.dataset.id);}
 });
@@ -6467,6 +6636,7 @@ if __name__ == "__main__":
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
+    cc_codex_emergency.start()  # аварийный режим: после перезапуска довести до рабочего состояния или снять, запустить сторож срока
     cc_codex_bridge.BRIDGE.sync()  # мост Telegram ↔ Codex: поднимется, только если включён в карточке
     port = cfg().get("port", 8877)
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)

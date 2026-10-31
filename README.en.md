@@ -224,7 +224,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -625,7 +625,32 @@ When Codex is installed, a `>_` icon with the name of the selected profile appea
 - The ChatGPT profiles folder is set by the `"codex_profiles"` key in `config.json` (it used to be the `CC_CODEX_PROFILES` environment variable only).
 - If a task cannot be written to the shared folder, it is not lost: the bridge reports the reason and waits for "yes" again.
 
-Tests: `python3 -m unittest test_cc_codex_bridge test_cc_limits_codex_ui test_cc_codex_console` (fake codex and Bot API, no network needed).
+Tests: `python3 -m unittest test_cc_codex_bridge test_cc_limits_codex_ui test_cc_codex_console test_cc_codex_emergency` (fake codex and Bot API, no network needed).
+
+## Codex emergency mode (v1.25.9)
+
+When Claude is unavailable (limits, a ban, an outage), Codex can get **full access to one project** for a while: edit files, commit, restart the listed services. The mode does not exist by default — it appears in the Codex window only after you configure it.
+
+Configure it with the `"codex_emergency"` key in `config.json`:
+
+```json
+"codex_emergency": {
+  "project": "/srv/myproject",
+  "services": ["myapp", "myapp-worker"],
+  "files": ["/srv/myproject/.env"],
+  "ssh_key": "/root/.ssh/id_ed25519",
+  "hours": 24
+}
+```
+
+`project` is the project folder; `services` are the systemd units Codex may restart; `files` are credential files it needs (copies); `ssh_key` is an SSH key (a copy); `hours` is the duration, 1–72 (24 by default). A `codex_user` — a separate OS user for Codex — is required.
+
+- **Only a human turns it on.** A red "EMERGENCY" card in the Codex window, an "Enable…" button, and the confirmation window asks you to type the word `emergency`. It cannot be enabled from Telegram. The window lists exactly what opens up and warns that everything Codex reads goes to OpenAI servers.
+- **What opens up.** The project is bind-mounted into the Codex user's home and made writable for it; a narrow sudo rule — only `systemctl restart` for the listed units (a file in `/etc/sudoers.d`, checked with `visudo`); copies of the listed files and the key; the bridge and the console switch to "on its own + full access" in that project (the previous settings are remembered and frozen while the mode lasts). Caveat: if the units run as root, restarting them runs their code as root, so Codex can replace the service's code. List only what you are ready to hand over.
+- **Switching off.** The "Turn off now" button, the `/emergency_off` command in the bot, or automatically at the deadline. Settings are restored, Codex processes in the project are stopped, and sudo, ACL, copies (wiped) and the bind mount are removed; files Codex created go back to their previous owner. The state lives in a file, so restarting the panel or the server neither extends nor forgets the mode.
+- **Signals.** A red card and a red badge in the header, a Telegram push on enable, an hour before the end and on disable, and a `codex_emergency.log` journal (the last lines are shown in the card). Git commits are authored as "Codex".
+
+Tests: `python3 -m unittest test_cc_codex_emergency` (no real mount, sudo or systemctl — all stubbed).
 
 ## Management
 
@@ -717,7 +742,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -783,6 +808,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.9** — Codex: emergency mode — full access to one project for a limited time (up to 72 h, 24 by
+  default) when Claude is unavailable. Enabled only with a button in the panel by typing the word
+  "emergency"; a narrow sudo for restarting the listed services, copies of credentials and the SSH key;
+  switching off (button, `/emergency_off` or the deadline) restores everything; a red card, pushes and a
+  journal. Without the `codex_emergency` setting there is no mode.
 - **v1.25.8** — Codex: "Second AI" renamed to Codex; the five built-in profiles are replaced by two cards —
   "ORCHESTRATOR (Codex ➜ Claude)" and "Codex (native AI)" — with flow arrows, coloured chips for the
   main functions and new explanations; the "Off" profile is replaced by a "Telegram bot" switch
