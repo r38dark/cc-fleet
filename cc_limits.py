@@ -15,7 +15,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.9"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.10"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4394,15 +4394,16 @@ const I18N={
   cxeN:'Аварийный',
   cxeHdr:'🆘 Аварийный',
   cxeRoute:['Codex','Полный доступ к проекту'],
-  cxeS:h=>'Когда Claude недоступен: Codex сам чинит проект — правит файлы, коммитит, перезапускает сервисы. Включается только вводом слова, выключается кнопкой или само через '+h+' ч.',
-  cxeF:['Пишет в проект','Перезапускает сервисы','Само выключится по сроку','Снять — кнопкой или /emergency_off'],
-  cxeFlow:['Ты','Слово «аварийный»','Codex: полный доступ','Срок или «Выключить»','Доступы сняты'],
+  cxeS:h=>'Когда Claude недоступен: Codex сам чинит проект — правит файлы, коммитит, перезапускает сервисы. Включается только вводом слова, выключается '+(h?'кнопкой или само через '+h+' ч.':'только кнопкой или /emergency_off — срока нет.'),
+  cxeF:h=>['Пишет в проект','Перезапускает сервисы',h?'Само выключится по сроку':'Без срока','Снять — кнопкой или /emergency_off'],
+  cxeFlow:h=>['Ты','Слово «аварийный»','Codex: полный доступ',h?'Срок или «Выключить»':'«Выключить»','Доступы сняты'],
   cxeCan:'Править и создавать файлы проекта, коммитить, запускать скрипты, перезапускать выбранные сервисы, читать файлы с доступами и ключ SSH для другого сервера.',
-  cxeNot:'Работать после срока и получить больше, чем показано при включении. Перезапуск сервисов запускает код проекта от root — по сути это полный доступ к серверу. Всё, что Codex читает, уходит на серверы OpenAI.',
+  cxeNot:h=>(h?'Работать после срока и получить больше, чем показано при включении.':'Получить больше, чем показано при включении. Срока нет: сам режим не выключится.')+' Перезапуск сервисов запускает код проекта от root — по сути это полный доступ к серверу. Всё, что Codex читает, уходит на серверы OpenAI.',
   cxeWhen:'Claude недоступен (лимиты, блокировка, сбой), а чинить нужно сейчас.',
   cxeBtn:'Включить…',
   cxeOnT:'АВАРИЙНЫЙ режим ВКЛЮЧЁН',
   cxeUntil:(t,l)=>'до '+t+' · осталось '+l,
+  cxeNoLimit:t=>'без срока · включён с '+t,
   cxeStat:(n,f,k)=>'Перезапуск сервисов: '+n+' · файлов с доступами: '+f+(k?' · ключ SSH':''),
   cxeOffBtn:'Выключить сейчас',
   cxeOffAsk:'Выключить аварийный режим? Codex потеряет полный доступ, незавершённая работа остановится.',
@@ -4412,7 +4413,7 @@ const I18N={
   cxeConfSvc:l=>'Сможет перезапускать сервисы: '+l+'.',
   cxeConfFiles:'Получит копии файлов с доступами и ключ SSH для другого сервера.',
   cxeConfRoot:'Перезапуск сервисов запускает код проекта от root — это фактически доступ ко всему серверу.',
-  cxeConfEnd:h=>'Само выключится через '+h+' ч, все доступы снимутся.',
+  cxeConfEnd:h=>h?'Само выключится через '+h+' ч, все доступы снимутся.':'Срока нет: доступ остаётся, пока ты сам не выключишь режим (кнопка в панели или /emergency_off).',
   cxeConfWord:w=>'Чтобы включить, введи слово «'+w+'».',
   cxeGo:'Включить',
   cxeLog:'Журнал',
@@ -4798,15 +4799,16 @@ const I18N={
   cxeN:'Emergency',
   cxeHdr:'🆘 Emergency',
   cxeRoute:['Codex','Full access to the project'],
-  cxeS:h=>'When Claude is unavailable: Codex fixes the project itself — edits files, commits, restarts services. Turns on only by typing a word, turns off with a button or on its own after '+h+' h.',
-  cxeF:['Writes to the project','Restarts services','Turns off by itself','Cancel — button or /emergency_off'],
-  cxeFlow:['You','The word "emergency"','Codex: full access','Time up or "Turn off"','Access removed'],
+  cxeS:h=>'When Claude is unavailable: Codex fixes the project itself — edits files, commits, restarts services. Turns on only by typing a word, turns off '+(h?'with a button or on its own after '+h+' h.':'only with a button or /emergency_off — no time limit.'),
+  cxeF:h=>['Writes to the project','Restarts services',h?'Turns off by itself':'No time limit','Cancel — button or /emergency_off'],
+  cxeFlow:h=>['You','The word "emergency"','Codex: full access',h?'Time up or "Turn off"':'"Turn off"','Access removed'],
   cxeCan:'Edit and create project files, commit, run scripts, restart the listed services, read the files with credentials and the SSH key for another server.',
-  cxeNot:'Work after the deadline or get more than shown when turning it on. Restarting services runs project code as root — effectively full access to the server. Everything Codex reads goes to OpenAI servers.',
+  cxeNot:h=>(h?'Work after the deadline or get more than shown when turning it on.':'Get more than shown when turning it on. There is no time limit: the mode will not turn off by itself.')+' Restarting services runs project code as root — effectively full access to the server. Everything Codex reads goes to OpenAI servers.',
   cxeWhen:'Claude is unavailable (limits, a ban, an outage) and the fix cannot wait.',
   cxeBtn:'Turn on…',
   cxeOnT:'EMERGENCY mode is ON',
   cxeUntil:(t,l)=>'until '+t+' · '+l+' left',
+  cxeNoLimit:t=>'no time limit · on since '+t,
   cxeStat:(n,f,k)=>'Service restarts: '+n+' · credential files: '+f+(k?' · SSH key':''),
   cxeOffBtn:'Turn off now',
   cxeOffAsk:'Turn off emergency mode? Codex loses full access and unfinished work stops.',
@@ -4816,7 +4818,7 @@ const I18N={
   cxeConfSvc:l=>'It will be able to restart services: '+l+'.',
   cxeConfFiles:'It gets copies of the credential files and an SSH key for another server.',
   cxeConfRoot:'Restarting services runs project code as root — effectively access to the whole server.',
-  cxeConfEnd:h=>'Turns off by itself after '+h+' h, all access is removed.',
+  cxeConfEnd:h=>h?'Turns off by itself after '+h+' h, all access is removed.':'No time limit: access stays until you turn the mode off yourself (button in the panel or /emergency_off).',
   cxeConfWord:w=>'To turn it on, type the word "'+w+'".',
   cxeGo:'Turn on',
   cxeLog:'Log',
@@ -5838,8 +5840,8 @@ function cxeLeftTxt(e){
 function cxeInfoHtml(e){
  const kv=(c,k,v)=>`<span class="cxpirow"><span class="cxpik ${c}">${acctEsc(k)}</span> ${acctEsc(v)}</span>`;
  const m={fl:['me','rd','rd','cl','ok']};
- return`<span class="cxpinfo"><span class="cxpirow"><span class="cxpik">${acctEsc(tr('cxpFlowLbl'))}:</span><span class="cxflow">${cxpSeq(tr('cxeFlow').map((t,i)=>cxpChip(m.fl[i],t)))}</span></span>`
-  +kv('can',tr('cxpCanL'),tr('cxeCan'))+kv('not',tr('cxpNotL'),tr('cxeNot'))
+ return`<span class="cxpinfo"><span class="cxpirow"><span class="cxpik">${acctEsc(tr('cxpFlowLbl'))}:</span><span class="cxflow">${cxpSeq(tr('cxeFlow',e.hours).map((t,i)=>cxpChip(m.fl[i],t)))}</span></span>`
+  +kv('can',tr('cxpCanL'),tr('cxeCan'))+kv('not',tr('cxpNotL'),tr('cxeNot',e.hours))
   +`<span class="cxpwhen"><b>${tr('cxpWhenLbl')}</b> ${acctEsc(tr('cxeWhen'))}</span></span>`;
 }
 function cxeHtml(e){
@@ -5851,14 +5853,15 @@ function cxeHtml(e){
  let body;
  if(on){
   const jr=(e.journal||[]).slice(-6).join('\n');
-  body=`<span class="cxemtime">${acctEsc(tr('cxeUntil',cxClock(new Date(e.until*1000).toISOString()),cxeLeftTxt(e)))}</span>
+  const lim=e.until?tr('cxeUntil',cxClock(new Date(e.until*1000).toISOString()),cxeLeftTxt(e)):tr('cxeNoLimit',cxClock(new Date((e.since||e.now)*1000).toISOString()));
+  body=`<span class="cxemtime">${acctEsc(lim)}</span>
    <span class="cxes">${acctEsc(tr('cxeStat',(e.services||[]).length,e.files||0,e.ssh))}</span>
    <button type="button" class="cxembtn off" data-emg="off">${acctEsc(tr('cxeOffBtn'))}</button>
    ${jr?`<div class="cxemj" title="${acctEsc(tr('cxeLog'))}">${acctEsc(jr)}</div>`:''}`;
  }else{
   const bad=e.last&&e.last.problems&&e.last.problems.length?`<span class="cxbwarn">${acctEsc(tr('cxeLastBad')+e.last.problems.join('; '))}</span>`:'';
   body=`<span class="cxes">${acctEsc(tr('cxeS',e.hours))}</span>
-   <span class="cxpf">${tr('cxeF').map((t,i)=>`<span class="${fc[i]}"><i>${fi[i]}</i>${acctEsc(t)}</span>`).join('')}</span>
+   <span class="cxpf">${tr('cxeF',e.hours).map((t,i)=>`<span class="${fc[i]}"><i>${fi[i]}</i>${acctEsc(t)}</span>`).join('')}</span>
    ${bad}<button type="button" class="cxembtn" data-emg="on">${acctEsc(tr('cxeBtn'))}</button>`;
  }
  return`<div class="cxemg${on?' on':''}" id="cxEmg"><span class="cxemm">${name}${body}${open?cxeInfoHtml(e):''}</span>${infoBtn}</div>`;

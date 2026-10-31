@@ -384,6 +384,58 @@ class Timer(Base):
         self.assertFalse(os.path.exists(em.SUDOERS))
 
 
+class NoLimit(Base):
+    """«hours»: 0 — режим без срока: сам не выключается и не напоминает, снимается только вручную."""
+
+    def test_hours_setting_is_read_strictly(self):
+        for raw, want in ((0, 0.0), ("0", 0.0), (0.0, 0.0), (None, 24.0), ("abc", 24.0), (-5, 0.1), (100, 72.0), (6, 6.0)):
+            self.cfg["hours"] = raw
+            self.assertEqual(em._plan()[0]["hours"], want, raw)
+        del self.cfg["hours"]
+        self.assertEqual(em._plan()[0]["hours"], 24.0)   # нет ключа — как раньше 24 ч, срок не пропадает сам
+
+    def test_on_without_deadline(self):
+        self.cfg["hours"] = 0
+        self.assertTrue(em.on("аварийный")[0])
+        self.assertTrue(em.active())
+        self.assertIsNone(em.until())
+        self.assertIsNone(em._st()["until"])
+        self.assertIn("без срока", em.status_line())
+        self.assertNotIn(" до ", em.status_line())
+        self.assertIn("без срока", self.sent[0])
+        self.assertIn("ВКЛЮЧЁН", self.sent[0])
+        self.assertIn("/emergency_off", self.sent[0])
+        self.assertIn("без срока", get(em.SUDOERS).splitlines()[0])
+        self.assertIn("без срока", get(self.agents()))
+        self.assertNotIn("действует до", get(self.agents()))
+        pub = em.public()
+        self.assertTrue(pub["active"])
+        self.assertEqual(pub["hours"], 0)
+        self.assertIsNone(pub["until"])
+        self.assertEqual(pub["since"], 1000.0)
+        self.assertIn("без срока", " ".join(pub["journal"]))
+
+    def test_tick_and_reconcile_never_switch_off_by_time(self):
+        self.cfg["hours"] = 0
+        self.assertTrue(em.on("аварийный")[0])
+        self.sent.clear()
+        self.now[0] += 1000 * 3600
+        em.tick()
+        self.assertTrue(em.active())
+        self.assertEqual(self.sent, [])            # ни «осталось меньше часа», ни выключения
+        em.reconcile()
+        self.assertTrue(em.active())
+        self.assertTrue(os.path.exists(em.SUDOERS))
+
+    def test_manual_off_still_removes_everything(self):
+        self.cfg["hours"] = 0
+        self.assertTrue(em.on("аварийный")[0])
+        self.assertTrue(em.off("кнопка")[0])
+        self.assertFalse(em.active())
+        self.assertFalse(os.path.exists(em.SUDOERS))
+        self.assertEqual(em._st()["last"]["why"], "кнопка")
+
+
 class Wrap(unittest.TestCase):
     def test_extra_env_is_merged_and_explicit_wins(self):
         saved = cc_codex.EXTRA_ENV

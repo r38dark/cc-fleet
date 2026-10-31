@@ -627,7 +627,7 @@ When Codex is installed, a `>_` icon with the name of the selected profile appea
 
 Tests: `python3 -m unittest test_cc_codex_bridge test_cc_limits_codex_ui test_cc_codex_console test_cc_codex_emergency` (fake codex and Bot API, no network needed).
 
-## Codex emergency mode (v1.25.9)
+## Codex emergency mode (v1.25.9, no time limit — v1.25.10)
 
 When Claude is unavailable (limits, a ban, an outage), Codex can get **full access to one project** for a while: edit files, commit, restart the listed services. The mode does not exist by default — it appears in the Codex window only after you configure it.
 
@@ -643,7 +643,7 @@ Configure it with the `"codex_emergency"` key in `config.json`:
 }
 ```
 
-`project` is the project folder; `services` are the systemd units Codex may restart; `files` are credential files it needs (copies); `ssh_key` is an SSH key (a copy); `hours` is the duration, 1–72 (24 by default). A `codex_user` — a separate OS user for Codex — is required.
+`project` is the project folder; `services` are the systemd units Codex may restart; `files` are credential files it needs (copies); `ssh_key` is an SSH key (a copy); `hours` is the duration in hours, 0.1–72 (24 by default); `0` means no time limit: the mode will not turn off or remind by itself, only a person removes it (button or `/emergency_off`). A `codex_user` — a separate OS user for Codex — is required.
 
 - **Only a human turns it on.** A red "EMERGENCY" card in the Codex window, an "Enable…" button, and the confirmation window asks you to type the word `emergency`. It cannot be enabled from Telegram. The window lists exactly what opens up and warns that everything Codex reads goes to OpenAI servers.
 - **What opens up.** The project is bind-mounted into the Codex user's home and made writable for it; a narrow sudo rule — only `systemctl restart` for the listed units (a file in `/etc/sudoers.d`, checked with `visudo`); copies of the listed files and the key; the bridge and the console switch to "on its own + full access" in that project (the previous settings are remembered and frozen while the mode lasts). Caveat: if the units run as root, restarting them runs their code as root, so Codex can replace the service's code. List only what you are ready to hand over.
@@ -808,6 +808,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.10** — Codex: emergency mode can run without a time limit: `"hours": 0` in `codex_emergency`. It does
+  not turn off or remind by itself until a person removes it (button or `/emergency_off`); the card shows
+  "no time limit · on since …" and the confirmation window says so plainly. Without the `hours` key it is still 24 h.
 - **v1.25.9** — Codex: emergency mode — full access to one project for a limited time (up to 72 h, 24 by
   default) when Claude is unavailable. Enabled only with a button in the panel by typing the word
   "emergency"; a narrow sudo for restarting the listed services, copies of credentials and the SSH key;

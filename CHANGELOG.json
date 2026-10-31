@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.10", "date": "2026-10-31",
+     "ru": {"t": "Codex: аварийный режим можно включать без срока", "p": ["hours: 0 в codex_emergency — режим без срока: сам не выключается, пока его не снимет человек", "Карточка показывает «без срока · включён с …», окно подтверждения говорит об этом прямо", "Без ключа hours по-прежнему 24 ч; снять — кнопкой или /emergency_off"]},
+     "en": {"t": "Codex: emergency mode can run without a time limit", "p": ["hours: 0 in codex_emergency means no deadline: it stays on until a person turns it off", "The card shows \"no time limit · on since …\" and the confirmation window says so plainly", "Without the hours key it is still 24 h; turn off with the button or /emergency_off"]}},
     {"v": "1.25.9", "date": "2026-10-31",
      "ru": {"t": "Codex: аварийный режим — полный доступ к проекту на время", "p": ["Когда Claude недоступен, Codex на срок (по умолчанию 24 ч) получает проект на запись и перезапуск сервисов", "Включается только кнопкой вводом слова «аварийный»; выключение — кнопкой, /emergency_off или по сроку", "Красная карточка, пуши и журнал; без настройки codex_emergency режима нет"]},
      "en": {"t": "Codex: emergency mode — full project access for a while", "p": ["When Claude is unavailable, Codex gets write access to the project and service restarts for a set time (24 h by default)", "Enabled only with the button by typing the word \"emergency\"; off by button, /emergency_off or the deadline", "A red card, pushes and a journal; without the codex_emergency setting there is no mode"]}},

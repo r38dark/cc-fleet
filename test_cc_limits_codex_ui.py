@@ -408,10 +408,14 @@ async function cxbLoad(){loads++;}
  o.idleBad=cxeHtml(Object.assign({},cfg,{last:{problems:['ACL','владельцы']}}));
  o.on=cxeHtml(Object.assign({},cfg,{active:true,until:2000,now:1000,journal:['a','b']}));
  o.activeEvenIfNotConfigured=cxeHtml({configured:false,active:true,until:2000,now:1000,services:[],files:0,ssh:false});
+ const cfg0=Object.assign({},cfg,{hours:0});
+ o.idle0=cxeHtml(cfg0);
+ o.on0=cxeHtml(Object.assign({},cfg0,{active:true,until:null,since:1000,now:1500,journal:['a']}));
  cxbData={emergency:cfg};
  cxeOn();
  o.dialog=shown[0];
  o.dialogNoSvc=(()=>{shown.length=0;cxbData={emergency:Object.assign({},cfg,{services:[],files:0,ssh:false})};cxeOn();return shown[0];})();
+ o.dialog0=(()=>{shown.length=0;cxbData={emergency:cfg0};cxeOn();return shown[0];})();
  cxbData={emergency:Object.assign({},cfg,{active:true})};
  const n=shown.length;cxeOn();o.noDialogWhenActive=shown.length===n;
  cxbData={emergency:cfg};
@@ -462,6 +466,17 @@ class Emergency(unittest.TestCase):
         self.assertIn("cxeUntil(CLK,", h)
         self.assertIn("cxeStat(2,2,true)", h)
         self.assertIn('class="cxemj"', h)
+
+    def test_no_time_limit_card_and_dialog(self):
+        # hours=0: срока нет — ни «до …», ни «осталось», в окне подтверждения вместо «само выключится» строка про отсутствие срока
+        h = self.o["on0"]
+        self.assertIn('data-emg="off"', h)
+        self.assertIn("cxeNoLimit(CLK)", h)
+        self.assertNotIn("cxeUntil", h)
+        self.assertIn("cxeS(0)", self.o["idle0"])
+        self.assertIn("cxeConfEnd(0)", self.o["dialog0"])
+        self.assertEqual(L.PAGE.count("cxeNoLimit:t=>"), 2)
+        self.assertEqual(L.PAGE.count("cxeConfEnd:h=>h?"), 2)   # обе локали различают «0 = без срока»
 
     def test_confirm_dialog_lists_what_opens_and_asks_for_word(self):
         d = self.o["dialog"]

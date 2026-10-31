@@ -21,8 +21,8 @@ CONFIG = lambda: {}  # cc_limits: config.json "codex_emergency"
 NOTIFY = lambda text: None  # cc_limits: сообщение человеку в телеграм
 NOW = time.time  # в тестах подменяется
 WORDS = ("аварийный", "emergency")  # слово-подтверждение
-HOURS = 24  # сколько длится режим, если в настройках не задано иначе
-WARN_LEFT = 3600  # за сколько секунд до конца напомнить
+HOURS = 24  # сколько длится режим, если в настройках не задано иначе; "hours": 0 — без срока, только вручную
+WARN_LEFT = 3600  # за сколько секунд до конца напомнить (при сроке)
 TICK = 20  # как часто сторож сверяет срок, секунд
 SUDOERS = "/etc/sudoers.d/cc-codex-emergency"
 MOUNTINFO = "/proc/self/mountinfo"
@@ -94,6 +94,10 @@ def _clock(ts):
     return time.strftime("%d.%m %H:%M", time.localtime(ts))
 
 
+def _until_txt(ts):
+    return f"действует до {_clock(ts)}" if ts else "без срока, снимет человек"
+
+
 def active():
     return bool(_st().get("active"))
 
@@ -105,8 +109,10 @@ def until():
 
 def status_line():
     """Строка для /status в телеграме: пусто, если режим не включён."""
+    if not active():
+        return ""
     u = until()
-    return f"🆘 АВАРИЙНЫЙ режим: Codex с полным доступом до {_clock(u)} (снять: /emergency_off)" if u else ""
+    return f"🆘 АВАРИЙНЫЙ режим: Codex с полным доступом {('до ' + _clock(u)) if u else 'без срока'} (снять: /emergency_off)"
 
 
 # ---------------------------------------------------------------- план из настроек
@@ -174,10 +180,10 @@ def _plan(lang="ru"):
             return None, t("Ключ SSH не найден: ", "SSH key not found: ") + ksrc
         key = [ksrc, os.path.join(edir, "ssh", os.path.basename(ksrc))]
     try:
-        hours = float(c.get("hours") or HOURS)
+        hours = HOURS if c.get("hours") is None else float(c["hours"])
     except (TypeError, ValueError):
         hours = HOURS
-    hours = min(max(hours, 0.1), 72.0)
+    hours = 0.0 if hours == 0 else min(max(hours, 0.1), 72.0)  # 0 — без срока; опечатка (минус) срок не снимает
     st = os.stat(real)
     return {"user": u, "uid": pw.pw_uid, "gid": pw.pw_gid, "home": pw.pw_dir, "edir": edir,
             "mnt": os.path.join(edir, "project"), "project": real, "owner": [st.st_uid, st.st_gid],
@@ -268,7 +274,7 @@ def _step_sudo(p, until_ts):
         return
     systemctl = os.path.realpath(shutil.which("systemctl") or "/usr/bin/systemctl")
     cmds = ", ".join(f"{systemctl} restart {u}" for u in p["svc"])
-    text = (f"# cc-limits: аварийный режим Codex (до {_clock(until_ts)}); файл удаляется при выключении режима\n"
+    text = (f"# cc-limits: аварийный режим Codex ({_until_txt(until_ts)}); файл удаляется при выключении режима\n"
             f"{p['user']} ALL=(root) NOPASSWD: {cmds}\n")
     tmp = SUDOERS + ".tmp"  # с точкой в имени sudo файл не читает, пока он не проверен
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o440)
@@ -283,7 +289,7 @@ def _step_sudo(p, until_ts):
 
 
 AGENTS_TEXT = """{mark}
-# Codex — АВАРИЙНЫЙ режим (включил человек, действует до {until})
+# Codex — АВАРИЙНЫЙ режим (включил человек, {until})
 
 Claude сейчас недоступен, работаешь ты. У тебя полный доступ к проекту — на ответственности человека.
 Проект: {mnt} — это тот же проект, что на сервере, писать в него можно. Путь у тебя другой, чем в самом проекте
@@ -298,7 +304,7 @@ Claude сейчас недоступен, работаешь ты. У тебя �
 2. О разрушительном (удаление данных, смена схемы, перезапуск того, что держит чужие задания) сначала напиши
    человеку и дождись «да».
 3. Прочитай AGENTS.md и docs/HANDOFF.md проекта, если они есть, — там правила проекта.
-4. Режим выключится сам (или человек выключит раньше): всё незаконченное опиши человеку.
+4. {ending}: всё незаконченное опиши человеку.
 5. Отвечай коротко и по делу; сделал — одной-двумя строками что и где.
 """
 
@@ -312,7 +318,9 @@ def _step_agents(p, until_ts):
             if not f.read(200).startswith(MARK):
                 journal("в папке входа Codex уже есть свой AGENTS.md — режим его не трогает")
                 return
-    text = AGENTS_TEXT.format(mark=MARK, until=_clock(until_ts), mnt=p["mnt"],
+    text = AGENTS_TEXT.format(mark=MARK, until=_until_txt(until_ts), mnt=p["mnt"],
+                              ending="Режим выключится сам, человек может выключить и раньше" if until_ts
+                              else "Режим выключит человек, когда решит",
                               services=", ".join(p["svc_show"]) or "(список пуст)",
                               files_dir=os.path.join(p["edir"], "files") if p["files"] else "(нет)",
                               key=p["key"][1] if p["key"] else "(нет)")
@@ -514,10 +522,10 @@ def on(word, lang="ru"):
                             "The project already has its own ACLs — the mode will not mix with them.")
         s = cc_codex_bridge.load()
         now = NOW()
-        st = {"active": True, "since": now, "until": now + p["hours"] * 3600, "warned": False,
+        st = {"active": True, "since": now, "until": (now + p["hours"] * 3600) if p["hours"] else None, "warned": False,
               "prev": {k: s.get(k) for k in PREV_KEYS}, "plan": p}
         _st_save(st)  # сначала запись, потом действия: оборвалось на середине — при старте панели доубирается
-        journal(f"включение: до {_clock(st['until'])}, сервисов {len(p['svc_show'])}, файлов {len(p['files'])}"
+        journal(f"включение: {('до ' + _clock(st['until'])) if st['until'] else 'без срока'}, сервисов {len(p['svc_show'])}, файлов {len(p['files'])}"
                 + (", ключ SSH" if p["key"] else ""))
         try:
             _apply(p, st["until"])
@@ -532,9 +540,9 @@ def on(word, lang="ru"):
             _teardown(p, st["prev"], "откат")
             _st_save({"active": False, "last": {"ended": NOW(), "why": "ошибка включения", "error": str(e)[:300]}})
             return False, t("Не удалось включить, всё отменено: ", "Could not turn on, everything was undone: ") + str(e)[:300]
-    NOTIFY(f"🆘 Аварийный режим Codex ВКЛЮЧЁН до {_clock(st['until'])}.\n"
+    NOTIFY(f"🆘 Аварийный режим Codex ВКЛЮЧЁН {('до ' + _clock(st['until'])) if st['until'] else 'без срока'}.\n"
            f"Codex получил полный доступ к проекту" + (f" и перезапуск сервисов ({len(p['svc_show'])})" if p["svc"] else "") +
-           ". Выключить — в меню профилей панели. Само выключится по сроку.")
+           ". Выключить — в меню профилей панели или /emergency_off." + ("" if st["until"] else " Срока нет: само не выключится."))
     threading.Thread(target=_restart_console, daemon=True, name="codex-emg-console").start()
     return True, t("Аварийный режим включён.", "Emergency mode is on.")
 
@@ -568,9 +576,9 @@ def _restart_console():
 
 # ---------------------------------------------------------------- сторож срока
 def tick():
-    """Раз в TICK секунд: срок вышел — выключить; за час до конца — напомнить."""
+    """Раз в TICK секунд: срок вышел — выключить; за час до конца — напомнить. Без срока (until=None) — ничего."""
     st = _st()
-    if not st.get("active"):
+    if not st.get("active") or not st.get("until"):
         return
     left = st["until"] - NOW()
     if left <= 0:
@@ -590,7 +598,7 @@ def reconcile():
     with _lock:
         st = _st()
         if st.get("active"):
-            if NOW() >= st["until"]:
+            if st.get("until") and NOW() >= st["until"]:
                 return off("истёк срок")
             try:
                 _apply(st["plan"], st["until"])
