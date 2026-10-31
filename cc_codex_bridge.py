@@ -320,12 +320,20 @@ def set_token(token, lang="ru"):
     with _lock:
         s = load()
         s["token"] = token
+        # выбран профиль, а не «Выключен» — «мост включится, когда подключишь бота» (см. apply_profile)
+        pid = active_profile(s)
+        turn_on = bool(pid) and any(i == pid and d.get("on", True) for i, d, _ in _profiles(s))
+        if turn_on:
+            s["enabled"] = True
         _save(s)
         st = _state()
         st.update(bot=me.get("username", ""), offset=0, last_error="")
         _state_save(st)
+    if turn_on:
+        ensure_exchange()
     BRIDGE.sync()
-    return True, _t(lang, f"Бот @{me.get('username', '')} подключён.", f"Bot @{me.get('username', '')} connected.")
+    return True, _t(lang, f"Бот @{me.get('username', '')} подключён" + (" — мост включён." if turn_on else "."),
+                    f"Bot @{me.get('username', '')} connected" + (" — bridge is on." if turn_on else "."))
 
 
 def clear_token():

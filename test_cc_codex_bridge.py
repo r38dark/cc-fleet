@@ -432,6 +432,40 @@ class Profiles(Base):
         self.assertEqual((s["mode"], s["enabled"]), ("orchestrator", False))
         self.assertEqual(br.public()["profile"], "orchestrator")
 
+    def test_token_after_profile_turns_bridge_on(self):
+        """Профиль выбран до токена → после подключения бота мост включается сам (баг 60075: оставался выключенным)."""
+        s = br.load()
+        s["token"] = ""
+        br._save(s)
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertFalse(br.load()["enabled"])
+        br.RESERVED_TOKENS = lambda: []
+        ok, msg = br.set_token("999999:" + "B" * 30)
+        self.assertTrue(ok, msg)
+        self.assertIn("мост включён", msg)
+        self.assertTrue(br.load()["enabled"])
+        self.assertTrue(br.public()["enabled"])
+        self.assertEqual(br.public()["profile"], "orchestrator")
+
+    def test_token_after_off_profile_stays_off(self):
+        s = br.load()
+        s["token"] = ""
+        br._save(s)
+        self.assertTrue(br.apply_profile("off")[0])
+        br.RESERVED_TOKENS = lambda: []
+        ok, msg = br.set_token("999999:" + "B" * 30)
+        self.assertTrue(ok, msg)
+        self.assertNotIn("мост включён", msg)
+        self.assertFalse(br.load()["enabled"])
+
+    def test_token_without_profile_stays_off(self):
+        s = br.load()
+        s["token"], s["profile"], s["enabled"] = "", "", False
+        br._save(s)
+        br.RESERVED_TOKENS = lambda: []
+        self.assertTrue(br.set_token("999999:" + "B" * 30)[0])
+        self.assertFalse(br.load()["enabled"])
+
     def test_self_profile_needs_workdir_and_changes_nothing(self):
         s = br.load()
         s["workdir"] = ""

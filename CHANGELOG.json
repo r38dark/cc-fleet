@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.1", "date": "2026-10-31",
+     "ru": {"t": "Мост Codex включается сам после подключения бота", "p": ["Профиль выбран, токен вставлен — раньше мост молчал, теперь включается сам (кроме профиля «Выключен»)"]},
+     "en": {"t": "The Codex bridge turns on after the bot is connected", "p": ["Profile picked, token pasted: the bridge used to stay silent, now it turns on (except the Off profile)"]}},
     {"v": "1.25.0", "date": "2026-10-31",
      "ru": {"t": "Codex: окно из шапки, профили, оркестратор и консоль", "p": ["Значок Codex в шапке открывает окно: профили одним кликом (Секретарь, Оркестратор, Запасной, Второй ИИ, Выключен) и свои", "Режим «Оркестратор»: Codex ведёт задачу, Claude исполняет шаги, каждый — после «да»; «стоп» снимает всё", "Вкладка «Codex» рядом с консолью Claude: экран Codex, только просмотр; каталог профилей — ключ codex_profiles"]},
      "en": {"t": "Codex: header window, profiles, orchestrator and console", "p": ["The header Codex icon opens a window: one-click profiles (Secretary, Orchestrator, Standby, Second AI, Off), or your own", "\"Orchestrator\" mode: Codex drives the goal, Claude executes the steps, each after your \"yes\"; \"stop\" cancels everything", "A \"Codex\" tab next to the Claude console: Codex's screen, view only; the profiles folder is the codex_profiles key"]}},

@@ -782,6 +782,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.1** — the Codex bridge turns on by itself once the bot is connected: if a profile
+  is already selected (other than "Off"), the token enables the bridge — no separate
+  "Bridge enabled" tick needed.
 - **v1.25.0** — Codex in the header: the icon opens a window with profiles (Secretary,
   Orchestrator, Standby, Second AI, Off and your own), accounts, limits and the bridge.
   "Orchestrator" mode: Codex drives the goal, Claude executes the steps, each after "yes";
