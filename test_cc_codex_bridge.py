@@ -407,8 +407,7 @@ class Tasks(Base):
 
 class Profiles(Base):
     def test_builtin_apply(self):
-        want = {"secretary": ("mediator", "read", "dev"), "orchestrator": ("orchestrator", "read", "dev"),
-                "standby": ("self", "write", "dev"), "second": ("self", "read", "dev")}
+        want = {"orchestrator": ("orchestrator", "read", "dev"), "codex": ("self", "write", "dev")}
         for pid, (mode, acc, rights) in want.items():
             ok, msg = br.apply_profile(pid)
             self.assertTrue(ok, msg)
@@ -416,16 +415,39 @@ class Profiles(Base):
             self.assertEqual((s["mode"], s["access"], s["task_rights"], s["enabled"]), (mode, acc, rights, True), pid)
             self.assertEqual(br.public()["profile"], pid)
 
-    def test_off(self):
-        self.assertTrue(br.apply_profile("secretary")[0])
-        self.assertTrue(br.apply_profile("off")[0])
-        self.assertFalse(br.load()["enabled"])
-        self.assertEqual(br.public()["profile"], "off")
+    def test_switch_is_not_a_profile(self):
+        """Выключатель бота живёт отдельно от профиля: профиль остаётся выбранным, профиль выключатель не трогает."""
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertTrue(br.save({"enabled": False})[0])
+        self.assertEqual(br.public()["profile"], "orchestrator")
         self.assertFalse(br.running())
+        ok, msg = br.apply_profile("codex")
+        self.assertTrue(ok)
+        self.assertIn("Бот выключен", msg)
+        self.assertFalse(br.load()["enabled"])
+        self.assertEqual(br.public()["profile"], "codex")
+        self.assertTrue(br.save({"enabled": True})[0])
+        self.assertTrue(br.running())
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertTrue(br.load()["enabled"])
+
+    def test_legacy_profile_ids(self):
+        """Профили прежних версий: «Запасной» стал «Codex» (тот же состав), остальные выбором не считаются."""
+        self.assertTrue(br.save({"mode": "self", "access": "write"})[0])
+        for old, want in (("standby", "codex"), ("second", ""), ("secretary", ""), ("off", "")):
+            s = br.load()
+            s["profile"] = old
+            br._save(s)
+            self.assertEqual(br.public()["profile"], want, old)
+        self.assertTrue(br.save({"mode": "self", "access": "read"})[0])  # «Второй ИИ» (чтение) — не «Codex»
+        s = br.load()
+        s["profile"] = "second"
+        br._save(s)
+        self.assertEqual(br.public()["profile"], "")
 
     def test_no_token_applies_but_stays_off(self):
         s = br.load()
-        s["token"] = ""
+        s["token"], s["enabled"] = "", False
         br._save(s)
         ok, msg = br.apply_profile("orchestrator")
         self.assertTrue(ok)
@@ -437,7 +459,7 @@ class Profiles(Base):
     def test_token_after_profile_turns_bridge_on(self):
         """Профиль выбран до токена → после подключения бота мост включается сам (баг 60075: оставался выключенным)."""
         s = br.load()
-        s["token"] = ""
+        s["token"], s["enabled"] = "", False
         br._save(s)
         self.assertTrue(br.apply_profile("orchestrator")[0])
         self.assertFalse(br.load()["enabled"])
@@ -449,17 +471,6 @@ class Profiles(Base):
         self.assertTrue(br.public()["enabled"])
         self.assertEqual(br.public()["profile"], "orchestrator")
 
-    def test_token_after_off_profile_stays_off(self):
-        s = br.load()
-        s["token"] = ""
-        br._save(s)
-        self.assertTrue(br.apply_profile("off")[0])
-        br.RESERVED_TOKENS = lambda: []
-        ok, msg = br.set_token("999999:" + "B" * 30)
-        self.assertTrue(ok, msg)
-        self.assertNotIn("мост включён", msg)
-        self.assertFalse(br.load()["enabled"])
-
     def test_token_without_profile_stays_off(self):
         s = br.load()
         s["token"], s["profile"], s["enabled"] = "", "", False
@@ -468,15 +479,51 @@ class Profiles(Base):
         self.assertTrue(br.set_token("999999:" + "B" * 30)[0])
         self.assertFalse(br.load()["enabled"])
 
-    def test_self_profile_needs_workdir_and_changes_nothing(self):
+    def test_codex_profile_gets_default_workspace(self):
+        """Рабочая папка не выбрана → профиль «Codex» берёт свою по умолчанию и кладёт в неё AGENTS.md; правленный человеком не трогает."""
         s = br.load()
-        s["workdir"] = ""
+        s["workdir"], s["project"] = "", os.path.join(self.tmp, "proj")
         br._save(s)
-        ok, msg = br.apply_profile("standby")
+        ok, msg = br.apply_profile("codex")
+        self.assertTrue(ok, msg)
+        ws = br.workspace_dir()
+        self.assertEqual(br.load()["workdir"], ws)
+        self.assertEqual(br.public()["profile"], "codex")
+        t = get(os.path.join(ws, "AGENTS.md"))
+        self.assertIn(br.AGENTS_MARK, t)
+        self.assertIn(os.path.join(self.tmp, "proj"), t)
+        # проект сменили — наш файл обновляется
+        other = os.path.join(self.tmp, "proj2")
+        os.makedirs(other)
+        self.assertTrue(br.save({"project": other})[0])
+        self.assertIn(other, get(os.path.join(ws, "AGENTS.md")))
+        # человек убрал метку и правил файл — больше не трогаем
+        put(os.path.join(ws, "AGENTS.md"), "мой текст")
+        self.assertTrue(br.save({"project": os.path.join(self.tmp, "proj")})[0])
+        self.assertEqual(get(os.path.join(ws, "AGENTS.md")), "мой текст")
+
+    def test_codex_profile_keeps_chosen_workdir(self):
+        mine = os.path.join(self.tmp, "mine")
+        os.makedirs(mine)
+        self.assertTrue(br.save({"workdir": mine})[0])
+        self.assertTrue(br.apply_profile("codex")[0])
+        self.assertEqual(br.load()["workdir"], mine)
+        self.assertFalse(os.path.exists(os.path.join(mine, "AGENTS.md")))  # чужую папку не засоряем
+
+    def test_project_is_separate_from_workdir(self):
+        """«Проект» (читает) и «Рабочая папка» (пишет) — разные папки; пока проект не задан, им служит рабочая."""
+        self.assertEqual(br.project_dir(), br.load()["workdir"])
+        proj = os.path.join(self.tmp, "snap")
+        os.makedirs(proj)
+        self.assertTrue(br.save({"project": proj})[0])
+        s = br.load()
+        self.assertEqual((s["project"], br.project_dir()), (proj, proj))
+        self.assertEqual(s["workdir"], os.path.join(self.tmp, "proj"))
+        self.assertEqual(br.public()["project"], proj)
+        ok, msg = br.save({"project": "/etc"})
         self.assertFalse(ok)
-        self.assertIn("Рабочая папка", msg)
-        self.assertEqual(br.load()["mode"], "mediator")
-        self.assertEqual(br.public()["profile"], "")
+        self.assertIn("Проект", msg)
+        self.assertEqual(br.load()["project"], proj)
 
     def test_unknown_profile(self):
         self.assertFalse(br.apply_profile("nope")[0])
@@ -491,15 +538,15 @@ class Profiles(Base):
         self.assertTrue(br.save_profile("  Мой\nполный  ")[0])
         c = br.load()["profiles"][0]
         self.assertEqual((c["id"], c["name"], c["access"]), ("c1", "Мой полный", "full"))
-        self.assertTrue(br.apply_profile("secretary")[0])
+        self.assertTrue(br.apply_profile("orchestrator")[0])
         ok, msg = br.apply_profile("c1")  # снова поднимать до полного — только со словом
         self.assertFalse(ok)
         self.assertIn("подтверждаю", msg)
-        self.assertEqual(br.load()["mode"], "mediator")
+        self.assertEqual(br.load()["mode"], "orchestrator")
         self.assertTrue(br.apply_profile("c1", "подтверждаю")[0])
         self.assertEqual(br.load()["access"], "full")
         self.assertEqual(br.public()["profile"], "c1")
-        self.assertFalse(br.delete_profile("secretary")[0])  # встроенные не удаляются
+        self.assertFalse(br.delete_profile("orchestrator")[0])  # встроенные не удаляются
         self.assertTrue(br.delete_profile("c1")[0])
         self.assertEqual(br.load()["profiles"], [])
         self.assertEqual(br.public()["profile"], "")
@@ -514,18 +561,18 @@ class Profiles(Base):
 
     def test_custom_from_spec_keeps_live_settings(self):
         """Состав, собранный в панели, запоминается как есть и живые настройки моста не трогает."""
-        self.assertTrue(br.apply_profile("secretary")[0])
+        self.assertTrue(br.apply_profile("orchestrator")[0])
         before = {k: br.load()[k] for k in ("mode", "access", "task_rights", "enabled")}
         self.assertTrue(br.save_profile("Читатель", spec={"mode": "self", "access": "write", "task_rights": "read"})[0])
         c = br.load()["profiles"][0]
         self.assertEqual((c["mode"], c["access"], c["task_rights"]), ("self", "write", "read"))
         self.assertEqual({k: br.load()[k] for k in before}, before)
-        self.assertEqual(br.public()["profile"], "secretary")  # выбор не сдвинулся: состав другой
+        self.assertEqual(br.public()["profile"], "orchestrator")  # выбор не сдвинулся: состав другой
         # доступ Codex вне режима «Самостоятельно» не значим — как у встроенных, read
         self.assertTrue(br.save_profile("Ведёт", spec={"mode": "orchestrator", "access": "full", "task_rights": "dev"})[0])
         self.assertEqual(br.load()["profiles"][1]["access"], "read")
         # совпал с живыми настройками → становится выбранным
-        self.assertTrue(br.save_profile("Как сейчас", spec={"mode": "mediator", "access": "read", "task_rights": "dev"})[0])
+        self.assertTrue(br.save_profile("Как сейчас", spec={"mode": "orchestrator", "access": "read", "task_rights": "dev"})[0])
         self.assertEqual(br.public()["profile"], br.load()["profiles"][2]["id"])
 
     def test_custom_spec_rejects_garbage(self):
@@ -535,14 +582,14 @@ class Profiles(Base):
         self.assertEqual(len(br.load()["profiles"]), n)
 
     def test_manual_edit_drops_profile_mark(self):
-        self.assertTrue(br.apply_profile("secretary")[0])
-        self.assertEqual(br.public()["profile"], "secretary")
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertEqual(br.public()["profile"], "orchestrator")
         self.assertTrue(br.save({"task_rights": "read"})[0])
         self.assertEqual(br.public()["profile"], "")
 
     def test_public_lists_profiles(self):
         pub = br.public()
-        self.assertEqual([p["id"] for p in pub["profiles"]], ["secretary", "orchestrator", "standby", "second", "off"])
+        self.assertEqual([p["id"] for p in pub["profiles"]], ["orchestrator", "codex"])
         self.assertTrue(all(p["builtin"] for p in pub["profiles"]))
         br.save_profile("Свой")
         self.assertEqual(br.public()["profiles"][-1]["name"], "Свой")

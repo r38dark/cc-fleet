@@ -65,20 +65,50 @@ class Page(unittest.TestCase):
         self.assertIn("closest('#cxQ,#cxMod')", page)
         self.assertRegex(page, r"Escape'[^\n]*cxQClose\(\)")
 
-    def test_off_profile_info_explains_what_stops_and_stays(self):
-        info = re.search(r"function cxpInfoHtml\(p\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
-        for k in ("cxpOffStopL", "cxpOffStop", "cxpOffStopD", "cxpOffKeepL", "cxpOffKeep", "cxpOffKeepD", "cxpOffOnL", "cxpOffOn", "cxpOffOnD"):
-            self.assertIn("tr('%s')" % k, info)
+    def test_bot_switch_is_not_a_profile(self):
+        # «Выключен» — не профиль: бот включается отдельным выключателем над списком, профиль при этом не меняется
+        self.assertNotRegex(L.PAGE, r"p\.on\b|on===false|cxpS_off|cxpOffStop")
+        r = re.search(r"function cxpRender\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertLess(r.index("cxpBotHtml(b)"), r.index("cxplist"))
+        tog = re.search(r"async function cxpBotToggle\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn("chatgpt/bridge/save',{enabled:!b.enabled}", tog)
+        self.assertNotIn("profile", tog)
+        # клик по выключателю не применяет профиль и не закрывает меню
+        self.assertRegex(L.PAGE, r"closest\('\[data-bot\]'\)\)\{e\.stopPropagation\(\);cxpBotToggle\(\);return;\}")
 
-    def test_off_profile_texts_say_pushes_still_arrive(self):
-        # «Выключен» гасит ответы бота и Codex, но не пуши о лимитах и подписке: мост шлёт их, пока бот подключён
+    def test_bot_switch_texts_say_pushes_still_arrive(self):
+        # бот выключен — ответы и Codex молчат, но пуши о лимитах и подписке идут (мост шлёт их, пока бот подключён)
         def val(lang, key):
             return re.search(r"^\s{2}%s:'(.*)',$" % key, i18n_block(lang), re.M).group(1)
         for lang, word in (("ru", "пуши"), ("en", "pushes")):
-            self.assertNotIn(word, val(lang, "cxpOffStopD").lower())
-            self.assertIn(word, val(lang, "cxpOffKeepD").lower())
-            self.assertIn(word, val(lang, "cxpWhen_off").lower())
-            self.assertIn(word, val(lang, "cxpS_off").lower())
+            self.assertIn(word, val(lang, "cxpBotOff").lower())
+            self.assertNotIn(word, val(lang, "cxpBotOn").lower())
+
+    def test_form_has_project_and_own_workdir_fields(self):
+        # «Проект» — всегда (Codex его только читает), «Рабочая папка Codex» — только в режиме «Самостоятельно»; project уходит, лишь если его правили
+        form = re.search(r"function cxbRender\(force\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn('id="cxbProj"', form)
+        self.assertIn('id="cxbDirRow"', form)
+        self.assertIn("$('#cxbDirRow').hidden=!self", re.search(r"function cxbSync\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0))
+        save = re.search(r"async function cxbSave\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn("if(pj!==cxbProjVal(b))body.project=pj", save)
+
+    def test_builtin_cards_show_route_arrow_and_colored_features(self):
+        # две карточки: название, маршрут со стрелкой между звеньями, цветные чипы основных функций
+        self.assertIn("function cxpNameHtml(p)", L.PAGE)
+        self.assertIn('stroke="url(#cxpg)"', L.PAGE)
+        self.assertEqual(L.PAGE.count('id="cxpg"'), 1)
+        meta = re.search(r"const CXP_META=\{(.*?)\n\};", L.PAGE, re.S).group(1)
+        self.assertEqual(re.findall(r"^ (\w+):\{", meta, re.M), ["orchestrator", "codex"])
+        for lang in ("ru", "en"):
+            blk = i18n_block(lang)
+            self.assertEqual(len(re.search(r"cxpF_orchestrator:\[(.*?)\],\n", blk).group(1).split("','")), 4)
+            self.assertEqual(len(re.search(r"cxpF_codex:\[(.*?)\],\n", blk).group(1).split("','")), 3)
+            self.assertEqual(len(re.search(r"cxpFlow_orchestrator:\[(.*?)\],\n", blk).group(1).split("','")), 5)
+            self.assertEqual(len(re.search(r"cxpRoute_orchestrator:\[(.*?)\],\n", blk).group(1).split("','")), 2)
+        ru = i18n_block("ru")
+        self.assertIn("cxpN_codex:'Codex'", ru)
+        self.assertNotIn("Второй ИИ", ru)
 
     def test_console_starts_itself_like_claude(self):
         # вкладка Codex сама поднимает консоль: жать «Запустить» не нужно (как и у консоли Claude)
@@ -106,11 +136,13 @@ class Page(unittest.TestCase):
     def test_texts_in_both_languages(self):
         keys = {lang: set(re.findall(r"^\s{2}(cx\w*):", i18n_block(lang), re.M)) for lang in ("ru", "en")}
         self.assertEqual(keys["ru"] ^ keys["en"], set())
-        # cxpN_/cxpS_/cxpWhen_ — начало ключей профилей; cxoMode_/cxoAcc_/cxoRt_ — описания вариантов состава
-        dyn = {"cxpN_", "cxpS_", "cxpWhen_", "cxoMode_", "cxoAcc_", "cxoRt_"}
+        # cxpN_/cxpS_/… — начало ключей профилей; cxoMode_/cxoAcc_/cxoRt_ — описания вариантов состава
+        pfx = ("cxpN_", "cxpS_", "cxpWhen_", "cxpRoute_", "cxpF_", "cxpFlow_", "cxpCan_", "cxpNot_")
+        dyn = set(pfx) | {"cxoMode_", "cxoAcc_", "cxoRt_"}
         used = set(re.findall(r"tr\('(cx\w+)'", L.PAGE)) - dyn
-        for p in ("cxpN_", "cxpS_", "cxpWhen_"):
-            used |= {p + i for i in ("secretary", "orchestrator", "standby", "second", "off")}
+        for p in pfx:
+            used |= {p + i for i in ("orchestrator", "codex")}
+        used |= {"cxpBotOnToast", "cxpBotOffToast"}  # tr(b.enabled?'…':'…') — в разбор по шаблону не попадает
         used |= {"cxoMode_" + i for i in ("mediator", "orchestrator", "self")}
         used |= {"cxoAcc_" + i for i in ("read", "write", "full")}
         used |= {"cxoRt_" + i for i in ("read", "dev", "full")}
@@ -121,8 +153,9 @@ class Page(unittest.TestCase):
         import cc_codex_bridge as br
         ru = i18n_block("ru")
         for pid, _ in br.BUILTIN_PROFILES:
-            self.assertIn("cxpN_%s:" % pid, ru)
-            self.assertIn("cxpS_%s:" % pid, ru)
+            for pfx in ("cxpN_", "cxpS_", "cxpWhen_", "cxpRoute_", "cxpF_", "cxpFlow_", "cxpCan_", "cxpNot_"):
+                self.assertIn("%s%s:" % (pfx, pid), ru)
+            self.assertIn(pid, L.PAGE[L.PAGE.index("const CXP_META="):][:600])
 
 
 class Compose(unittest.TestCase):

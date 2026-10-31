@@ -32,15 +32,16 @@ LIM_EVERY = 300  # как часто мост сверяет лимиты, се�
 SUB_STEPS = (7, 3, 1, 0)  # за сколько дней до конца подписки писать; 0 — закончилась
 
 MODES = ("mediator", "orchestrator", "self")
-# Профили — наборы настроек, которые применяются одним кликом. on=False выключает мост; доступ (access) важен только в «self».
-# Полный доступ во встроенные не входит: он включается только в своём профиле и со словом-подтверждением.
+# Профили — наборы настроек, которые применяются одним кликом; доступ (access) важен только в «self».
+# Встроенных два: «Оркестратор» (Codex ведёт, Claude исполняет) и «Codex» (работает сам в своей рабочей папке).
+# Выключатель бота — отдельная настройка enabled, не профиль. Полный доступ во встроенные не входит: он включается
+# только в своём профиле и со словом-подтверждением.
 BUILTIN_PROFILES = (
-    ("secretary", {"mode": "mediator", "access": "read", "task_rights": "dev", "on": True}),
-    ("orchestrator", {"mode": "orchestrator", "access": "read", "task_rights": "dev", "on": True}),
-    ("standby", {"mode": "self", "access": "write", "task_rights": "dev", "on": True}),
-    ("second", {"mode": "self", "access": "read", "task_rights": "dev", "on": True}),
-    ("off", {"on": False}),
+    ("orchestrator", {"mode": "orchestrator", "access": "read", "task_rights": "dev"}),
+    ("codex", {"mode": "self", "access": "write", "task_rights": "dev"}),
 )
+# профили прежних версий → нынешние (где состав совпадал); остальные выбором не считаются — настройки остаются как были
+LEGACY_PROFILES = {"standby": "codex"}
 MAX_CUSTOM_PROFILES = 10
 ACCESS = ("read", "write", "full")
 RIGHTS = ("read", "dev", "full")
@@ -94,13 +95,16 @@ def state_path():
     return os.path.join(BASE, "codex_bridge_state.json")
 
 
-DEFAULTS = {"enabled": False, "mode": "mediator", "access": "read", "workdir": "", "task_rights": "dev",
+DEFAULTS = {"enabled": False, "mode": "mediator", "access": "read", "workdir": "", "project": "", "task_rights": "dev",
             "slot": "", "chat_id": "", "token": "", "exchange": "", "profile": "", "profiles": []}
 
 
 def load():
     s = dict(DEFAULTS)
     s.update(cc_codex.jload(settings_path(), {}) or {})
+    cur = s.get("profile") or ""
+    if cur in LEGACY_PROFILES:
+        s["profile"] = LEGACY_PROFILES[cur]
     return s
 
 
@@ -131,6 +135,21 @@ def exchange_dir(s=None):
         import pwd
         return os.path.join(pwd.getpwnam(u).pw_dir, "exchange")
     return os.path.join(BASE, "exchange")
+
+
+def project_dir(s=None):
+    """Проект, который Codex только читает (в «Оркестраторе» и «Посреднике» — то, о чём он говорит). Не задан — рабочая папка."""
+    s = s or load()
+    return s.get("project") or s.get("workdir") or ""
+
+
+def workspace_dir():
+    """Рабочая папка Codex по умолчанию — для профиля «Codex», пока своя не выбрана."""
+    u = cc_codex.runas_user()
+    if u:
+        import pwd
+        return os.path.join(pwd.getpwnam(u).pw_dir, "work")
+    return os.path.join(os.path.dirname(os.path.realpath(BASE)), "codex-work")  # рядом с BASE: внутри него рабочей папкой быть нельзя
 
 
 def chat_id(s=None):
@@ -177,7 +196,7 @@ def public(s=None):
     st = _state()
     tok = s.get("token") or ""
     out = {k: s.get(k) for k in ("enabled", "mode", "access", "workdir", "task_rights", "slot")}
-    out.update(profile=active_profile(s),
+    out.update(project=project_dir(s), workspace=workspace_dir(), profile=active_profile(s),
                profiles=[dict(id=i, name=n, builtin=n is None, **d) for i, d, n in _profiles(s)])
     out.update(chat_id=chat_id(s), token_set=bool(tok), token_tail=tok[-4:] if tok else "",
                bot=st.get("bot", ""), exchange=exchange_dir(s), running=running(),
@@ -205,10 +224,17 @@ def save(body, lang="ru"):
         if cid and not re.match(r"^-?[0-9]{3,}$", cid):
             return False, _t(lang, "chat_id — это число.", "chat_id must be a number.")
         wd = body.get("workdir", s["workdir"]) or ""
+        if mode == "self" and not wd.strip():
+            wd = ensure_workspace(s)  # рабочая папка не выбрана — берём свою, по умолчанию
         if wd or mode == "self":
             wd, err = check_workdir(wd.strip())
             if err:
                 return False, _t(lang, "Рабочая папка: " + err, "Working folder: " + err)
+        proj = body.get("project", s["project"]) or ""
+        if proj:
+            proj, err = check_workdir(proj.strip())
+            if err:
+                return False, _t(lang, "Проект: " + err, "Project: " + err)
         # полный доступ Codex и полные права заданий включаются только словом-подтверждением
         raises_full = (mode == "self" and access == "full" and old_eff != ("self", "full")) or \
                       (rights == "full" and s["task_rights"] != "full")
@@ -218,7 +244,7 @@ def save(body, lang="ru"):
         enabled = bool(body.get("enabled", s["enabled"]))
         if enabled and not s.get("token"):
             return False, _t(lang, "Сначала вставь токен бота.", "Paste the bot token first.")
-        s.update(mode=mode, access=access, task_rights=rights, slot=slot, chat_id=cid, workdir=wd, enabled=enabled)
+        s.update(mode=mode, access=access, task_rights=rights, slot=slot, chat_id=cid, workdir=wd, project=proj, enabled=enabled)
         _save(s)
     ensure_exchange()
     BRIDGE.sync()
@@ -229,7 +255,7 @@ def _profiles(s):
     """Все профили → [(id, определение, имя)]; у встроенных имя None (его знает панель)."""
     out = [(pid, dict(d), None) for pid, d in BUILTIN_PROFILES]
     for c in s.get("profiles") or []:
-        out.append((c["id"], {k: c[k] for k in ("mode", "access", "task_rights", "on")}, c.get("name", "")))
+        out.append((c["id"], {k: c[k] for k in ("mode", "access", "task_rights")}, c.get("name", "")))
     return out
 
 
@@ -239,8 +265,6 @@ def active_profile(s):
     for pid, d, _ in _profiles(s):
         if pid != cur:
             continue
-        if not d.get("on", True):
-            return pid if not s["enabled"] else ""
         same = s["mode"] == d["mode"] and s["task_rights"] == d["task_rights"] and \
             (s["mode"] != "self" or s["access"] == d["access"])
         return pid if same else ""
@@ -248,21 +272,22 @@ def active_profile(s):
 
 
 def apply_profile(pid, confirm="", lang="ru"):
-    """Применить профиль одним действием. Полный доступ в профиле включается тем же словом-подтверждением. → (ok, сообщение)."""
+    """Применить профиль одним действием. Полный доступ в профиле включается тем же словом-подтверждением.
+    Выключатель бота (enabled) профиль не трогает. → (ok, сообщение)."""
     s = load()
     found = [d for i, d, _ in _profiles(s) if i == pid]
     if not found:
         return False, _t(lang, "Такого профиля нет.", "No such profile.")
     d = found[0]
-    if not d.get("on", True):
-        ok, msg = save({"enabled": False}, lang)
-    else:
-        body = {"mode": d["mode"], "access": d["access"], "task_rights": d["task_rights"], "confirm": confirm,
-                "enabled": bool(s.get("token"))}
-        ok, msg = save(body, lang)
-        if ok and not s.get("token"):
-            msg = _t(lang, "Профиль применён. Мост включится, когда подключишь бота.",
-                     "Profile applied. The bridge turns on once you connect a bot.")
+    body = {"mode": d["mode"], "access": d["access"], "task_rights": d["task_rights"], "confirm": confirm,
+            "enabled": bool(s["enabled"] and s.get("token"))}
+    ok, msg = save(body, lang)
+    if ok and not s.get("token"):
+        msg = _t(lang, "Профиль применён. Мост включится, когда подключишь бота.",
+                 "Profile applied. The bridge turns on once you connect a bot.")
+    elif ok and not s.get("enabled"):
+        msg = _t(lang, "Профиль применён. Бот выключен — включи его выключателем в меню профилей.",
+                 "Profile applied. The bot is off — switch it on in the profiles menu.")
     if ok:
         with _lock:
             s = load()
@@ -299,8 +324,7 @@ def save_profile(name, lang="ru", spec=None):
         while f"c{n}" in used:
             n += 1
         pid = f"c{n}"
-        custom.append({"id": pid, "name": name, "mode": mode, "access": access,
-                       "task_rights": rights, "on": True})
+        custom.append({"id": pid, "name": name, "mode": mode, "access": access, "task_rights": rights})
         s["profiles"] = custom
         # выбранным профиль становится, только если совпал с живыми настройками; иначе выбор не трогаем
         same = mode == s["mode"] and rights == s["task_rights"] and (mode != "self" or access == s["access"])
@@ -341,9 +365,8 @@ def set_token(token, lang="ru"):
     with _lock:
         s = load()
         s["token"] = token
-        # выбран профиль, а не «Выключен» — «мост включится, когда подключишь бота» (см. apply_profile)
-        pid = active_profile(s)
-        turn_on = bool(pid) and any(i == pid and d.get("on", True) for i, d, _ in _profiles(s))
+        # профиль выбран — «мост включится, когда подключишь бота» (см. apply_profile)
+        turn_on = bool(active_profile(s))
         if turn_on:
             s["enabled"] = True
         _save(s)
@@ -429,14 +452,52 @@ def ensure_exchange():
             os.chmod(d, 0o755)
         except PermissionError:  # папка чужая (мост без root, не наша) — режим уже выставлен тем, кто её создал
             pass
-    agents = (AGENTS_ORCH_TEXT if s["mode"] == "orchestrator" else AGENTS_TEXT).format(workdir=s.get("workdir") or "(не задан)")
+    agents = (AGENTS_ORCH_TEXT if s["mode"] == "orchestrator" else AGENTS_TEXT).format(workdir=project_dir(s) or "(не задан)")
     path = os.path.join(ex, "AGENTS.md")
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(agents)
     os.chmod(tmp, 0o644)
     os.replace(tmp, path)
+    if s["mode"] == "self" and s.get("workdir") == workspace_dir():
+        ensure_workspace(s)
     return ex
+
+
+def ensure_workspace(s=None):
+    """Рабочая папка Codex по умолчанию: создаётся и отдаётся ему. AGENTS.md пишем, пока его нет или он наш (метка в первой строке);
+    правленный человеком файл не трогаем."""
+    ws = workspace_dir()
+    os.makedirs(ws, exist_ok=True)
+    cc_codex.own(ws)
+    path = os.path.join(ws, "AGENTS.md")
+    text = AGENTS_MARK + "\n" + AGENTS_SELF_TEXT.format(project=project_dir(s) or "(не задан)")
+    try:
+        old = None
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                old = f.read()
+        if old is None or (old.startswith(AGENTS_MARK) and old != text):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.chmod(path, 0o644)
+            cc_codex.own(path)
+    except OSError:
+        pass
+    return ws
+
+
+AGENTS_MARK = "<!-- создано мостом cc-limits: пока эта строка на месте, файл обновляется сам; правишь — удали её -->"
+AGENTS_SELF_TEXT = """# Codex — работает сам (профиль «Codex»)
+
+Ты общаешься с человеком через Telegram и консоль. Эта папка — твоя рабочая: здесь читай, пиши и запускай.
+Проект (только чтение): {project}
+Проект не меняй — писать туда у тебя нет прав, и это не ошибка. Нужна правка проекта — опиши её человеку
+или положи файлом здесь: внести её должен он или Claude.
+
+1. Отвечай коротко и по делу; сделал — скажи что и где лежит.
+2. Секреты, ключи и настройки сервера тебе недоступны — не ищи их и не проси у человека в чате.
+"""
 
 
 AGENTS_TEXT = """# Codex — секретарь (режим «Посредник»)
