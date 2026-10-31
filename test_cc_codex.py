@@ -61,10 +61,22 @@ FAKE = textwrap.dedent('''\
                 continue
             meth, p, res = m["method"], m.get("params") or {}, {}
             if meth == "account/read":
+                pf, af = os.path.join(home, "PLAN"), os.path.join(home, "AFTER_REFRESH")
+                if p.get("refreshToken"):
+                    open(os.path.join(home, "REFRESHED"), "w").write("1")
+                    if os.path.exists(os.path.join(home, "REFRESH_FAIL")):
+                        print(json.dumps({"id": m["id"], "error": {"code": -1, "message": "401 Unauthorized"}}), flush=True)
+                        continue
+                    if os.path.exists(af):  # после обновления токена OpenAI показывает новый план
+                        os.replace(af, pf)
+                if os.path.exists(os.path.join(home, "ACCOUNT_FAIL")):
+                    print(json.dumps({"id": m["id"], "error": {"code": -1, "message": "boom"}}), flush=True)
+                    continue
+                plan = open(pf).read().strip() if os.path.exists(pf) else "plus"
                 if os.path.exists(os.path.join(home, "NOACCOUNT")):
                     res = {"account": None, "requiresOpenaiAuth": True}
                 else:
-                    res = {"account": {"type": "chatgpt", "email": "user@example.com", "planType": "plus"}, "requiresOpenaiAuth": True}
+                    res = {"account": {"type": "chatgpt", "email": "user@example.com", "planType": plan}, "requiresOpenaiAuth": True}
             elif meth == "account/rateLimits/read":
                 if os.path.exists(os.path.join(home, "AUTHFAIL")):
                     print(json.dumps({"id": m["id"], "error": {"code": -1, "message": "401 Unauthorized"}}), flush=True)
@@ -286,6 +298,87 @@ class CodexTest(unittest.TestCase):
         self.assertEqual(d["sub_until"], "2026-11-30T17:40:05+00:00")
         self.assertIsNone(d["model"])
         self.assertIn("CODEX_HOME=", d["launch"])
+
+    def test_lapsed_to_free_is_remembered(self):
+        slot = self._add()
+        p = cc_codex.profile_dir(slot)
+        d = cc_codex.fetch_account(self.bin, slot)
+        self.assertFalse(d["lapsed"])
+        self.assertEqual(cc_codex.meta(slot)["paid"], "plus")
+        self.assertEqual(cc_codex.meta(slot)["email"], "user@example.com")  # прежние поля meta на месте
+        _w(os.path.join(p, "PLAN"), "free")
+        d = cc_codex.fetch_account(self.bin, slot)
+        self.assertEqual(d["plan"], "free")
+        self.assertTrue(d["lapsed"])
+        self.assertEqual(d["paid_plan"], "plus")
+        self.assertEqual(cc_codex.meta(slot)["paid"], "plus")  # «был платным» не стирается Free-чтением
+        _w(os.path.join(p, "PLAN"), "pro")
+        d = cc_codex.fetch_account(self.bin, slot)
+        self.assertFalse(d["lapsed"])
+        self.assertEqual(cc_codex.meta(slot)["paid"], "pro")
+
+    def test_always_free_account_is_not_lapsed(self):
+        slot = self._add()
+        _w(os.path.join(cc_codex.profile_dir(slot), "PLAN"), "free")
+        d = cc_codex.fetch_account(self.bin, slot)
+        self.assertEqual(d["plan"], "free")
+        self.assertFalse(d["lapsed"])
+        self.assertNotIn("paid", cc_codex.meta(slot))
+
+    def test_lapsed_survives_failed_read(self):
+        # план берётся из id_token даже если app-server молчит: метка не пропадает вместе с сетью
+        slot = self._add()
+        p = cc_codex.profile_dir(slot)
+        cc_codex.fetch_account(self.bin, slot)
+        auth = json.loads(_r(os.path.join(p, "auth.json")))
+        import base64
+        enc = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+        auth["tokens"]["id_token"] = enc({"alg": "none"}) + "." + enc(
+            {"email": "user@example.com", "https://api.openai.com/auth": {"chatgpt_plan_type": "free"}}) + ".sig"
+        _w(os.path.join(p, "auth.json"), json.dumps(auth))
+        _w(os.path.join(p, "ACCOUNT_FAIL"))
+        d = cc_codex.fetch_account(self.bin, slot)
+        self.assertEqual(d["error"], "boom")
+        self.assertEqual(d["plan"], "free")
+        self.assertTrue(d["lapsed"])
+
+    def test_renew_picks_up_new_plan(self):
+        slot = self._add()
+        p = cc_codex.profile_dir(slot)
+        cc_codex.get_accounts(self.bin, force=True)
+        _w(os.path.join(p, "PLAN"), "free")
+        d = cc_codex.get_accounts(self.bin, force=True)[0]
+        self.assertTrue(d["lapsed"])
+        _w(os.path.join(p, "AFTER_REFRESH"), "plus")
+        ok, msg = cc_codex.renew(self.bin, slot)
+        self.assertTrue(ok, msg)
+        self.assertIn("Plus", msg)
+        self.assertIn("30.11.2026", msg)
+        self.assertTrue(os.path.exists(os.path.join(p, "REFRESHED")))
+        d = cc_codex.get_accounts(self.bin)[0]  # карточка в кэше уже свежая
+        self.assertEqual(d["plan"], "plus")
+        self.assertFalse(d["lapsed"])
+
+    def test_renew_still_free_says_wait(self):
+        slot = self._add()
+        p = cc_codex.profile_dir(slot)
+        cc_codex.fetch_account(self.bin, slot)
+        _w(os.path.join(p, "PLAN"), "free")
+        ok, msg = cc_codex.renew(self.bin, slot)
+        self.assertFalse(ok)
+        self.assertIn("Пока Free", msg)
+        ok, msg = cc_codex.renew(self.bin, slot, lang="en")
+        self.assertIn("Still Free", msg)
+        self.assertTrue(cc_codex.get_accounts(self.bin)[0]["lapsed"])
+
+    def test_renew_expired_session_and_bad_slot(self):
+        slot = self._add()
+        _w(os.path.join(cc_codex.profile_dir(slot), "REFRESH_FAIL"))
+        ok, msg = cc_codex.renew(self.bin, slot)
+        self.assertFalse(ok)
+        self.assertIn("Войти заново", msg)
+        self.assertFalse(cc_codex.renew(self.bin, "gpt9")[0])
+        self.assertFalse(cc_codex.renew(self.bin, "../x")[0])
 
     def test_login_required_when_account_missing_or_401(self):
         slot = self._add()

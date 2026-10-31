@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.7", "date": "2026-10-31",
+     "ru": {"t": "Codex: слёт на Free — красная метка, пуш и кнопка «Я продлил»", "p": ["Платный аккаунт стал Free: красная метка FREE в шапке и карточке, один пуш в Telegram; мост продолжает работать", "Кнопка «Я продлил» перечитывает план и срок подписки; платный план возвращён — предупреждения снимаются"]},
+     "en": {"t": "Codex: drop to Free — red tag, push and an \"I renewed\" button", "p": ["A paid account fell to Free: a red FREE tag in the header and card, one Telegram push; the bridge keeps running", "\"I renewed\" re-reads the plan and subscription end; once paid again, the warnings are cleared"]}},
     {"v": "1.25.6", "date": "2026-10-31",
      "ru": {"t": "Codex: без серых полос в консоли", "p": ["Серые полосы вокруг вашего сообщения в консоли Codex убраны — как в консоли Claude, текст читается", "Только зеркало консоли Codex; консоль Claude не менялась"]},
      "en": {"t": "Codex: no grey bands in the console", "p": ["The grey bands around your message in the Codex console are gone, like in the Claude console", "Only the Codex console mirror changed; the Claude console is untouched"]}},

@@ -163,6 +163,11 @@ out.sub=[30,7,5,3,2,-1].map(d=>{const s=cxLimSub({sub_until:iso(d*day-3600e3)});
 out.nosub=cxLimSub({});
 out.login=cxLimHtml({login_required:true});
 out.html=cxLimHtml({windows:[W(300,100),W(10080,45)],sub_until:iso(2*day)});
+out.lapsedHtml=cxLimHtml({lapsed:true,plan:'free',sub_until:iso(-day),windows:[W(300,4),W(10080,1)]});
+out.lapsedSub=cxLimSub({lapsed:true,sub_until:iso(-day)});
+out.lapsedTip=cxLimTip({lapsed:true,plan:'free',email:'a@b',windows:[W(300,4)]});
+out.freeHtml=cxLimHtml({plan:'free',lapsed:false,windows:[W(300,4)]});
+out.lapsedLogin=cxLimHtml({lapsed:true,login_required:true});
 cxData={accounts:[{slot:'a'},{slot:'b'}]};cxbData={bridge:{slot:'b'}};out.pickB=cxLimAcc().slot;
 cxbData={bridge:{slot:''}};out.pickFirst=cxLimAcc().slot;
 cxData={accounts:[]};out.none=cxLimAcc();
@@ -210,10 +215,97 @@ class Counters(unittest.TestCase):
         self.assertIn("45%", self.o["html"])
         self.assertIn("cxLimSub", self.o["html"])                 # подписка ≤ 7 дн. видна в шапке
 
+    def test_lapsed_to_free_is_red_first_segment(self):
+        h = self.o["lapsedHtml"]
+        self.assertTrue(h.startswith('<span class="cxl bad nobar"><i>cxLimPlan</i><b>Free</b></span>'), h)
+        self.assertNotIn("cxLimSub", h)                           # «подписка истекла» не дублирует красный Free
+        self.assertIsNone(self.o["lapsedSub"])
+        self.assertIn("cxLimFreeTip", self.o["lapsedTip"])
+        self.assertNotIn("cxLimPlan", self.o["freeHtml"])         # аккаунт, который Free и был, не краснеет
+        self.assertIn("cxLimLogin", self.o["lapsedLogin"])        # нужен вход — сначала он
+
     def test_account_is_the_one_bridge_uses(self):
         self.assertEqual(self.o["pickB"], "b")
         self.assertEqual(self.o["pickFirst"], "a")
         self.assertIsNone(self.o["none"])
+
+
+CARD_JS = """
+const LANG='ru';
+const tr=(k,...a)=>a.length?k+'('+a.join(',')+')':k;
+const acctEsc=s=>String(s==null?'':s);
+const ring=()=>'RING',bar=()=>'BAR';
+let cxData=null;
+%s
+const now=Date.now(),day=86400e3,iso=ms=>new Date(now+ms).toISOString();
+const W=(mins,pct)=>({mins,pct,resets_at:iso(3600e3)});
+const base={slot:'gpt1',email:'a@b',models:[],windows:[W(300,4),W(10080,1)]};
+const o={};
+o.lapsed=cxCard(Object.assign({},base,{plan:'free',lapsed:true,paid_plan:'plus'}));
+o.plus=cxCard(Object.assign({},base,{plan:'plus',lapsed:false,sub_until:iso(20*day)}));
+o.ended=cxCard(Object.assign({},base,{plan:'plus',lapsed:false,sub_until:iso(-day)}));
+o.alwaysFree=cxCard(Object.assign({},base,{plan:'free',lapsed:false}));
+o.login=cxCard(Object.assign({},base,{plan:'free',lapsed:true,paid_plan:'plus',login_required:true}));
+cxData={accounts:[Object.assign({},base,{plan:'free',lapsed:true,paid_plan:'plus'})]};
+o.sumLapsed=cxAccSummary();
+cxData={accounts:[Object.assign({},base,{plan:'plus'})]};
+o.sumPlus=cxAccSummary();
+console.log(JSON.stringify(o));
+"""
+
+
+@unittest.skipUnless(__import__("shutil").which("node"), "нет node")
+class FreeCard(unittest.TestCase):
+    """Слёт с платного плана на Free: красная метка, заметка и кнопка «Я продлил» в карточке."""
+
+    @classmethod
+    def setUpClass(cls):
+        i = L.PAGE.index("function cxWin(")
+        j = L.PAGE.index("function cxRender(){")
+        k = L.PAGE.index("function cxAccSummary(){")
+        k2 = L.PAGE.index("function cxpRender(){")
+        code = CARD_JS % (L.PAGE[i:j] + L.PAGE[k:k2])
+        path = os.path.join(TMP, "card.js")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(code)
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+        cls.o = json.loads(r.stdout)
+
+    def test_lapsed_card_red_tag_note_and_button(self):
+        h = self.o["lapsed"]
+        self.assertIn('class="card lapsed"', h)
+        self.assertIn('<span class="tag lpt">FREE</span>', h)
+        self.assertIn("cxLapsedNote(Plus)", h)
+        self.assertIn("cxRenew('gpt1',this)", h)
+        self.assertIn("cxRenewBtn", h)
+        self.assertNotIn("cxSubOver", h)          # устаревший срок не спорит с красным FREE
+
+    def test_normal_card_has_no_free_marks(self):
+        h = self.o["plus"]
+        for bad in ("lapsed", "lpt", "cxRenew(", "cxLapsedNote"):
+            self.assertNotIn(bad, h, bad)
+        self.assertIn('<span class="tag plan">PLUS</span>', h)
+
+    def test_ended_subscription_gets_renew_button_too(self):
+        h = self.o["ended"]
+        self.assertIn("cxRenew('gpt1',this)", h)
+        self.assertNotIn("cxLapsedNote", h)       # плана Free ещё нет — заметки нет, есть чип «подписка закончилась»
+        self.assertIn("cxSubOver", h)
+
+    def test_account_that_was_always_free_is_calm(self):
+        h = self.o["alwaysFree"]
+        self.assertNotIn("lapsed", h)
+        self.assertNotIn("cxRenew(", h)
+        self.assertIn('<span class="tag plan">FREE</span>', h)
+
+    def test_login_needed_hides_renew(self):
+        self.assertNotIn("cxRenew(", self.o["login"])
+        self.assertIn("cxLoginNeeded", self.o["login"])
+
+    def test_window_summary_marks_free(self):
+        self.assertIn("⛔ Free", self.o["sumLapsed"])
+        self.assertNotIn("Free", self.o["sumPlus"])
 
 
 QUICK_JS = """
@@ -317,6 +409,20 @@ class Routes(unittest.TestCase):
             sv.assert_called_once_with("Ночной", lang=None, spec={})
             self.assertEqual(self.post("bridge/profile/delete", {"id": "c1"}), (200, {"ok": False, "message": "no"}))
             dl.assert_called_once_with("c1", lang=None)
+
+    def test_renew_route_delegates_and_rechecks_bridge_on_success(self):
+        import threading
+        ticked = threading.Event()
+        with mock.patch.object(L.cc_codex, "renew", return_value=(True, "✅ План: Plus")) as rn, \
+                mock.patch.object(L.cc_codex_bridge.BRIDGE, "limits_tick", side_effect=ticked.set):
+            self.assertEqual(self.post("renew", {"slot": "gpt1", "lang": "en"}), (200, {"ok": True, "message": "✅ План: Plus"}))
+            rn.assert_called_once_with("/x/codex", "gpt1", lang="en")
+            self.assertTrue(ticked.wait(3), "после успешного «Я продлил» мост не сверил карточку")
+        ticked.clear()
+        with mock.patch.object(L.cc_codex, "renew", return_value=(False, "Пока Free")), \
+                mock.patch.object(L.cc_codex_bridge.BRIDGE, "limits_tick", side_effect=ticked.set):
+            self.assertEqual(self.post("renew", {"slot": "gpt1"}), (200, {"ok": False, "message": "Пока Free"}))
+            self.assertFalse(ticked.wait(0.3))
 
     def test_unknown_route_is_404(self):
         self.assertEqual(self.post("bridge/profile/nope", {})[0], 404)

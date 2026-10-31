@@ -834,6 +834,38 @@ class LimitAlerts(Base):
         _, st = br.limit_alerts(self.acc(sub_until=until(30)), st, now)  # продлили
         self.assertNotIn("sub", st)
 
+    def test_lapsed_to_free_one_message_then_back(self):
+        a = self.acc(plan="free", lapsed=True, paid_plan="plus")
+        msgs, st = br.limit_alerts(a, {})
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("слетела на Free", msgs[0])
+        self.assertIn("Plus", msgs[0])
+        self.assertIn("Я продлил", msgs[0])
+        self.assertEqual(br.limit_alerts(a, st)[0], [])  # пока Free — тишина
+        msgs, st = br.limit_alerts(self.acc(plan="plus", lapsed=False), st)
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("снова Plus", msgs[0])
+        self.assertNotIn("lapsed", st)
+        self.assertEqual(br.limit_alerts(self.acc(plan="plus", lapsed=False), st)[0], [])
+        msgs, _ = br.limit_alerts(a, st)  # слетел второй раз — снова скажем
+        self.assertEqual(len(msgs), 1)
+
+    def test_lapsed_with_stale_sub_date_no_double_message(self):
+        import datetime as dt
+        now = dt.datetime(2026, 10, 31, 10, 0, tzinfo=dt.timezone.utc)
+        a = self.acc(plan="free", lapsed=True, paid_plan="plus", sub_until=(now - dt.timedelta(days=1)).isoformat())
+        msgs, st = br.limit_alerts(a, {}, now)
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("Free", msgs[0])
+        self.assertEqual(br.limit_alerts(a, st, now)[0], [])
+
+    def test_always_free_account_is_silent(self):
+        self.assertEqual(br.limit_alerts(self.acc(plan="free", lapsed=False), {})[0], [])
+
+    def test_lapsed_no_message_when_data_unreadable(self):
+        a = self.acc(plan="free", lapsed=True, paid_plan="plus", error="boom")
+        self.assertEqual(br.limit_alerts(a, {}), ([], {}))
+
     def test_tick_sends_to_telegram_once_and_remembers(self):
         cards = [self.acc(p5=95, sub_until=None)]
         with unittest.mock.patch.object(cc_codex, "get_accounts", lambda b, force=False: cards):

@@ -14,7 +14,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.7"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2704,6 +2704,11 @@ class H(BaseHTTPRequestHandler):
             ok, message = cc_codex.set_prefs(b, body.get("slot", ""), body.get("model", ""), body.get("effort", ""),
                                              body.get("fast"), lang=lang)
             return self._send(200, {"ok": ok, "message": message})
+        if action == "renew":
+            ok, message = cc_codex.renew(b, body.get("slot", ""), lang=lang)
+            if ok:  # сразу сверить карточку: пуш «план снова …» уйдёт без ожидания очередного круга
+                threading.Thread(target=cc_codex_bridge.BRIDGE.limits_tick, daemon=True).start()
+            return self._send(200, {"ok": ok, "message": message})
         if action == "delete":
             ok, message = cc_codex.delete_account(b, body.get("slot", ""), body.get("confirm", ""), lang=lang)
             return self._send(200, {"ok": ok, "message": message})
@@ -4313,6 +4318,12 @@ const I18N={
   cxLimSub:'подп.',
   cxLimSubD:d=>d+' дн.',
   cxLimSubEnd:'истекла',
+  cxLimPlan:'план',
+  cxLimFreeTip:'Подписка слетела на Free — нажми «Я продлил» в окне Codex',
+  cxLapsedNote:was=>'Подписка слетела на Free'+(was?' (была '+was+')':'')+' — Codex работает урезанно. Продлил? Нажми «Я продлил» — перечитаю план и срок.',
+  cxRenewBtn:'Я продлил',
+  cxRenewTip:'Перечитать план и срок подписки',
+  cxRenewing:'Проверяю…',
   cxLimFull:'исчерпан',
   cxLimReset:t=>'сброс '+t,
   cxLimIn:t=>'через '+t,
@@ -4681,6 +4692,12 @@ const I18N={
   cxLimSub:'sub',
   cxLimSubD:d=>d+' d',
   cxLimSubEnd:'expired',
+  cxLimPlan:'plan',
+  cxLimFreeTip:'The subscription dropped to Free — press “I renewed” in the Codex window',
+  cxLapsedNote:was=>'The subscription dropped to Free'+(was?' (was '+was+')':'')+' — Codex runs with reduced limits. Renewed? Press “I renewed” and I will re-read the plan and the date.',
+  cxRenewBtn:'I renewed',
+  cxRenewTip:'Re-read the plan and the subscription date',
+  cxRenewing:'Checking…',
   cxLimFull:'used up',
   cxLimReset:t=>'resets '+t,
   cxLimIn:t=>'in '+t,
@@ -5369,9 +5386,10 @@ function cxSelects(a){
    <label class="cxfast${canFast?'':' off'}" title="${acctEsc(canFast?tr('cxFastTip'):tr('cxFastNa'))}"><input type="checkbox" id="cxf-${sl}"${a.fast&&canFast?' checked':''}${canFast?'':' disabled'} onchange="cxPref('${sl}')"><span>${tr('cxFast')}</span></label>
   </div>`;
 }
+function cxNeedsRenew(a){return!!a.lapsed||(!!a.sub_until&&new Date(a.sub_until)-Date.now()<=0);}
 function cxCard(a){
  const sl=acctEsc(a.slot);
- const plan=a.plan?'<span class="tag plan">'+acctEsc(String(a.plan).toUpperCase())+'</span> ':'';
+ const plan=a.lapsed?'<span class="tag lpt">FREE</span> ':a.plan?'<span class="tag plan">'+acctEsc(String(a.plan).toUpperCase())+'</span> ':'';
  const who=(a.label?acctEsc(a.label)+' · ':'')+acctEsc(a.email||'?');
  const w5=cxWin(a,300),w7=cxWin(a,10080);
  const rest=(a.windows||[]).filter(w=>w!==w5&&w!==w7);
@@ -5379,17 +5397,18 @@ function cxCard(a){
  let notes='';
  if(a.login_required)notes+=`<div class="lpnote cxcard-note" role="status"><span><b>${tr('cxLoginNeeded')}</b></span></div>`;
  else{
+  if(a.lapsed)notes+=`<div class="lpnote cxcard-note" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg><span><b>FREE</b> — ${acctEsc(tr('cxLapsedNote',a.paid_plan?String(a.paid_plan).replace(/^./,c=>c.toUpperCase()):''))}</span></div>`;
   if(a.error)notes+=`<div class="err">⚠ ${acctEsc(a.error)}${a.stale?' · '+tr('cxStale'):''}</div>`;
   if(a.reached||a.usage_allowed===false)notes+=`<div class="lpnote cxcard-note" role="status"><span><b>${a.reached?tr('cxReached'):tr('cxNotAllowed')}</b></span></div>`;
  }
  const bars=(w5?bar(tr('session5'),w5):'')+(w7?bar(tr('week'),w7):'')
   +rest.map(w=>bar(tr('cxWin',Math.round((w.mins||0)/60)),w)).join('');
  const cr=a.credits&&(a.credits.unlimited?tr('cxCreditsUnl'):a.credits.hasCredits?tr('cxCredits',acctEsc(a.credits.balance)):'');
- return`<div class="card">
-  <div class="top"><span class="email">${who} ${plan}${cxSubChip(a)}</span><div class="hdrright">${rg}</div></div>
+ return`<div class="card${a.lapsed?' lapsed':''}">
+  <div class="top"><span class="email">${who} ${plan}${a.lapsed?'':cxSubChip(a)}</span><div class="hdrright">${rg}</div></div>
   ${notes}${bars}${cr?`<div class="cxsub" style="margin-top:8px">${cr}</div>`:''}
   ${a.login_required?'':cxSelects(a)}
-  <div class="acts">${cxAuthChip(a)}<button class="btn-relogin" onclick="cxAdd('${sl}')">${tr('cxRelogin')}</button>
+  <div class="acts">${cxAuthChip(a)}${cxNeedsRenew(a)&&!a.login_required?`<button class="btn-relogin" title="${acctEsc(tr('cxRenewTip'))}" onclick="cxRenew('${sl}',this)">✅ ${tr('cxRenewBtn')}</button>`:''}<button class="btn-relogin" onclick="cxAdd('${sl}')">${tr('cxRelogin')}</button>
    <button class="btn-relogin" title="${acctEsc(tr('cxLaunchTip'))}" onclick="cxLaunch('${sl}',this)">${tr('cxLaunch')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="cxDel('${sl}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
  </div>`;
@@ -5574,7 +5593,7 @@ function cxLimSegs(a){
 }
 // подписка: в шапке — только когда осталась неделя или меньше; полная дата всегда в подсказке
 function cxLimSub(a){
- if(!a.sub_until)return null;
+ if(!a.sub_until||a.lapsed)return null;  // слёт на Free уже показан красным «план Free»
  const ms=new Date(a.sub_until)-Date.now();if(isNaN(ms))return null;
  const d=Math.ceil(ms/86400000);
  if(ms<=0)return{lvl:'bad',txt:tr('cxLimSubEnd')};
@@ -5586,6 +5605,7 @@ function cxLimHtml(a){
   const t=s.full&&cxClock(s.reset)?tr('cxLimUntil',cxClock(s.reset)):s.pct+'%';
   return`<span class="cxl ${s.lvl}" style="--p:${Math.min(100,s.pct)}"><i>${acctEsc(s.label.replace(/\s+/g,''))}</i><b>${acctEsc(t)}</b></span>`;
  }).join('');
+ if(a.lapsed)h=`<span class="cxl bad nobar"><i>${acctEsc(tr('cxLimPlan'))}</i><b>Free</b></span>`+h;
  const sb=cxLimSub(a);
  if(sb)h+=`<span class="cxl ${sb.lvl} nobar"><i>${acctEsc(tr('cxLimSub'))}</i><b>${acctEsc(sb.txt)}</b></span>`;
  return h;
@@ -5597,7 +5617,8 @@ function cxLimTip(a){
   const r=s.reset?cxClock(s.reset):'',lf=s.reset?cxLeft(s.reset):'';
   L.push(s.label+': '+(s.full?tr('cxLimFull'):s.pct+'%')+(r?' · '+tr('cxLimReset',r)+(lf?' ('+tr('cxLimIn',lf)+')':''):''));
  });
- if(a.sub_until)L.push(tr('cxSubTitle',cxDate(a.sub_until)));
+ if(a.lapsed)L.push(tr('cxLimFreeTip'));
+ if(a.sub_until&&!a.lapsed)L.push(tr('cxSubTitle',cxDate(a.sub_until)));
  return L;
 }
 function cxAccSummary(){
@@ -5605,7 +5626,7 @@ function cxAccSummary(){
  return as.map(a=>{
   const w5=cxWin(a,300),w7=cxWin(a,10080),nm=(a.label||String(a.email||'?').split('@')[0]);
   const f=w=>w&&w.pct!=null?w.pct+'%':'?';
-  return a.login_required?nm+': !':nm+' '+tr('cxS5')+' '+f(w5)+' · '+tr('cxS7')+' '+f(w7);
+  return a.login_required?nm+': !':nm+(a.lapsed?' ⛔ Free':'')+' '+tr('cxS5')+' '+f(w5)+' · '+tr('cxS7')+' '+f(w7);
  }).join(' | ');
 }
 function cxpRender(){
@@ -5878,6 +5899,14 @@ async function cxLoad(refresh){
   if(d&&d.ok){cxData=d;cxRender();cxbRender();cxAll();}
  }catch(e){}
  finally{cxBusy=false;if(cxAgain){cxAgain=false;cxLoad(true);}}
+}
+async function cxRenew(slot,btn){
+ const orig=btn?btn.textContent:'';
+ if(btn){btn.disabled=true;btn.textContent=tr('cxRenewing');}
+ try{const r=await acctPost('chatgpt/renew',{slot});toast(r.message);}
+ catch(err){toast('⚠ '+err);}
+ if(btn){btn.disabled=false;btn.textContent=orig;}
+ cxLoad();
 }
 function cxLaunch(slot,btn){const a=cxAcc(slot);if(a&&a.launch)acctCopy(btn,a.launch);}
 async function cxPref(slot){

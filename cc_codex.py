@@ -451,7 +451,37 @@ def _models_view(raw):
     return out
 
 
+def _is_paid(plan):
+    return bool(plan) and plan not in ("free", "?", "unknown")
+
+
+def _remember_paid(slot, plan):
+    """Запоминаем, что аккаунт был платным: иначе «слетел на Free» не отличить от аккаунта, который Free и был."""
+    mt = meta(slot)
+    if mt.get("paid") == plan:
+        return mt
+    mt["paid"] = plan
+    path = os.path.join(profile_dir(slot), "meta.json")
+    try:
+        _jsave(path, mt)
+        own(path)
+    except OSError:
+        pass
+    return mt
+
+
 def fetch_account(bin_path, slot):
+    """Карточка аккаунта + признак «слетел на Free» (был платным, а план теперь free)."""
+    out = _read_account(bin_path, slot)
+    plan = out.get("plan")
+    paid = _remember_paid(slot, plan).get("paid") if _is_paid(plan) else meta(slot).get("paid")
+    out["lapsed"] = plan == "free" and _is_paid(paid)
+    if out["lapsed"]:
+        out["paid_plan"] = paid
+    return out
+
+
+def _read_account(bin_path, slot):
     """Живое чтение карточки: план, лимиты, модели, выбранные настройки. Сеть и app-server — до ~10 с."""
     home = profile_dir(slot)
     mt = meta(slot)
@@ -570,6 +600,48 @@ def set_prefs(bin_path, slot, model, effort, fast, lang="ru"):
         with _lock:
             _cache.pop(slot, None)
     return True, _t(lang, "✅ Настройки записаны.", "✅ Settings saved.")
+
+
+# ---------------------------------------------------------------- «Я продлил»
+def _date(iso):
+    try:
+        d = datetime.datetime.fromisoformat((iso or "").replace("Z", "+00:00"))
+        return d.strftime("%d.%m.%Y")
+    except ValueError:
+        return ""
+
+
+def renew(bin_path, slot, lang="ru"):
+    """Кнопка «Я продлил»: просим CLI обновить токены (свежий id_token несёт актуальный план и срок подписки),
+    сбрасываем кэш и перечитываем карточку. → (ok, сообщение); ok только если план снова платный."""
+    if not _SLOT_RE.match(slot or "") or slot not in profile_slots():
+        return False, _t(lang, "Неизвестный аккаунт.", "Unknown account.")
+    with _slot_lock(slot):
+        try:
+            with AppServer(bin_path, profile_dir(slot)) as c:
+                c.request("account/read", {"refreshToken": True})
+        except Exception as e:
+            if _AUTH_ERR.search(str(e)):
+                return False, _t(lang, "Сессия ChatGPT истекла — нажми «Войти заново».",
+                                 "The ChatGPT session has expired — press \"Sign in again\".")
+            return False, _t(lang, f"Не удалось обновить данные: {e}", f"Could not refresh the data: {e}")
+        with _lock:
+            _cache.pop(slot, None)
+    d = fetch_account(bin_path, slot)
+    with _lock:
+        _cache[slot] = {"ts": time.time(), "data": d}
+    if d.get("login_required"):
+        return False, _t(lang, "Сессия ChatGPT истекла — нажми «Войти заново».",
+                         "The ChatGPT session has expired — press \"Sign in again\".")
+    plan = (d.get("plan") or "?").capitalize()
+    if _is_paid(d.get("plan")):
+        until = _date(d.get("sub_until"))
+        return True, _t(lang, f"✅ План: {plan}" + (f", подписка до {until}." if until else "."),
+                        f"✅ Plan: {plan}" + (f", subscription until {until}." if until else "."))
+    return False, _t(lang, "Пока Free: OpenAI ещё не показывает оплату. Подожди пару минут и нажми снова; "
+                           "если не помогает — «Войти заново».",
+                     "Still Free: OpenAI does not show the payment yet. Wait a couple of minutes and press again; "
+                     "if it does not help — \"Sign in again\".")
 
 
 # ---------------------------------------------------------------- удаление

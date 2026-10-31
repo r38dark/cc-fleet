@@ -680,6 +680,15 @@ def limit_alerts(acc, prev, now=None):
             prev[key] = lvl
         elif lvl < old and pct < LIM_CLEAR:
             prev[key] = lvl  # спад ниже гистерезиса — порог взведён заново, сообщать не о чем
+    lapsed = bool(acc.get("lapsed"))
+    if lapsed and not prev.get("lapsed"):
+        was = (acc.get("paid_plan") or "").capitalize()
+        out.append("⛔ ChatGPT: подписка слетела на Free" + (f" (была {was})" if was else "")
+                   + " — Codex работает урезанно. Продли и нажми «Я продлил» в окне Codex.")
+        prev["lapsed"] = 1
+    elif not lapsed and prev.get("lapsed"):
+        out.append(f"✅ ChatGPT: план снова {(acc.get('plan') or '').capitalize() or 'платный'}.")
+        prev.pop("lapsed", None)
     until = acc.get("sub_until")
     if until:
         try:
@@ -694,7 +703,8 @@ def limit_alerts(acc, prev, now=None):
             elif done is None or step < done:
                 end = _local(until)
                 if step == 0:
-                    out.append(f"⚠ Подписка ChatGPT закончилась ({end}). Пока не продлишь, Codex не отвечает.")
+                    if not lapsed:  # о слёте на Free уже написали выше
+                        out.append(f"⚠ Подписка ChatGPT закончилась ({end}). Пока не продлишь, Codex не отвечает.")
                 else:
                     out.append(f"⏳ Подписка ChatGPT заканчивается через {math.ceil(left)} дн. (до {end}).")
                 prev["sub"] = step
