@@ -93,6 +93,18 @@ class Page(unittest.TestCase):
         save = re.search(r"async function cxbSave\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
         self.assertIn("if(pj!==cxbProjVal(b))body.project=pj", save)
 
+    def test_form_texts_follow_profile(self):
+        # профиль «Codex»: рабочая папка (там он может всё) идёт первой, проект — «только чтение»; в «Оркестраторе» проект как был
+        form = re.search(r"function cxbRender\(force\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn("${self?dirBlock+projBlock:projBlock+dirBlock}", form)
+        self.assertIn("tr(self?'cxbProjectSelf':'cxbProject')", form)
+        self.assertIn("tr(self?'cxbProjHintSelf':'cxbProjHint')", form)
+        for lang, word in (("ru", "создавать файлы и папки"), ("en", "create files and folders")):
+            blk = i18n_block(lang)
+            for key in ("cxbProjectSelf", "cxbProjHintSelf", "cxbDirSelf"):
+                self.assertRegex(blk, r"(?m)^\s{2}%s:'.+',$" % key)
+            self.assertIn(word, re.search(r"(?m)^\s{2}cxbDirSelf:'(.*)',$", blk).group(1))
+
     def test_builtin_cards_show_route_arrow_and_colored_features(self):
         # две карточки: название, маршрут со стрелкой между звеньями, цветные чипы основных функций
         self.assertIn("function cxpNameHtml(p)", L.PAGE)

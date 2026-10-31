@@ -15,7 +15,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.11"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.12"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4428,7 +4428,9 @@ const I18N={
   cxbProject:'Проект (Codex его только читает)',
   cxbProjHint:'Папка проекта, о котором говорит Codex. Менять её он не может — правит Claude. Пусто — берётся рабочая папка.',
   cxbDir:'Рабочая папка Codex',
-  cxbDirSelf:'Здесь Codex пишет сам. Пусто — своя папка по умолчанию; в режиме «Запись» писать он может только в ней.',
+  cxbProjectSelf:'Проект (только чтение)',
+  cxbProjHintSelf:'Код проекта, который Codex только читает. Править его он не может — правки вносишь ты или Claude.',
+  cxbDirSelf:'Здесь Codex может всё: создавать файлы и папки, менять и запускать. Вне этой папки писать он не может. Пусто — своя папка по умолчанию.',
   cxbRRead:'Чтение — ничего не менять',
   cxbRDev:'Дев — правки и коммиты на деве',
   cxbRFull:'Полные — включая прод',
@@ -4822,7 +4824,9 @@ const I18N={
   cxbProject:'Project (Codex only reads it)',
   cxbProjHint:'The project folder Codex talks about. It cannot change it — Claude does. Empty — the working folder is used.',
   cxbDir:'Codex working folder',
-  cxbDirSelf:'Codex writes here on its own. Empty — its own default folder; in "Write" mode it can write only here.',
+  cxbProjectSelf:'Project (read only)',
+  cxbProjHintSelf:'The project code Codex only reads. It cannot change it — you or Claude make the edits.',
+  cxbDirSelf:'Codex can do anything here: create files and folders, change and run things. It cannot write outside this folder. Empty — its own default folder.',
   cxbRRead:'Read — change nothing',
   cxbRDev:'Dev — edits and commits on dev',
   cxbRFull:'Full — including production',
@@ -5561,18 +5565,21 @@ function cxbRender(force){
  const slots=(b.slots||[]).length
   ?`<select class="dlginp" id="cxbSlot">${o('',tr('cxbSlotAuto'),b.slot)}${b.slots.map(s=>o(s,s+((cxAcc(s)||{}).email?' · '+cxAcc(s).email:''),b.slot)).join('')}</select>`
   :`<div class="cxsub" style="margin-top:8px">${tr('cxbNoSlot')}</div>`;
+ // профиль «Codex»: рабочая папка (где он может всё) идёт первой, проект — только чтение; в «Оркестраторе» видно только проект
+ const self=b.mode==='self';
+ const projBlock=`<label class="dlglbl" for="cxbProj"${self?' style="margin-top:14px"':''}>${tr(self?'cxbProjectSelf':'cxbProject')}</label>
+  <input id="cxbProj" class="dlginp" autocomplete="off" spellcheck="false" placeholder="/home/…/project" value="${acctEsc(cxbProjVal(b))}">
+  <div class="cxsub" style="margin-top:6px">${tr(self?'cxbProjHintSelf':'cxbProjHint')}</div>`;
+ const dirBlock=`<div id="cxbDirRow"><label class="dlglbl" for="cxbDir">${tr('cxbDir')}</label>
+   <input id="cxbDir" class="dlginp" autocomplete="off" spellcheck="false" placeholder="${acctEsc(b.workspace||'/home/…/work')}" value="${acctEsc(b.workdir||'')}">
+   <div class="cxsub" style="margin-top:6px">${tr('cxbDirSelf')}</div></div>`;
  el.hidden=false;
  el.innerHTML=`<div class="cxsub" style="margin:10px 0 8px">${tr('cxbHint')}</div>
  <div class="card">
   <div class="cxbgrid">
    <div><label class="dlglbl" for="cxbSlot">${tr('cxbSlot')}</label>${slots}</div>
   </div>
-  <label class="dlglbl" for="cxbProj">${tr('cxbProject')}</label>
-  <input id="cxbProj" class="dlginp" autocomplete="off" spellcheck="false" placeholder="/home/…/project" value="${acctEsc(cxbProjVal(b))}">
-  <div class="cxsub" style="margin-top:6px">${tr('cxbProjHint')}</div>
-  <div id="cxbDirRow"><label class="dlglbl" for="cxbDir" style="margin-top:14px">${tr('cxbDir')}</label>
-   <input id="cxbDir" class="dlginp" autocomplete="off" spellcheck="false" placeholder="${acctEsc(b.workspace||'/home/…/work')}" value="${acctEsc(b.workdir||'')}">
-   <div class="cxsub" style="margin-top:6px">${tr('cxbDirSelf')}</div></div>
+  ${self?dirBlock+projBlock:projBlock+dirBlock}
   <label class="dlglbl" for="cxbTok" style="margin-top:14px">${tr('cxbTokLbl')}</label>
   ${b.token_set
    ?`<div class="cxbrow"><span class="cxsub">${acctEsc(tr('cxbBotInfo',b.bot||'?',b.token_tail))}</span><button class="ghostbtn" onclick="cxbTokClear()">${tr('cxbDisc')}</button></div>`
