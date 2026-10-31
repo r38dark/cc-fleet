@@ -344,5 +344,30 @@ class ProfilesDir(unittest.TestCase):
         self.assertEqual(self.dir_for({}), "/root/.codex-profiles")
 
 
+class ConsoleColors(unittest.TestCase):
+    """Блок сообщения пользователя в Codex (фон SGR 48;5;8 = 7f7f7f у pyte) рисуется без серой полосы."""
+
+    def _html(self, row_html):
+        import pyte
+        screen = pyte.Screen(20, 2)
+        pyte.Stream(screen).feed("\x1b[39;48;5;8m  вопрос        \x1b[0m\r\n\x1b[41mкрасный\x1b[0m")
+        return [row_html(screen.buffer[y], 20) for y in range(2)]
+
+    def test_codex_mirror_drops_user_block_band(self):
+        # серой полосы нет вовсе (как в консоли Claude), текст остаётся
+        rows = self._html(L.cc_codex_console.ROW_HTML)
+        self.assertNotIn("background", rows[0])
+        self.assertIn("вопрос", rows[0])
+
+    def test_codex_mirror_keeps_other_backgrounds(self):
+        # красный фон ANSI (базовый 41) остаётся как есть
+        rows = self._html(L.cc_codex_console.ROW_HTML)
+        self.assertIn("background:#e05b5b", rows[1])
+
+    def test_claude_console_colors_unchanged(self):
+        rows = self._html(L._row_html)
+        self.assertIn("background:#7f7f7f", rows[0])
+
+
 if __name__ == "__main__":
     unittest.main()

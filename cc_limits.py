@@ -14,7 +14,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.5"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1303,10 +1303,12 @@ def _resolve_color(name, bold):
     return (ANSI_FG_BOLD if bold else ANSI_FG).get(name)
 
 
-def _cell_style(ch):
+def _cell_style(ch, bg_map=None):
     fg, bg = _resolve_color(ch.fg, ch.bold), _resolve_color(ch.bg, False)
     if ch.reverse:
         fg, bg = bg, fg
+    if bg_map and bg in bg_map:
+        bg = bg_map[bg]
     parts = []
     if fg:
         parts.append(f"color:{fg}")
@@ -1322,11 +1324,11 @@ def _cell_style(ch):
     return ";".join(parts)
 
 
-def _row_html(line, ncols):
+def _row_html(line, ncols, bg_map=None):
     out, style, buf = [], "", []
     for x in range(ncols):
         ch = line[x]
-        st = _cell_style(ch)
+        st = _cell_style(ch, bg_map)
         if st != style:
             if buf:
                 txt = html.escape("".join(buf))
@@ -1339,7 +1341,16 @@ def _row_html(line, ncols):
     return "".join(out) or " "
 
 
-cc_codex_console.ROW_HTML = _row_html  # консоль Codex красится тем же кодом, что и консоль Claude
+# Codex рисует блок сообщения пользователя серой полосой (SGR 48;5;8): pyte отдаёт индекс 8 как 7f7f7f.
+# В консоли Claude таких полос нет, и текст на них не читается, поэтому в Codex-зеркале фон убираем.
+CODEX_BG_MAP = {"#7f7f7f": None}
+
+
+def _row_html_codex(line, ncols):
+    return _row_html(line, ncols, CODEX_BG_MAP)
+
+
+cc_codex_console.ROW_HTML = _row_html_codex  # остальная раскраска консоли Codex та же, что у консоли Claude
 
 
 # --- Персистентное состояние pyte (скроллбэк) ---

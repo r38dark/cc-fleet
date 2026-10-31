@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.6", "date": "2026-10-31",
+     "ru": {"t": "Codex: без серых полос в консоли", "p": ["Серые полосы вокруг вашего сообщения в консоли Codex убраны — как в консоли Claude, текст читается", "Только зеркало консоли Codex; консоль Claude не менялась"]},
+     "en": {"t": "Codex: no grey bands in the console", "p": ["The grey bands around your message in the Codex console are gone, like in the Claude console", "Only the Codex console mirror changed; the Claude console is untouched"]}},
     {"v": "1.25.5", "date": "2026-10-31",
      "ru": {"t": "Codex: консоль и Telegram — один разговор", "p": ["Сообщения из Telegram мост вводит в живую консоль Codex, ответ читает из файла сессии: на вкладке виден диалог", "«/stop» нажимает Esc в консоли, «/new» перезапускает консоль с чистым разговором; консоль идёт с «-a never»", "Закрытую или запущенную с другими правами консоль мост поднимает сам и продолжает тот же разговор (resume)"]},
      "en": {"t": "Codex: console and Telegram are one conversation", "p": ["The bridge types Telegram messages into the live Codex console and reads the reply from its session file", "/stop presses Esc in the console, /new restarts it with a clean conversation; the console runs with -a never", "A closed console, or one started with other rights, is restarted by the bridge and resumes the same conversation"]}},

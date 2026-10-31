@@ -783,6 +783,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.6** — Codex: the grey bands around a user message in the console mirror are gone, like in the
+  Claude console; the Claude console is untouched.
 - **v1.25.5** — Codex: console and Telegram are one conversation: the bridge types messages into the live
   console and takes the reply from its session file; `/stop` is Esc, `/new` restarts the console with a clean
   conversation; a closed console is restarted by the bridge and resumes the same conversation.
