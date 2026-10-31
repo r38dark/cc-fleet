@@ -1,0 +1,390 @@
+import json, os, stat, sys, tempfile, threading, types, unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cc_codex, cc_codex_bridge as br
+
+FAKE = r'''#!/usr/bin/env python3
+import json, os, sys
+a = sys.argv[1:]
+prompt = a[a.index("--") + 1]
+log = os.environ.get("FAKE_LOG")
+with open(log, "a") as f:
+    f.write(json.dumps({"argv": a, "cwd": os.getcwd(), "home": os.environ.get("CODEX_HOME")}) + "\n")
+if prompt == "падение":
+    print("boom: что-то сломалось")
+    sys.exit(1)
+if prompt == "401":
+    print("401 Unauthorized, sign in again")
+    sys.exit(1)
+print(json.dumps({"type": "thread.started", "thread_id": "T-" + (a[2] if a[1] == "resume" else "NEW")}))
+print(json.dumps({"type": "turn.started"}))
+if "оформи" in prompt:
+    os.makedirs("outbox", exist_ok=True)
+    with open("outbox/task.md", "w") as f:
+        f.write(os.environ.get("FAKE_DRAFT", "права: полные\nсделай X в проекте\n"))
+print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "ответ: " + prompt}}))
+print(json.dumps({"type": "turn.completed", "usage": {}}))
+'''
+
+
+def put(path, text="", mode="w"):
+    with open(path, mode, encoding="utf-8") as f:
+        f.write(text)
+
+
+def get(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.tmp, True)
+        j = lambda *p: os.path.join(self.tmp, *p)
+        os.makedirs(j("profiles", "gpt1"))
+        put(j("profiles", "gpt1", "auth.json"), "{}")
+        os.makedirs(j("proj"))
+        self.fake = j("codex")
+        put(self.fake, FAKE)
+        os.chmod(self.fake, 0o755)
+        self.log = j("fake.log")
+        os.environ["FAKE_LOG"] = self.log
+        os.environ.pop("FAKE_DRAFT", None)
+        self.saved = (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
+                      br.RESERVED_TOKENS, br.ACK_TIMEOUT)
+        br.BASE = j("base")
+        os.makedirs(br.BASE)
+        cc_codex.PROFILES = j("profiles")
+        br.BIN = lambda: self.fake
+        self.sent = []  # сообщения человеку
+        self.console = []  # строки в консоль Claude
+        self.delivered_ok = True
+        br.DELIVER = lambda t: (self.console.append(t), self.delivered_ok)[1]
+
+        def fake_api(token, method, payload=None, timeout=30):
+            if method == "sendMessage":
+                self.sent.append(payload["text"])
+            if method == "getMe":
+                return {"ok": True, "result": {"username": "cx_bot"}}
+            return {"ok": True, "result": []}
+        br.tg_api = fake_api
+        self.now = [1000.0]
+        br.NOW = lambda: self.now[0]
+        br.DEFAULT_CHAT = lambda: None
+        br.RESERVED_TOKENS = lambda: []
+        self.addCleanup(self.restore)
+        # токен и чат — прямо в файл настроек (UI-путь проверяется отдельно)
+        s = br.load()
+        s.update(token="123456:" + "A" * 30, chat_id="100200300", enabled=True, workdir=j("proj"), slot="")
+        br._save(s)
+        self.ex = br.ensure_exchange()
+        self.proj = j("proj")
+
+    def restore(self):
+        (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
+         br.RESERVED_TOKENS, br.ACK_TIMEOUT) = self.saved
+        br.BRIDGE.stop()
+
+    def say(self, text, chat=100200300):
+        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": chat}, "text": text}})
+        w = br.BRIDGE.worker
+        if w:
+            w.join(20)
+
+    def runs(self):
+        return [json.loads(l) for l in get(self.log).splitlines()] if os.path.exists(self.log) else []
+
+
+class Settings(Base):
+    def test_plan_modes(self):
+        s = br.load()
+        self.assertEqual(br.plan(s), ("workspace-write", self.ex))
+        for acc, sb in (("read", "read-only"), ("write", "workspace-write"), ("full", "danger-full-access")):
+            s.update(mode="self", access=acc)
+            self.assertEqual(br.plan(s), (sb, self.proj))
+
+    def test_save_validates(self):
+        self.assertFalse(br.save({"mode": "bogus"})[0])
+        self.assertFalse(br.save({"access": "root"})[0])
+        self.assertFalse(br.save({"task_rights": "all"})[0])
+        self.assertFalse(br.save({"slot": "../x"})[0])
+        self.assertFalse(br.save({"chat_id": "abc"})[0])
+
+    def test_forbidden_workdir(self):
+        for bad in ("/", "/root", "/etc", "/home", br.BASE, os.path.join(br.BASE, "x"), "relative", "/нет/такой"):
+            ok, msg = br.save({"mode": "self", "workdir": bad})
+            self.assertFalse(ok, bad)
+        self.assertTrue(br.save({"mode": "self", "access": "read", "workdir": self.proj})[0])
+
+    def test_full_needs_confirm_word(self):
+        ok, msg = br.save({"mode": "self", "access": "full", "workdir": self.proj})
+        self.assertFalse(ok)
+        self.assertIn("подтверждаю", msg)
+        self.assertEqual(br.load()["access"], "read")  # не сохранилось
+        self.assertTrue(br.save({"mode": "self", "access": "full", "workdir": self.proj, "confirm": "подтверждаю"})[0])
+        # повторное сохранение без смены не требует слова снова
+        self.assertTrue(br.save({"mode": "self", "access": "full", "workdir": self.proj})[0])
+        # полные права заданий — тоже за словом
+        self.assertFalse(br.save({"task_rights": "full"})[0])
+        self.assertTrue(br.save({"task_rights": "full", "confirm": "confirm"})[0])
+
+    def test_token_hidden(self):
+        pub = br.public()
+        self.assertNotIn("token", pub)
+        self.assertTrue(pub["token_set"])
+        self.assertEqual(pub["token_tail"], "AAAA")
+        self.assertNotIn("AAAAAAAAAA", json.dumps(pub))
+        self.assertEqual(oct(os.stat(br.settings_path()).st_mode & 0o777), "0o600")
+
+    def test_set_token(self):
+        self.assertFalse(br.set_token("not a token")[0])
+        good = "999999:" + "B" * 30
+        br.RESERVED_TOKENS = lambda: [good]
+        ok, msg = br.set_token(good)
+        self.assertFalse(ok)
+        self.assertIn("отдельный бот", msg)
+        br.RESERVED_TOKENS = lambda: []
+        ok, msg = br.set_token(good)
+        self.assertTrue(ok)
+        self.assertIn("@cx_bot", msg)
+        self.assertEqual(br.load()["token"], good)
+        br.clear_token()
+        self.assertEqual(br.load()["token"], "")
+        self.assertFalse(br.load()["enabled"])
+
+    def test_enable_needs_token(self):
+        br.clear_token()
+        self.assertFalse(br.save({"enabled": True})[0])
+
+
+class Chat(Base):
+    def test_foreign_chat_ignored(self):
+        self.say("привет", chat=111)
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(self.sent, [])
+
+    def test_answer_and_resume(self):
+        self.say("вопрос 1")
+        self.assertEqual(self.sent[-1], "ответ: вопрос 1")
+        r = self.runs()[0]
+        self.assertEqual(r["cwd"], self.ex)
+        self.assertIn("workspace-write", r["argv"])
+        self.assertEqual(r["argv"][r["argv"].index("-C") + 1], self.ex)
+        self.assertEqual(r["argv"][-2:], ["--", "вопрос 1"])
+        self.assertEqual(r["home"], os.path.join(cc_codex.PROFILES, "gpt1"))
+        self.say("вопрос 2")
+        r2 = self.runs()[1]
+        self.assertEqual(r2["argv"][:3], ["exec", "resume", "T-NEW"])
+        self.assertIn('sandbox_mode="workspace-write"', r2["argv"])
+        self.assertEqual(r2["cwd"], self.ex)
+        self.say("/new")
+        self.say("вопрос 3")
+        self.assertNotIn("resume", self.runs()[2]["argv"])
+
+    def test_self_mode_cwd_and_sandbox(self):
+        br.save({"mode": "self", "access": "write", "workdir": self.proj})
+        self.say("правь")
+        r = self.runs()[0]
+        self.assertEqual(r["cwd"], self.proj)
+        self.assertEqual(r["argv"][r["argv"].index("-s") + 1], "workspace-write")
+        br.save({"mode": "self", "access": "full", "workdir": self.proj, "confirm": "подтверждаю"})
+        self.say("ещё")
+        r = self.runs()[1]  # другой доступ → тот же разговор, но песочница переопределена
+        self.assertEqual(r["argv"][:2], ["exec", "resume"])
+        self.assertIn('sandbox_mode="danger-full-access"', r["argv"])
+        self.assertFalse(os.path.exists(os.path.join(self.proj, "outbox")))  # черновик ищется только в «Посреднике»
+
+    def test_prompt_with_dash_is_not_an_option(self):
+        self.say("--help")
+        self.assertEqual(self.sent[-1], "ответ: --help")
+
+    def test_errors(self):
+        self.say("падение")
+        self.assertTrue(self.sent[-1].startswith("⚠️"))
+        self.assertIn("boom", self.sent[-1])
+        self.say("401")
+        self.assertIn("Вход в ChatGPT истёк", self.sent[-1])
+        os.remove(os.path.join(cc_codex.PROFILES, "gpt1", "auth.json"))
+        self.say("а теперь")
+        self.assertIn("Нет входа в ChatGPT", self.sent[-1])
+
+    def test_long_answer_chunked(self):
+        self.assertEqual([len(c) for c in br.chunks("a" * 9000)], [4000, 4000, 1000])
+        parts = br.chunks("строка\n" * 1000, 4000)
+        self.assertTrue(all(len(p) <= 4000 for p in parts))
+        self.assertEqual("".join(parts).replace("\n", ""), "строка" * 1000)
+
+    def test_busy(self):
+        ev = threading.Event()
+        br.BRIDGE.worker = threading.Thread(target=ev.wait)
+        br.BRIDGE.worker.start()
+        self.addCleanup(ev.set)
+        br.BRIDGE.handle_text("ещё вопрос")
+        self.assertIn("ещё работает", self.sent[-1])
+        self.assertEqual(self.runs(), [])
+
+
+class Tasks(Base):
+    def draft(self):
+        self.say("оформи задание")
+        return br._state()["pending"]
+
+    def test_draft_shown_and_capped(self):
+        p = self.draft()
+        self.assertEqual(p["n"], 1)
+        self.assertEqual(p["rights"], "dev")  # потолок по умолчанию «Дев», Codex просил «Полные»
+        self.assertEqual(p["asked"], "full")
+        shown = self.sent[-1]
+        self.assertIn("Задание для Claude #1", shown)
+        self.assertIn("сделай X в проекте", shown)
+        self.assertIn("Права: Дев", shown)
+        self.assertIn("Просили «Полные»", shown)
+        self.assertFalse(os.path.exists(os.path.join(self.ex, "outbox", "task.md")))  # забран
+        self.assertEqual(self.console, [])  # до «да» Claude не трогаем
+
+    def test_no_rights_line_defaults_to_dev(self):
+        os.environ["FAKE_DRAFT"] = "просто текст без прав\n"
+        self.assertEqual(self.draft()["rights"], "dev")
+        self.assertEqual(self.draft()["asked"], "")
+
+    def test_ceiling_read_blocks_dev(self):
+        br.save({"task_rights": "read"})
+        os.environ["FAKE_DRAFT"] = "права: дев\nправка\n"
+        self.assertEqual(self.draft()["rights"], "read")
+
+    def test_yes_delivers(self):
+        self.draft()
+        self.say("да")
+        self.assertEqual(len(self.console), 1)
+        line = self.console[0]
+        d = os.path.join(self.ex, "tasks", "1")
+        self.assertIn("[TASK FROM CODEX #1, rights: dev", line)
+        self.assertTrue(line.isascii(), "кириллица через screen stuff портится")
+        self.assertIn(f"{d}/task.md", line)
+        self.assertIn(f"{d}/ack", line)
+        self.assertIn(f"{d}/result.md", line)
+        self.assertNotRegex(line, r"[\n$\\^\"'`]")
+        body = get(os.path.join(d, "task.md"))
+        self.assertIn("сделай X в проекте", body)
+        self.assertIn("Права: Дев", body)
+        self.assertEqual(br._state()["tasks"]["1"]["state"], "sent")
+        self.assertIsNone(br._state()["pending"])
+        self.assertIn("ушло Claude", self.sent[-1])
+
+    def test_yes_with_rights_override(self):
+        self.draft()
+        self.say("Да, права: полные")
+        self.assertIn("rights: full", self.console[0])
+        self.assertEqual(br._state()["tasks"]["1"]["rights"], "full")
+
+    def test_yes_bad_rights_keeps_pending(self):
+        self.draft()
+        self.say("да, права: непонятно")
+        self.assertEqual(self.console, [])
+        self.assertIsNotNone(br._state()["pending"])
+
+    def test_no_drops(self):
+        self.draft()
+        self.say("нет")
+        self.assertEqual(self.console, [])
+        self.assertIsNone(br._state()["pending"])
+        self.assertIn("отменено", self.sent[-1])
+
+    def test_question_with_yes_word_goes_to_codex(self):
+        self.draft()
+        n = len(self.runs())
+        self.say("да как это работает?")
+        self.assertEqual(self.console, [])
+        self.assertEqual(len(self.runs()), n + 1)
+        self.assertIsNotNone(br._state()["pending"])
+
+    def test_task_dir_not_writable_text_is_fixed_after_yes(self):
+        self.draft()
+        self.say("да")
+        d = os.path.join(self.ex, "tasks", "1")
+        self.assertEqual(oct(os.stat(d).st_mode & 0o777), "0o755")
+
+    def test_watch_ack_result(self):
+        self.draft()
+        self.say("да")
+        d = os.path.join(self.ex, "tasks", "1")
+        br.BRIDGE.watch_once()
+        self.assertNotIn("взял", self.sent[-1])
+        put(os.path.join(d, "ack"))
+        br.BRIDGE.watch_once()
+        self.assertIn("Claude взял задание #1", self.sent[-1])
+        self.assertEqual(br._state()["tasks"]["1"]["state"], "accepted")
+        n = len(self.sent)
+        br.BRIDGE.watch_once()
+        self.assertEqual(len(self.sent), n)  # повторно не сообщает
+        put(os.path.join(d, "result.md"), "Готово: правка сделана, коммит abc123\n")
+        br.BRIDGE.watch_once()
+        self.assertIn("Claude выполнил #1", self.sent[-1])
+        self.assertIn("коммит abc123", self.sent[-1])
+        self.assertEqual(br._state()["tasks"]["1"]["state"], "done")
+
+    def test_watch_result_without_ack(self):
+        self.draft()
+        self.say("да")
+        put(os.path.join(self.ex, "tasks", "1", "result.md"), "сразу готово")
+        br.BRIDGE.watch_once()
+        self.assertIn("сразу готово", self.sent[-1])
+
+    def test_timeout_and_retry(self):
+        self.draft()
+        self.say("да")
+        self.now[0] += br.ACK_TIMEOUT - 1
+        br.BRIDGE.watch_once()
+        self.assertNotIn("не ответил", self.sent[-1])
+        self.now[0] += 2
+        br.BRIDGE.watch_once()
+        self.assertIn("Claude не ответил на #1", self.sent[-1])
+        self.assertEqual(br._state()["tasks"]["1"]["state"], "timeout")
+        self.say("повтори 1")
+        self.assertEqual(len(self.console), 2)
+        self.assertEqual(br._state()["tasks"]["1"]["state"], "sent")
+        self.say("повтори 99")
+        self.assertIn("не найдено", self.sent[-1])
+
+    def test_console_refused(self):
+        self.delivered_ok = False
+        self.draft()
+        self.say("да")
+        self.assertIn("не приняла", self.sent[-1])
+        self.assertFalse(br._state()["tasks"]["1"]["delivered"])
+
+    def test_numbers_increase_and_survive_state_reload(self):
+        self.draft()
+        self.say("нет")
+        self.assertEqual(self.draft()["n"], 2)
+
+    def test_self_mode_has_no_drafts(self):
+        br.save({"mode": "self", "access": "read", "workdir": self.proj})
+        self.say("оформи задание")
+        self.assertIsNone(br._state()["pending"])
+
+    def test_agents_md_written(self):
+        t = get(os.path.join(self.ex, "AGENTS.md"))
+        self.assertIn(self.proj, t)
+        self.assertIn("outbox/task.md", t)
+
+    def test_deliver_text_then_enter(self):
+        """Текст и Enter — два вызова screen: длинный ввод одним куском TUI принимает за вставку."""
+        calls = []
+        real_run, real_delay = br.subprocess.run, br.ENTER_DELAY
+        br.subprocess.run = lambda cmd, **kw: (calls.append(cmd), types.SimpleNamespace(returncode=0))[1]
+        br.ENTER_DELAY = 0
+        try:
+            self.assertTrue(br.deliver_to_claude("a $b"))
+        finally:
+            br.subprocess.run, br.ENTER_DELAY = real_run, real_delay
+        self.assertEqual([c[-1] for c in calls], ["a  b", "\r"])
+        self.assertEqual(calls[0][:5], ["screen", "-S", br.SESSION(), "-p", "0"])
+
+    def test_scr_safe(self):
+        self.assertEqual(br._scr_safe('a$b\\c^d"e\'f`g\nh'), "a b c d e f g h")
+
+
+if __name__ == "__main__":
+    unittest.main()

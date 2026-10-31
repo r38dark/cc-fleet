@@ -6,12 +6,14 @@ import fcntl, html, json, os, random, re, shutil, struct, subprocess, tempfile, 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pyte
 import cc_avail
+import cc_codex
+import cc_codex_bridge
 import cc_lock
 import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.23.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.24.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -96,6 +98,23 @@ def tg_notify(text):
                   {"chat_id": chat_id, "text": text})
     except Exception as e:
         print(f"tg_notify fail: {e}", flush=True)
+
+
+cc_codex.NOTIFY = tg_notify  # вход в ChatGPT завершён — сообщение в телеграм
+
+
+def codex_bin():
+    """Путь к codex (config.json → "codex_bin", затем PATH/типичные места); None — Codex не установлен."""
+    return cc_codex.find_bin(cfg().get("codex_bin"))
+
+
+# Codex запускается от отдельного пользователя ОС ("codex_user"), чтобы не видеть /root; мост Telegram — тоже через него
+cc_codex.RUN_AS = lambda: cfg().get("codex_user") or None
+cc_codex_bridge.BASE = BASE
+cc_codex_bridge.BIN = codex_bin
+cc_codex_bridge.SESSION = lambda: cfg().get("screen_session", "claude")
+cc_codex_bridge.DEFAULT_CHAT = lambda: cfg().get("chat_id")
+cc_codex_bridge.RESERVED_TOKENS = lambda: [tg_token(), (cfg().get("bot_token") or "").strip()]
 
 
 # автообновление из GitHub Releases (cc_update.py): проверка раз в 6 часов, ручной/авто режим
@@ -2605,6 +2624,59 @@ class H(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
             return self._send(200, {"ok": True, "candidates": model_candidates()})
+        if u.path == "/api/chatgpt/bridge":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            if not codex_bin():
+                return self._send(200, {"ok": True, "available": False})
+            return self._send(200, {"ok": True, "available": True, "bridge": cc_codex_bridge.public()})
+        if u.path == "/api/chatgpt":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            # отдельным запросом от /api/limits: чтение через codex app-server до ~10 с на аккаунт,
+            # карточки Claude из-за него ждать не должны
+            b = codex_bin()
+            if not b:
+                return self._send(200, {"ok": True, "available": False, "accounts": []})
+            q = parse_qs(u.query)
+            return self._send(200, {"ok": True, "available": True,
+                                    "accounts": cc_codex.get_accounts(b, force=bool(q.get("refresh")))})
+        return self._send(404, {"error": "not found"})
+
+    def _chatgpt_post(self, action, body):
+        """POST /api/chatgpt/<login/start|login/status|login/cancel|prefs|delete> — аккаунты ChatGPT (Codex)."""
+        lang = body.get("lang")
+        b = codex_bin()
+        if not b:
+            return self._send(400, {"ok": False, "message": _t(lang, "Codex не установлен на этом сервере.",
+                                                               "Codex is not installed on this server.")})
+        if action == "login/start":
+            ok, res = cc_codex.login_start(b, body.get("slot") or None, body.get("label", ""), lang=lang)
+            return self._send(200 if ok else 400, dict(res, ok=True) if ok else {"ok": False, "message": res})
+        if action == "login/status":
+            return self._send(200, dict(cc_codex.login_status(body.get("slot", ""), lang=lang), ok=True))
+        if action == "login/cancel":
+            cc_codex.login_cancel(body.get("slot", ""))
+            return self._send(200, {"ok": True})
+        if action == "prefs":
+            ok, message = cc_codex.set_prefs(b, body.get("slot", ""), body.get("model", ""), body.get("effort", ""),
+                                             body.get("fast"), lang=lang)
+            return self._send(200, {"ok": ok, "message": message})
+        if action == "delete":
+            ok, message = cc_codex.delete_account(b, body.get("slot", ""), body.get("confirm", ""), lang=lang)
+            return self._send(200, {"ok": ok, "message": message})
+        if action == "bridge/save":
+            ok, message = cc_codex_bridge.save(body, lang=lang)
+            return self._send(200, {"ok": ok, "message": message})
+        if action == "bridge/token":
+            ok, message = cc_codex_bridge.set_token(body.get("token", ""), lang=lang)
+            return self._send(200, {"ok": ok, "message": message})
+        if action == "bridge/token/clear":
+            cc_codex_bridge.clear_token()
+            return self._send(200, {"ok": True})
+        if action == "bridge/reset":
+            cc_codex_bridge.reset_thread()
+            return self._send(200, {"ok": True})
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
@@ -2832,6 +2904,8 @@ class H(BaseHTTPRequestHandler):
             # lock берёт сама relogin_submit — снаружи не оборачивать
             ok, message, snap = relogin_submit(body.get("slot", ""), body.get("code", ""), new=True, lang=body.get("lang"))
             return self._send(200, {"ok": ok, "message": message})
+        if u.path.startswith("/api/chatgpt/"):
+            return self._chatgpt_post(u.path[len("/api/chatgpt/"):], body)
         if u.path == "/api/relogin/submit":
             # lock берёт сама relogin_submit (вокруг записи в профиль + collect) —
             # тут НЕ оборачивать: lock не реентерабельный, второй with lock = дедлок
@@ -3608,6 +3682,35 @@ html[data-skin="blocks"] .lpnote b{color:#b3261e}
 html[data-skin] .dchip.lapsed,.dchip.lapsed{border-color:#e5484d !important;box-shadow:0 0 0 1px #e5484d !important}
 .dchip.lapsed .ddot{background:#e5484d;box-shadow:0 0 0 3px rgba(229,72,77,.22)}
 html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
+
+.cxsec{margin-top:6px}
+.cxsec[hidden]{display:none}
+.cxhead{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:20px 0 10px}
+.cxhead h2{font-size:16px;margin:0}
+.cxsub{font-size:12px;color:var(--mut);line-height:1.4}
+#cxcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px;align-items:start;margin-bottom:12px}
+#cxcards .card{margin-bottom:0}
+.cxsel{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.cxsel select.dlginp{width:auto;flex:1 1 170px;min-width:0;margin-top:0}
+.cxfast{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);cursor:pointer;white-space:nowrap}
+.cxfast input{transform:scale(1.15)}
+.cxfast.off{opacity:.45;cursor:default}
+.cxcode{font:700 28px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.12em;text-align:center;background:#0f1115;border:1px solid #2a3140;border-radius:10px;padding:12px 8px;margin:8px 0 0;user-select:all}
+.cxwait{font-size:12.5px;color:var(--mut);margin-top:12px;min-height:1.4em}
+.cxcard-note{margin-top:8px}
+#cxb .card{margin-bottom:12px}
+.cxbgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:4px 14px;align-items:start}
+.cxbgrid .dlglbl{margin-top:10px}
+.cxbgrid[hidden],#cxb [hidden]{display:none}
+.cxbrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.cxbrow .dlginp{flex:1 1 220px;width:auto;min-width:0;margin-top:0}
+.cxbstat{font-size:12.5px;color:var(--mut);margin-top:10px;line-height:1.5}
+.cxbstat b{color:var(--txt)}
+.cxbwarn{font-size:12.5px;color:var(--warn);margin-top:8px;line-height:1.4}
+html[data-skin="phosphor"] .cxcode{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--ph)}
+html[data-skin="aurora"] .cxcode{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px}
+html[data-skin="slate"] .cxcode{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
+html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter><filter id="ccPhosphorT" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.075 0.255 0.0225 0 0  0.21 0.7125 0.075 0 0  0.12 0.39 0.0375 0 0  0 0 0 1 0"/></filter></svg>
 <div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
@@ -3623,6 +3726,8 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 <div id="efrow" class="efrow"></div>
 </div></div>
 <div id="cards">Загрузка…</div>
+<div id="cx" class="cxsec" hidden></div>
+<div id="cxb" class="cxsec" hidden></div>
 <div id="msg"></div>
 <div id="verTag" title="cc-fleet">cc-fleet v__PAGE_VER__</div>
 <div class="dock"><div class="dockzone" id="dockZone"><div class="docktab" id="dockTab" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg><span id="dockTabLbl">Аккаунты</span></div><div class="dockpanel" id="dockPanel"></div></div></div>
@@ -3852,6 +3957,80 @@ const I18N={
   compactTitle:'Сжать контекст (/compact)',
   newSessionTitle:'Новая сессия (/clear)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
+  cxTitle:'ChatGPT (Codex)',
+  cxHint:'Отдельная программа со своим входом — в ротацию Claude не входит',
+  cxAddTitle:'Добавить аккаунт ChatGPT',
+  cxAddSub:'Пароль и почту вводить не нужно — вход по коду устройства. В ChatGPT → Настройки → Безопасность должен быть включён «вход по коду устройства».',
+  cxLabelLbl:'Название (необязательно)',
+  cxLabelPh:'например, «Основной»',
+  cxGetCode:'Получить код',
+  cxStep1:'Открой ссылку и войди в нужный аккаунт ChatGPT',
+  cxStep2:'Введи этот код на открывшейся странице',
+  cxWait:t=>'Жду подтверждения… осталось '+t,
+  cxDone:(e,p)=>'✅ Подключено: '+e+(p?' · '+String(p).toUpperCase():''),
+  cxFailed:'Вход не завершён.',
+  cxRetry:'Начать заново',
+  cxRelTitle:'Войти заново в ChatGPT',
+  cxEmpty:'Аккаунтов ChatGPT пока нет — «+» добавит первый.',
+  cxCredits:b=>'Кредиты: '+b,
+  cxCreditsUnl:'Кредиты: без ограничений',
+  cxReached:'Лимит исчерпан — Codex будет отвечать ошибкой до сброса.',
+  cxNotAllowed:'Сейчас использование для этого аккаунта недоступно.',
+  cxLoginNeeded:'Вход устарел или отозван — нажми «Войти заново».',
+  cxStale:'Показаны последние сохранённые цифры',
+  cxSubChip:d=>'подписка '+d+' дн.',
+  cxSubOver:'подписка закончилась',
+  cxSubTitle:t=>'Подписка активна до '+t,
+  cxAuthChip:d=>d<1?'вход обновлён сегодня':'вход обновлён '+d+' дн. назад',
+  cxAuthTitle:t=>'Токен входа обновлён '+t+'. Codex продлевает его сам, пока им пользуются',
+  cxModelTip:'Модель Codex',
+  cxEffortTip:'Усилие рассуждения',
+  cxEffort:'Усилие',
+  cxDefault:'по умолчанию',
+  cxFast:'⚡ Fast',
+  cxFastTip:'Быстрее ответы, но лимит расходуется быстрее',
+  cxFastNa:'Для этой модели Fast недоступен',
+  cxRelogin:'🔑 Войти заново',
+  cxLaunch:'Команда запуска',
+  cxLaunchTip:'Скопировать команду, которая запускает Codex под этим аккаунтом',
+  cxDelTitle:'Удалить аккаунт ChatGPT?',
+  cxDelWarn:'<b>Это безвозвратно.</b> Токен входа будет стёрт с сервера и отозван у OpenAI, выбранные модель и режимы пропадут. Вернуть можно только новым входом по коду.',
+  cxWin:h=>'Окно '+h+' ч',
+  cxbTitle:'Мост Telegram ↔ Codex',
+  cxbHint:'Пишешь Codex в своём боте. «Посредник» сам проект не меняет — оформляет задание Claude, ты подтверждаешь «да/нет». «Самостоятельно» — Codex работает сам по выбранному доступу.',
+  cxbMode:'Режим',
+  cxbModeMed:'Посредник (задания Claude)',
+  cxbModeSelf:'Самостоятельно',
+  cxbAccess:'Доступ Codex',
+  cxbAccRead:'Только чтение',
+  cxbAccWrite:'Запись в рабочей папке',
+  cxbAccFull:'Полный доступ (вне песочницы)',
+  cxbDir:'Рабочая папка (проект)',
+  cxbDirMed:ex=>'Посредник читает проект отсюда, а пишет только в общую папку: '+ex,
+  cxbDirSelf:'Codex работает в этой папке; в режиме «Запись» писать может только в ней',
+  cxbRights:'Потолок прав для заданий Claude',
+  cxbRRead:'Чтение — ничего не менять',
+  cxbRDev:'Дев — правки и коммиты на деве',
+  cxbRFull:'Полные — включая прод',
+  cxbSlot:'Аккаунт ChatGPT',
+  cxbSlotAuto:'первый подходящий',
+  cxbTokLbl:'Telegram-бот',
+  cxbTokPh:'Токен нового бота от @BotFather',
+  cxbConnect:'Подключить',
+  cxbDisc:'Отключить бота',
+  cxbBotInfo:(n,t)=>'Бот @'+n+' · токен …'+t,
+  cxbChat:'Твой chat_id в Telegram (Codex отвечает только ему)',
+  cxbOn:'Мост включён',
+  cxbSave:'Сохранить',
+  cxbNew:'Новый разговор',
+  cxbConfirm:'Полный доступ — на твоей ответственности. Введи слово «подтверждаю»:',
+  cxbRunning:'работает',
+  cxbOff:'выключен',
+  cxbBusy:' · Codex сейчас отвечает',
+  cxbPending:' · ждёт твоё «да/нет» по заданию',
+  cxbTasks:'Последние задания Claude: ',
+  cxbSaved:'Сохранено',
+  cxbNoSlot:'Нет аккаунта ChatGPT — сначала добавь его выше.',
  },
  en:{
   title:'Claude — Account Limits',
@@ -4058,6 +4237,80 @@ const I18N={
   compactTitle:'Compact context (/compact)',
   newSessionTitle:'New session (/clear)',
   confirmNewSession:'Start a new Claude session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the console. Continue?',
+  cxTitle:'ChatGPT (Codex)',
+  cxHint:'A separate program with its own sign-in — not part of the Claude rotation',
+  cxAddTitle:'Add a ChatGPT account',
+  cxAddSub:'No password or email needed — sign-in by device code. "Device code sign-in" must be enabled in ChatGPT → Settings → Security.',
+  cxLabelLbl:'Name (optional)',
+  cxLabelPh:'e.g. "Main"',
+  cxGetCode:'Get code',
+  cxStep1:'Open the link and sign in to the right ChatGPT account',
+  cxStep2:'Enter this code on the page that opens',
+  cxWait:t=>'Waiting for confirmation… '+t+' left',
+  cxDone:(e,p)=>'✅ Connected: '+e+(p?' · '+String(p).toUpperCase():''),
+  cxFailed:'Sign-in did not finish.',
+  cxRetry:'Start over',
+  cxRelTitle:'Sign in to ChatGPT again',
+  cxEmpty:'No ChatGPT accounts yet — "+" adds the first one.',
+  cxCredits:b=>'Credits: '+b,
+  cxCreditsUnl:'Credits: unlimited',
+  cxReached:'Limit reached — Codex will answer with an error until the reset.',
+  cxNotAllowed:'Usage is currently not available for this account.',
+  cxLoginNeeded:'The sign-in expired or was revoked — click "Sign in again".',
+  cxStale:'Showing the last saved numbers',
+  cxSubChip:d=>'subscription '+d+' d',
+  cxSubOver:'subscription ended',
+  cxSubTitle:t=>'Subscription is active until '+t,
+  cxAuthChip:d=>d<1?'sign-in refreshed today':'sign-in refreshed '+d+' d ago',
+  cxAuthTitle:t=>'Sign-in token refreshed '+t+'. Codex renews it by itself while it is in use',
+  cxModelTip:'Codex model',
+  cxEffortTip:'Reasoning effort',
+  cxEffort:'Effort',
+  cxDefault:'default',
+  cxFast:'⚡ Fast',
+  cxFastTip:'Faster replies, but the limit is used up faster',
+  cxFastNa:'Fast is not available for this model',
+  cxRelogin:'🔑 Sign in again',
+  cxLaunch:'Launch command',
+  cxLaunchTip:'Copy the command that starts Codex under this account',
+  cxDelTitle:'Delete the ChatGPT account?',
+  cxDelWarn:'<b>This cannot be undone.</b> The sign-in token is wiped from the server and revoked at OpenAI; the chosen model and modes are lost. The only way back is a new device-code sign-in.',
+  cxWin:h=>h+' h window',
+  cxbTitle:'Telegram ↔ Codex bridge',
+  cxbHint:'You message Codex in your own bot. "Mediator" never changes the project itself — it drafts a task for Claude and you confirm yes/no. "Standalone" — Codex works on its own with the access you pick.',
+  cxbMode:'Mode',
+  cxbModeMed:'Mediator (tasks for Claude)',
+  cxbModeSelf:'Standalone',
+  cxbAccess:'Codex access',
+  cxbAccRead:'Read only',
+  cxbAccWrite:'Write in the working folder',
+  cxbAccFull:'Full access (no sandbox)',
+  cxbDir:'Working folder (project)',
+  cxbDirMed:ex=>'Mediator reads the project here and writes only to the shared folder: '+ex,
+  cxbDirSelf:'Codex works in this folder; in "Write" mode it can write only here',
+  cxbRights:'Rights ceiling for Claude tasks',
+  cxbRRead:'Read — change nothing',
+  cxbRDev:'Dev — edits and commits on dev',
+  cxbRFull:'Full — including production',
+  cxbSlot:'ChatGPT account',
+  cxbSlotAuto:'first available',
+  cxbTokLbl:'Telegram bot',
+  cxbTokPh:'Token of a new bot from @BotFather',
+  cxbConnect:'Connect',
+  cxbDisc:'Disconnect bot',
+  cxbBotInfo:(n,t)=>'Bot @'+n+' · token …'+t,
+  cxbChat:'Your Telegram chat_id (Codex answers only this chat)',
+  cxbOn:'Bridge enabled',
+  cxbSave:'Save',
+  cxbNew:'New conversation',
+  cxbConfirm:'Full access is your responsibility. Type the word "confirm":',
+  cxbRunning:'running',
+  cxbOff:'off',
+  cxbBusy:' · Codex is answering',
+  cxbPending:' · waiting for your yes/no on a task',
+  cxbTasks:'Recent Claude tasks: ',
+  cxbSaved:'Saved',
+  cxbNoSlot:'No ChatGPT account — add one above first.',
  },
 };
 let LANG='ru';
@@ -4093,6 +4346,8 @@ function applyI18n(){
   setUpd(lastSnap.ts);
  }
  if(lastModel)renderModel(lastModel);
+ cxRender();  // смена языка перерисовывает секцию ChatGPT из последних данных
+ cxbRender(true);
 }
 // линии из ─ шире консоли переносятся на несколько строк и рвутся: укорачиваем до числа колонок, которые помещаются (заметно на телефоне)
 function termCols(){
@@ -4484,7 +4739,7 @@ function reloginStep2(n,head,d){
  };
  setTimeout(()=>code.focus(),30);
 }
-$('#rfBtn').addEventListener('click',()=>{$('#rfBtn').disabled=true;load(1).finally(()=>$('#rfBtn').disabled=false)});
+$('#rfBtn').addEventListener('click',()=>{$('#rfBtn').disabled=true;cxLoad(true);load(1).finally(()=>$('#rfBtn').disabled=false)});
 
 // ---- добавление и удаление аккаунтов ----
 // Окно одно на все сценарии (#acctBox); «Войти заново» открывает его боковой панелью (.side). Удаление необратимо: кнопка «Удалить навсегда»
@@ -4495,12 +4750,12 @@ function acctClose(){if(acctBusy)return;$('#acctScrim').hidden=true;$('#acctScri
 function acctShow(html){$('#acctBox').innerHTML=html;$('#acctScrim').hidden=false;}
 // navigator.clipboard есть только в защищённом контексте (https/localhost) — на http копируем через execCommand
 async function acctCopy(b,t){
- let ok=false;
+ const orig=b.textContent;let ok=false;
  try{await navigator.clipboard.writeText(t);ok=true;}catch(e){
   const ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;opacity:0';
   document.body.appendChild(ta);ta.select();try{ok=document.execCommand('copy');}catch(e2){}ta.remove();
  }
- if(ok){b.textContent=tr('addCopied');setTimeout(()=>{b.textContent=tr('addCopy')},1800);}
+ if(ok){b.textContent=tr('addCopied');setTimeout(()=>{b.textContent=orig},1800);}
 }
 function acctErr(t){const e=$('#acctErr');if(!e)return;e.textContent=t;e.hidden=!t;}
 async function acctPost(path,body){
@@ -4588,6 +4843,281 @@ function acctAddStep2(d){
  setTimeout(()=>code.focus(),30);
 }
 $('#acctScrim').addEventListener('mousedown',e=>{if(e.target.id==='acctScrim')acctClose();});
+
+// ---- ChatGPT (Codex): секция под карточками Claude ----
+// Данные — отдельным запросом /api/chatgpt (чтение через codex app-server до ~10 с на аккаунт).
+// Секция скрыта, пока на сервере нет Codex. Вход — по коду устройства, пароли не вводятся.
+let cxData=null,cxBusy=false,cxAgain=false,cxPending=false,cxPoll=null;
+function cxAcc(slot){return((cxData&&cxData.accounts)||[]).find(a=>a.slot===slot)||null;}
+function cxWin(a,mins){return(a.windows||[]).find(w=>w.mins===mins)||null;}
+function cxDate(iso,withTime){return new Date(iso).toLocaleString(LANG==='en'?'en-GB':'ru',withTime?{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}:{day:'2-digit',month:'2-digit',year:'numeric'});}
+function cxSubChip(a){
+ if(!a.sub_until)return'';
+ const ms=new Date(a.sub_until)-Date.now(),d=Math.floor(ms/86400000),tip=acctEsc(tr('cxSubTitle',cxDate(a.sub_until)));
+ if(ms<=0)return`<span class="chip urgent" title="${tip}"><b>${tr('cxSubOver')}</b></span>`;
+ return`<span class="chip${d<=3?' urgent':d<=7?' warn':''}" title="${tip}"><b>${tr('cxSubChip',d)}</b></span>`;
+}
+function cxAuthChip(a){
+ if(!a.last_refresh)return'';
+ const d=Math.floor((Date.now()-new Date(a.last_refresh))/86400000);
+ return`<span class="chip" title="${acctEsc(tr('cxAuthTitle',cxDate(a.last_refresh,true)))}">${tr('cxAuthChip',Math.max(0,d))}</span>`;
+}
+function cxSelects(a){
+ const ms=a.models||[];
+ if(!ms.length)return'';
+ const def=ms.find(m=>m.is_default)||ms[0];
+ const known=a.model&&ms.some(m=>m.id===a.model);
+ const cur=(known&&ms.find(m=>m.id===a.model))||def;
+ const efs=cur.efforts||[];
+ const ef=a.effort&&efs.includes(a.effort)?a.effort:'';
+ const sl=acctEsc(a.slot);
+ const canFast=!!cur.fast;
+ const mOpts=`<option value=""${known||a.model?'':' selected'}>${acctEsc(tr('cxDefault')+' · '+def.name)}</option>`
+  +(a.model&&!known?`<option value="${acctEsc(a.model)}" selected>${acctEsc(a.model)}</option>`:'')
+  +ms.map(m=>`<option value="${acctEsc(m.id)}"${known&&m.id===a.model?' selected':''}>${acctEsc(m.name)}</option>`).join('');
+ const eOpts=`<option value=""${ef?'':' selected'}>${acctEsc(tr('cxEffort')+': '+tr('cxDefault')+(cur.default_effort?' ('+cur.default_effort+')':''))}</option>`
+  +efs.map(e=>`<option value="${acctEsc(e)}"${e===ef?' selected':''}>${acctEsc(tr('cxEffort')+': '+e)}</option>`).join('');
+ return`<div class="cxsel">
+   <select class="dlginp" id="cxm-${sl}" title="${tr('cxModelTip')}" aria-label="${tr('cxModelTip')}" onchange="cxPref('${sl}')">${mOpts}</select>
+   ${efs.length?`<select class="dlginp" id="cxe-${sl}" title="${tr('cxEffortTip')}" aria-label="${tr('cxEffortTip')}" onchange="cxPref('${sl}')">${eOpts}</select>`:''}
+   <label class="cxfast${canFast?'':' off'}" title="${acctEsc(canFast?tr('cxFastTip'):tr('cxFastNa'))}"><input type="checkbox" id="cxf-${sl}"${a.fast&&canFast?' checked':''}${canFast?'':' disabled'} onchange="cxPref('${sl}')"><span>${tr('cxFast')}</span></label>
+  </div>`;
+}
+function cxCard(a){
+ const sl=acctEsc(a.slot);
+ const plan=a.plan?'<span class="tag plan">'+acctEsc(String(a.plan).toUpperCase())+'</span> ':'';
+ const who=(a.label?acctEsc(a.label)+' · ':'')+acctEsc(a.email||'?');
+ const w5=cxWin(a,300),w7=cxWin(a,10080);
+ const rest=(a.windows||[]).filter(w=>w!==w5&&w!==w7);
+ const rg=w5?ring(w5,18000):'';
+ let notes='';
+ if(a.login_required)notes+=`<div class="lpnote cxcard-note" role="status"><span><b>${tr('cxLoginNeeded')}</b></span></div>`;
+ else{
+  if(a.error)notes+=`<div class="err">⚠ ${acctEsc(a.error)}${a.stale?' · '+tr('cxStale'):''}</div>`;
+  if(a.reached||a.usage_allowed===false)notes+=`<div class="lpnote cxcard-note" role="status"><span><b>${a.reached?tr('cxReached'):tr('cxNotAllowed')}</b></span></div>`;
+ }
+ const bars=(w5?bar(tr('session5'),w5):'')+(w7?bar(tr('week'),w7):'')
+  +rest.map(w=>bar(tr('cxWin',Math.round((w.mins||0)/60)),w)).join('');
+ const cr=a.credits&&(a.credits.unlimited?tr('cxCreditsUnl'):a.credits.hasCredits?tr('cxCredits',acctEsc(a.credits.balance)):'');
+ return`<div class="card">
+  <div class="top"><span class="email">${who} ${plan}${cxSubChip(a)}</span><div class="hdrright">${rg}</div></div>
+  ${notes}${bars}${cr?`<div class="cxsub" style="margin-top:8px">${cr}</div>`:''}
+  ${a.login_required?'':cxSelects(a)}
+  <div class="acts">${cxAuthChip(a)}<button class="btn-relogin" onclick="cxAdd('${sl}')">${tr('cxRelogin')}</button>
+   <button class="btn-relogin" title="${acctEsc(tr('cxLaunchTip'))}" onclick="cxLaunch('${sl}',this)">${tr('cxLaunch')}</button>
+   <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="cxDel('${sl}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
+ </div>`;
+}
+function cxRender(){
+ const el=$('#cx'),d=cxData;
+ if(!d||!d.available){el.hidden=true;el.innerHTML='';return;}
+ // открытый выпадающий список перерисовка закрыла бы под рукой — отложим до ухода фокуса
+ const f=document.activeElement;
+ if(f&&f.tagName==='SELECT'&&el.contains(f)){cxPending=true;return;}
+ cxPending=false;el.hidden=false;
+ el.innerHTML=`<div class="cxhead"><h2>${tr('cxTitle')}</h2><button class="hdrgear" title="${tr('cxAddTitle')}" aria-label="${tr('cxAddTitle')}" onclick="cxAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><span class="cxsub">${tr('cxHint')}</span></div>
+  <div id="cxcards">${d.accounts.length?d.accounts.map(cxCard).join(''):`<div class="cxsub">${tr('cxEmpty')}</div>`}</div>`;
+}
+$('#cx').addEventListener('focusout',()=>{if(cxPending)setTimeout(cxRender,60);});
+// ---- Мост Telegram ↔ Codex: отдельная карточка под аккаунтами ChatGPT ----
+// Перерисовывается только по загрузке/сохранению и не трогается, пока в ней стоит курсор, — введённое не теряется.
+let cxbData=null,cxbBusy=false;
+const CXB_ST={sent:'→',accepted:'👀',done:'✅',timeout:'⏱'};
+function cxbVal(id){const e=$('#'+id);return e?e.value:'';}
+function cxbSync(){
+ const mode=cxbVal('cxbMode'),acc=cxbVal('cxbAcc'),rights=cxbVal('cxbRights'),b=(cxbData&&cxbData.bridge)||{};
+ const self=mode==='self';
+ $('#cxbAccRow').hidden=!self;
+ $('#cxbDirHint').textContent=self?tr('cxbDirSelf'):tr('cxbDirMed',b.exchange||'');
+ // слово-подтверждение нужно, только пока полный доступ/права ещё не включены на сервере
+ const needs=(self&&acc==='full'&&!(b.mode==='self'&&b.access==='full'))||(rights==='full'&&b.task_rights!=='full');
+ $('#cxbConfRow').hidden=!needs;
+}
+function cxbStatus(b){
+ const st=(b.running?'🟢 <b>'+tr('cxbRunning')+'</b>':'⚪ '+tr('cxbOff'))+(b.busy?tr('cxbBusy'):'')+(b.pending?tr('cxbPending'):'');
+ const ts=(b.tasks||[]).map(t=>'#'+t.n+' '+(CXB_ST[t.state]||t.state)+' '+acctEsc(t.rights)).join(' · ');
+ return st+(b.last_error?`<div class="cxbwarn">⚠ ${acctEsc(b.last_error)}</div>`:'')+(ts?`<div>${tr('cxbTasks')}${ts}</div>`:'');
+}
+function cxbRender(force){
+ const el=$('#cxb'),d=cxbData;
+ if(!d||!d.available){el.hidden=true;el.innerHTML='';return;}
+ const f=document.activeElement;
+ if(!force&&f&&el.contains(f)&&/^(INPUT|SELECT)$/.test(f.tagName)){const s=$('#cxbStat');if(s)s.innerHTML=cxbStatus(d.bridge);return;}
+ const b=d.bridge,o=(v,l,cur)=>`<option value="${v}"${cur===v?' selected':''}>${acctEsc(l)}</option>`;
+ const slots=(b.slots||[]).length
+  ?`<select class="dlginp" id="cxbSlot">${o('',tr('cxbSlotAuto'),b.slot)}${b.slots.map(s=>o(s,s+((cxAcc(s)||{}).email?' · '+cxAcc(s).email:''),b.slot)).join('')}</select>`
+  :`<div class="cxsub" style="margin-top:8px">${tr('cxbNoSlot')}</div>`;
+ el.hidden=false;
+ el.innerHTML=`<div class="cxhead"><h2>${tr('cxbTitle')}</h2><span class="cxsub">${tr('cxbHint')}</span></div>
+ <div class="card">
+  <div class="cxbgrid">
+   <div><label class="dlglbl" for="cxbMode">${tr('cxbMode')}</label>
+    <select class="dlginp" id="cxbMode" onchange="cxbSync()">${o('mediator',tr('cxbModeMed'),b.mode)}${o('self',tr('cxbModeSelf'),b.mode)}</select></div>
+   <div id="cxbAccRow"><label class="dlglbl" for="cxbAcc">${tr('cxbAccess')}</label>
+    <select class="dlginp" id="cxbAcc" onchange="cxbSync()">${o('read',tr('cxbAccRead'),b.access)}${o('write',tr('cxbAccWrite'),b.access)}${o('full',tr('cxbAccFull'),b.access)}</select></div>
+   <div><label class="dlglbl" for="cxbRights">${tr('cxbRights')}</label>
+    <select class="dlginp" id="cxbRights" onchange="cxbSync()">${o('read',tr('cxbRRead'),b.task_rights)}${o('dev',tr('cxbRDev'),b.task_rights)}${o('full',tr('cxbRFull'),b.task_rights)}</select></div>
+   <div><label class="dlglbl" for="cxbSlot">${tr('cxbSlot')}</label>${slots}</div>
+  </div>
+  <label class="dlglbl" for="cxbDir">${tr('cxbDir')}</label>
+  <input id="cxbDir" class="dlginp" autocomplete="off" spellcheck="false" placeholder="/home/…/project" value="${acctEsc(b.workdir||'')}">
+  <div class="cxsub" id="cxbDirHint" style="margin-top:6px"></div>
+  <label class="dlglbl" for="cxbTok" style="margin-top:14px">${tr('cxbTokLbl')}</label>
+  ${b.token_set
+   ?`<div class="cxbrow"><span class="cxsub">${acctEsc(tr('cxbBotInfo',b.bot||'?',b.token_tail))}</span><button class="ghostbtn" onclick="cxbTokClear()">${tr('cxbDisc')}</button></div>`
+   :`<div class="cxbrow"><input id="cxbTok" class="dlginp" type="password" autocomplete="off" spellcheck="false" placeholder="${acctEsc(tr('cxbTokPh'))}"><button onclick="cxbTokSet()">${tr('cxbConnect')}</button></div>`}
+  <label class="dlglbl" for="cxbChat" style="margin-top:14px">${tr('cxbChat')}</label>
+  <input id="cxbChat" class="dlginp" inputmode="numeric" autocomplete="off" value="${acctEsc(b.chat_id||'')}">
+  <div id="cxbConfRow" hidden><label class="dlglbl" for="cxbConf">${tr('cxbConfirm')}</label><input id="cxbConf" class="dlginp" autocomplete="off" spellcheck="false"></div>
+  <div class="cxbrow"><label class="cxfast"><input type="checkbox" id="cxbOn"${b.enabled?' checked':''}${b.token_set?'':' disabled'}><span>${tr('cxbOn')}</span></label>
+   <button id="cxbSave" onclick="cxbSave()">${tr('cxbSave')}</button><button class="ghostbtn" onclick="cxbReset()">${tr('cxbNew')}</button></div>
+  <div class="cxbstat" id="cxbStat">${cxbStatus(b)}</div>
+ </div>`;
+ cxbSync();
+}
+async function cxbLoad(force){
+ if(cxbBusy)return;cxbBusy=true;
+ try{
+  const r=await fetch(API+'chatgpt/bridge?token='+TOKEN);const d=await r.json();
+  if(d&&d.ok){cxbData=d;cxbRender(force);}
+ }catch(e){}
+ finally{cxbBusy=false;}
+}
+async function cxbSave(){
+ const btn=$('#cxbSave');btn.disabled=true;
+ try{
+  const on=$('#cxbOn');
+  const r=await acctPost('chatgpt/bridge/save',{mode:cxbVal('cxbMode'),access:cxbVal('cxbAcc'),task_rights:cxbVal('cxbRights'),slot:cxbVal('cxbSlot'),
+   workdir:cxbVal('cxbDir').trim(),chat_id:cxbVal('cxbChat').trim(),enabled:!!(on&&on.checked),confirm:cxbVal('cxbConf').trim()});
+  toast(r.ok?tr('cxbSaved'):'⚠ '+r.message);
+  if(r.ok)await cxbLoad(true);
+ }catch(e){toast('⚠ '+e);}
+ btn.disabled=false;
+}
+async function cxbTokSet(){
+ const t=cxbVal('cxbTok').trim();if(!t)return;
+ try{const r=await acctPost('chatgpt/bridge/token',{token:t});toast(r.ok?r.message:'⚠ '+r.message);if(r.ok)await cxbLoad(true);}
+ catch(e){toast('⚠ '+e);}
+}
+async function cxbTokClear(){try{await acctPost('chatgpt/bridge/token/clear',{});}catch(e){}cxbLoad(true);}
+async function cxbReset(){try{await acctPost('chatgpt/bridge/reset',{});toast('✓');}catch(e){}}
+async function cxLoad(refresh){
+ if(cxBusy){if(refresh)cxAgain=true;return;}
+ cxBusy=true;
+ try{
+  const r=await fetch(API+'chatgpt?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
+  if(d&&d.ok){cxData=d;cxRender();cxbRender();}
+ }catch(e){}
+ finally{cxBusy=false;if(cxAgain){cxAgain=false;cxLoad(true);}}
+}
+function cxLaunch(slot,btn){const a=cxAcc(slot);if(a&&a.launch)acctCopy(btn,a.launch);}
+async function cxPref(slot){
+ const a=cxAcc(slot);if(!a)return;
+ const m=$('#cxm-'+slot),e=$('#cxe-'+slot),f=$('#cxf-'+slot);
+ const ms=a.models||[];
+ const mod=ms.find(x=>x.id===m.value)||ms.find(x=>x.is_default)||null;
+ // у другой модели может не быть такого усилия или режима Fast — сбрасываем, чтобы сервер не отказал
+ let effort=e?e.value:'',fast=!!(f&&f.checked);
+ if(mod&&effort&&mod.efforts&&!mod.efforts.includes(effort))effort='';
+ if(!(mod&&mod.fast))fast=false;
+ [m,e,f].forEach(x=>{if(x)x.disabled=true;});
+ try{const r=await acctPost('chatgpt/prefs',{slot,model:m.value,effort,fast});toast(r.message);}
+ catch(err){toast('⚠ '+err);}
+ cxLoad(true);
+}
+function cxStop(slot,cancel){
+ clearInterval(cxPoll);cxPoll=null;
+ if(cancel)acctPost('chatgpt/login/cancel',{slot}).catch(()=>{});
+}
+// slot не задан — новая карточка, задан — перелогин существующей
+function cxAdd(slot){
+ if(slot){
+  const a=cxAcc(slot)||{};
+  cxStart(slot,'',`<h3>${tr('cxRelTitle')}</h3><div class="modalsub"><b>${acctEsc(a.email||slot)}</b> · ${acctEsc(slot)}</div>`);
+  return;
+ }
+ acctShow(`<h3>${tr('cxAddTitle')}</h3><div class="modalsub">${tr('cxAddSub')}</div>
+  <label class="dlglbl" for="cxLabel">${tr('cxLabelLbl')}</label>
+  <input id="cxLabel" class="dlginp" maxlength="60" autocomplete="off" spellcheck="false" placeholder="${tr('cxLabelPh')}">
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button id="cxGo">${tr('cxGetCode')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ const lb=$('#cxLabel');
+ lb.addEventListener('keydown',ev=>{if(ev.key==='Enter')$('#cxGo').click();});
+ $('#cxGo').onclick=()=>cxStart('',lb.value.trim(),`<h3>${tr('cxAddTitle')}</h3>`);
+ setTimeout(()=>lb.focus(),30);
+}
+async function cxStart(slot,label,head){
+ acctShow(`${head}<div class="modalsub" id="cxWait0">${tr('addStarting')}</div><div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ acctBusy=true;
+ let d;
+ try{d=await acctPost('chatgpt/login/start',{slot,label});}catch(e){d={ok:false,message:String(e)};}
+ acctBusy=false;
+ if(!d.ok){const w=$('#cxWait0');if(w)w.hidden=true;acctErr(d.message);return;}
+ cxStep2(head,d,slot,label);
+}
+function cxStep2(head,d,slot,label){
+ acctShow(`${head}
+  <div class="dlgstep"><i>1</i><span>${tr('cxStep1')}</span></div>
+  <div class="dlgurl">${acctEsc(d.url)}</div>
+  <div class="dlgrow"><button id="addOpen">${tr('addOpen')}</button><button class="ghostbtn" id="addCopy">${tr('addCopy')}</button></div>
+  <div class="dlgstep"><i>2</i><span>${tr('cxStep2')}</span></div>
+  <div class="cxcode" id="cxCode">${acctEsc(d.code)}</div>
+  <div class="dlgrow"><button class="ghostbtn" id="cxCopyCode">${tr('addCopy')}</button></div>
+  <div class="cxwait" id="cxWait">${tr('cxWait','15:00')}</div>
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot" id="cxFoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ $('#addOpen').onclick=()=>window.open(d.url,'_blank');
+ $('#addCopy').onclick=()=>acctCopy($('#addCopy'),d.url);
+ $('#cxCopyCode').onclick=()=>acctCopy($('#cxCopyCode'),d.code);
+ const sl=d.slot;
+ clearInterval(cxPoll);
+ // окно закрыли — попытку отменяем на сервере, иначе процесс входа провисит до конца срока кода
+ cxPoll=setInterval(async()=>{
+  if(!$('#cxWait')){cxStop(sl,true);return;}
+  let s;try{s=await acctPost('chatgpt/login/status',{slot:sl});}catch(e){return;}
+  const w=$('#cxWait');
+  if(!w){cxStop(sl,true);return;}
+  if(s.state==='waiting'){
+   const l=Math.max(0,s.left-60);  // код живёт 15 минут, сервер ждёт ещё минуту на запись файла
+   w.textContent=tr('cxWait',Math.floor(l/60)+':'+String(l%60).padStart(2,'0'));
+   return;
+  }
+  cxStop(sl,true);  // done / failed / none — запись о попытке больше не нужна
+  if(s.state==='done'){acctClose();toast(tr('cxDone',s.email,s.plan));cxLoad(true);return;}
+  w.textContent='';acctErr(s.message||tr('cxFailed'));
+  $('#cxFoot').insertAdjacentHTML('beforeend',`<button id="cxRetry">${tr('cxRetry')}</button>`);
+  $('#cxRetry').onclick=()=>slot?cxAdd(slot):cxStart('',label,head);
+ },2000);
+}
+function cxDel(slot){
+ const a=cxAcc(slot)||{};const word=tr('delWord');
+ acctShow(`<h3>${tr('cxDelTitle')}</h3>
+  <div class="modalsub"><b>${acctEsc(a.email||slot)}</b> · ${acctEsc(slot)}</div>
+  <div class="dlgwarn">${tr('cxDelWarn')}</div>
+  <label class="dlglbl" for="delInp">${tr('delType',word)}</label>
+  <input id="delInp" class="dlginp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${word}">
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button class="btn-danger" id="delGo" disabled>${tr('delGo')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ const inp=$('#delInp'),go=$('#delGo');
+ inp.addEventListener('input',()=>{go.disabled=inp.value.trim().toLowerCase()!==word;});
+ inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!go.disabled)go.click();});
+ go.onclick=async()=>{
+  if(acctBusy||go.disabled)return;
+  acctBusy=true;go.disabled=true;go.textContent=tr('delWorking');acctErr('');
+  try{
+   const d=await acctPost('chatgpt/delete',{slot,confirm:inp.value});
+   acctBusy=false;
+   if(d.ok){acctClose();toast(d.message);cxLoad(true);return;}
+   acctErr(d.message);go.textContent=tr('delGo');go.disabled=inp.value.trim().toLowerCase()!==word;
+  }catch(e){acctBusy=false;acctErr(String(e));go.textContent=tr('delGo');go.disabled=false;}
+ };
+ setTimeout(()=>inp.focus(),30);
+}
 
 // ---- баннер лимитов/паузы ----
 // Данные тянем раз в 20 с, а обратный отсчёт тикает локально каждую секунду —
@@ -4923,7 +5453,7 @@ $('#updBox').addEventListener('change',async e=>{
  updLoad();
 });
 $('#gear').addEventListener('click',()=>{updSettingsRender();updLoad();});
-applyI18n();load();setInterval(()=>load(),60000);
+applyI18n();load();setInterval(()=>load(),60000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
 updLoad();
 ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
 try{if(sessionStorage.getItem('cc_upd_reopen')){sessionStorage.removeItem('cc_upd_reopen');$('#gear').click();}}catch(e){}
@@ -4934,6 +5464,7 @@ if __name__ == "__main__":
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
+    cc_codex_bridge.BRIDGE.sync()  # мост Telegram ↔ Codex: поднимется, только если включён в карточке
     port = cfg().get("port", 8877)
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     print(f"cc-limits up on 127.0.0.1:{port}", flush=True)

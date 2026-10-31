@@ -224,7 +224,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -589,6 +589,31 @@ failure caused by this race — it is prevention.
 Tests (standard library only, no `pytest`; live files are not touched):
 `python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock test_cc_update_banner`.
 
+## ChatGPT (Codex) accounts (v1.24.0)
+
+A "ChatGPT (Codex)" section appears under the Claude cards — a fallback in case the Claude accounts become unavailable. It is a **separate program with its own sign-in**: it is not part of Claude's automatic account switching, and limit optimisation does not touch it.
+
+- **Password-free sign-in.** "+" → a link and a one-time device code → enter the code in a browser (`codex login --device-auth`, the code lives 15 minutes). Device-code sign-in must be enabled in ChatGPT (Settings → Security). Tokens live in `/root/.codex-profiles/gptN` (modes 700/600); override with `CC_CODEX_PROFILES`.
+- **The card.** Email, plan, subscription end, "Session 5h" and "Week" limit windows with their resets, credits, sign-in age. Read through `codex app-server`; on a failure the last good numbers are shown with a note.
+- **Settings.** Model, reasoning effort and Fast are picked on the card and written to that profile's `config.toml`. "Launch command" copies a `CODEX_HOME=… codex` line.
+- **Delete** needs the word "confirm"; `codex logout` runs first.
+
+Codex must be installed (`npm i -g @openai/codex`); the path can be set in `config.json`: `"codex_bin": "/path/to/codex"`. Without Codex the section is hidden.
+
+Tests: `python3 -m unittest test_cc_codex` (a fake codex, no network needed).
+
+## Telegram ↔ Codex bridge (v1.24.0)
+
+Below the Codex section there is a "Telegram ↔ Codex bridge" card: you write to Codex in your own Telegram bot and it answers there. The bot must be a **separate** one (create it with @BotFather); the token is pasted into the card only and stored in a mode-600 file outside the repository. The token of the bot Claude itself uses is rejected. Only one `chat_id` is served (defaults to the one in `config.json`).
+
+- **Mediator** (default). Codex reads the project but does not change it: it writes only into the shared `exchange` folder (`-s workspace-write -C exchange`). It answers questions itself; a "do X" request becomes a task draft `outbox/task.md`. The bridge shows the draft in the chat, you answer "yes" / "no" (or "yes, rights: read / dev / full"), and only after "yes" a line with the link to `tasks/N/task.md` is typed into the Claude console. Claude creates `ack` and writes the outcome to `result.md`, which the bridge forwards to the chat. No answer within 10 minutes — the bridge says so; Codex does nothing on its own.
+- **Autonomous.** For when Claude is unavailable: Codex works in the working folder at the chosen access — read / write in the folder / full (outside the sandbox; enabled by typing "confirm"). Only the human switches the mode.
+- **Task rights for Claude** are a ceiling set on the card: read / dev / full; Codex asks for rights in the first line `rights: …`, anything above the ceiling is lowered with a note.
+- For Codex "rights" are a sandbox wall, for Claude they are a condition of the task. Tasks reach the console through `screen -X stuff` (ASCII only, Enter as a separate call), so it is best-effort: a busy console is not forced — answer "retry N".
+- Run Codex as a separate OS user: `"codex_user": "name"` in `config.json` (the profiles must then live where that user can write — `CC_CODEX_PROFILES`).
+
+Tests: `python3 -m unittest test_cc_codex_bridge` (fake codex and Bot API, no network needed).
+
 ## Management
 
 | Command / URL | What it does |
@@ -679,7 +704,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -745,6 +770,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.24.0** — a "ChatGPT (Codex)" section: sign-in by link and device code, "Session 5h"
+  and "Week" limits, subscription end, model / effort / Fast pickers, delete. A separate
+  program with its own sign-in — not part of Claude's automatic switching.
+  A Telegram ↔ Codex bridge: "Mediator" drafts tasks for Claude (sent after "yes" in the chat), "Autonomous" works at the chosen access.
 - **v1.23.1** — an inactive account (one that fell to Free) no longer shows the
   "Switch to this" button: its card keeps only "I renewed", "Log in again" and delete.
 - **v1.23.0** — an account that dropped from Pro to Free (plan confirmed by two reads

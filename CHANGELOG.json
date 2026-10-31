@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.24.0", "date": "2026-10-31",
+     "ru": {"t": "Аккаунты ChatGPT (Codex) и мост с Telegram", "p": ["Секция «ChatGPT (Codex)»: вход по коду устройства, лимиты «5ч» и «Неделя», срок подписки, модель, усилие, Fast", "Мост Telegram ↔ Codex: свой бот; «Посредник» оформляет задания Claude, «Самостоятельно» работает по выбранному доступу", "Отдельная программа, в авто-переключение Claude не входит. Нужен Codex (codex_bin); мост включается в карточке"]},
+     "en": {"t": "ChatGPT (Codex) accounts and a Telegram bridge", "p": ["\"ChatGPT (Codex)\" section: device-code sign-in, \"5h\" and \"Week\" limits, subscription end, model, effort, Fast", "Telegram ↔ Codex bridge: its own bot; \"Mediator\" drafts tasks for Claude, \"Autonomous\" works at the chosen access", "A separate program, not part of Claude's auto-switching. Needs Codex (codex_bin); the bridge is enabled on the card"]}},
     {"v": "1.23.1", "date": "2026-10-27",
      "ru": {"t": "У неактивного аккаунта нет кнопки «Переключиться»", "p": ["На карточке слетевшего на Free аккаунта остались «Я продлил», «Войти заново» и удаление"]},
      "en": {"t": "An inactive account has no \"Switch to this\" button", "p": ["The card of an account that fell to Free keeps only \"I renewed\", \"Log in again\" and delete"]}},
