@@ -1038,6 +1038,11 @@ class Bridge:
                 r = tg_api(s["token"], "getUpdates", {"offset": st["offset"], "timeout": TG_TIMEOUT,
                                                        "allowed_updates": ["message"]}, TG_TIMEOUT + 15)
                 err_shown = False
+                if st.get("last_error"):  # опрос прошёл — старый сбой связи не держим (красная точка и «⚠» в шапке гаснут)
+                    with _lock:
+                        st = _state()
+                        st["last_error"] = ""
+                        _state_save(st)
                 for u in r.get("result", []):
                     with _lock:
                         st = _state()

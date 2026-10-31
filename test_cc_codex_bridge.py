@@ -825,5 +825,21 @@ class LimitAlerts(Base):
         self.assertEqual(self.sent, [])
 
 
+class PollError(Base):
+    def test_stale_error_cleared_after_good_poll(self):
+        st = br._state()
+        st["last_error"] = "Telegram недоступен: TimeoutError"
+        br._state_save(st)
+        ev = threading.Event()
+
+        def api(token, method, payload=None, timeout=30):
+            if method == "getUpdates":
+                ev.set()  # один успешный опрос без сообщений, дальше цикл выходит
+            return {"ok": True, "result": []}
+        br.tg_api = api
+        br.BRIDGE.poll_loop(ev)
+        self.assertEqual(br._state().get("last_error"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

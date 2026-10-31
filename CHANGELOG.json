@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.3", "date": "2026-10-31",
+     "ru": {"t": "Codex: старая ошибка связи с Telegram больше не залипает", "p": ["Раньше красная точка и «Telegram недоступен: TimeoutError» висели, пока не придёт новый сбой или сообщение", "Теперь после первого удачного опроса Telegram сообщение об ошибке и красная точка гаснут сами"]},
+     "en": {"t": "Codex: a stale Telegram connection error no longer sticks", "p": ["The red dot and \"Telegram unavailable: TimeoutError\" used to stay until the next failure or message", "Now the error text and the red dot clear by themselves after the first successful Telegram poll"]}},
     {"v": "1.25.2", "date": "2026-10-31",
      "ru": {"t": "Codex: сборка профиля в ⚙, пояснения, счётчики лимитов и пуши", "p": ["Свой профиль собирается в окне ⚙: режим, доступ и права с описаниями; у каждого профиля значок ⓘ с пояснением", "В шапке — счётчики окон 5 ч и недели активного аккаунта: жёлтый с 80%, красный с 95%, при исчерпании «до HH:MM»", "Пуши в Telegram: аккаунт на 90%, исчерпан, снова доступен и подписка кончается (за 7, 3, 1 день и в день конца)"]},
      "en": {"t": "Codex: profile builder in ⚙, hints, limit counters and pushes", "p": ["Build your own profile in the ⚙ window: mode, access and rights with descriptions; every profile has an ⓘ hint", "The header shows 5 h and weekly counters of the active account: yellow from 80%, red from 95%, \"until HH:MM\" if spent", "Telegram pushes: account at 90%, spent, available again, and the subscription ending (7, 3, 1 days and on the day)"]}},

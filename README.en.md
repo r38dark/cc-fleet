@@ -783,6 +783,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.3** — Codex: a stale Telegram connection error no longer sticks — after the first
+  successful poll the "Telegram unavailable" text and the red dot in the header clear by themselves.
 - **v1.25.2** — Codex: build your own profile in the ⚙ window with descriptions, an ⓘ hint on every
   profile; the header shows the 5-hour and weekly counters of the active account; Telegram pushes
   when a limit is near (90%), spent, available again and when the subscription ends.
