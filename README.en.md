@@ -618,7 +618,8 @@ Tests: `python3 -m unittest test_cc_codex_bridge` (fake codex and Bot API, no ne
 
 When Codex is installed, a `>_` icon with the name of the selected profile appears in the header. A click opens a window: profiles, ChatGPT accounts and limits, the Telegram bridge and all its settings.
 
-- **Profiles** are bridge presets applied with one click: "Secretary" (you are in charge, Codex drafts tasks for Claude), "Orchestrator", "Standby" (Claude is unavailable, Codex writes in the working folder itself), "Second AI" (Codex only reads and answers), "Off". Full access is never part of a built-in profile. Your own profiles (up to 10) are saved under a name from the current settings. Change a setting by hand and the profile highlight is cleared.
+- **Profiles** are bridge presets applied with one click: "Secretary" (you are in charge, Codex drafts tasks for Claude), "Orchestrator", "Standby" (Claude is unavailable, Codex writes in the working folder itself), "Second AI" (Codex only reads and answers), "Off". Full access is never part of a built-in profile. Your own profiles (up to 10) are built in the ⚙ window ("Build your own profile…"): mode, access and task rights with descriptions and a "Will be saved" line; saving does not change the live bridge settings. Every profile has an ⓘ icon with an explanation and a "when to pick it" hint. Change a setting by hand and the profile highlight is cleared.
+- **Limit counters and pushes.** Next to the profile in the header: the 5-hour and weekly windows of the active account (yellow from 80%, red from 95%; "until HH:MM" when spent, "login!" when the sign-in lapsed, the subscription is shown 7 days before its end). The bridge sends one Telegram message per threshold: 90%, spent, available again (after dropping below 80%) and the subscription ending at 7, 3, 1 days and on the day.
 - **Orchestrator.** Codex splits the goal into steps and drives them one at a time, Claude executes. Every step reaches Claude only after your "yes" in the chat; the result goes back to Codex, which compares it with the goal and drafts the next step or says the goal is reached. The word "stop" in the chat cancels everything, including a task waiting for "yes". There is no "auto for N steps" mode — no step goes out without "yes".
 - **Codex console.** A "Codex" tab appears next to the Claude console (small tabs at the top left, comfortable on a phone; the choice is remembered). "Start" opens an interactive `codex` in a separate `screen` session `cc-codex`; the page shows a mirror of its screen with scrollback. **View only:** you cannot type into the console from the page. Rights and working folder are the same as the bridge's (the console never takes full access on its own); stop it with the square next to the tabs. Without Codex there are no tabs.
 - The ChatGPT profiles folder is set by the `"codex_profiles"` key in `config.json` (it used to be the `CC_CODEX_PROFILES` environment variable only).
@@ -782,6 +783,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.2** — Codex: build your own profile in the ⚙ window with descriptions, an ⓘ hint on every
+  profile; the header shows the 5-hour and weekly counters of the active account; Telegram pushes
+  when a limit is near (90%), spent, available again and when the subscription ends.
 - **v1.25.1** — the Codex bridge turns on by itself once the bot is connected: if a profile
   is already selected (other than "Off"), the token enables the bridge — no separate
   "Bridge enabled" tick needed.

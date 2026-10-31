@@ -14,7 +14,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2660,6 +2660,20 @@ class H(BaseHTTPRequestHandler):
             if not codex_bin():
                 return self._send(200, {"ok": True, "available": False})
             return self._send(200, {"ok": True, "available": True, "bridge": cc_codex_bridge.public()})
+        if u.path == "/api/chatgpt/bridge/feed":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            if not codex_bin():
+                return self._send(200, {"ok": True, "available": False, "events": []})
+            q = parse_qs(u.query)
+            try:
+                since = int((q.get("since") or ["0"])[0])
+            except ValueError:
+                since = 0
+            b = cc_codex_bridge.public()
+            return self._send(200, {"ok": True, "available": True, "events": cc_codex_bridge.feed_read(since),
+                                    "bridge": {k: b.get(k) for k in ("enabled", "running", "busy", "pending", "token_set", "chat_id",
+                                                                    "mode", "sandbox", "last_error", "bot")}})
         if u.path == "/api/chatgpt":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -2717,7 +2731,8 @@ class H(BaseHTTPRequestHandler):
             ok, message = cc_codex_bridge.apply_profile(body.get("id", ""), body.get("confirm", ""), lang=lang)
             return self._send(200, {"ok": ok, "message": message})
         if action == "bridge/profile/save":
-            ok, message = cc_codex_bridge.save_profile(body.get("name", ""), lang=lang)
+            spec = {k: body[k] for k in ("mode", "access", "task_rights") if k in body}
+            ok, message = cc_codex_bridge.save_profile(body.get("name", ""), lang=lang, spec=spec)
             return self._send(200, {"ok": ok, "message": message})
         if action == "bridge/profile/delete":
             ok, message = cc_codex_bridge.delete_profile(body.get("id", ""), lang=lang)
@@ -3036,19 +3051,48 @@ button:disabled{opacity:.35;cursor:default}
 /* вкладки консолей Claude | Codex: плашка того же вида, что масштаб, но слева; показывается, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
 .ctabs[hidden],.ctstop[hidden],.cxcons[hidden]{display:none}
-.iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
-.iconbtn.ctab.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
+.iconbtn.ctab,.iconbtn.cview{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
+.iconbtn.ctab.on,.iconbtn.cview.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
 .termwrap.hastabs .termbox{padding-top:42px}
 .cxcons{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:48px 18px 18px;text-align:center;pointer-events:none}
 .cxcons>*{pointer-events:auto}
 .cxcmsg{font-size:14px;font-weight:600;color:var(--txt)}
 .cxcsub{max-width:420px;font-size:12.5px;line-height:1.45;color:var(--mut);overflow-wrap:anywhere}
 .cxcons button{margin-top:6px;padding:9px 20px}
+/* лента работы моста во вкладке Codex: что пришло из Telegram, что делает Codex, что он ответил */
+.cxfeed{white-space:normal}
+.cxfeed[hidden]{display:none}
+.cxfeed .fr{display:grid;grid-template-columns:5.4em 1.3em minmax(0,1fr);align-items:baseline;gap:0 .4em;padding:1px 0;line-height:1.4}
+.cxfeed .ft{color:var(--mut);opacity:.75;font-variant-numeric:tabular-nums}
+.cxfeed .fg{text-align:center;color:var(--mut)}
+.cxfeed .fx{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
+.cxfeed .fl{font-weight:700;margin-right:.5em}
+.cxfeed .fr.k-in{margin-top:.7em}
+.cxfeed .fr.k-run{margin-top:.7em;padding-top:.5em;border-top:1px dashed #2a3140}
+.cxfeed .fr.k-in+.fr.k-run{margin-top:0;padding-top:1px;border-top:0}
+.cxfeed .fr:first-child{margin-top:0}
+.cxfeed .k-in .fg,.cxfeed .k-in .fl{color:var(--acc)}
+.cxfeed .k-out .fg,.cxfeed .k-out .fl,.cxfeed .k-cmd .fg{color:var(--ok)}
+.cxfeed .k-cmdx .fg,.cxfeed .k-cmdx .fx,.cxfeed .k-err .fg,.cxfeed .k-err .fx,.cxfeed .k-end.bad .fg,.cxfeed .k-end.bad .fx{color:var(--bad)}
+.cxfeed .k-file .fg,.cxfeed .k-task .fg{color:var(--warn)}
+.cxfeed .k-run .fx,.cxfeed .k-think .fx,.cxfeed .k-end .fx,.cxfeed .k-tool .fx,.cxfeed .k-cmd .fx{color:var(--mut)}
+.cxfeed .k-think .fx{font-style:italic}
+.cxfempty{padding:16px 6px;text-align:center;line-height:1.5;color:var(--mut);white-space:normal}
+/* нижняя строка вкладки Codex: переключатель «Лента | Экран» и состояние моста */
+.cxfbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex:none}
+.cxfbar[hidden]{display:none}
+.cxfseg{display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6);flex:none}
+.cxfst{display:flex;align-items:center;gap:7px;min-width:0;font-size:12px;line-height:1;color:var(--mut)}
+.cxfst span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cxfsd{width:8px;height:8px;border-radius:50%;background:var(--mut);flex:none;display:block}
+.cxfsd.on{background:var(--ok)}
+.cxfsd.err{background:var(--bad);margin:0}
+.cxfsd.busy{background:var(--warn);animation:cxpulse 1.1s ease-in-out infinite}
 .hdrl{display:flex;align-items:center;gap:10px;min-width:0}
 .hdrgear:disabled svg{animation:ccspin .8s linear infinite}
 .tzval{margin:0;padding:0 4px;min-width:48px;background:transparent;border:0;color:var(--mut);font-family:inherit;font-size:12.5px;font-weight:600;text-align:center;cursor:pointer}
 .tzval:hover{color:var(--txt)}
-.termdot.err{background:var(--bad)}
+.termdot.err{background:var(--bad);margin:0}
 .termbox{background:#0b0d10;border:1px solid #232a36;border-radius:8px;padding:10px 12px;overflow-x:hidden;overflow-y:auto;margin:0;font:11px/1.3 ui-monospace,Consolas,monospace;font-size:calc(11px*var(--tz,1));color:#c8d0dc;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:#3a3f4b #14171c}
 .termbox::-webkit-scrollbar{width:9px}
 .termbox::-webkit-scrollbar-track{background:#14171c}
@@ -3717,6 +3761,7 @@ html:root:root .termwrap{margin-bottom:10px}
 html:root:root .tzoom{top:6px;right:8px}
 html:root:root .ctabs{top:6px;left:8px}
 html:root:root .iconbtn.ctab,html:root:root .iconbtn.ctstop{height:34px}
+html:root:root .iconbtn.cview{height:34px;padding:0 14px;font-size:13px}
 html:root:root .iconbtn.ctab{padding:0 14px;font-size:13px}
 html:root:root .iconbtn.ctstop{width:34px}
 html:root:root .termwrap.hastabs .termbox{padding-top:50px}
@@ -3783,10 +3828,18 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxbtnname:empty{display:none}
 .cxdot{width:8px;height:8px;border-radius:50%;background:var(--mut);flex:none;display:block}
 .cxdot.on{background:var(--ok)}
-.cxdot.err{background:var(--bad)}
+.cxdot.err{background:var(--bad);margin:0}
 .cxdot.busy{background:var(--warn);animation:cxpulse 1.1s ease-in-out infinite}
 @keyframes cxpulse{50%{opacity:.35}}
-.cxbtn[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
+.cxbtn[aria-expanded="true"],.cxgbtn[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
+/* профиль и настройки — одна плашка: слева меню профилей, справа ⚙ */
+.cxgrp{display:flex;align-items:center;flex:none}
+.cxgrp[hidden]{display:none}
+.cxgrp .hdrgear.cxbtn{border-radius:8px 0 0 8px}
+.cxgrp .hdrgear.cxgbtn{border-radius:0 8px 8px 0;margin-left:-1px}
+.cxgrp .hdrgear:hover,.cxgrp .hdrgear[aria-expanded="true"]{position:relative;z-index:1}
+.hdrgear.cxbtn svg.cxcar{width:12px;height:12px;opacity:.7;transition:transform .15s}
+.cxbtn[aria-expanded="true"] svg.cxcar{transform:rotate(180deg)}
 .cxpop{position:fixed;z-index:40;width:min(580px,calc(100vw - 20px));display:flex;flex-direction:column;background:var(--card);border:1px solid #2a3140;border-radius:16px;box-shadow:0 18px 50px -12px rgba(0,0,0,.7)}
 .cxpop[hidden]{display:none}
 .cxphead{display:flex;align-items:center;gap:10px;padding:12px 14px 8px;flex:none}
@@ -3798,7 +3851,7 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxprof{display:flex;align-items:flex-start;gap:10px;width:100%;margin:0;text-align:left;background:transparent;border:1px solid #2a3140;color:var(--txt);font-weight:500;padding:10px 12px;border-radius:12px;cursor:pointer}
 .cxprof:hover{border-color:var(--acc)}
 .cxprof.act{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);background:rgba(124,154,255,.08)}
-.cxprof .cxpr{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--mut);margin-top:2px;position:relative}
+.cxprof .cxpr{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--mut);margin-top:1px;position:relative}
 .cxprof.act .cxpr{border-color:var(--acc)}
 .cxprof.act .cxpr::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--acc)}
 .cxprof .cxpt{flex:1;min-width:0;display:block}
@@ -3810,6 +3863,47 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxpsave{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .cxpsave .dlginp{flex:1 1 180px;width:auto;min-width:0;margin-top:0}
 .cxpsave button{margin-top:0}
+/* значок ⓘ и раскрывающееся пояснение профиля */
+.cxprof .cxpi{flex:none;margin:-5px -4px 0 0;padding:4px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:var(--mut);border-radius:8px;cursor:pointer}
+.cxprof .cxpi svg{width:17px;height:17px}
+.cxprof .cxpi:hover,.cxprof .cxpi.on{color:var(--acc)}
+.cxprof .cxpx{margin-left:-6px}
+.cxpinfo{display:block;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(124,154,255,.08);font-size:12px;line-height:1.45;font-weight:400;color:var(--txt);cursor:default}
+.cxpinfo>span{display:block}
+.cxpinfo .cxpirow+.cxpirow{margin-top:6px}
+.cxpinfo .cxpik{display:inline;color:var(--mut)}
+.cxpinfo .cxpid{display:block;color:var(--mut)}
+.cxpinfo .cxpwhen{margin-top:8px;padding-top:6px;border-top:1px dashed #2a3140}
+.cxpnew{display:block;width:100%;margin:10px 0 0;padding:8px 10px;background:transparent;border:1px dashed #2a3140;color:var(--mut);font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;text-align:center}
+.cxpnew:hover{color:var(--acc);border-color:var(--acc)}
+/* сборка своего профиля */
+.cxog{margin-top:12px}
+.cxogl{font-size:12px;font-weight:700;color:var(--mut);margin-bottom:6px}
+.cxopt{display:flex;align-items:flex-start;gap:10px;width:100%;margin:0 0 6px;padding:8px 10px;text-align:left;background:transparent;border:1px solid #2a3140;color:var(--txt);border-radius:10px;cursor:pointer;font-weight:500}
+.cxopt:hover{border-color:var(--acc)}
+.cxopt.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);background:rgba(124,154,255,.08)}
+.cxopt .cxor{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid var(--mut);margin-top:2px;position:relative}
+.cxopt.on .cxor{border-color:var(--acc)}
+.cxopt.on .cxor::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--acc)}
+.cxopt .cxot{flex:1;min-width:0;display:block}
+.cxopt .cxot b{display:block;font-size:13px}
+.cxopt .cxot span{display:block;font-size:12px;color:var(--mut);line-height:1.4;margin-top:1px;font-weight:400}
+.cxpcsum{margin:12px 0 0;font-size:13px}
+.cxpcsum span{color:var(--mut)}
+.cxpcdup{font-size:12px;color:var(--warn);margin-top:6px;line-height:1.4}
+/* счётчики лимитов в кнопке шапки: 5 ч · неделя, в одну строку; цвет по занятости */
+.cxlim{display:inline-flex;align-items:center;gap:9px;font-size:11px;font-weight:600;line-height:1;white-space:nowrap}
+.cxlim:empty{display:none}
+.cxlim.stale{opacity:.55}
+.cxl{--gc:var(--ok);position:relative;display:inline-flex;align-items:baseline;gap:3px;padding-bottom:3px}
+.cxl.warn{--gc:var(--warn)}
+.cxl.bad{--gc:var(--bad)}
+.cxl i{font-style:normal;font-weight:500;font-size:10px;color:var(--mut)}
+.cxl b{font-weight:700;font-variant-numeric:tabular-nums;color:var(--txt)}
+.cxl.warn b{color:var(--warn)}
+.cxl.bad b{color:var(--bad)}
+.cxl::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--gc) calc(var(--p,0)*1%),rgba(128,128,128,.28) 0)}
+.cxl.nobar::after{display:none}
 .cxacc{margin-top:12px;border-top:1px solid #232a36}
 .cxacch{display:flex;align-items:center;gap:8px;width:100%;margin:0;padding:11px 2px;background:transparent;border:0;color:var(--txt);font-size:14px;font-weight:700;text-align:left;cursor:pointer;border-radius:0}
 .cxacch .cxsum{flex:1;min-width:0;text-align:right;font-weight:400;font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -3817,9 +3911,20 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxacc.open .cxacch .cxar{transform:rotate(180deg)}
 .cxacc:not(.open)>.cxsec{display:none}
 .cxpop #cxcards{grid-template-columns:1fr}
+.cxmenu{width:min(400px,calc(100vw - 20px))}
+.cxmenu .cxpbody{padding:12px 14px 14px}
+.cxmenu .cxhead{margin:0 0 8px}
 @media (max-width:640px){
 html:root:root .cxpop{left:10px!important;right:10px!important;width:auto}
 html:root:root .hdrgear.cxbtn{padding:0 7px 0 6px}
+html:root:root .cxbtnname{max-width:84px}
+/* с счётчиками кнопка профиля не помещается в одну строку с остальными кнопками — занимает свою строку на всю ширину */
+html:root:root .hdrctl{flex:1 1 100%;flex-wrap:wrap;justify-content:flex-end}
+html:root:root .cxgrp{flex:1 1 100%}
+html:root:root .cxgrp .hdrgear.cxbtn{flex:1 1 auto;min-width:0;justify-content:flex-start}
+html:root:root .cxlim{margin-left:auto}
+}
+@media (max-width:360px){
 html:root:root .cxbtnname{display:none}
 }
 html[data-skin="phosphor"] .cxpop{background:var(--phbg);border:1px solid var(--phl);border-radius:0;box-shadow:0 0 40px rgba(60,255,120,.12)}
@@ -3840,7 +3945,7 @@ html[data-skin="slate"] .cxcode{background:#0e0f12;border:1px solid var(--sl-lin
 html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter><filter id="ccPhosphorT" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.075 0.255 0.0225 0 0  0.21 0.7125 0.075 0 0  0.12 0.39 0.0375 0 0  0 0 0 1 0"/></filter></svg>
-<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxBtn" class="hdrgear cxbtn" type="button" hidden aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span></button><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="termwrap">
@@ -3848,18 +3953,20 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
  <div class="cxcons" id="cxCons" hidden><div class="cxcmsg" id="cxConsMsg"></div><div class="cxcsub" id="cxConsSub"></div><button type="button" id="cxConsGo"></button></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
-<span id="termCurrent">Загрузка…</span></pre>
+<span id="termCurrent">Загрузка…</span><div class="cxfeed" id="cxFeed" hidden></div></pre>
+ <div class="cxfbar" id="cxBar" hidden><div class="cxfseg" id="cxView" role="tablist"><button type="button" class="iconbtn cview on" id="cvFeed" role="tab" aria-selected="true" data-v="feed">Лента</button><button type="button" class="iconbtn cview" id="cvScreen" role="tab" aria-selected="false" data-v="screen">Экран</button></div><div class="cxfst" id="cxStat"><i class="cxfsd" id="cxStatD"></i><span id="cxStatT"></span></div></div>
 </div>
 <div class="toolrow"><div class="tgrp">
 <div id="mrow" class="mrowslim"></div>
 <div id="efrow" class="efrow"></div>
 </div></div>
 <div id="cards">Загрузка…</div>
+<div id="cxMenu" class="cxpop cxmenu" role="dialog" aria-label="Codex" hidden><div class="cxpbody"><div id="cxp"></div></div></div>
 <div id="cxPop" class="cxpop" role="dialog" aria-labelledby="cxPopTitle" hidden>
  <div class="cxphead"><b id="cxPopTitle">Codex</b><span class="cxsub" id="cxPopSt"></span><button type="button" class="hdrgear" id="cxPopX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
  <div class="cxpbody">
-  <div id="cxp"></div>
   <div class="cxacc" id="cxAccW"><button type="button" class="cxacch" data-sec="acc"><span id="cxAccT"></span><span class="cxsum" id="cxAccS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cx" class="cxsec" hidden></div></div>
+  <div class="cxacc" id="cxPrW"><button type="button" class="cxacch" data-sec="pr"><span id="cxPrT"></span><span class="cxsum" id="cxPrS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cxpc" class="cxsec" hidden></div></div>
   <div class="cxacc" id="cxBrW"><button type="button" class="cxacch" data-sec="br"><span id="cxBrT"></span><span class="cxsum" id="cxBrS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cxb" class="cxsec" hidden></div></div>
  </div>
 </div>
@@ -4138,7 +4245,8 @@ const I18N={
   cxbModeOrch:'Оркестратор (Codex ведёт, Claude исполняет)',
   cxbModeSelf:'Самостоятельно',
   cxPopTitle:'Codex · ChatGPT',
-  cxBtnTip:'Codex (ChatGPT): профили, лимиты, мост Telegram',
+  cxBtnTip:'Профиль Codex: выбрать',
+  cxGearTip:'Настройки Codex: аккаунты, лимиты, мост Telegram',
   cxAccSec:'Аккаунты и лимиты ChatGPT',
   cxBrSec:'Мост Telegram и все настройки',
   cxS5:'5 ч',
@@ -4155,10 +4263,8 @@ const I18N={
   cxpS_second:'Codex отвечает сам и только читает проект — ничего не меняет.',
   cxpN_off:'Выключен',
   cxpS_off:'Мост молчит, Codex ничего не делает.',
-  cxpCustom:(m,r)=>m+' · права заданий: '+r,
   cxpManual:'Настройки изменены вручную — ни один профиль не выбран.',
   cxpManualShort:'Свои настройки',
-  cxpSaveLbl:'Сохранить текущие настройки как свой профиль',
   cxpNamePh:'Название профиля',
   cxpSaveBtn:'Сохранить',
   cxpDel:'Удалить профиль',
@@ -4166,6 +4272,45 @@ const I18N={
   cxpApply:'Применить',
   cxpConfTitle:'Профиль с полным доступом',
   cxpClose:'Закрыть',
+  cxpNew:'Собрать свой профиль…',
+  cxpInfo:'Что делает этот профиль',
+  cxpWhenLbl:'Когда выбрать:',
+  cxpWhen_secretary:'Обычная работа: ставишь задачи в Telegram, Codex их оформляет, Claude делает после твоего «да».',
+  cxpWhen_orchestrator:'Большая цель в несколько шагов: Codex планирует и проверяет, Claude исполняет.',
+  cxpWhen_standby:'Лимиты Claude кончились, а работать нужно: Codex делает сам в рабочей папке.',
+  cxpWhen_second:'Нужно второе мнение: Codex смотрит проект и отвечает, ничего не меняя.',
+  cxpWhen_off:'Пауза: мост молчит. Чтобы включить его снова, выбери любой другой профиль.',
+  cxoRtLbl:'Права заданий Claude',
+  cxoMode_mediator:'Codex сам проект не меняет: оформляет задание для Claude, а ты подтверждаешь «да» или «нет».',
+  cxoMode_orchestrator:'Codex ведёт задачу к цели, Claude исполняет по шагу. Каждый следующий шаг — только после твоего «да», «стоп» останавливает.',
+  cxoMode_self:'Codex отвечает сам, Claude не участвует.',
+  cxoAcc_read:'Codex только читает проект и ничего не меняет.',
+  cxoAcc_write:'Codex может создавать и править файлы в рабочей папке.',
+  cxoAcc_full:'Codex работает без песочницы — на твоей ответственности.',
+  cxoRt_read:'Claude по заданиям только отвечает и ничего не меняет.',
+  cxoRt_dev:'Claude правит и коммитит на деве, прод не трогает.',
+  cxoRt_full:'Claude может менять и прод — по обычным правилам: сначала бэкап.',
+  cxpBrief:(m,r)=>m+' · задания: '+r.toLowerCase(),
+  cxpBriefSelf:(m,a)=>m+' · доступ: '+a.toLowerCase(),
+  cxPrSec:'Свой профиль',
+  cxpcCnt:n=>'сохранено: '+n,
+  cxpcHint:'Выбери, из чего состоит профиль, дай ему имя и сохрани — он появится в меню профилей. Текущие настройки моста от этого не меняются.',
+  cxpcWill:'Будет сохранено:',
+  cxpcLive:'Взять, как сейчас в мосте',
+  cxpcFull:'⚠ Полный вариант — на твоей ответственности: при выборе такого профиля попросим слово «подтверждаю».',
+  cxpcDup:n=>'Такой набор уже есть: «'+n+'».',
+  cxLimUntil:t=>'до '+t,
+  cxLimLogin:'вход!',
+  cxLimLoginTip:'Нужен повторный вход в ChatGPT',
+  cxLimSub:'подп.',
+  cxLimSubD:d=>d+' дн.',
+  cxLimSubEnd:'истекла',
+  cxLimFull:'исчерпан',
+  cxLimReset:t=>'сброс '+t,
+  cxLimIn:t=>'через '+t,
+  cxDH:(d,h)=>d+' дн. '+h+' ч',
+  cxHM:(h,m)=>h+' ч '+m+' мин',
+  cxMin:m=>m+' мин',
   cxbAccess:'Доступ Codex',
   cxbAccRead:'Только чтение',
   cxbAccWrite:'Запись в рабочей папке',
@@ -4205,6 +4350,24 @@ const I18N={
   cxcSbWrite:'запись в рабочей папке',
   cxcSbFull:'полный доступ',
   cxcSw:'Консоль: переключить на ',
+  cxfFeed:'Лента',
+  cxfScreen:'Экран',
+  cxfFeedTip:'Лента: что пришло из Telegram, что делает Codex и что он ответил',
+  cxfScreenTip:'Экран консоли Codex (только просмотр)',
+  cxfEmptyOff:'Мост не подключён. Включи его в окне ⚙ (раздел «Мост Telegram ↔ Codex»): здесь появится всё, что приходит из Telegram, что делает Codex и что он отвечает.',
+  cxfEmptyOn:'Пока тихо. Напиши боту в Telegram: здесь появятся сообщение, шаги Codex и его ответ.',
+  cxfRun:(mode,sb,resume)=>'Codex запущен · '+mode+' · '+sb+(resume?' · продолжает разговор':' · новый разговор'),
+  cxfIn:'Telegram',
+  cxfOut:'Ответ',
+  cxfCmdFail:rc=>'ошибка, код '+rc,
+  cxfEndOk:(sec,steps,tok)=>'готово · '+sec+' с · шагов: '+steps+(tok?' · токенов: '+tok:''),
+  cxfEndBad:(sec,steps)=>'без ответа · '+sec+' с · шагов: '+steps,
+  cxfStOff:'Мост выключен',
+  cxfStIdle:'Мост не работает',
+  cxfStOn:'Мост работает',
+  cxfStBusy:'Codex работает…',
+  cxfStPending:'ждёт твоё «да/нет»',
+  cxfStErr:'Ошибка моста',
  },
  en:{
   title:'Claude — Account Limits',
@@ -4457,7 +4620,8 @@ const I18N={
   cxbModeOrch:'Orchestrator (Codex leads, Claude executes)',
   cxbModeSelf:'Standalone',
   cxPopTitle:'Codex · ChatGPT',
-  cxBtnTip:'Codex (ChatGPT): profiles, limits, Telegram bridge',
+  cxBtnTip:'Codex profile: pick one',
+  cxGearTip:'Codex settings: accounts, limits, Telegram bridge',
   cxAccSec:'ChatGPT accounts and limits',
   cxBrSec:'Telegram bridge and all settings',
   cxS5:'5 h',
@@ -4474,10 +4638,8 @@ const I18N={
   cxpS_second:'Codex answers on its own and only reads the project — changes nothing.',
   cxpN_off:'Off',
   cxpS_off:'The bridge is silent, Codex does nothing.',
-  cxpCustom:(m,r)=>m+' · task rights: '+r,
   cxpManual:'Settings were changed by hand — no profile is selected.',
   cxpManualShort:'Custom settings',
-  cxpSaveLbl:'Save the current settings as your own profile',
   cxpNamePh:'Profile name',
   cxpSaveBtn:'Save',
   cxpDel:'Delete profile',
@@ -4485,6 +4647,45 @@ const I18N={
   cxpApply:'Apply',
   cxpConfTitle:'Profile with full access',
   cxpClose:'Close',
+  cxpNew:'Build your own profile…',
+  cxpInfo:'What this profile does',
+  cxpWhenLbl:'When to pick it:',
+  cxpWhen_secretary:'Everyday work: you set tasks in Telegram, Codex drafts them, Claude does them after your "yes".',
+  cxpWhen_orchestrator:'A big goal in several steps: Codex plans and checks, Claude executes.',
+  cxpWhen_standby:'Claude limits are out but work must go on: Codex does it on its own in the working folder.',
+  cxpWhen_second:'You want a second opinion: Codex looks at the project and answers, changing nothing.',
+  cxpWhen_off:'Pause: the bridge is silent. To turn it back on, pick any other profile.',
+  cxoRtLbl:'Rights for Claude tasks',
+  cxoMode_mediator:'Codex never changes the project itself: it drafts a task for Claude and you confirm "yes" or "no".',
+  cxoMode_orchestrator:'Codex drives the goal, Claude executes step by step. Each next step only after your "yes"; "stop" halts it.',
+  cxoMode_self:'Codex answers on its own, Claude is not involved.',
+  cxoAcc_read:'Codex only reads the project and changes nothing.',
+  cxoAcc_write:'Codex may create and edit files in the working folder.',
+  cxoAcc_full:'Codex runs without a sandbox — at your own responsibility.',
+  cxoRt_read:'Claude only answers for tasks and changes nothing.',
+  cxoRt_dev:'Claude edits and commits on dev, never touches prod.',
+  cxoRt_full:'Claude may change prod too — by the usual rules: backup first.',
+  cxpBrief:(m,r)=>m+' · tasks: '+r.toLowerCase(),
+  cxpBriefSelf:(m,a)=>m+' · access: '+a.toLowerCase(),
+  cxPrSec:'Your own profile',
+  cxpcCnt:n=>'saved: '+n,
+  cxpcHint:'Pick what the profile consists of, name it and save — it will appear in the profiles menu. The current bridge settings stay as they are.',
+  cxpcWill:'Will be saved:',
+  cxpcLive:'Take what the bridge has now',
+  cxpcFull:'⚠ The full option is at your own responsibility: picking such a profile asks for the word "confirm".',
+  cxpcDup:n=>'This set already exists: "'+n+'".',
+  cxLimUntil:t=>'until '+t,
+  cxLimLogin:'login!',
+  cxLimLoginTip:'Sign in to ChatGPT again',
+  cxLimSub:'sub',
+  cxLimSubD:d=>d+' d',
+  cxLimSubEnd:'expired',
+  cxLimFull:'used up',
+  cxLimReset:t=>'resets '+t,
+  cxLimIn:t=>'in '+t,
+  cxDH:(d,h)=>d+' d '+h+' h',
+  cxHM:(h,m)=>h+' h '+m+' min',
+  cxMin:m=>m+' min',
   cxbAccess:'Codex access',
   cxbAccRead:'Read only',
   cxbAccWrite:'Write in the working folder',
@@ -4524,6 +4725,24 @@ const I18N={
   cxcSbWrite:'write in the working folder',
   cxcSbFull:'full access',
   cxcSw:'Console: switch to ',
+  cxfFeed:'Feed',
+  cxfScreen:'Screen',
+  cxfFeedTip:'Feed: what came from Telegram, what Codex is doing and what it replied',
+  cxfScreenTip:'Codex console screen (view only)',
+  cxfEmptyOff:'The bridge is not connected. Turn it on in the ⚙ window (section “Telegram ↔ Codex bridge”): everything that comes from Telegram, what Codex does and what it replies will show up here.',
+  cxfEmptyOn:'Quiet so far. Write to the bot in Telegram: the message, Codex steps and its reply will show up here.',
+  cxfRun:(mode,sb,resume)=>'Codex started · '+mode+' · '+sb+(resume?' · continuing the conversation':' · new conversation'),
+  cxfIn:'Telegram',
+  cxfOut:'Reply',
+  cxfCmdFail:rc=>'failed, code '+rc,
+  cxfEndOk:(sec,steps,tok)=>'done · '+sec+' s · steps: '+steps+(tok?' · tokens: '+tok:''),
+  cxfEndBad:(sec,steps)=>'no reply · '+sec+' s · steps: '+steps,
+  cxfStOff:'Bridge is off',
+  cxfStIdle:'Bridge is not running',
+  cxfStOn:'Bridge is running',
+  cxfStBusy:'Codex is working…',
+  cxfStPending:'waiting for your yes/no',
+  cxfStErr:'Bridge error',
  },
 };
 let LANG='ru';
@@ -4573,11 +4792,13 @@ function termCols(){
 }
 function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
-let CONS='claude',consShown='claude',cxConsRun=null;
-try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
+let CONS='claude',consShown='claude',cxConsRun=null,CXV='feed';  // CXV — вид вкладки Codex: feed (лента моста) | screen (экран консоли)
+try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';if(localStorage.getItem('cc_cxview')==='screen')CXV='screen';}catch(e){}
 function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}
+function consKey(){return consCur()==='codex'?'codex:'+CXV:'claude';}
 async function ccConsoleHistory(){
  const s=consCur();
+ if(consKey()==='codex:feed')return;  // у ленты своя подгрузка
  try{
   const r=await fetch(API+'console?token='+TOKEN+'&history=1'+(s==='codex'?'&s=codex':''));const d=await r.json();
   if(s!==consCur())return;  // пока шёл запрос, переключили вкладку
@@ -4598,8 +4819,67 @@ function cxConsUi(d){
   $('#cxConsGo').textContent=tr('cxcStart');
  }
 }
+// ---- лента работы моста Telegram ↔ Codex (вкладка Codex, вид «Лента») ----
+let cxFeedLast=0,cxFeedBusy=false;
+function cxFeedReset(){cxFeedLast=0;const f=$('#cxFeed');if(f)f.innerHTML='';}
+function cxModeName(m){const k={mediator:'cxbModeMed',orchestrator:'cxbModeOrch',self:'cxbModeSelf'}[m];return k?tr(k).replace(/\s*\(.*$/,''):String(m||'');}
+function cxFeedRow(e){
+ const k=String(e.k||''),x=acctEsc(e.x||'');
+ const tm=new Date((e.t||0)*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+ let g='·',h=x,cls='k-'+k.replace(/[^a-z]/g,'');
+ if(k==='in'){g='▶';h='<span class="fl">'+tr('cxfIn')+'</span>'+x;}
+ else if(k==='out'){g='◀';h='<span class="fl">'+tr('cxfOut')+'</span>'+x;}
+ else if(k==='run'){g='●';h=acctEsc(tr('cxfRun',cxModeName(e.mode),cxConsSb(e.sb),!!e.resume));}
+ else if(k==='say'){g='◦';}
+ else if(k==='cmd'){g='$';}
+ else if(k==='cmdx'){g='✗';h=acctEsc(tr('cxfCmdFail',e.rc));}
+ else if(k==='file'){g='✎';}
+ else if(k==='think'){g='◌';}
+ else if(k==='tool'){g='⚙';}
+ else if(k==='task'){g='◆';h=acctEsc(String(e.x||'').replace(/^\s*\u{1F4DD}\uFE0F?\s*/u,''));}
+ else if(k==='err'){g='!';h=acctEsc(String(e.x||'').replace(/^\s*\u26A0\uFE0F?\s*/u,''));}
+ else if(k==='end'){g=e.ok?'✓':'✗';h=acctEsc(e.ok?tr('cxfEndOk',e.sec||0,e.steps||0,e.tokens?Number(e.tokens).toLocaleString(LANG==='en'?'en-US':'ru'):''):tr('cxfEndBad',e.sec||0,e.steps||0));if(!e.ok)cls+=' bad';}
+ return '<div class="fr '+cls+'"><span class="ft">'+tm+'</span><span class="fg">'+g+'</span><span class="fx">'+h+'</span></div>';
+}
+// состояние моста в нижней строке: по ленте (свежее) или по последним настройкам из окна ⚙
+function cxFeedStat(b){
+ const d=$('#cxStatD'),t=$('#cxStatT');if(!d)return;
+ let cls='',txt;
+ if(!b||!b.token_set||!b.enabled)txt=tr('cxfStOff');
+ else if(b.last_error){cls='err';txt=tr('cxfStErr')+': '+b.last_error;}
+ else if(!b.running)txt=tr('cxfStIdle');
+ else if(b.busy){cls='busy';txt=tr('cxfStBusy');}
+ else{cls='on';txt=tr('cxfStOn')+' · '+cxModeName(b.mode)+(b.pending?' · '+tr('cxfStPending'):'');}
+ d.className='cxfsd '+cls;t.textContent=txt;t.title=txt;
+}
+async function cxFeedPoll(){
+ if(cxFeedBusy)return;
+ const dot=$('#termDot'),since=cxFeedLast;
+ cxFeedBusy=true;
+ try{
+  const r=await fetch(API+'chatgpt/bridge/feed?token='+TOKEN+'&since='+since);const d=await r.json();
+  if(consKey()!=='codex:feed'||since!==cxFeedLast)return;  // пока шёл запрос, переключили вкладку/вид или ленту сбросили
+  if(!d.ok){dot.className='termdot err';return;}
+  dot.className='termdot';
+  cxFeedStat(d.bridge);
+  const f=$('#cxFeed'),box=$('#termBox'),ev=d.events||[],em=f.querySelector('.cxfempty');
+  const atBottom=box.scrollTop+box.clientHeight>=box.scrollHeight-20;
+  if(ev.length){
+   if(em)em.remove();
+   f.insertAdjacentHTML('beforeend',ev.map(cxFeedRow).join(''));
+   cxFeedLast=ev[ev.length-1].id;
+   while(f.children.length>400)f.removeChild(f.firstChild);
+   if(atBottom||since===0)box.scrollTop=box.scrollHeight;
+  }else if(!f.children.length||em){
+   const b=d.bridge||{};
+   f.innerHTML='<div class="cxfempty">'+acctEsc(tr(b.token_set&&b.enabled?'cxfEmptyOn':'cxfEmptyOff'))+'</div>';
+  }
+ }catch(e){dot.className='termdot err';}
+ finally{cxFeedBusy=false;}
+}
 async function ccConsole(){
  const box=$('#termBox'),dot=$('#termDot'),s=consCur();
+ if(consKey()==='codex:feed')return cxFeedPoll();
  try{
   const r=await fetch(API+'console?token='+TOKEN+(s==='codex'?'&s=codex':''));const d=await r.json();
   if(s!==consCur())return;
@@ -4716,8 +4996,18 @@ function consTabs(){
   b.title=on?'':tr('cxcSw')+b.textContent;
  });
  $('#ctStop').setAttribute('aria-label',tr('cxcStopTip'));
- if(cur!==consShown){
-  consShown=cur;cxConsRun=null;
+ $('#cxBar').hidden=!(av&&cur==='codex');
+ [['feed','#cvFeed','cxfFeed','cxfFeedTip'],['screen','#cvScreen','cxfScreen','cxfScreenTip']].forEach(([k,id,t,tip])=>{
+  const b=$(id),on=k===CXV;
+  b.classList.toggle('on',on);b.setAttribute('aria-selected',on);
+  b.textContent=tr(t);b.title=tr(tip);
+ });
+ if(cur==='codex')cxFeedStat(cxbData&&cxbData.bridge);
+ const key=consKey();
+ if(key!==consShown){
+  consShown=key;cxConsRun=null;cxFeedReset();
+  const feed=key==='codex:feed';
+  $('#cxFeed').hidden=!feed;$('#termHistory').hidden=feed;$('#termCurrent').hidden=feed;
   $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
   $('#cxCons').hidden=true;$('#ctStop').hidden=true;
   STICK=true;ccConsoleHistory();ccConsole();
@@ -4728,6 +5018,11 @@ function consPick(k){
  consTabs();
 }
 $('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(b&&b.dataset.s!==consCur())consPick(b.dataset.s);});
+$('#cxView').addEventListener('click',e=>{
+ const b=e.target.closest('.cview');if(!b||b.dataset.v===CXV)return;
+ CXV=b.dataset.v;try{localStorage.setItem('cc_cxview',CXV);}catch(x){}
+ consTabs();
+});
 async function cxConsAct(path){
  const g=$('#cxConsGo'),st=$('#ctStop');g.disabled=true;st.disabled=true;
  try{
@@ -5281,24 +5576,41 @@ async function cxbReset(){try{await acctPost('chatgpt/bridge/reset',{});toast('�
 // ---- Codex в шапке: значок с точкой статуса + выпадающее окно (профили, лимиты, мост) ----
 // На странице Codex места не занимает: всё, что он показывал под карточками, живёт в окне по клику.
 let cxpBusy=false;
-const CXP_SEC={acc:false,br:false};
+const CXP_SEC={acc:false,pr:false,br:false};
 try{Object.assign(CXP_SEC,JSON.parse(localStorage.getItem('cxpSec')||'{}'));}catch(e){}
 function cxAvail(){return!!((cxData&&cxData.available)||(cxbData&&cxbData.available));}
 function cxpName(p){return p.builtin?tr('cxpN_'+p.id):p.name;}
+const CXO_MK={mediator:'cxbModeMed',orchestrator:'cxbModeOrch',self:'cxbModeSelf'},CXO_AK={read:'cxbAccRead',write:'cxbAccWrite',full:'cxbAccFull'},CXO_RK={read:'cxbRRead',dev:'cxbRDev',full:'cxbRFull'};
+function cxoMode(m){return tr(CXO_MK[m]||'cxbModeMed').replace(/\s*\(.*$/,'');}
+function cxoAcc(a){return tr(CXO_AK[a]||'cxbAccRead').replace(/\s*\(.*$/,'');}
+function cxoRt(r){return tr(CXO_RK[r]||'cxbRDev').replace(/\s*[—-].*$/,'');}
+// состав кратко: «Посредник · задания: дев» / «Самостоятельно · доступ: только чтение»
+function cxpBrief(d){return d.mode==='self'?tr('cxpBriefSelf',cxoMode('self'),cxoAcc(d.access)):tr('cxpBrief',cxoMode(d.mode),cxoRt(d.task_rights));}
 function cxpSub(p){
  if(p.builtin)return tr('cxpS_'+p.id);
- const m={mediator:'cxbModeMed',orchestrator:'cxbModeOrch',self:'cxbModeSelf'}[p.mode],r={read:'cxbRRead',dev:'cxbRDev',full:'cxbRFull'}[p.task_rights];
  if(p.on===false)return tr('cxpS_off');
- return tr('cxpCustom',tr(m||'cxbModeMed').replace(/\s*\(.*$/,''),tr(r||'cxbRDev').replace(/\s*[—-].*$/,''));
+ return cxpBrief(p);
+}
+// пояснение по значку ⓘ: из чего состоит профиль и когда его выбирать
+const CXP_INFO=new Set();  // раскрытые пояснения переживают перерисовку
+function cxpInfoHtml(p){
+ const row=(k,v,d)=>`<span class="cxpirow"><span class="cxpik">${acctEsc(k)}:</span> <b>${acctEsc(v)}</b><span class="cxpid">${acctEsc(d)}</span></span>`;
+ let rows='';
+ if(p.on!==false){
+  rows=row(tr('cxbMode'),cxoMode(p.mode),tr('cxoMode_'+p.mode));
+  rows+=p.mode==='self'?row(tr('cxbAccess'),cxoAcc(p.access),tr('cxoAcc_'+p.access)):row(tr('cxoRtLbl'),cxoRt(p.task_rights),tr('cxoRt_'+p.task_rights));
+ }
+ const when=p.builtin?`<span class="cxpwhen"><b>${tr('cxpWhenLbl')}</b> ${acctEsc(tr('cxpWhen_'+p.id))}</span>`:'';
+ return`<span class="cxpinfo">${rows}${when}</span>`;
 }
 function cxpCur(){
  const b=cxbData&&cxbData.bridge;if(!b)return null;
  return(b.profiles||[]).find(p=>p.id===b.profile)||null;
 }
 function cxHdr(){
- const btn=$('#cxBtn');if(!btn)return;
- const av=cxAvail();btn.hidden=!av;
- if(!av){cxPopClose();return;}
+ const btn=$('#cxBtn'),grp=$('#cxGrp');if(!btn||!grp)return;
+ const av=cxAvail();grp.hidden=!av;
+ if(!av){cxPopClose();cxMenuClose();return;}
  const b=cxbData&&cxbData.bridge,cur=cxpCur();
  let cls='';
  if(b){if(b.last_error)cls='err';else if(b.running)cls=b.busy?'busy':'on';}
@@ -5306,10 +5618,70 @@ function cxHdr(){
  const name=cur?cxpName(cur):(b&&b.enabled?tr('cxpManualShort'):'');
  $('#cxBtnName').textContent=name;
  const st=b?(b.last_error?'⚠ '+b.last_error:b.running?tr('cxbRunning'):tr('cxbOff')):'';
- btn.title=tr('cxBtnTip')+(st?' — '+st:'');btn.setAttribute('aria-label',btn.title);
+ const la=cxLimAcc(),lim=$('#cxLim');
+ lim.innerHTML=la?cxLimHtml(la):'';lim.classList.toggle('stale',!!(la&&(la.stale||la.error)));
+ btn.title=[tr('cxBtnTip')+(st?' — '+st:'')].concat(la?cxLimTip(la):[]).join('\n');btn.setAttribute('aria-label',btn.title);
+ const gb=$('#cxGear');gb.title=tr('cxGearTip');gb.setAttribute('aria-label',gb.title);
  $('#cxPopTitle').textContent=tr('cxPopTitle');
  const ps=$('#cxPopSt');ps.textContent=st;ps.title=st;
  $('#cxPopX').title=tr('cxpClose');$('#cxPopX').setAttribute('aria-label',tr('cxpClose'));
+}
+// ---- счётчики лимитов в кнопке шапки: 5 ч · неделя в одну строку, цвет по занятости, при исчерпании — когда сбросится ----
+// Берём аккаунт, которым работает мост (слот из настроек, иначе первый). Время — местное время браузера.
+function cxLimAcc(){
+ const as=(cxData&&cxData.accounts)||[],b=cxbData&&cxbData.bridge;
+ if(!as.length)return null;
+ const slot=(b&&b.slot)||(b&&b.slots&&b.slots[0])||as[0].slot;
+ return as.find(a=>a.slot===slot)||as[0];
+}
+function cxLoc(){return LANG==='en'?'en-GB':'ru';}
+function cxClock(iso){
+ const d=new Date(iso);if(isNaN(d))return'';
+ const tm=d.toLocaleTimeString(cxLoc(),{hour:'2-digit',minute:'2-digit'});
+ return d.toDateString()===new Date().toDateString()?tm:d.toLocaleDateString(cxLoc(),{day:'2-digit',month:'2-digit'})+' '+tm;
+}
+function cxLeft(iso){
+ const m=Math.round((new Date(iso)-Date.now())/60000);if(isNaN(m)||m<=0)return'';
+ const d=Math.floor(m/1440),h=Math.floor(m%1440/60);
+ return d?tr('cxDH',d,h):h?tr('cxHM',h,m%60):tr('cxMin',m);
+}
+function cxWinLbl(mins){return mins===300?tr('cxS5'):mins===10080?tr('cxS7'):Math.round(mins/60)+(LANG==='en'?' h':' ч');}
+// окна лимита → [{label,pct,full,lvl,reset}]; «исчерпан», если 100% или сервис сказал «лимит», а цифра ещё не доросла
+function cxLimSegs(a){
+ const ws=(a.windows||[]).filter(w=>w.pct!=null&&w.mins).sort((x,y)=>x.mins-y.mins).slice(0,2);
+ const blocked=!!a.reached||a.usage_allowed===false,hasFull=ws.some(w=>w.pct>=100);
+ return ws.map((w,i)=>{
+  const p=Math.round(w.pct),full=p>=100||(blocked&&!hasFull&&i===0);
+  return{label:cxWinLbl(w.mins),pct:p,full,lvl:full||p>=95?'bad':p>=80?'warn':'',reset:w.resets_at};
+ });
+}
+// подписка: в шапке — только когда осталась неделя или меньше; полная дата всегда в подсказке
+function cxLimSub(a){
+ if(!a.sub_until)return null;
+ const ms=new Date(a.sub_until)-Date.now();if(isNaN(ms))return null;
+ const d=Math.ceil(ms/86400000);
+ if(ms<=0)return{lvl:'bad',txt:tr('cxLimSubEnd')};
+ return d>7?null:{lvl:d<=3?'bad':'warn',txt:tr('cxLimSubD',d)};
+}
+function cxLimHtml(a){
+ if(a.login_required)return`<span class="cxl bad nobar"><b>${acctEsc(tr('cxLimLogin'))}</b></span>`;
+ let h=cxLimSegs(a).map(s=>{
+  const t=s.full&&cxClock(s.reset)?tr('cxLimUntil',cxClock(s.reset)):s.pct+'%';
+  return`<span class="cxl ${s.lvl}" style="--p:${Math.min(100,s.pct)}"><i>${acctEsc(s.label.replace(/\s+/g,''))}</i><b>${acctEsc(t)}</b></span>`;
+ }).join('');
+ const sb=cxLimSub(a);
+ if(sb)h+=`<span class="cxl ${sb.lvl} nobar"><i>${acctEsc(tr('cxLimSub'))}</i><b>${acctEsc(sb.txt)}</b></span>`;
+ return h;
+}
+function cxLimTip(a){
+ const L=[(a.label||String(a.email||'?').split('@')[0])+(a.plan?' · '+String(a.plan).replace(/^./,c=>c.toUpperCase()):'')];
+ if(a.login_required){L.push(tr('cxLimLoginTip'));return L;}
+ cxLimSegs(a).forEach(s=>{
+  const r=s.reset?cxClock(s.reset):'',lf=s.reset?cxLeft(s.reset):'';
+  L.push(s.label+': '+(s.full?tr('cxLimFull'):s.pct+'%')+(r?' · '+tr('cxLimReset',r)+(lf?' ('+tr('cxLimIn',lf)+')':''):''));
+ });
+ if(a.sub_until)L.push(tr('cxSubTitle',cxDate(a.sub_until)));
+ return L;
 }
 function cxAccSummary(){
  const as=(cxData&&cxData.accounts)||[];
@@ -5323,34 +5695,62 @@ function cxpRender(){
  const el=$('#cxp'),b=cxbData&&cxbData.bridge;
  if(!el)return;
  if(!b){el.innerHTML='';return;}
- const f=document.activeElement;
- if(f&&el.contains(f)&&f.tagName==='INPUT')return;  // не затираем набираемое имя профиля
  const items=(b.profiles||[]).map(p=>{
-  const act=p.id===b.profile;
+  const act=p.id===b.profile,open=CXP_INFO.has(p.id);
   return`<div class="cxprof${act?' act':''}" role="radio" aria-checked="${act}" tabindex="0" data-id="${acctEsc(p.id)}"><span class="cxpr"></span>
-   <span class="cxpt"><span class="cxpn">${acctEsc(cxpName(p))}</span><span class="cxps">${acctEsc(cxpSub(p))}</span></span>
+   <span class="cxpt"><span class="cxpn">${acctEsc(cxpName(p))}</span><span class="cxps">${acctEsc(cxpSub(p))}</span>${open?cxpInfoHtml(p):''}</span>
+   <button type="button" class="cxpi${open?' on':''}" data-info="${acctEsc(p.id)}" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r=".7" fill="currentColor"/></svg></button>
    ${p.builtin?'':`<button type="button" class="cxpx" title="${acctEsc(tr('cxpDel'))}" aria-label="${acctEsc(tr('cxpDel'))}" data-del="${acctEsc(p.id)}">×</button>`}</div>`;
  }).join('');
  el.innerHTML=`<div class="cxhead"><h2>${tr('cxpTitle')}</h2><span class="cxsub">${tr('cxpHint')}</span></div>
   <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}</div>
   ${!b.profile&&b.enabled?`<div class="cxpmanual">${tr('cxpManual')}</div>`:''}
-  <div class="cxsub" style="margin-top:12px">${tr('cxpSaveLbl')}</div>
-  <div class="cxpsave"><input class="dlginp" id="cxpName" maxlength="40" autocomplete="off" placeholder="${acctEsc(tr('cxpNamePh'))}"><button type="button" id="cxpSaveBtn">${tr('cxpSaveBtn')}</button></div>`;
+  <button type="button" class="cxpnew" id="cxpNewBtn">${tr('cxpNew')}</button>`;
+}
+// «Свой профиль» в окне ⚙: состав собирается здесь и запоминается под именем; живые настройки моста не трогаются
+let cxpDraft=null;  // {mode,access,task_rights,name}; null — ещё не начинали
+function cxpDraftLive(keepName){
+ const b=cxbData&&cxbData.bridge;if(!b)return;
+ cxpDraft={mode:b.mode,access:b.access,task_rights:b.task_rights,name:(keepName&&cxpDraft?cxpDraft.name:'')};
+}
+function cxpcRender(force){
+ const el=$('#cxpc'),b=cxbData&&cxbData.bridge;
+ if(!el)return;
+ if(!b){el.hidden=true;el.innerHTML='';return;}
+ el.hidden=false;
+ const f=document.activeElement;
+ if(!force&&f&&el.contains(f)&&f.tagName==='INPUT')return;  // не затираем набираемое имя
+ if(!cxpDraft)cxpDraftLive(false);
+ const d=cxpDraft,self=d.mode==='self';
+ const grp=(g,label,vals,cur,nm,dk,warn)=>`<div class="cxog" role="radiogroup" aria-label="${acctEsc(label)}"><div class="cxogl">${acctEsc(label)}</div>${vals.map(v=>`<button type="button" class="cxopt${cur===v?' on':''}" role="radio" aria-checked="${cur===v}" data-g="${g}" data-v="${v}"><span class="cxor"></span><span class="cxot"><b>${acctEsc(nm(v))}${warn===v?' ⚠':''}</b><span>${acctEsc(tr(dk+v))}</span></span></button>`).join('')}</div>`;
+ const same=(b.profiles||[]).find(p=>p.on!==false&&p.mode===d.mode&&p.task_rights===d.task_rights&&(d.mode!=='self'||p.access===d.access));
+ const full=self?d.access==='full':d.task_rights==='full';
+ el.innerHTML=`<div class="cxsub" style="margin:10px 0 0">${tr('cxpcHint')}</div>
+  ${grp('mode',tr('cxbMode'),['mediator','orchestrator','self'],d.mode,cxoMode,'cxoMode_')}
+  ${self?grp('access',tr('cxbAccess'),['read','write','full'],d.access,cxoAcc,'cxoAcc_','full'):grp('task_rights',tr('cxoRtLbl'),['read','dev','full'],d.task_rights,cxoRt,'cxoRt_','full')}
+  <div class="cxpcsum"><span>${tr('cxpcWill')}</span> <b>${acctEsc(cxpBrief(d))}</b></div>
+  ${full?`<div class="cxbwarn">${tr('cxpcFull')}</div>`:''}
+  ${same?`<div class="cxpcdup">${acctEsc(tr('cxpcDup',cxpName(same)))}</div>`:''}
+  <div class="cxpsave"><input class="dlginp" id="cxpName" maxlength="40" autocomplete="off" placeholder="${acctEsc(tr('cxpNamePh'))}" value="${acctEsc(d.name||'')}"><button type="button" id="cxpSaveBtn">${tr('cxpSaveBtn')}</button></div>
+  <div class="cxbrow"><button type="button" class="ghostbtn" id="cxpLiveBtn">${tr('cxpcLive')}</button></div>`;
 }
 function cxAll(){
  cxHdr();consTabs();
- const aw=$('#cxAccW'),bw=$('#cxBrW');
- aw.hidden=!(cxData&&cxData.available);bw.hidden=!(cxbData&&cxbData.available);
- aw.classList.toggle('open',!!CXP_SEC.acc);bw.classList.toggle('open',!!CXP_SEC.br);
- $('#cxAccT').textContent=tr('cxAccSec');$('#cxBrT').textContent=tr('cxBrSec');
+ const aw=$('#cxAccW'),pw=$('#cxPrW'),bw=$('#cxBrW');
+ aw.hidden=!(cxData&&cxData.available);pw.hidden=bw.hidden=!(cxbData&&cxbData.available);
+ aw.classList.toggle('open',!!CXP_SEC.acc);pw.classList.toggle('open',!!CXP_SEC.pr);bw.classList.toggle('open',!!CXP_SEC.br);
+ $('#cxAccT').textContent=tr('cxAccSec');$('#cxPrT').textContent=tr('cxPrSec');$('#cxBrT').textContent=tr('cxBrSec');
  $('#cxAccS').textContent=cxAccSummary();
  const b=cxbData&&cxbData.bridge;
  $('#cxBrS').textContent=b?(b.token_set?'@'+(b.bot||'?'):''):'';
- cxpRender();
+ const nc=b?(b.profiles||[]).filter(p=>!p.builtin).length:0;
+ $('#cxPrS').textContent=nc?tr('cxpcCnt',nc):'';
+ cxpRender();cxpcRender();
  if(!$('#cxPop').hidden)cxPopPlace();
+ if(!$('#cxMenu').hidden)cxMenuPlace();
 }
 function cxPopPlace(){
- const pop=$('#cxPop'),r=$('#cxBtn').getBoundingClientRect();
+ const pop=$('#cxPop'),r=$('#cxGear').getBoundingClientRect();
  const top=Math.round(r.bottom+8);
  pop.style.top=top+'px';pop.style.maxHeight='calc(100vh - '+(top+12)+'px)';
  if(innerWidth>640){pop.style.right=Math.max(10,Math.round(innerWidth-r.right-4))+'px';pop.style.left='auto';}
@@ -5358,12 +5758,30 @@ function cxPopPlace(){
 }
 function cxPopOpen(){
  if(!cxAvail())return;
- $('#cxPop').hidden=false;$('#cxBtn').setAttribute('aria-expanded','true');
+ cxMenuClose();
+ $('#cxPop').hidden=false;$('#cxGear').setAttribute('aria-expanded','true');
  cxAll();cxPopPlace();cxbLoad(true);cxLoad();
 }
 function cxPopClose(){
  const pop=$('#cxPop');if(!pop||pop.hidden)return;
- pop.hidden=true;$('#cxBtn').setAttribute('aria-expanded','false');
+ pop.hidden=true;$('#cxGear').setAttribute('aria-expanded','false');
+}
+// меню профилей под кнопкой «>_ Профиль ▾»: выбрал строку — применилось и закрылось
+function cxMenuPlace(){
+ const m=$('#cxMenu'),r=$('#cxBtn').getBoundingClientRect(),top=Math.round(r.bottom+8);
+ m.style.top=top+'px';m.style.maxHeight='calc(100vh - '+(top+12)+'px)';
+ if(innerWidth>640){const w=Math.min(400,innerWidth-20);m.style.left=Math.max(10,Math.min(Math.round(r.left),innerWidth-w-10))+'px';m.style.right='auto';}
+ else{m.style.left='';m.style.right='';}
+}
+function cxMenuOpen(){
+ if(!cxAvail())return;
+ cxPopClose();
+ $('#cxMenu').hidden=false;$('#cxBtn').setAttribute('aria-expanded','true');
+ cxpRender();cxMenuPlace();cxbLoad(true);
+}
+function cxMenuClose(){
+ const m=$('#cxMenu');if(!m||m.hidden)return;
+ m.hidden=true;$('#cxBtn').setAttribute('aria-expanded','false');
 }
 async function cxpApply(id,confirm){
  if(cxpBusy)return;cxpBusy=true;
@@ -5387,15 +5805,15 @@ function cxpConfirm(id){
  setTimeout(()=>inp.focus(),30);
 }
 async function cxpSave(){
- const inp=$('#cxpName'),btn=$('#cxpSaveBtn');if(!inp)return;
- btn.disabled=true;
+ const inp=$('#cxpName'),btn=$('#cxpSaveBtn');if(!inp||!cxpDraft)return;
+ cxpDraft.name=inp.value;btn.disabled=true;
  try{
-  const r=await acctPost('chatgpt/bridge/profile/save',{name:inp.value});
+  const d=cxpDraft,r=await acctPost('chatgpt/bridge/profile/save',{name:d.name,mode:d.mode,access:d.access,task_rights:d.task_rights});
   toast(r.ok?r.message:'⚠ '+r.message);
-  if(r.ok)inp.value='';
+  if(r.ok)cxpDraft.name='';
  }catch(e){toast('⚠ '+e);}
  btn.disabled=false;
- inp.blur();await cxbLoad(true);
+ inp.blur();await cxbLoad(true);cxpcRender(true);
 }
 async function cxpDelete(id){
  const p=((cxbData&&cxbData.bridge&&cxbData.bridge.profiles)||[]).find(x=>x.id===id);
@@ -5404,33 +5822,60 @@ async function cxpDelete(id){
  catch(e){toast('⚠ '+e);}
  await cxbLoad(true);
 }
-$('#cxBtn').addEventListener('click',()=>{$('#cxPop').hidden?cxPopOpen():cxPopClose();});
+$('#cxBtn').addEventListener('click',()=>{$('#cxMenu').hidden?cxMenuOpen():cxMenuClose();});
+$('#cxGear').addEventListener('click',()=>{$('#cxPop').hidden?cxPopOpen():cxPopClose();});
 $('#cxPopX').addEventListener('click',cxPopClose);
 $('#cxp').addEventListener('click',e=>{
  const d=e.target.closest('[data-del]');
  if(d){e.stopPropagation();cxpDelete(d.dataset.del);return;}
- if(e.target.closest('#cxpSaveBtn')){cxpSave();return;}
- const r=e.target.closest('.cxprof');if(r)cxpApply(r.dataset.id);
+ const i=e.target.closest('[data-info]');
+ if(i){
+  e.stopPropagation();const id=i.dataset.info;
+  CXP_INFO.has(id)?CXP_INFO.delete(id):CXP_INFO.add(id);
+  cxpRender();cxMenuPlace();
+  const nb=$('#cxp').querySelector('[data-info="'+id+'"]');if(nb)nb.focus();
+  return;
+ }
+ if(e.target.closest('.cxpinfo'))return;
+ if(e.target.closest('#cxpNewBtn')){cxpGoCompose();return;}
+ const r=e.target.closest('.cxprof');if(r){cxMenuClose();cxpApply(r.dataset.id);}
 });
 $('#cxp').addEventListener('keydown',e=>{
- if(e.target.id==='cxpName'&&e.key==='Enter'){cxpSave();return;}
  const r=e.target.closest&&e.target.closest('.cxprof');
- if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();cxpApply(r.dataset.id);}
+ if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();cxMenuClose();cxpApply(r.dataset.id);}
 });
+// из меню профилей — в окно ⚙ сразу на сборку своего профиля
+function cxpGoCompose(){
+ CXP_SEC.pr=true;try{localStorage.setItem('cxpSec',JSON.stringify(CXP_SEC));}catch(e){}
+ cxMenuClose();cxPopOpen();
+ setTimeout(()=>{const w=$('#cxPrW');if(w)w.scrollIntoView({block:'nearest'});},60);
+}
+$('#cxpc').addEventListener('click',e=>{
+ const o=e.target.closest('.cxopt');
+ if(o&&cxpDraft){
+  cxpDraft[o.dataset.g]=o.dataset.v;cxpcRender(true);
+  const nb=$('#cxpc').querySelector('.cxopt[data-g="'+o.dataset.g+'"][data-v="'+o.dataset.v+'"]');if(nb)nb.focus();
+  return;
+ }
+ if(e.target.closest('#cxpSaveBtn')){cxpSave();return;}
+ if(e.target.closest('#cxpLiveBtn')){cxpDraftLive(true);cxpcRender(true);}
+});
+$('#cxpc').addEventListener('input',e=>{if(e.target.id==='cxpName'&&cxpDraft)cxpDraft.name=e.target.value;});
+$('#cxpc').addEventListener('keydown',e=>{if(e.target.id==='cxpName'&&e.key==='Enter')cxpSave();});
 document.querySelectorAll('.cxacch').forEach(h=>h.addEventListener('click',()=>{
  const k=h.dataset.sec;CXP_SEC[k]=!CXP_SEC[k];
  try{localStorage.setItem('cxpSec',JSON.stringify(CXP_SEC));}catch(e){}
  h.parentElement.classList.toggle('open',!!CXP_SEC[k]);
 }));
 document.addEventListener('pointerdown',e=>{
- if($('#cxPop').hidden)return;
- if(e.target.closest('#cxPop,#cxBtn,#acctScrim,#scrim'))return;
- cxPopClose();
+ if(e.target.closest('#acctScrim,#scrim'))return;
+ if(!$('#cxPop').hidden&&!e.target.closest('#cxPop,#cxGear'))cxPopClose();
+ if(!$('#cxMenu').hidden&&!e.target.closest('#cxMenu,#cxBtn'))cxMenuClose();
 });
 document.addEventListener('keydown',e=>{
- if(e.key==='Escape'&&!$('#cxPop').hidden&&$('#acctScrim').hidden&&$('#scrim').hidden)cxPopClose();
+ if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();}
 });
-addEventListener('resize',()=>{if(!$('#cxPop').hidden)cxPopPlace();});
+addEventListener('resize',()=>{if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();});
 async function cxLoad(refresh){
  if(cxBusy){if(refresh)cxAgain=true;return;}
  cxBusy=true;
