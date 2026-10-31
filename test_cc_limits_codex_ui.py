@@ -37,6 +37,15 @@ class Page(unittest.TestCase):
     def test_button_is_left_of_language_switch(self):
         self.assertLess(L.PAGE.index('id="cxBtn"'), L.PAGE.index('id="langSwitch"'))
 
+    def test_header_buttons_left_codex_and_language_right(self):
+        # ↻ ⚙ + стоят слева, у «Оптимизации»; блок Codex и RU·EN — в правой группе, язык в самом краю
+        page = L.PAGE
+        order = [page.index(k) for k in ('id="optWrap"', 'id="rfBtn"', 'id="gear"', 'id="addAcct"', 'id="cxGrp"', 'id="langSwitch"')]
+        self.assertEqual(order, sorted(order))
+        self.assertLess(page.index('class="hdrbtns"'), page.index('class="hdrctl"'))
+        self.assertGreater(page.index('id="rfBtn"'), page.index('class="hdrbtns"'))
+        self.assertIn('html:root:root .hdrbtns{order:3', page)
+
     def test_header_split_group_profile_menu_and_gear(self):
         # «>_ Профиль ▾» и шестерёнка — одна группа; меню профилей и окно настроек — разные панели
         page = L.PAGE

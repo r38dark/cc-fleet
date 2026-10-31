@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.13", "date": "2026-10-31",
+     "ru": {"t": "Шапка: кнопки слева, Codex и язык справа", "p": ["Кнопки «Обновить», «Настройки» и «+» стоят слева, рядом с «Оптимизацией переключений лимитов»", "Блок Codex сдвинут вправо, переключатель языка RU·EN — в самом правом краю", "Работа кнопок и блока Codex не менялась, только их расположение"]},
+     "en": {"t": "Header: buttons on the left, Codex and language on the right", "p": ["The Refresh, Settings and \"+\" buttons now sit on the left, next to \"Limit optimization\"", "The Codex block moved right and the RU·EN language switch is at the far right edge", "Buttons and the Codex block work as before — only their position changed"]}},
     {"v": "1.25.12", "date": "2026-10-31",
      "ru": {"t": "Codex: понятные подписи папок в форме моста", "p": ["В профиле «Codex» первой идёт «Рабочая папка Codex»: здесь он может всё — создавать файлы и папки, менять и запускать; вне неё писать не может", "«Проект» в этом профиле подписан «только чтение»: правки в нём вносит человек или Claude", "В «Оркестраторе» форма как была; права и логика не менялись, только тексты и порядок полей"]},
      "en": {"t": "Codex: clearer folder labels in the bridge form", "p": ["In the \"Codex\" profile the \"Codex working folder\" comes first: Codex can do anything there — create files and folders, change and run things — and cannot write outside it", "\"Project\" in this profile is labelled \"read only\": a person or Claude makes the edits there", "The Orchestrator form is unchanged; rights and logic are untouched, only texts and field order"]}},

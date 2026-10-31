@@ -808,6 +808,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.13** — header: the Refresh, Settings and "+" buttons now sit on the left, next to "Limit
+  optimization"; the Codex block moved right and the RU·EN language switch is at the far right edge. The buttons
+  work as before.
 - **v1.25.12** — Codex: clearer folder labels in the bridge form. In the "Codex" profile the "Codex working
   folder" comes first (Codex can do anything there: create files and folders, change and run things; it
   cannot write outside it), then "Project (read only)". The Orchestrator form is unchanged. Rights and logic
