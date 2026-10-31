@@ -121,70 +121,6 @@ def _state_save(st):
     cc_codex._jsave(state_path(), st)
 
 
-# ---------------------------------------------------------------- лента работы моста
-# Её показывает консоль Codex на странице: пришло из Telegram → Codex делает → ответил. Только для глаз:
-# мосту лента не нужна, любая ошибка записи глотается.
-FEED_MAX = 300  # событий хранится
-FEED_TEXT = 1200  # символов в одном событии
-_feed_seq = [0]
-_feed_n = {}  # путь → число строк в файле (считаем один раз)
-
-
-def feed_path():
-    return os.path.join(BASE, "codex_bridge_feed.jsonl")
-
-
-def feed_add(kind, text="", **extra):
-    """Добавить событие в ленту: k — вид (in/run/cmd/cmdx/file/think/say/tool/out/task/err/end), x — текст."""
-    try:
-        text = _mask(cc_codex._strip(str(text or "")))
-        if len(text) > FEED_TEXT:
-            text = text[:FEED_TEXT] + "…"
-        with _lock:
-            _feed_seq[0] = max(_feed_seq[0] + 1, int(NOW() * 1000))  # по возрастанию и после перезапуска
-            line = json.dumps(dict(extra, id=_feed_seq[0], t=round(NOW(), 3), k=kind, x=text), ensure_ascii=False)
-            p = feed_path()
-            if p not in _feed_n:
-                try:
-                    with open(p, encoding="utf-8", errors="replace") as f:
-                        _feed_n[p] = sum(1 for _ in f)
-                except OSError:
-                    _feed_n[p] = 0
-            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)  # внутри переписки: чужим не читать
-            with os.fdopen(fd, "a", encoding="utf-8") as f:
-                f.write(line + "\n")
-            _feed_n[p] += 1
-            if _feed_n[p] > FEED_MAX + FEED_MAX // 2:  # подрезаем с запасом, чтобы не переписывать файл на каждое событие
-                with open(p, encoding="utf-8", errors="replace") as f:
-                    keep = f.readlines()[-FEED_MAX:]
-                _feed_n[p] = len(keep)
-                tmp = f"{p}.tmp{os.getpid()}"
-                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.writelines(keep)
-                os.replace(tmp, p)
-    except Exception as e:
-        log(f"feed: {type(e).__name__} {e}")
-
-
-def feed_read(since=0, limit=200):
-    """События новее since (id), не больше limit последних."""
-    out = []
-    try:
-        with open(feed_path(), encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()[-FEED_MAX:]
-    except OSError:
-        return out
-    for ln in lines:
-        try:
-            e = json.loads(ln)
-        except ValueError:
-            continue
-        if isinstance(e, dict) and e.get("id", 0) > since:
-            out.append(e)
-    return out[-limit:]
-
-
 def exchange_dir(s=None):
     s = s or load()
     if s.get("exchange"):
@@ -604,60 +540,6 @@ class RunError(Exception):
     pass
 
 
-_SHELL_WRAP = re.compile(r"^(?:\S*/)?(?:ba|z)?sh\s+-\w+\s+(.+)$", re.S)
-
-
-def _cmd_text(raw):
-    """`/bin/bash -lc 'cat a.py'` → `cat a.py`: обёртку оболочки человеку показывать незачем."""
-    c = (raw or "").strip()
-    m = _SHELL_WRAP.match(c)
-    if m:
-        c = m.group(1).strip()
-        if len(c) >= 2 and c[0] == c[-1] and c[0] in "'\"":
-            c = c[1:-1]
-    return re.sub(r"\s+", " ", c)
-
-
-def _feed_event(ev, acc):
-    """Событие `codex exec --json` → строка ленты. acc: say — последняя реплика Codex (если за ней что-то последует, она
-    промежуточная; если нет — это и есть ответ, его в ленту пишет send), steps, tokens."""
-    t, it = ev.get("type"), ev.get("item") or {}
-    ty = it.get("type")
-    if t == "turn.completed":
-        u = ev.get("usage") or {}
-        acc["tokens"] = int(u.get("input_tokens") or 0) + int(u.get("output_tokens") or 0)
-        return
-    if t not in ("item.started", "item.completed"):
-        return
-    if t == "item.completed" and ty == "agent_message":
-        if acc["say"]:
-            feed_add("say", acc["say"])
-        acc["say"] = (it.get("text") or "").strip()
-        return
-    if t == "item.completed" and ty == "command_execution":
-        rc = it.get("exit_code")
-        if rc not in (0, None):
-            feed_add("cmdx", "", rc=rc)
-        return
-    if acc["say"] and (t == "item.started" or ty in ("file_change", "reasoning", "web_search", "mcp_tool_call")):
-        feed_add("say", acc["say"])
-        acc["say"] = ""
-    if t == "item.started" and ty == "command_execution":
-        acc["steps"] += 1
-        feed_add("cmd", _cmd_text(it.get("command")))
-    elif t == "item.completed" and ty == "file_change":
-        acc["steps"] += 1
-        feed_add("file", ", ".join(f"{c.get('kind', '')} {c.get('path', '')}".strip() for c in (it.get("changes") or [])[:12]))
-    elif t == "item.completed" and ty == "reasoning":
-        feed_add("think", (it.get("text") or "")[:300])
-    elif t == "item.completed" and ty == "web_search":
-        acc["steps"] += 1
-        feed_add("tool", "web: " + str(it.get("query") or ""))
-    elif t == "item.completed" and ty == "mcp_tool_call":
-        acc["steps"] += 1
-        feed_add("tool", f"{it.get('server', '')}.{it.get('tool', '')}")
-
-
 def run_codex(prompt, s=None):
     """Один запуск codex exec (новый разговор или resume). → (ответ, thread_id)."""
     s = s or load()
@@ -681,9 +563,6 @@ def run_codex(prompt, s=None):
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             env=env, cwd=cwd, text=True, bufsize=1, start_new_session=True)
     BRIDGE.proc = proc
-    started = NOW()
-    acc = {"say": "", "steps": 0, "tokens": 0}
-    feed_add("run", "", mode=s["mode"], sb=sandbox, resume=bool(tid))
     timer = threading.Timer(RUN_TIMEOUT, lambda: cc_codex._kill(proc))
     timer.daemon = True
     timer.start()
@@ -699,7 +578,6 @@ def run_codex(prompt, s=None):
                     tail = tail[-12:]
                 continue
             t = ev.get("type")
-            _feed_event(ev, acc)
             if t == "thread.started":
                 new_tid = ev.get("thread_id") or new_tid
             elif t == "item.completed" and (ev.get("item") or {}).get("type") == "agent_message":
@@ -717,7 +595,6 @@ def run_codex(prompt, s=None):
             st = _state()
             st["threads"][key] = new_tid
             _state_save(st)
-    feed_add("end", "", sec=max(0, round(NOW() - started)), steps=acc["steps"], tokens=acc["tokens"], ok=bool(answer))
     if not answer:
         msg = failed or " ".join(tail[-3:]) or "Codex не вернул ответа."
         if cc_codex._AUTH_ERR.search(msg):
@@ -794,6 +671,8 @@ def limit_alerts(acc, prev, now=None):
 class Bridge:
     def __init__(self):
         self.stop_ev = threading.Event()
+        self.lim_ev = threading.Event()  # свой у потока предупреждений: он живёт и при «Выключен»
+        self.lim_t = None
         self.poll_t = None
         self.watch_t = None
         self.worker = None
@@ -808,7 +687,6 @@ class Bridge:
         cid = chat_id(s)
         if not (s.get("token") and cid):
             return
-        feed_add("err" if text.startswith(("⚠", "⏱")) else "task" if text.startswith(("📝", "📨", "👀", "✅")) else "out", text)
         for part in chunks(text):
             try:
                 tg_api(s["token"], "sendMessage", {"chat_id": cid, "text": part}, 20)
@@ -830,7 +708,6 @@ class Bridge:
         if not text:
             self.send("Пока понимаю только текст.")
             return
-        feed_add("in", text)
         self.handle_text(text)
 
     def handle_text(self, text):
@@ -1110,9 +987,16 @@ class Bridge:
     def sync(self):
         """Привести потоки в соответствие с настройками (вызывать после сохранения)."""
         s = load()
-        want = bool(s.get("enabled") and s.get("token") and chat_id(s))
-        if not want:
-            self.stop()
+        have = bool(s.get("token") and chat_id(s))
+        # предупреждения о лимите и подписке идут, пока бот подключён: «Выключен» гасит ответы Codex, а не эти сообщения
+        if not have:
+            self.lim_ev.set()
+        elif not (self.lim_t and self.lim_t.is_alive() and not self.lim_ev.is_set()):
+            ev = self.lim_ev = threading.Event()
+            self.lim_t = threading.Thread(target=self.limits_loop, args=(ev,), daemon=True, name="codex-limits")
+            self.lim_t.start()
+        if not (s.get("enabled") and have):
+            self.stop_ev.set()
             return
         if running():
             return
@@ -1121,10 +1005,10 @@ class Bridge:
         self.watch_t = threading.Thread(target=self.watch_loop, args=(ev,), daemon=True, name="codex-watch")
         self.poll_t.start()
         self.watch_t.start()
-        threading.Thread(target=self.limits_loop, args=(ev,), daemon=True, name="codex-limits").start()
 
     def stop(self):
         self.stop_ev.set()
+        self.lim_ev.set()
 
 
 BRIDGE = Bridge()

@@ -14,7 +14,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.3"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.4"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2660,20 +2660,6 @@ class H(BaseHTTPRequestHandler):
             if not codex_bin():
                 return self._send(200, {"ok": True, "available": False})
             return self._send(200, {"ok": True, "available": True, "bridge": cc_codex_bridge.public()})
-        if u.path == "/api/chatgpt/bridge/feed":
-            if not self._authed():
-                return self._send(403, {"error": "forbidden"})
-            if not codex_bin():
-                return self._send(200, {"ok": True, "available": False, "events": []})
-            q = parse_qs(u.query)
-            try:
-                since = int((q.get("since") or ["0"])[0])
-            except ValueError:
-                since = 0
-            b = cc_codex_bridge.public()
-            return self._send(200, {"ok": True, "available": True, "events": cc_codex_bridge.feed_read(since),
-                                    "bridge": {k: b.get(k) for k in ("enabled", "running", "busy", "pending", "token_set", "chat_id",
-                                                                    "mode", "sandbox", "last_error", "bot")}})
         if u.path == "/api/chatgpt":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -3051,43 +3037,14 @@ button:disabled{opacity:.35;cursor:default}
 /* вкладки консолей Claude | Codex: плашка того же вида, что масштаб, но слева; показывается, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
 .ctabs[hidden],.ctstop[hidden],.cxcons[hidden]{display:none}
-.iconbtn.ctab,.iconbtn.cview{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
-.iconbtn.ctab.on,.iconbtn.cview.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
+.iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
+.iconbtn.ctab.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
 .termwrap.hastabs .termbox{padding-top:42px}
 .cxcons{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:48px 18px 18px;text-align:center;pointer-events:none}
 .cxcons>*{pointer-events:auto}
 .cxcmsg{font-size:14px;font-weight:600;color:var(--txt)}
 .cxcsub{max-width:420px;font-size:12.5px;line-height:1.45;color:var(--mut);overflow-wrap:anywhere}
 .cxcons button{margin-top:6px;padding:9px 20px}
-/* лента работы моста во вкладке Codex: что пришло из Telegram, что делает Codex, что он ответил */
-.cxfeed{white-space:normal}
-.cxfeed[hidden]{display:none}
-.cxfeed .fr{display:grid;grid-template-columns:5.4em 1.3em minmax(0,1fr);align-items:baseline;gap:0 .4em;padding:1px 0;line-height:1.4}
-.cxfeed .ft{color:var(--mut);opacity:.75;font-variant-numeric:tabular-nums}
-.cxfeed .fg{text-align:center;color:var(--mut)}
-.cxfeed .fx{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
-.cxfeed .fl{font-weight:700;margin-right:.5em}
-.cxfeed .fr.k-in{margin-top:.7em}
-.cxfeed .fr.k-run{margin-top:.7em;padding-top:.5em;border-top:1px dashed #2a3140}
-.cxfeed .fr.k-in+.fr.k-run{margin-top:0;padding-top:1px;border-top:0}
-.cxfeed .fr:first-child{margin-top:0}
-.cxfeed .k-in .fg,.cxfeed .k-in .fl{color:var(--acc)}
-.cxfeed .k-out .fg,.cxfeed .k-out .fl,.cxfeed .k-cmd .fg{color:var(--ok)}
-.cxfeed .k-cmdx .fg,.cxfeed .k-cmdx .fx,.cxfeed .k-err .fg,.cxfeed .k-err .fx,.cxfeed .k-end.bad .fg,.cxfeed .k-end.bad .fx{color:var(--bad)}
-.cxfeed .k-file .fg,.cxfeed .k-task .fg{color:var(--warn)}
-.cxfeed .k-run .fx,.cxfeed .k-think .fx,.cxfeed .k-end .fx,.cxfeed .k-tool .fx,.cxfeed .k-cmd .fx{color:var(--mut)}
-.cxfeed .k-think .fx{font-style:italic}
-.cxfempty{padding:16px 6px;text-align:center;line-height:1.5;color:var(--mut);white-space:normal}
-/* нижняя строка вкладки Codex: переключатель «Лента | Экран» и состояние моста */
-.cxfbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex:none}
-.cxfbar[hidden]{display:none}
-.cxfseg{display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6);flex:none}
-.cxfst{display:flex;align-items:center;gap:7px;min-width:0;font-size:12px;line-height:1;color:var(--mut)}
-.cxfst span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cxfsd{width:8px;height:8px;border-radius:50%;background:var(--mut);flex:none;display:block}
-.cxfsd.on{background:var(--ok)}
-.cxfsd.err{background:var(--bad);margin:0}
-.cxfsd.busy{background:var(--warn);animation:cxpulse 1.1s ease-in-out infinite}
 .hdrl{display:flex;align-items:center;gap:10px;min-width:0}
 .hdrgear:disabled svg{animation:ccspin .8s linear infinite}
 .tzval{margin:0;padding:0 4px;min-width:48px;background:transparent;border:0;color:var(--mut);font-family:inherit;font-size:12.5px;font-weight:600;text-align:center;cursor:pointer}
@@ -3761,7 +3718,6 @@ html:root:root .termwrap{margin-bottom:10px}
 html:root:root .tzoom{top:6px;right:8px}
 html:root:root .ctabs{top:6px;left:8px}
 html:root:root .iconbtn.ctab,html:root:root .iconbtn.ctstop{height:34px}
-html:root:root .iconbtn.cview{height:34px;padding:0 14px;font-size:13px}
 html:root:root .iconbtn.ctab{padding:0 14px;font-size:13px}
 html:root:root .iconbtn.ctstop{width:34px}
 html:root:root .termwrap.hastabs .termbox{padding-top:50px}
@@ -3914,38 +3870,68 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxmenu{width:min(400px,calc(100vw - 20px))}
 .cxmenu .cxpbody{padding:12px 14px 14px}
 .cxmenu .cxhead{margin:0 0 8px}
+/* быстрая смена модели и усилия: третья кнопка группы и маленькая панель под ней */
+.hdrgear.cxmodbtn{width:auto;min-width:28px;padding:0 8px;gap:6px;font-size:12px;font-weight:600;color:var(--txt);position:relative}
+.hdrgear.cxmodbtn[hidden]{display:none}
+.hdrgear.cxmodbtn svg{width:15px;height:15px;flex:none}
+.cxgrp .hdrgear.cxmodbtn{border-radius:0;margin-left:-1px}
+.cxmodbtn[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
+.cxmodn{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cxmode{font-size:11px;font-weight:700;color:var(--acc);white-space:nowrap}
+.cxmode:empty{display:none}
+.cxquick{width:min(330px,calc(100vw - 20px))}
+.cxquick .cxpbody{padding:12px 14px 14px}
+.cxquick.busy .cxpbody{opacity:.55;pointer-events:none}
+.cxqh{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;font-size:12px;font-weight:700;color:var(--mut)}
+.cxqh~.cxqh{margin-top:12px}
+.cxqa{flex:1;min-width:0;text-align:right;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cxqlist{display:grid;gap:4px;max-height:min(280px,42vh);overflow-y:auto;overscroll-behavior:contain}
+.cxqm{display:flex;align-items:center;gap:10px;width:100%;margin:0;padding:7px 10px;text-align:left;background:transparent;border:1px solid #2a3140;color:var(--txt);border-radius:10px;cursor:pointer;font-size:13px;font-weight:500}
+.cxqm:hover,.cxqe:hover{border-color:var(--acc)}
+.cxqm.on,.cxqe.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);background:rgba(124,154,255,.08)}
+.cxqm .cxqr{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid var(--mut);position:relative}
+.cxqm.on .cxqr{border-color:var(--acc)}
+.cxqm.on .cxqr::after{content:"";position:absolute;inset:2px;border-radius:50%;background:var(--acc)}
+.cxqeff{display:flex;flex-wrap:wrap;gap:6px}
+.cxqe{margin:0;padding:6px 11px;background:transparent;border:1px solid #2a3140;color:var(--txt);border-radius:999px;font-size:12px;font-weight:600;cursor:pointer}
+.cxqe.on{color:var(--acc)}
 @media (max-width:640px){
 html:root:root .cxpop{left:10px!important;right:10px!important;width:auto}
-html:root:root .hdrgear.cxbtn{padding:0 7px 0 6px}
+html:root:root .hdrgear.cxbtn{padding:0 7px 0 6px;gap:4px}
 html:root:root .cxbtnname{max-width:84px}
 /* с счётчиками кнопка профиля не помещается в одну строку с остальными кнопками — занимает свою строку на всю ширину */
-html:root:root .hdrctl{flex:1 1 100%;flex-wrap:wrap;justify-content:flex-end}
-html:root:root .cxgrp{flex:1 1 100%}
+html:root:root .hdrctl{flex:1 1 100%;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+html:root:root .cxgrp{flex:1 1 100%;min-width:0}
 html:root:root .cxgrp .hdrgear.cxbtn{flex:1 1 auto;min-width:0;justify-content:flex-start}
 html:root:root .cxlim{margin-left:auto}
+html:root:root .hdrgear.cxmodbtn{flex:0 1 auto;min-width:0;padding:0 6px;gap:5px}
+html:root:root .hdrgear.cxmodbtn svg{display:none}
+html:root:root .cxmodn{max-width:78px}
 }
 @media (max-width:360px){
 html:root:root .cxbtnname{display:none}
+html:root:root .cxmodn{display:none}
+html:root:root .hdrgear.cxmodbtn svg{display:block}
 }
 html[data-skin="phosphor"] .cxpop{background:var(--phbg);border:1px solid var(--phl);border-radius:0;box-shadow:0 0 40px rgba(60,255,120,.12)}
 html[data-skin="aurora"] .cxpop{background:#12132b;border:1px solid rgba(255,255,255,.14);border-radius:20px;box-shadow:0 30px 80px -20px rgba(0,0,0,.9)}
 html[data-skin="slate"] .cxpop{background:#14161a;border:1px solid var(--sl-line2);border-radius:14px}
 html[data-skin="blocks"] .cxpop{background:#fff;color:var(--bk);border:3px solid var(--bk);border-radius:0;box-shadow:6px 6px 0 var(--bk)}
-html[data-skin="blocks"] .cxprof,html[data-skin="blocks"] .cxacch{color:var(--bk)}
-html[data-skin="blocks"] .cxprof{border:2px solid var(--bk);border-radius:0}
+html[data-skin="blocks"] .cxprof,html[data-skin="blocks"] .cxacch,html[data-skin="blocks"] .cxqm,html[data-skin="blocks"] .cxqe{color:var(--bk)}
+html[data-skin="blocks"] .cxprof,html[data-skin="blocks"] .cxqm,html[data-skin="blocks"] .cxqe{border:2px solid var(--bk);border-radius:0}
 html[data-skin="blocks"] .cxprof.act{background:var(--bl);box-shadow:3px 3px 0 var(--bk)}
 html[data-skin="phosphor"] .cxprof{border-radius:0;border-color:var(--phl)}
 html[data-skin="phosphor"] .cxprof.act{background:#0c2a17}
 html[data-skin="phosphor"] .cxacc{border-color:var(--phl)}
 html[data-skin="blocks"] .cxacc{border-color:var(--bk)}
-html[data-skin="blocks"] .hdrgear.cxbtn{color:var(--bk)}
+html[data-skin="blocks"] .hdrgear.cxbtn,html[data-skin="blocks"] .hdrgear.cxmodbtn{color:var(--bk)}
 html[data-skin="phosphor"] .cxcode{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--ph)}
 html[data-skin="aurora"] .cxcode{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px}
 html[data-skin="slate"] .cxcode{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
 html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter><filter id="ccPhosphorT" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.075 0.255 0.0225 0 0  0.21 0.7125 0.075 0 0  0.12 0.39 0.0375 0 0  0 0 0 1 0"/></filter></svg>
-<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div id="langSwitch" style="font-size:12px;color:var(--mut);cursor:pointer;white-space:nowrap"></div><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="termwrap">
@@ -3953,8 +3939,7 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
  <div class="cxcons" id="cxCons" hidden><div class="cxcmsg" id="cxConsMsg"></div><div class="cxcsub" id="cxConsSub"></div><button type="button" id="cxConsGo"></button></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
-<span id="termCurrent">Загрузка…</span><div class="cxfeed" id="cxFeed" hidden></div></pre>
- <div class="cxfbar" id="cxBar" hidden><div class="cxfseg" id="cxView" role="tablist"><button type="button" class="iconbtn cview on" id="cvFeed" role="tab" aria-selected="true" data-v="feed">Лента</button><button type="button" class="iconbtn cview" id="cvScreen" role="tab" aria-selected="false" data-v="screen">Экран</button></div><div class="cxfst" id="cxStat"><i class="cxfsd" id="cxStatD"></i><span id="cxStatT"></span></div></div>
+<span id="termCurrent">Загрузка…</span></pre>
 </div>
 <div class="toolrow"><div class="tgrp">
 <div id="mrow" class="mrowslim"></div>
@@ -3962,6 +3947,7 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
 </div></div>
 <div id="cards">Загрузка…</div>
 <div id="cxMenu" class="cxpop cxmenu" role="dialog" aria-label="Codex" hidden><div class="cxpbody"><div id="cxp"></div></div></div>
+<div id="cxQ" class="cxpop cxquick" role="dialog" aria-label="Codex" hidden><div class="cxpbody" id="cxQb"></div></div>
 <div id="cxPop" class="cxpop" role="dialog" aria-labelledby="cxPopTitle" hidden>
  <div class="cxphead"><b id="cxPopTitle">Codex</b><span class="cxsub" id="cxPopSt"></span><button type="button" class="hdrgear" id="cxPopX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
  <div class="cxpbody">
@@ -4232,6 +4218,7 @@ const I18N={
   cxFast:'⚡ Fast',
   cxFastTip:'Быстрее ответы, но лимит расходуется быстрее',
   cxFastNa:'Для этой модели Fast недоступен',
+  cxQTip:'Быстрая смена модели и усилия',
   cxRelogin:'🔑 Войти заново',
   cxLaunch:'Команда запуска',
   cxLaunchTip:'Скопировать команду, которая запускает Codex под этим аккаунтом',
@@ -4262,7 +4249,7 @@ const I18N={
   cxpN_second:'Второй ИИ',
   cxpS_second:'Codex отвечает сам и только читает проект — ничего не меняет.',
   cxpN_off:'Выключен',
-  cxpS_off:'Мост молчит, Codex ничего не делает.',
+  cxpS_off:'Бот не отвечает, Codex ничего не делает. Пуши о лимитах и подписке приходят.',
   cxpManual:'Настройки изменены вручную — ни один профиль не выбран.',
   cxpManualShort:'Свои настройки',
   cxpNamePh:'Название профиля',
@@ -4279,7 +4266,16 @@ const I18N={
   cxpWhen_orchestrator:'Большая цель в несколько шагов: Codex планирует и проверяет, Claude исполняет.',
   cxpWhen_standby:'Лимиты Claude кончились, а работать нужно: Codex делает сам в рабочей папке.',
   cxpWhen_second:'Нужно второе мнение: Codex смотрит проект и отвечает, ничего не меняя.',
-  cxpWhen_off:'Пауза: мост молчит. Чтобы включить его снова, выбери любой другой профиль.',
+  cxpWhen_off:'Нужна тишина: настраиваешь что-то или не хочешь, чтобы бот отвечал на сообщения. Пуши о лимитах и подписке всё равно придут.',
+  cxpOffStopL:'Останавливается',
+  cxpOffStop:'Ответы бота и работа Codex',
+  cxpOffStopD:'Бот не читает Telegram: твои сообщения, «да» и «стоп» не доходят. Codex не запускается и не передаёт задания Claude.',
+  cxpOffKeepL:'Остаётся',
+  cxpOffKeep:'Всё остальное',
+  cxpOffKeepD:'Токен бота и чат, твои профили и настройки, аккаунты Codex с лимитами и моделью, консоль Codex на странице. Пуши о лимитах и подписке приходят, пока бот подключён. Задание, которое уже идёт, не обрывается.',
+  cxpOffOnL:'Включить снова',
+  cxpOffOn:'Выбрать любой другой профиль',
+  cxpOffOnD:'Мост запустится сразу с настройками выбранного профиля, если бот подключён.',
   cxoRtLbl:'Права заданий Claude',
   cxoMode_mediator:'Codex сам проект не меняет: оформляет задание для Claude, а ты подтверждаешь «да» или «нет».',
   cxoMode_orchestrator:'Codex ведёт задачу к цели, Claude исполняет по шагу. Каждый следующий шаг — только после твоего «да», «стоп» останавливает.',
@@ -4344,30 +4340,13 @@ const I18N={
   cxcOff:'Консоль Codex не запущена',
   cxcSub:(sb,cwd)=>'Только просмотр: печатать в неё со страницы нельзя. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
   cxcStart:'Запустить',
+  cxcStarting:'Запускаю консоль Codex…',
   cxcStopTip:'Остановить консоль Codex',
   cxcStopQ:'Остановить консоль Codex? Всё, что в ней выполняется, прервётся.',
   cxcSbRead:'только чтение',
   cxcSbWrite:'запись в рабочей папке',
   cxcSbFull:'полный доступ',
   cxcSw:'Консоль: переключить на ',
-  cxfFeed:'Лента',
-  cxfScreen:'Экран',
-  cxfFeedTip:'Лента: что пришло из Telegram, что делает Codex и что он ответил',
-  cxfScreenTip:'Экран консоли Codex (только просмотр)',
-  cxfEmptyOff:'Мост не подключён. Включи его в окне ⚙ (раздел «Мост Telegram ↔ Codex»): здесь появится всё, что приходит из Telegram, что делает Codex и что он отвечает.',
-  cxfEmptyOn:'Пока тихо. Напиши боту в Telegram: здесь появятся сообщение, шаги Codex и его ответ.',
-  cxfRun:(mode,sb,resume)=>'Codex запущен · '+mode+' · '+sb+(resume?' · продолжает разговор':' · новый разговор'),
-  cxfIn:'Telegram',
-  cxfOut:'Ответ',
-  cxfCmdFail:rc=>'ошибка, код '+rc,
-  cxfEndOk:(sec,steps,tok)=>'готово · '+sec+' с · шагов: '+steps+(tok?' · токенов: '+tok:''),
-  cxfEndBad:(sec,steps)=>'без ответа · '+sec+' с · шагов: '+steps,
-  cxfStOff:'Мост выключен',
-  cxfStIdle:'Мост не работает',
-  cxfStOn:'Мост работает',
-  cxfStBusy:'Codex работает…',
-  cxfStPending:'ждёт твоё «да/нет»',
-  cxfStErr:'Ошибка моста',
  },
  en:{
   title:'Claude — Account Limits',
@@ -4607,6 +4586,7 @@ const I18N={
   cxFast:'⚡ Fast',
   cxFastTip:'Faster replies, but the limit is used up faster',
   cxFastNa:'Fast is not available for this model',
+  cxQTip:'Quick model and effort switch',
   cxRelogin:'🔑 Sign in again',
   cxLaunch:'Launch command',
   cxLaunchTip:'Copy the command that starts Codex under this account',
@@ -4637,7 +4617,7 @@ const I18N={
   cxpN_second:'Second AI',
   cxpS_second:'Codex answers on its own and only reads the project — changes nothing.',
   cxpN_off:'Off',
-  cxpS_off:'The bridge is silent, Codex does nothing.',
+  cxpS_off:'The bot does not reply, Codex does nothing. Limit and subscription pushes still arrive.',
   cxpManual:'Settings were changed by hand — no profile is selected.',
   cxpManualShort:'Custom settings',
   cxpNamePh:'Profile name',
@@ -4654,7 +4634,16 @@ const I18N={
   cxpWhen_orchestrator:'A big goal in several steps: Codex plans and checks, Claude executes.',
   cxpWhen_standby:'Claude limits are out but work must go on: Codex does it on its own in the working folder.',
   cxpWhen_second:'You want a second opinion: Codex looks at the project and answers, changing nothing.',
-  cxpWhen_off:'Pause: the bridge is silent. To turn it back on, pick any other profile.',
+  cxpWhen_off:'You need quiet: you are tuning something or do not want the bot to reply to messages. Limit and subscription pushes still arrive.',
+  cxpOffStopL:'Stops',
+  cxpOffStop:'Bot replies and Codex work',
+  cxpOffStopD:'The bot does not read Telegram: your messages, "yes" and "stop" do not arrive. Codex does not start and passes no tasks to Claude.',
+  cxpOffKeepL:'Stays',
+  cxpOffKeep:'Everything else',
+  cxpOffKeepD:'The bot token and chat, your profiles and settings, Codex accounts with limits and model, and the Codex console on this page. Limit and subscription pushes keep arriving while the bot is connected. A task that is already running is not cut off.',
+  cxpOffOnL:'To turn it on again',
+  cxpOffOn:'Pick any other profile',
+  cxpOffOnD:'The bridge starts at once with the settings of the chosen profile, if a bot is connected.',
   cxoRtLbl:'Rights for Claude tasks',
   cxoMode_mediator:'Codex never changes the project itself: it drafts a task for Claude and you confirm "yes" or "no".',
   cxoMode_orchestrator:'Codex drives the goal, Claude executes step by step. Each next step only after your "yes"; "stop" halts it.',
@@ -4719,30 +4708,13 @@ const I18N={
   cxcOff:'The Codex console is not running',
   cxcSub:(sb,cwd)=>'View only: you cannot type into it from this page. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
   cxcStart:'Start',
+  cxcStarting:'Starting the Codex console…',
   cxcStopTip:'Stop the Codex console',
   cxcStopQ:'Stop the Codex console? Anything running in it will be interrupted.',
   cxcSbRead:'read only',
   cxcSbWrite:'write in the working folder',
   cxcSbFull:'full access',
   cxcSw:'Console: switch to ',
-  cxfFeed:'Feed',
-  cxfScreen:'Screen',
-  cxfFeedTip:'Feed: what came from Telegram, what Codex is doing and what it replied',
-  cxfScreenTip:'Codex console screen (view only)',
-  cxfEmptyOff:'The bridge is not connected. Turn it on in the ⚙ window (section “Telegram ↔ Codex bridge”): everything that comes from Telegram, what Codex does and what it replies will show up here.',
-  cxfEmptyOn:'Quiet so far. Write to the bot in Telegram: the message, Codex steps and its reply will show up here.',
-  cxfRun:(mode,sb,resume)=>'Codex started · '+mode+' · '+sb+(resume?' · continuing the conversation':' · new conversation'),
-  cxfIn:'Telegram',
-  cxfOut:'Reply',
-  cxfCmdFail:rc=>'failed, code '+rc,
-  cxfEndOk:(sec,steps,tok)=>'done · '+sec+' s · steps: '+steps+(tok?' · tokens: '+tok:''),
-  cxfEndBad:(sec,steps)=>'no reply · '+sec+' s · steps: '+steps,
-  cxfStOff:'Bridge is off',
-  cxfStIdle:'Bridge is not running',
-  cxfStOn:'Bridge is running',
-  cxfStBusy:'Codex is working…',
-  cxfStPending:'waiting for your yes/no',
-  cxfStErr:'Bridge error',
  },
 };
 let LANG='ru';
@@ -4792,13 +4764,11 @@ function termCols(){
 }
 function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
-let CONS='claude',consShown='claude',cxConsRun=null,CXV='feed';  // CXV — вид вкладки Codex: feed (лента моста) | screen (экран консоли)
-try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';if(localStorage.getItem('cc_cxview')==='screen')CXV='screen';}catch(e){}
+let CONS='claude',consShown='claude',cxConsRun=null;
+try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
 function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}
-function consKey(){return consCur()==='codex'?'codex:'+CXV:'claude';}
 async function ccConsoleHistory(){
  const s=consCur();
- if(consKey()==='codex:feed')return;  // у ленты своя подгрузка
  try{
   const r=await fetch(API+'console?token='+TOKEN+'&history=1'+(s==='codex'?'&s=codex':''));const d=await r.json();
   if(s!==consCur())return;  // пока шёл запрос, переключили вкладку
@@ -4807,6 +4777,8 @@ async function ccConsoleHistory(){
 }
 function cxConsSb(sb){return tr(sb==='workspace-write'?'cxcSbWrite':sb==='danger-full-access'?'cxcSbFull':'cxcSbRead');}
 // «не запущена» / кнопка остановки — для вкладки Codex
+let cxAutoGo=true;  // вкладка Codex сама запускает консоль (как у Claude); после остановки или ошибки — только кнопкой
+let cxStarting=false;
 function cxConsUi(d){
  const on=consCur()==='codex'&&!!d&&d.available!==false;
  $('#ctStop').hidden=!(on&&d.running);
@@ -4814,77 +4786,20 @@ function cxConsUi(d){
  const ov=$('#cxCons');
  ov.hidden=!(on&&!d.running);
  if(!ov.hidden){
-  $('#cxConsMsg').textContent=tr('cxcOff');
+  $('#cxConsMsg').textContent=tr(cxStarting?'cxcStarting':'cxcOff');
   $('#cxConsSub').textContent=tr('cxcSub',cxConsSb(d.plan_sandbox),d.plan_cwd||'');
   $('#cxConsGo').textContent=tr('cxcStart');
  }
 }
-// ---- лента работы моста Telegram ↔ Codex (вкладка Codex, вид «Лента») ----
-let cxFeedLast=0,cxFeedBusy=false;
-function cxFeedReset(){cxFeedLast=0;const f=$('#cxFeed');if(f)f.innerHTML='';}
-function cxModeName(m){const k={mediator:'cxbModeMed',orchestrator:'cxbModeOrch',self:'cxbModeSelf'}[m];return k?tr(k).replace(/\s*\(.*$/,''):String(m||'');}
-function cxFeedRow(e){
- const k=String(e.k||''),x=acctEsc(e.x||'');
- const tm=new Date((e.t||0)*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
- let g='·',h=x,cls='k-'+k.replace(/[^a-z]/g,'');
- if(k==='in'){g='▶';h='<span class="fl">'+tr('cxfIn')+'</span>'+x;}
- else if(k==='out'){g='◀';h='<span class="fl">'+tr('cxfOut')+'</span>'+x;}
- else if(k==='run'){g='●';h=acctEsc(tr('cxfRun',cxModeName(e.mode),cxConsSb(e.sb),!!e.resume));}
- else if(k==='say'){g='◦';}
- else if(k==='cmd'){g='$';}
- else if(k==='cmdx'){g='✗';h=acctEsc(tr('cxfCmdFail',e.rc));}
- else if(k==='file'){g='✎';}
- else if(k==='think'){g='◌';}
- else if(k==='tool'){g='⚙';}
- else if(k==='task'){g='◆';h=acctEsc(String(e.x||'').replace(/^\s*\u{1F4DD}\uFE0F?\s*/u,''));}
- else if(k==='err'){g='!';h=acctEsc(String(e.x||'').replace(/^\s*\u26A0\uFE0F?\s*/u,''));}
- else if(k==='end'){g=e.ok?'✓':'✗';h=acctEsc(e.ok?tr('cxfEndOk',e.sec||0,e.steps||0,e.tokens?Number(e.tokens).toLocaleString(LANG==='en'?'en-US':'ru'):''):tr('cxfEndBad',e.sec||0,e.steps||0));if(!e.ok)cls+=' bad';}
- return '<div class="fr '+cls+'"><span class="ft">'+tm+'</span><span class="fg">'+g+'</span><span class="fx">'+h+'</span></div>';
-}
-// состояние моста в нижней строке: по ленте (свежее) или по последним настройкам из окна ⚙
-function cxFeedStat(b){
- const d=$('#cxStatD'),t=$('#cxStatT');if(!d)return;
- let cls='',txt;
- if(!b||!b.token_set||!b.enabled)txt=tr('cxfStOff');
- else if(b.last_error){cls='err';txt=tr('cxfStErr')+': '+b.last_error;}
- else if(!b.running)txt=tr('cxfStIdle');
- else if(b.busy){cls='busy';txt=tr('cxfStBusy');}
- else{cls='on';txt=tr('cxfStOn')+' · '+cxModeName(b.mode)+(b.pending?' · '+tr('cxfStPending'):'');}
- d.className='cxfsd '+cls;t.textContent=txt;t.title=txt;
-}
-async function cxFeedPoll(){
- if(cxFeedBusy)return;
- const dot=$('#termDot'),since=cxFeedLast;
- cxFeedBusy=true;
- try{
-  const r=await fetch(API+'chatgpt/bridge/feed?token='+TOKEN+'&since='+since);const d=await r.json();
-  if(consKey()!=='codex:feed'||since!==cxFeedLast)return;  // пока шёл запрос, переключили вкладку/вид или ленту сбросили
-  if(!d.ok){dot.className='termdot err';return;}
-  dot.className='termdot';
-  cxFeedStat(d.bridge);
-  const f=$('#cxFeed'),box=$('#termBox'),ev=d.events||[],em=f.querySelector('.cxfempty');
-  const atBottom=box.scrollTop+box.clientHeight>=box.scrollHeight-20;
-  if(ev.length){
-   if(em)em.remove();
-   f.insertAdjacentHTML('beforeend',ev.map(cxFeedRow).join(''));
-   cxFeedLast=ev[ev.length-1].id;
-   while(f.children.length>400)f.removeChild(f.firstChild);
-   if(atBottom||since===0)box.scrollTop=box.scrollHeight;
-  }else if(!f.children.length||em){
-   const b=d.bridge||{};
-   f.innerHTML='<div class="cxfempty">'+acctEsc(tr(b.token_set&&b.enabled?'cxfEmptyOn':'cxfEmptyOff'))+'</div>';
-  }
- }catch(e){dot.className='termdot err';}
- finally{cxFeedBusy=false;}
-}
 async function ccConsole(){
  const box=$('#termBox'),dot=$('#termDot'),s=consCur();
- if(consKey()==='codex:feed')return cxFeedPoll();
  try{
   const r=await fetch(API+'console?token='+TOKEN+(s==='codex'?'&s=codex':''));const d=await r.json();
   if(s!==consCur())return;
   if(s==='codex'){
    cxConsUi(d);
+   if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
+   else if(cxAutoGo&&d.available!==false&&d.ok!==false){cxAutoGo=false;cxConsAct('start',true);}  // один раз за загрузку страницы
    if(!d.ok){dot.className='termdot err';return;}
    dot.className='termdot';
    if(d.current==null){$('#termCurrent').innerHTML='';$('#termHistory').innerHTML='';cxConsRun=null;return;}
@@ -4996,18 +4911,9 @@ function consTabs(){
   b.title=on?'':tr('cxcSw')+b.textContent;
  });
  $('#ctStop').setAttribute('aria-label',tr('cxcStopTip'));
- $('#cxBar').hidden=!(av&&cur==='codex');
- [['feed','#cvFeed','cxfFeed','cxfFeedTip'],['screen','#cvScreen','cxfScreen','cxfScreenTip']].forEach(([k,id,t,tip])=>{
-  const b=$(id),on=k===CXV;
-  b.classList.toggle('on',on);b.setAttribute('aria-selected',on);
-  b.textContent=tr(t);b.title=tr(tip);
- });
- if(cur==='codex')cxFeedStat(cxbData&&cxbData.bridge);
- const key=consKey();
+ const key=cur;
  if(key!==consShown){
-  consShown=key;cxConsRun=null;cxFeedReset();
-  const feed=key==='codex:feed';
-  $('#cxFeed').hidden=!feed;$('#termHistory').hidden=feed;$('#termCurrent').hidden=feed;
+  consShown=key;cxConsRun=null;
   $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
   $('#cxCons').hidden=true;$('#ctStop').hidden=true;
   STICK=true;ccConsoleHistory();ccConsole();
@@ -5018,24 +4924,20 @@ function consPick(k){
  consTabs();
 }
 $('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(b&&b.dataset.s!==consCur())consPick(b.dataset.s);});
-$('#cxView').addEventListener('click',e=>{
- const b=e.target.closest('.cview');if(!b||b.dataset.v===CXV)return;
- CXV=b.dataset.v;try{localStorage.setItem('cc_cxview',CXV);}catch(x){}
- consTabs();
-});
-async function cxConsAct(path){
+async function cxConsAct(path,quiet){
  const g=$('#cxConsGo'),st=$('#ctStop');g.disabled=true;st.disabled=true;
+ cxStarting=path==='start';if(cxStarting)$('#cxConsMsg').textContent=tr('cxcStarting');
  try{
   const r=await acctPost('chatgpt/console/'+path,{});
-  toast(r.ok?r.message:'⚠ '+r.message);
+  if(!(r.ok&&quiet))toast(r.ok?r.message:'⚠ '+r.message);
   cxConsRun=null;cxConsUi(r);
   $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
   await ccConsole();ccConsoleHistory();
  }catch(e){toast('⚠ '+e);}
- g.disabled=false;st.disabled=false;
+ cxStarting=false;g.disabled=false;st.disabled=false;
 }
 $('#cxConsGo').addEventListener('click',()=>cxConsAct('start'));
-$('#ctStop').addEventListener('click',()=>{if(confirm(tr('cxcStopQ')))cxConsAct('stop');});
+$('#ctStop').addEventListener('click',()=>{if(confirm(tr('cxcStopQ'))){cxAutoGo=false;cxConsAct('stop');}});
 setTimeout(()=>{ccConsoleHistory();ccConsole();},0);setInterval(ccConsole,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
 function tone(p){return p==null?'na':p<60?'ok':p<85?'warn':'bad'}
@@ -5599,6 +5501,8 @@ function cxpInfoHtml(p){
  if(p.on!==false){
   rows=row(tr('cxbMode'),cxoMode(p.mode),tr('cxoMode_'+p.mode));
   rows+=p.mode==='self'?row(tr('cxbAccess'),cxoAcc(p.access),tr('cxoAcc_'+p.access)):row(tr('cxoRtLbl'),cxoRt(p.task_rights),tr('cxoRt_'+p.task_rights));
+ }else{
+  rows=row(tr('cxpOffStopL'),tr('cxpOffStop'),tr('cxpOffStopD'))+row(tr('cxpOffKeepL'),tr('cxpOffKeep'),tr('cxpOffKeepD'))+row(tr('cxpOffOnL'),tr('cxpOffOn'),tr('cxpOffOnD'));
  }
  const when=p.builtin?`<span class="cxpwhen"><b>${tr('cxpWhenLbl')}</b> ${acctEsc(tr('cxpWhen_'+p.id))}</span>`:'';
  return`<span class="cxpinfo">${rows}${when}</span>`;
@@ -5610,7 +5514,7 @@ function cxpCur(){
 function cxHdr(){
  const btn=$('#cxBtn'),grp=$('#cxGrp');if(!btn||!grp)return;
  const av=cxAvail();grp.hidden=!av;
- if(!av){cxPopClose();cxMenuClose();return;}
+ if(!av){cxPopClose();cxMenuClose();cxQClose();return;}
  const b=cxbData&&cxbData.bridge,cur=cxpCur();
  let cls='';
  if(b){if(b.last_error)cls='err';else if(b.running)cls=b.busy?'busy':'on';}
@@ -5622,6 +5526,7 @@ function cxHdr(){
  lim.innerHTML=la?cxLimHtml(la):'';lim.classList.toggle('stale',!!(la&&(la.stale||la.error)));
  btn.title=[tr('cxBtnTip')+(st?' — '+st:'')].concat(la?cxLimTip(la):[]).join('\n');btn.setAttribute('aria-label',btn.title);
  const gb=$('#cxGear');gb.title=tr('cxGearTip');gb.setAttribute('aria-label',gb.title);
+ cxQBtn();
  $('#cxPopTitle').textContent=tr('cxPopTitle');
  const ps=$('#cxPopSt');ps.textContent=st;ps.title=st;
  $('#cxPopX').title=tr('cxpClose');$('#cxPopX').setAttribute('aria-label',tr('cxpClose'));
@@ -5748,6 +5653,7 @@ function cxAll(){
  cxpRender();cxpcRender();
  if(!$('#cxPop').hidden)cxPopPlace();
  if(!$('#cxMenu').hidden)cxMenuPlace();
+ if(!$('#cxQ').hidden){cxQRender();cxQPlace();}
 }
 function cxPopPlace(){
  const pop=$('#cxPop'),r=$('#cxGear').getBoundingClientRect();
@@ -5758,7 +5664,7 @@ function cxPopPlace(){
 }
 function cxPopOpen(){
  if(!cxAvail())return;
- cxMenuClose();
+ cxMenuClose();cxQClose();
  $('#cxPop').hidden=false;$('#cxGear').setAttribute('aria-expanded','true');
  cxAll();cxPopPlace();cxbLoad(true);cxLoad();
 }
@@ -5775,13 +5681,83 @@ function cxMenuPlace(){
 }
 function cxMenuOpen(){
  if(!cxAvail())return;
- cxPopClose();
+ cxPopClose();cxQClose();
  $('#cxMenu').hidden=false;$('#cxBtn').setAttribute('aria-expanded','true');
  cxpRender();cxMenuPlace();cxbLoad(true);
 }
 function cxMenuClose(){
  const m=$('#cxMenu');if(!m||m.hidden)return;
  m.hidden=true;$('#cxBtn').setAttribute('aria-expanded','false');
+}
+// ---- быстрая смена модели и усилия: кнопка в шапке и маленькая панель под ней (те же настройки, что в окне ⚙ → Аккаунты) ----
+// Аккаунт — тот, чьи лимиты видны в шапке (им работает мост). Пустое значение = «по умолчанию Codex».
+function cxQCur(a){
+ const ms=a.models||[],def=ms.find(m=>m.is_default)||ms[0];
+ const known=!!a.model&&ms.some(m=>m.id===a.model);
+ const mod=(known&&ms.find(m=>m.id===a.model))||def;
+ const efs=mod.efforts||[];
+ const ef=a.effort&&efs.includes(a.effort)?a.effort:'';
+ return{ms,def,known,mod,efs,ef,eff:ef||mod.default_effort||'',name:a.model&&!known?a.model:mod.name};
+}
+function cxQBtn(){
+ const btn=$('#cxMod');if(!btn)return;
+ const a=cxLimAcc(),ok=!!(a&&(a.models||[]).length);
+ btn.hidden=!ok;
+ if(!ok){cxQClose();return;}
+ const c=cxQCur(a);
+ $('#cxModN').textContent=c.name;$('#cxModE').textContent=c.eff;
+ const t=tr('cxQTip')+': '+c.name+(c.eff?' · '+c.eff:'');
+ btn.title=t;btn.setAttribute('aria-label',t);
+}
+function cxQRender(){
+ const q=$('#cxQb'),a=cxLimAcc();if(!q)return;
+ if(!a||!(a.models||[]).length){q.innerHTML='';return;}
+ const c=cxQCur(a),multi=((cxData&&cxData.accounts)||[]).length>1;
+ const mrow=(id,name,on)=>`<button type="button" class="cxqm${on?' on':''}" role="radio" aria-checked="${on}" data-m="${acctEsc(id)}"><i class="cxqr"></i><span>${acctEsc(name)}</span></button>`;
+ let ml=mrow('',tr('cxDefault')+' · '+c.def.name,!a.model);
+ if(a.model&&!c.known)ml+=mrow(a.model,a.model,true);
+ ml+=c.ms.map(m=>mrow(m.id,m.name,c.known&&m.id===a.model)).join('');
+ const erow=(e,label,on)=>`<button type="button" class="cxqe${on?' on':''}" role="radio" aria-checked="${on}" data-e="${acctEsc(e)}">${acctEsc(label)}</button>`;
+ const el=c.efs.length?erow('',tr('cxDefault')+(c.mod.default_effort?' · '+c.mod.default_effort:''),!c.ef)+c.efs.map(e=>erow(e,e,e===c.ef)).join(''):'';
+ q.innerHTML=`<div class="cxqh"><span>${tr('cxModelTip')}</span>${multi?`<span class="cxqa">${acctEsc(a.label||a.email||a.slot)}</span>`:''}</div>
+  <div class="cxqlist" role="radiogroup" aria-label="${acctEsc(tr('cxModelTip'))}">${ml}</div>
+  ${el?`<div class="cxqh">${tr('cxEffortTip')}</div><div class="cxqeff" role="radiogroup" aria-label="${acctEsc(tr('cxEffortTip'))}">${el}</div>`:''}`;
+}
+function cxQPlace(){
+ const m=$('#cxQ'),r=$('#cxMod').getBoundingClientRect(),top=Math.round(r.bottom+8);
+ m.style.top=top+'px';m.style.maxHeight='calc(100vh - '+(top+12)+'px)';
+ if(innerWidth>640){const w=Math.min(330,innerWidth-20);m.style.left=Math.max(10,Math.min(Math.round(r.left),innerWidth-w-10))+'px';m.style.right='auto';}
+ else{m.style.left='';m.style.right='';}
+}
+function cxQOpen(){
+ if(!cxAvail()||$('#cxMod').hidden)return;
+ cxPopClose();cxMenuClose();
+ cxQRender();
+ $('#cxQ').hidden=false;$('#cxMod').setAttribute('aria-expanded','true');
+ cxQPlace();cxLoad();
+}
+function cxQClose(){
+ const m=$('#cxQ');if(!m||m.hidden)return;
+ m.hidden=true;$('#cxMod').setAttribute('aria-expanded','false');
+}
+// model/effort: null — это поле не меняем. Модель можно менять несколько раз подряд, выбор усилия — последний шаг, панель закрывается.
+let cxQBusy=false;
+async function cxQSet(model,effort){
+ if(cxQBusy)return;
+ const a=cxLimAcc();if(!a)return;
+ const c=cxQCur(a),curM=a.model||'';
+ const mid=model===null?curM:model;
+ const mod=c.ms.find(x=>x.id===mid)||c.def;
+ let ef=effort===null?c.ef:effort;
+ if(ef&&mod.efforts&&!mod.efforts.includes(ef))ef='';  // у другой модели может не быть такого усилия — сбрасываем, чтобы сервер не отказал
+ if(mid===curM&&ef===c.ef){if(effort!==null)cxQClose();return;}
+ const fast=!!(a.fast&&mod.fast);
+ cxQBusy=true;$('#cxQ').classList.add('busy');
+ try{const r=await acctPost('chatgpt/prefs',{slot:a.slot,model:mid,effort:ef,fast});toast(r.ok===false?'⚠ '+r.message:r.message);}
+ catch(err){toast('⚠ '+err);}
+ cxQBusy=false;$('#cxQ').classList.remove('busy');
+ if(effort!==null)cxQClose();
+ await cxLoad(true);
 }
 async function cxpApply(id,confirm){
  if(cxpBusy)return;cxpBusy=true;
@@ -5824,6 +5800,11 @@ async function cxpDelete(id){
 }
 $('#cxBtn').addEventListener('click',()=>{$('#cxMenu').hidden?cxMenuOpen():cxMenuClose();});
 $('#cxGear').addEventListener('click',()=>{$('#cxPop').hidden?cxPopOpen():cxPopClose();});
+$('#cxMod').addEventListener('click',()=>{$('#cxQ').hidden?cxQOpen():cxQClose();});
+$('#cxQ').addEventListener('click',e=>{
+ const m=e.target.closest('[data-m]'),f=e.target.closest('[data-e]');
+ if(m)cxQSet(m.dataset.m,null);else if(f)cxQSet(null,f.dataset.e);
+});
 $('#cxPopX').addEventListener('click',cxPopClose);
 $('#cxp').addEventListener('click',e=>{
  const d=e.target.closest('[data-del]');
@@ -5871,11 +5852,12 @@ document.addEventListener('pointerdown',e=>{
  if(e.target.closest('#acctScrim,#scrim'))return;
  if(!$('#cxPop').hidden&&!e.target.closest('#cxPop,#cxGear'))cxPopClose();
  if(!$('#cxMenu').hidden&&!e.target.closest('#cxMenu,#cxBtn'))cxMenuClose();
+ if(!$('#cxQ').hidden&&!e.target.closest('#cxQ,#cxMod'))cxQClose();
 });
 document.addEventListener('keydown',e=>{
- if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();}
+ if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();cxQClose();}
 });
-addEventListener('resize',()=>{if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();});
+addEventListener('resize',()=>{if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();if(!$('#cxQ').hidden)cxQPlace();});
 async function cxLoad(refresh){
  if(cxBusy){if(refresh)cxAgain=true;return;}
  cxBusy=true;

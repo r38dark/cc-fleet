@@ -1,4 +1,4 @@
-import json, os, stat, sys, tempfile, threading, types, unittest, unittest.mock
+import json, os, sys, tempfile, threading, time, types, unittest, unittest.mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cc_codex, cc_codex_bridge as br
@@ -22,12 +22,6 @@ if "оформи" in prompt:
     os.makedirs("outbox", exist_ok=True)
     with open("outbox/task.md", "w") as f:
         f.write(os.environ.get("FAKE_DRAFT", "права: полные\nсделай X в проекте\n"))
-if "читай" in prompt:
-    cmd = "/bin/bash -lc 'cat  a.py'"
-    print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "сейчас прочитаю файл"}}))
-    print(json.dumps({"type": "item.started", "item": {"type": "command_execution", "command": cmd, "status": "in_progress"}}))
-    print(json.dumps({"type": "item.completed", "item": {"type": "command_execution", "command": cmd, "exit_code": 2}}))
-    print(json.dumps({"type": "item.completed", "item": {"type": "file_change", "changes": [{"path": "a.py", "kind": "update"}]}}))
 print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "ответ: " + prompt}}))
 print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 5}}))
 '''
@@ -90,7 +84,7 @@ class Base(unittest.TestCase):
     def restore(self):
         # потоки моста гасим ДО возврата настоящих BASE и tg_api: иначе они пишут состояние в боевую папку и ходят в настоящий Telegram
         br.BRIDGE.stop()
-        for t in (br.BRIDGE.poll_t, br.BRIDGE.watch_t):
+        for t in (br.BRIDGE.poll_t, br.BRIDGE.watch_t, br.BRIDGE.lim_t):
             if t:
                 t.join(5)
         (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
@@ -229,94 +223,11 @@ class Chat(Base):
         ev = threading.Event()
         br.BRIDGE.worker = threading.Thread(target=ev.wait)
         br.BRIDGE.worker.start()
+        self.addCleanup(br.BRIDGE.worker.join, 5)  # дождаться выхода: живой воркер портил бы следующий тест («ещё работает»)
         self.addCleanup(ev.set)
         br.BRIDGE.handle_text("ещё вопрос")
         self.assertIn("ещё работает", self.sent[-1])
         self.assertEqual(self.runs(), [])
-
-
-class Feed(Base):
-    """Лента работы моста для консоли Codex на странице."""
-
-    def kinds(self):
-        return [e["k"] for e in br.feed_read()]
-
-    def test_message_run_answer(self):
-        self.say("вопрос 1")
-        evs = br.feed_read()
-        self.assertEqual([e["k"] for e in evs], ["in", "run", "end", "out"])
-        self.assertEqual(evs[0]["x"], "вопрос 1")
-        self.assertEqual((evs[1]["mode"], evs[1]["sb"], evs[1]["resume"]), ("mediator", "workspace-write", False))
-        self.assertEqual((evs[2]["steps"], evs[2]["tokens"], evs[2]["ok"]), (0, 15, True))
-        self.assertEqual(evs[3]["x"], "ответ: вопрос 1")
-        self.say("вопрос 2")
-        self.assertTrue([e for e in br.feed_read() if e["k"] == "run"][-1]["resume"])  # второй вопрос — тот же разговор
-
-    def test_steps_and_intermediate_say(self):
-        self.say("читай файл")
-        evs = br.feed_read()
-        self.assertEqual([e["k"] for e in evs], ["in", "run", "say", "cmd", "cmdx", "file", "end", "out"])
-        by = {e["k"]: e for e in evs}
-        self.assertEqual(by["say"]["x"], "сейчас прочитаю файл")  # промежуточная реплика
-        self.assertEqual(by["cmd"]["x"], "cat a.py")  # без обёртки bash -lc и лишних пробелов
-        self.assertEqual(by["cmdx"]["rc"], 2)
-        self.assertEqual(by["file"]["x"], "update a.py")
-        self.assertEqual(by["end"]["steps"], 2)
-        self.assertEqual(evs[-1]["x"], "ответ: читай файл")  # ответ — один раз, как out, а не ещё и как say
-
-    def test_errors_are_marked(self):
-        self.say("падение")
-        evs = br.feed_read()
-        self.assertEqual([e["k"] for e in evs][-3:], ["run", "end", "err"])
-        self.assertFalse(evs[-2]["ok"])
-        self.assertIn("boom", evs[-1]["x"])
-
-    def test_claude_task_events(self):
-        self.say("оформи задание")
-        self.assertIn("task", self.kinds())  # «📝 Задание для Claude»
-        self.say("да")
-        self.assertEqual(br.feed_read()[-1]["k"], "task")  # «📨 ушло Claude»
-
-    def test_foreign_chat_not_shown(self):
-        self.say("привет", chat=111)
-        self.assertEqual(br.feed_read(), [])
-
-    def test_token_masked(self):
-        br.feed_add("out", "ключ bot123456:" + "B" * 30 + " в тексте")
-        x = br.feed_read()[-1]["x"]
-        self.assertNotIn("B" * 30, x)
-        self.assertIn("bot***", x)
-
-    def test_since_and_limit(self):
-        for i in range(5):
-            br.feed_add("note", f"n{i}")
-        evs = br.feed_read()
-        self.assertEqual([e["x"] for e in evs], [f"n{i}" for i in range(5)])
-        self.assertEqual([e["x"] for e in br.feed_read(evs[2]["id"])], ["n3", "n4"])
-        self.assertEqual([e["x"] for e in br.feed_read(0, 2)], ["n3", "n4"])
-        self.assertTrue(all(a["id"] < b["id"] for a, b in zip(evs, evs[1:])))  # даже при замороженных часах
-
-    def test_trimmed_and_private(self):
-        old = br.FEED_MAX
-        br.FEED_MAX = 10
-        self.addCleanup(setattr, br, "FEED_MAX", old)
-        for i in range(60):
-            br.feed_add("note", f"{i} " + "я" * 900)
-        evs = br.feed_read()
-        self.assertLessEqual(len(evs), 10)
-        self.assertTrue(evs[-1]["x"].startswith("59 "))
-        self.assertEqual(stat.S_IMODE(os.stat(br.feed_path()).st_mode), 0o600)
-        with open(br.feed_path(), encoding='utf-8') as f:
-            self.assertLessEqual(len(f.readlines()), 15)  # подрезка с запасом: FEED_MAX + половина
-
-    def test_long_text_cut(self):
-        br.feed_add("out", "ы" * 5000)
-        self.assertEqual(len(br.feed_read()[-1]["x"]), br.FEED_TEXT + 1)
-
-    def test_write_error_never_breaks_bridge(self):
-        os.makedirs(br.feed_path())  # вместо файла — папка: запись невозможна
-        self.say("вопрос")
-        self.assertEqual(self.sent[-1], "ответ: вопрос")
 
 
 class Tasks(Base):
@@ -823,6 +734,69 @@ class LimitAlerts(Base):
         with unittest.mock.patch.object(cc_codex, "get_accounts", lambda b, force=False: [self.acc(p5=99)]):
             br.BRIDGE.limits_tick()
         self.assertEqual(self.sent, [])
+
+
+class LimitsThread(Base):
+    """Пуши о лимите и подписке живут, пока у моста есть токен бота и чат, — в том числе при «Выключен»."""
+
+    def setUp(self):
+        super().setUp()
+        inner = br.tg_api
+
+        def slow_api(token, method, payload=None, timeout=30):
+            if method == "getUpdates":
+                time.sleep(0.05)  # настоящий long-poll ждёт; без паузы поток опроса крутился бы вхолостую
+            return inner(token, method, payload, timeout)
+        br.tg_api = slow_api
+
+    def off(self):
+        s = br.load()
+        s["enabled"] = False
+        br._save(s)
+        br.BRIDGE.sync()
+
+    def test_off_keeps_only_limits_thread(self):
+        self.off()
+        self.assertTrue(br.BRIDGE.lim_t.is_alive())
+        self.assertFalse(br.running())  # опрос Telegram и наблюдатель остановлены
+
+    def test_enabled_then_off_does_not_restart_limits_thread(self):
+        br.BRIDGE.sync()
+        self.assertTrue(br.running())
+        lim = br.BRIDGE.lim_t
+        self.assertTrue(lim.is_alive())
+        self.off()
+        self.assertFalse(br.running())
+        self.assertTrue(lim.is_alive())
+        self.assertIs(br.BRIDGE.lim_t, lim)
+
+    def test_sync_twice_gives_one_thread(self):
+        br.BRIDGE.sync()
+        lim = br.BRIDGE.lim_t
+        br.BRIDGE.sync()
+        self.assertIs(br.BRIDGE.lim_t, lim)
+
+    def test_no_token_or_chat_stops_it(self):
+        br.BRIDGE.sync()
+        lim = br.BRIDGE.lim_t
+        s = br.load()
+        s["token"] = ""
+        br._save(s)
+        br.BRIDGE.sync()
+        lim.join(5)
+        self.assertFalse(lim.is_alive())
+        self.assertFalse(br.running())
+
+    def test_tick_sends_when_off(self):
+        s = br.load()
+        s["enabled"] = False
+        br._save(s)
+        cards = [{"slot": "gpt1", "windows": [{"mins": 300, "pct": 95, "resets_at": "2026-10-31T11:47:58Z"},
+                                              {"mins": 10080, "pct": 10, "resets_at": "2026-11-07T06:47:58Z"}]}]
+        with unittest.mock.patch.object(cc_codex, "get_accounts", lambda b, force=False: cards):
+            br.BRIDGE.limits_tick()
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("Лимит Codex", self.sent[0])
 
 
 class PollError(Base):

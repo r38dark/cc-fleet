@@ -48,14 +48,57 @@ class Page(unittest.TestCase):
         pop = page[page.index('id="cxPop"'):]
         self.assertNotIn('id="cxp"', pop[:pop.index('id="cxPopX"') + 400])
 
-    def test_feed_markup(self):
-        for i in ('id="cxFeed"', 'id="cxBar"', 'id="cvFeed"', 'id="cvScreen"', 'id="cxStatD"', 'id="cxStatT"'):
-            self.assertEqual(L.PAGE.count(i), 1, i)
+    def test_console_has_no_feed_view(self):
+        # вкладка Codex — всегда экран консоли: ни строки «Лента | Экран», ни ленты, ни её тексты
+        for bad in ('id="cxFeed"', 'id="cxBar"', 'id="cvFeed"', 'id="cvScreen"', 'id="cxStatD"', "cxFeedPoll", "cc_cxview"):
+            self.assertNotIn(bad, L.PAGE, bad)
+        self.assertEqual(re.findall(r"^\s{2}(cxf[A-Z]\w*):", i18n_block("ru"), re.M), [])
+
+    def test_quick_model_chip_between_profile_and_gear(self):
+        page = L.PAGE
+        grp = re.search(r'<div class="cxgrp" id="cxGrp"[^>]*>(.*?)</div><div id="langSwitch"', page, re.S).group(1)
+        self.assertLess(grp.index('id="cxBtn"'), grp.index('id="cxMod"'))
+        self.assertLess(grp.index('id="cxMod"'), grp.index('id="cxGear"'))
+        self.assertEqual(page.count('id="cxQ"'), 1)
+        self.assertRegex(page, r'<div id="cxQ"[^>]*\bhidden\b')
+        # панели друг друга закрывают, клик мимо и Esc закрывают быструю панель
+        self.assertIn("closest('#cxQ,#cxMod')", page)
+        self.assertRegex(page, r"Escape'[^\n]*cxQClose\(\)")
+
+    def test_off_profile_info_explains_what_stops_and_stays(self):
+        info = re.search(r"function cxpInfoHtml\(p\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        for k in ("cxpOffStopL", "cxpOffStop", "cxpOffStopD", "cxpOffKeepL", "cxpOffKeep", "cxpOffKeepD", "cxpOffOnL", "cxpOffOn", "cxpOffOnD"):
+            self.assertIn("tr('%s')" % k, info)
+
+    def test_off_profile_texts_say_pushes_still_arrive(self):
+        # «Выключен» гасит ответы бота и Codex, но не пуши о лимитах и подписке: мост шлёт их, пока бот подключён
+        def val(lang, key):
+            return re.search(r"^\s{2}%s:'(.*)',$" % key, i18n_block(lang), re.M).group(1)
+        for lang, word in (("ru", "пуши"), ("en", "pushes")):
+            self.assertNotIn(word, val(lang, "cxpOffStopD").lower())
+            self.assertIn(word, val(lang, "cxpOffKeepD").lower())
+            self.assertIn(word, val(lang, "cxpWhen_off").lower())
+            self.assertIn(word, val(lang, "cxpS_off").lower())
+
+    def test_console_starts_itself_like_claude(self):
+        # вкладка Codex сама поднимает консоль: жать «Запустить» не нужно (как и у консоли Claude)
+        poll = re.search(r"async function ccConsole\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn("cxConsAct('start',true)", poll)
+        self.assertRegex(poll, r"d\.running\)cxAutoGo=false")  # уже работала — дальше остановка осознанная
+        # после ручной остановки сама не поднимается, пока страницу не перезагрузят
+        stop = re.search(r"\$\('#ctStop'\)\.addEventListener\('click'[^\n]*", L.PAGE).group(0)
+        self.assertIn("cxAutoGo=false", stop)
+        self.assertIn("cxAutoGo=false;cxConsAct('start',true)", poll)  # флаг гаснет ДО запроса: опрос раз в 2 с не запустит дважды
+        self.assertIn("cxcStarting", i18n_block("ru"))
+
+    def test_no_feed_endpoint_left(self):
+        with open(L.__file__, encoding="utf-8") as f:
+            self.assertNotIn("/api/chatgpt/bridge/feed", f.read())
 
     def test_status_dots_reset_global_err_margin(self):
         # глобальное .err{margin-top:8px} сдвигало точки с классом err вниз от центра текста
         self.assertIn(".err{color:var(--bad);font-size:13px;margin-top:8px}", L.PAGE)
-        for sel in (".cxdot.err", ".cxfsd.err", ".termdot.err"):
+        for sel in (".cxdot.err", ".termdot.err"):
             m = re.search(re.escape(sel) + r"\{([^}]*)\}", L.PAGE)
             self.assertTrue(m, sel)
             self.assertIn("margin:0", m.group(1), sel)
@@ -171,6 +214,85 @@ class Counters(unittest.TestCase):
         self.assertEqual(self.o["pickB"], "b")
         self.assertEqual(self.o["pickFirst"], "a")
         self.assertIsNone(self.o["none"])
+
+
+QUICK_JS = """
+const LANG='ru';
+const tr=(k,...a)=>a.length?k+'('+a.join(',')+')':k;
+const acctEsc=s=>String(s==null?'':s);
+const posts=[];
+const els={'#cxQ':{hidden:false,classList:{add(){},remove(){}}},'#cxMod':{setAttribute(){}},'#cxQb':{innerHTML:''}};
+const $=s=>els[s];
+let ACC=null,cxData={accounts:[]};
+function cxLimAcc(){return ACC;}
+async function acctPost(p,b){posts.push([p,b]);return{ok:true,message:'ok'};}
+const toast=()=>{};
+async function cxLoad(){}
+%s
+const ms=[
+ {id:'m1',name:'M1',efforts:['low','high'],default_effort:'low',is_default:true,fast:'priority'},
+ {id:'m2',name:'M2',efforts:['low','medium','high','ultra'],default_effort:'medium',is_default:false,fast:'priority'},
+ {id:'m3',name:'M3',efforts:['low'],default_effort:'low',is_default:false,fast:''}];
+const pick=c=>({name:c.name,eff:c.eff,ef:c.ef,known:c.known});
+(async()=>{
+ const o={};
+ o.def=pick(cxQCur({slot:'s',models:ms}));
+ o.m2=pick(cxQCur({slot:'s',models:ms,model:'m2',effort:'ultra'}));
+ o.unknown=pick(cxQCur({slot:'s',models:ms,model:'zzz'}));
+ o.badEffort=pick(cxQCur({slot:'s',models:ms,model:'m1',effort:'ultra'}));
+ ACC={slot:'s',models:ms,model:'m2',effort:'ultra',fast:true};
+ await cxQSet('m3',null);                       // у M3 нет ни усилия ultra, ни Fast — оба сбрасываются
+ o.openAfterModel=!els['#cxQ'].hidden;          // выбор модели панель не закрывает: усилие ещё можно поменять
+ await cxQSet(null,'high');                     // усилие меняем — модель и Fast остаются
+ await cxQSet('m2',null);                       // то же значение — ничего не шлём
+ els['#cxQ'].hidden=false;
+ await cxQSet(null,'ultra');                    // то же усилие: ничего не шлём, но панель закрывается
+ o.posts=posts.map(p=>[p[0],p[1]]);
+ o.closedOnSame=els['#cxQ'].hidden;
+ ACC={slot:'s',models:ms,model:'m1',effort:'',fast:false};
+ cxQRender();o.html=els['#cxQb'].innerHTML;
+ console.log(JSON.stringify(o));
+})();
+"""
+
+
+@unittest.skipUnless(__import__("shutil").which("node"), "нет node")
+class QuickSwitch(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        i = L.PAGE.index("function cxQCur(a){")
+        j = L.PAGE.index("async function cxpApply(")
+        path = os.path.join(TMP, "quick.js")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(QUICK_JS % L.PAGE[i:j])
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=30)
+        assert r.returncode == 0, r.stderr
+        cls.o = json.loads(r.stdout)
+
+    def test_current_values(self):
+        self.assertEqual(self.o["def"], {"name": "M1", "eff": "low", "ef": "", "known": False})      # по умолчанию: усилие модели
+        self.assertEqual(self.o["m2"], {"name": "M2", "eff": "ultra", "ef": "ultra", "known": True})
+        self.assertEqual(self.o["unknown"]["name"], "zzz")                                            # чужая модель из config.toml видна как есть
+        self.assertEqual(self.o["badEffort"]["ef"], "")                                               # усилия нет у модели → «по умолчанию»
+
+    def test_changes_go_to_prefs_with_safe_combination(self):
+        self.assertEqual(self.o["posts"], [
+            ["chatgpt/prefs", {"slot": "s", "model": "m3", "effort": "", "fast": False}],
+            ["chatgpt/prefs", {"slot": "s", "model": "m2", "effort": "high", "fast": True}],
+        ])
+
+    def test_effort_choice_closes_panel_even_without_change(self):
+        self.assertTrue(self.o["closedOnSame"])
+        self.assertTrue(self.o["openAfterModel"])
+
+    def test_panel_lists_default_models_and_efforts(self):
+        h = self.o["html"]
+        self.assertIn('data-m=""', h)
+        for m in ("m1", "m2", "m3"):
+            self.assertIn('data-m="%s"' % m, h)
+        self.assertIn('data-e=""', h)
+        self.assertIn('data-e="high"', h)
+        self.assertNotIn('data-e="ultra"', h)     # у M1 такого усилия нет
 
 
 class Routes(unittest.TestCase):

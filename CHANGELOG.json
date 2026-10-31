@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.4", "date": "2026-10-31",
+     "ru": {"t": "Codex: консоль стартует сама, ленты нет, пуши лимитов при «Выключен»", "p": ["Консоль Codex запускается сама при открытии вкладки; кнопка «Запустить» осталась запасной, после «Стоп»", "Лента работы моста убрана совсем: на вкладке Codex только экран; в шапке чип модели и усилия", "Пуши лимитов и конца подписки приходят и при профиле «Выключен», пока подключён Telegram-бот"]},
+     "en": {"t": "Codex: console starts by itself, no feed, limit pushes while Off", "p": ["The Codex console starts by itself when you open its tab; Start remains a fallback after Stop", "The bridge activity feed is gone: the Codex tab shows only the screen; header chip for model and effort", "Limit and subscription pushes arrive even with the Off profile while the Telegram bot is connected"]}},
     {"v": "1.25.3", "date": "2026-10-31",
      "ru": {"t": "Codex: старая ошибка связи с Telegram больше не залипает", "p": ["Раньше красная точка и «Telegram недоступен: TimeoutError» висели, пока не придёт новый сбой или сообщение", "Теперь после первого удачного опроса Telegram сообщение об ошибке и красная точка гаснут сами"]},
      "en": {"t": "Codex: a stale Telegram connection error no longer sticks", "p": ["The red dot and \"Telegram unavailable: TimeoutError\" used to stay until the next failure or message", "Now the error text and the red dot clear by themselves after the first successful Telegram poll"]}},
