@@ -1,4 +1,4 @@
-import json, os, stat, sys, tempfile, threading, types, unittest
+import json, os, stat, sys, tempfile, threading, types, unittest, unittest.mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cc_codex, cc_codex_bridge as br
@@ -82,9 +82,13 @@ class Base(unittest.TestCase):
         self.proj = j("proj")
 
     def restore(self):
+        # потоки моста гасим ДО возврата настоящих BASE и tg_api: иначе они пишут состояние в боевую папку и ходят в настоящий Telegram
+        br.BRIDGE.stop()
+        for t in (br.BRIDGE.poll_t, br.BRIDGE.watch_t):
+            if t:
+                t.join(5)
         (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
          br.RESERVED_TOKENS, br.ACK_TIMEOUT) = self.saved
-        br.BRIDGE.stop()
 
     def say(self, text, chat=100200300):
         br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": chat}, "text": text}})
@@ -253,6 +257,19 @@ class Tasks(Base):
         os.environ["FAKE_DRAFT"] = "права: дев\nправка\n"
         self.assertEqual(self.draft()["rights"], "read")
 
+    def test_yes_with_unwritable_folder_keeps_task_pending(self):
+        # не удалось записать task.md — задание не теряется молча: «да/нет» остаётся, человек видит причину
+        self.draft()
+        with unittest.mock.patch("cc_codex_bridge.os.makedirs", side_effect=PermissionError(13, "Permission denied")):
+            self.say("да")
+        self.assertIsNotNone(br._state()["pending"])
+        self.assertIn("Не смог записать", self.sent[-1])
+        self.assertIn("Permission denied", self.sent[-1])
+        self.assertEqual(self.console, [])
+        self.say("да")  # после починки второе «да» отправляет как обычно
+        self.assertIsNone(br._state()["pending"])
+        self.assertEqual(len(self.console), 1)
+
     def test_yes_delivers(self):
         self.draft()
         self.say("да")
@@ -384,6 +401,200 @@ class Tasks(Base):
 
     def test_scr_safe(self):
         self.assertEqual(br._scr_safe('a$b\\c^d"e\'f`g\nh'), "a b c d e f g h")
+
+
+class Profiles(Base):
+    def test_builtin_apply(self):
+        want = {"secretary": ("mediator", "read", "dev"), "orchestrator": ("orchestrator", "read", "dev"),
+                "standby": ("self", "write", "dev"), "second": ("self", "read", "dev")}
+        for pid, (mode, acc, rights) in want.items():
+            ok, msg = br.apply_profile(pid)
+            self.assertTrue(ok, msg)
+            s = br.load()
+            self.assertEqual((s["mode"], s["access"], s["task_rights"], s["enabled"]), (mode, acc, rights, True), pid)
+            self.assertEqual(br.public()["profile"], pid)
+
+    def test_off(self):
+        self.assertTrue(br.apply_profile("secretary")[0])
+        self.assertTrue(br.apply_profile("off")[0])
+        self.assertFalse(br.load()["enabled"])
+        self.assertEqual(br.public()["profile"], "off")
+        self.assertFalse(br.running())
+
+    def test_no_token_applies_but_stays_off(self):
+        s = br.load()
+        s["token"] = ""
+        br._save(s)
+        ok, msg = br.apply_profile("orchestrator")
+        self.assertTrue(ok)
+        self.assertIn("подключишь бота", msg)
+        s = br.load()
+        self.assertEqual((s["mode"], s["enabled"]), ("orchestrator", False))
+        self.assertEqual(br.public()["profile"], "orchestrator")
+
+    def test_self_profile_needs_workdir_and_changes_nothing(self):
+        s = br.load()
+        s["workdir"] = ""
+        br._save(s)
+        ok, msg = br.apply_profile("standby")
+        self.assertFalse(ok)
+        self.assertIn("Рабочая папка", msg)
+        self.assertEqual(br.load()["mode"], "mediator")
+        self.assertEqual(br.public()["profile"], "")
+
+    def test_unknown_profile(self):
+        self.assertFalse(br.apply_profile("nope")[0])
+
+    def test_builtins_never_full(self):
+        for pid, d in br.BUILTIN_PROFILES:
+            self.assertNotEqual(d.get("access"), "full", pid)
+            self.assertNotEqual(d.get("task_rights"), "full", pid)
+
+    def test_custom_save_apply_delete_and_full_word(self):
+        self.assertTrue(br.save({"mode": "self", "access": "full", "confirm": "подтверждаю"})[0])
+        self.assertTrue(br.save_profile("  Мой\nполный  ")[0])
+        c = br.load()["profiles"][0]
+        self.assertEqual((c["id"], c["name"], c["access"]), ("c1", "Мой полный", "full"))
+        self.assertTrue(br.apply_profile("secretary")[0])
+        ok, msg = br.apply_profile("c1")  # снова поднимать до полного — только со словом
+        self.assertFalse(ok)
+        self.assertIn("подтверждаю", msg)
+        self.assertEqual(br.load()["mode"], "mediator")
+        self.assertTrue(br.apply_profile("c1", "подтверждаю")[0])
+        self.assertEqual(br.load()["access"], "full")
+        self.assertEqual(br.public()["profile"], "c1")
+        self.assertFalse(br.delete_profile("secretary")[0])  # встроенные не удаляются
+        self.assertTrue(br.delete_profile("c1")[0])
+        self.assertEqual(br.load()["profiles"], [])
+        self.assertEqual(br.public()["profile"], "")
+
+    def test_custom_name_replaced_and_limited(self):
+        self.assertFalse(br.save_profile("  ")[0])
+        for i in range(br.MAX_CUSTOM_PROFILES):
+            self.assertTrue(br.save_profile(f"p{i}")[0])
+        self.assertFalse(br.save_profile("лишний")[0])
+        self.assertTrue(br.save_profile("P3")[0])  # то же имя заменяет, а не добавляет
+        self.assertEqual(len(br.load()["profiles"]), br.MAX_CUSTOM_PROFILES)
+
+    def test_manual_edit_drops_profile_mark(self):
+        self.assertTrue(br.apply_profile("secretary")[0])
+        self.assertEqual(br.public()["profile"], "secretary")
+        self.assertTrue(br.save({"task_rights": "read"})[0])
+        self.assertEqual(br.public()["profile"], "")
+
+    def test_public_lists_profiles(self):
+        pub = br.public()
+        self.assertEqual([p["id"] for p in pub["profiles"]], ["secretary", "orchestrator", "standby", "second", "off"])
+        self.assertTrue(all(p["builtin"] for p in pub["profiles"]))
+        br.save_profile("Свой")
+        self.assertEqual(br.public()["profiles"][-1]["name"], "Свой")
+
+
+class Orchestrator(Base):
+    def setUp(self):
+        super().setUp()
+        self.assertTrue(br.save({"mode": "orchestrator"})[0])
+        self.ex = br.exchange_dir()
+
+    def draft(self):
+        self.say("оформи задание")
+        return br._state()["pending"]
+
+    def done_task(self, text="Готово: коммит abc123"):
+        self.draft()
+        self.say("да")
+        put(os.path.join(self.ex, "tasks", "1", "result.md"), text)
+        br.BRIDGE.watch_once()
+        w = br.BRIDGE.worker
+        if w:
+            w.join(20)
+
+    def test_plan_and_agents(self):
+        self.assertEqual(br.plan(br.load()), ("workspace-write", self.ex))
+        t = get(os.path.join(self.ex, "AGENTS.md"))
+        self.assertIn("оркестратор", t)
+        self.assertIn("RESULT OF TASK", t)
+
+    def test_agents_back_to_secretary(self):
+        self.assertTrue(br.save({"mode": "mediator"})[0])
+        self.assertIn("секретарь", get(os.path.join(self.ex, "AGENTS.md")))
+
+    def test_draft_still_needs_yes(self):
+        p = self.draft()
+        self.assertEqual(p["n"], 1)
+        self.assertEqual(self.console, [])
+
+    def test_result_goes_back_to_codex(self):
+        self.done_task()
+        last = self.runs()[-1]
+        prompt = last["argv"][last["argv"].index("--") + 1]
+        self.assertIn("[RESULT OF TASK #1 FROM CLAUDE]", prompt)
+        self.assertIn("коммит abc123", prompt)
+        self.assertIn("ответ: [RESULT OF TASK #1", self.sent[-1])  # ответ Codex ушёл человеку
+        self.assertNotIn("feed", br._state()["tasks"]["1"])  # отдано один раз
+        n = len(self.runs())
+        br.BRIDGE.watch_once()
+        self.assertEqual(len(self.runs()), n)
+
+    def test_next_step_still_needs_yes(self):
+        os.environ["FAKE_DRAFT"] = "права: дев\nследующий шаг\n"
+        self.draft()
+        self.say("да")
+        put(os.path.join(self.ex, "tasks", "1", "result.md"), "ок")
+        os.environ["FAKE_DRAFT"] = "права: дев\nшаг 2\n"
+        # Codex на результат оформляет шаг 2 — подставляем «оформи» в тело, чтобы фейк записал черновик
+        put(os.path.join(self.ex, "tasks", "1", "result.md"), "оформи шаг 2")
+        br.BRIDGE.watch_once()
+        br.BRIDGE.worker.join(20)
+        self.assertEqual(br._state()["pending"]["n"], 2)
+        self.assertEqual(len(self.console), 1)  # в консоль ушёл только шаг 1; шаг 2 ждёт «да»
+
+    def test_feed_waits_while_busy(self):
+        self.draft()
+        self.say("да")
+        put(os.path.join(self.ex, "tasks", "1", "result.md"), "ок")
+        gate = threading.Event()
+        br.BRIDGE.worker = threading.Thread(target=gate.wait, daemon=True)
+        br.BRIDGE.worker.start()
+        before = len(self.runs())
+        br.BRIDGE.watch_once()
+        self.assertEqual(len(self.runs()), before)
+        self.assertTrue(br._state()["tasks"]["1"]["feed"])
+        gate.set()
+        br.BRIDGE.worker.join(5)
+        br.BRIDGE.watch_once()
+        br.BRIDGE.worker.join(20)
+        self.assertEqual(len(self.runs()), before + 1)
+
+    def test_mediator_does_not_feed_back(self):
+        self.assertTrue(br.save({"mode": "mediator"})[0])
+        self.draft()
+        self.say("да")
+        before = len(self.runs())
+        put(os.path.join(self.ex, "tasks", "1", "result.md"), "ок")
+        br.BRIDGE.watch_once()
+        self.assertEqual(len(self.runs()), before)
+        self.assertNotIn("feed", br._state()["tasks"]["1"])
+
+    def test_feed_hidden_from_public(self):
+        self.draft()
+        self.say("да")
+        put(os.path.join(self.ex, "tasks", "1", "result.md"), "ок")
+        gate = threading.Event()
+        br.BRIDGE.worker = threading.Thread(target=gate.wait, daemon=True)
+        br.BRIDGE.worker.start()
+        br.BRIDGE.watch_once()
+        self.assertNotIn("feed", br.public()["tasks"][0])
+        gate.set()
+
+    def test_stop_word_clears_pending(self):
+        self.draft()
+        self.say("стоп")
+        self.assertIsNone(br._state()["pending"])
+        self.assertIn("Остановил", self.sent[-1])
+        self.assertEqual(self.console, [])
+        self.say("стоп")
+        self.assertIn("ничего не запущено", self.sent[-1])
 
 
 if __name__ == "__main__":

@@ -224,7 +224,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -593,7 +593,7 @@ Tests (standard library only, no `pytest`; live files are not touched):
 
 A "ChatGPT (Codex)" section appears under the Claude cards — a fallback in case the Claude accounts become unavailable. It is a **separate program with its own sign-in**: it is not part of Claude's automatic account switching, and limit optimisation does not touch it.
 
-- **Password-free sign-in.** "+" → a link and a one-time device code → enter the code in a browser (`codex login --device-auth`, the code lives 15 minutes). Device-code sign-in must be enabled in ChatGPT (Settings → Security). Tokens live in `/root/.codex-profiles/gptN` (modes 700/600); override with `CC_CODEX_PROFILES`.
+- **Password-free sign-in.** "+" → a link and a one-time device code → enter the code in a browser (`codex login --device-auth`, the code lives 15 minutes). Device-code sign-in must be enabled in ChatGPT (Settings → Security). Tokens live in `/root/.codex-profiles/gptN` (modes 700/600); override with `CC_CODEX_PROFILES` or the `"codex_profiles"` key in `config.json`.
 - **The card.** Email, plan, subscription end, "Session 5h" and "Week" limit windows with their resets, credits, sign-in age. Read through `codex app-server`; on a failure the last good numbers are shown with a note.
 - **Settings.** Model, reasoning effort and Fast are picked on the card and written to that profile's `config.toml`. "Launch command" copies a `CODEX_HOME=… codex` line.
 - **Delete** needs the word "confirm"; `codex logout` runs first.
@@ -610,9 +610,21 @@ Below the Codex section there is a "Telegram ↔ Codex bridge" card: you write t
 - **Autonomous.** For when Claude is unavailable: Codex works in the working folder at the chosen access — read / write in the folder / full (outside the sandbox; enabled by typing "confirm"). Only the human switches the mode.
 - **Task rights for Claude** are a ceiling set on the card: read / dev / full; Codex asks for rights in the first line `rights: …`, anything above the ceiling is lowered with a note.
 - For Codex "rights" are a sandbox wall, for Claude they are a condition of the task. Tasks reach the console through `screen -X stuff` (ASCII only, Enter as a separate call), so it is best-effort: a busy console is not forced — answer "retry N".
-- Run Codex as a separate OS user: `"codex_user": "name"` in `config.json` (the profiles must then live where that user can write — `CC_CODEX_PROFILES`).
+- Run Codex as a separate OS user: `"codex_user": "name"` in `config.json` (the profiles must then live where that user can write — `codex_profiles` in `config.json` or `CC_CODEX_PROFILES`).
 
 Tests: `python3 -m unittest test_cc_codex_bridge` (fake codex and Bot API, no network needed).
+
+## Codex window, profiles, orchestrator and console (v1.25.0)
+
+When Codex is installed, a `>_` icon with the name of the selected profile appears in the header. A click opens a window: profiles, ChatGPT accounts and limits, the Telegram bridge and all its settings.
+
+- **Profiles** are bridge presets applied with one click: "Secretary" (you are in charge, Codex drafts tasks for Claude), "Orchestrator", "Standby" (Claude is unavailable, Codex writes in the working folder itself), "Second AI" (Codex only reads and answers), "Off". Full access is never part of a built-in profile. Your own profiles (up to 10) are saved under a name from the current settings. Change a setting by hand and the profile highlight is cleared.
+- **Orchestrator.** Codex splits the goal into steps and drives them one at a time, Claude executes. Every step reaches Claude only after your "yes" in the chat; the result goes back to Codex, which compares it with the goal and drafts the next step or says the goal is reached. The word "stop" in the chat cancels everything, including a task waiting for "yes". There is no "auto for N steps" mode — no step goes out without "yes".
+- **Codex console.** A "Codex" tab appears next to the Claude console (small tabs at the top left, comfortable on a phone; the choice is remembered). "Start" opens an interactive `codex` in a separate `screen` session `cc-codex`; the page shows a mirror of its screen with scrollback. **View only:** you cannot type into the console from the page. Rights and working folder are the same as the bridge's (the console never takes full access on its own); stop it with the square next to the tabs. Without Codex there are no tabs.
+- The ChatGPT profiles folder is set by the `"codex_profiles"` key in `config.json` (it used to be the `CC_CODEX_PROFILES` environment variable only).
+- If a task cannot be written to the shared folder, it is not lost: the bridge reports the reason and waits for "yes" again.
+
+Tests: `python3 -m unittest test_cc_codex_bridge test_cc_limits_codex_ui test_cc_codex_console` (fake codex and Bot API, no network needed).
 
 ## Management
 
@@ -704,7 +716,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -770,6 +782,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.0** — Codex in the header: the icon opens a window with profiles (Secretary,
+  Orchestrator, Standby, Second AI, Off and your own), accounts, limits and the bridge.
+  "Orchestrator" mode: Codex drives the goal, Claude executes the steps, each after "yes";
+  "stop" cancels everything. A "Codex" tab next to the Claude console (Codex's screen, view only).
+  The profiles folder is the `codex_profiles` key in `config.json`.
 - **v1.24.0** — a "ChatGPT (Codex)" section: sign-in by link and device code, "Session 5h"
   and "Week" limits, subscription end, model / effort / Fast pickers, delete. A separate
   program with its own sign-in — not part of Claude's automatic switching.

@@ -1,5 +1,5 @@
 {
-  "version": "1.24.0",
+  "version": "1.25.0",
   "needs_install": false,
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
@@ -9,6 +9,7 @@
     {"src": "cc_update.py", "mode": "644"},
     {"src": "cc_codex.py", "mode": "644"},
     {"src": "cc_codex_bridge.py", "mode": "644"},
+    {"src": "cc_codex_console.py", "mode": "644"},
     {"src": "CHANGELOG.json", "mode": "644"},
     {"src": "limits_gate.py", "mode": "755"},
     {"src": "pause_ctl.py", "mode": "755"},
