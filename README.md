@@ -217,7 +217,7 @@ Auth, нужны ли уведомления в Telegram. Дальше сам:
 
 1. поставит `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils`,
    если выбран веб-домен),
-2. скопирует `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `limits_gate.py`, `pause_ctl.py` →
+2. скопирует `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py` →
    `/opt/cc-limits`, `cc-switch` → `/usr/local/bin/cc-switch`,
 3. заведёт N пустых слотов-профилей в `/root/.claude-profiles/accN`,
 4. сгенерирует `config.json` со случайным `hook_token` (при повторном запуске
@@ -822,7 +822,7 @@ sudo ./install.sh          # ответы можно оставить прежн
 `config.json` сохраняются, профили аккаунтов не трогаются. Обновятся файлы в
 `/opt/cc-limits`, systemd-unit, cron-будильник и nginx-конфиг (если выбирал
 nginx). Если ставить установщик повторно не хочется — достаточно скопировать
-`cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py`,
+`cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py`,
 `hooks/queue_on_limits.py` и `hooks/pause_tool_gate.py` в `/opt/cc-limits`, положить cron-строку из
 `install.sh` и перезапустить сервис.
 
@@ -885,6 +885,12 @@ nginx). Если ставить установщик повторно не хо�
 
 ## История версий
 
+- **v1.25.27** — Копии профилей аккаунтов встроены в балансер. Раз в сутки и при новом или пропавшем аккаунте он сам кладёт
+  копию профилей (токены входа) в `/opt/cc-limits/profile_backups`: 14 датированных штук и «свежая» `latest.tar.gz`, которую
+  обновляет каждое изменение токенов. Пустые и тестовые слоты не копируются и старые копии не вытесняют. В ⚙ блок «Копии
+  аккаунтов»: список, кнопки «Копия сейчас» и «Восстановить недостающие» (возвращает только пропавшие профили, живые не
+  перезаписываются), переключатель автокопий. Аккаунт, удалённый кнопкой, и двойник после перелогина не возвращаются. Папка
+  копий — только root (700), файлы 600; новый файл `cc_backup.py`.
 - **v1.25.26** — Тесты больше не трогают живые папки профилей. Общий прогон `unittest discover` мог стереть папку профилей
   аккаунтов Claude и Codex: тест команд задавал только часть путей, а тесты лимитов чистят папку профилей перед каждым
   случаем. Теперь тест команд уводит во временную папку профили Claude и Codex, а тесты с очисткой проверяют, что путь лежит

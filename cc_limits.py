@@ -6,6 +6,7 @@ import fcntl, html, json, os, random, re, shutil, struct, subprocess, tempfile, 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pyte
 import cc_avail
+import cc_backup
 import cc_codex
 import cc_codex_bridge
 import cc_codex_console
@@ -16,13 +17,14 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.26"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.27"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
 # один Claude Code живёт в одном /root на VDS).
 BASE = os.environ.get("CC_LIMITS_BASE", "/opt/cc-limits")
 PROFILES = os.environ.get("CC_LIMITS_PROFILES", "/root/.claude-profiles")
+BACKUP_DIR = os.path.join(BASE, "profile_backups")  # копии профилей аккаунтов (cc_backup): сутки + при новом входе, 14 штук
 LIVE_CREDS = "/root/.claude/.credentials.json"
 LIVE_CFG = "/root/.claude.json"
 TG_ENV = "/root/.claude/channels/telegram/.env"
@@ -513,6 +515,14 @@ def _move_off(name):
     return None, last
 
 
+def backup_status():
+    """Для окна ⚙: копии профилей, их свежесть и что из потерянного можно вернуть."""
+    d = cc_backup.listing(PROFILES, BACKUP_DIR)
+    d["enabled"] = cfg().get("profile_backup", True) is not False
+    d["keep"] = cc_backup.KEEP
+    return d
+
+
 def delete_account(name, confirm, lang="ru"):
     """→ (ok, message, snapshot|None). Убирает аккаунт из ротации навсегда: профиль с токенами,
     строки в снимке, кэшах и state. Берёт lock сама — снаружи не оборачивать."""
@@ -539,6 +549,10 @@ def delete_account(name, confirm, lang="ru"):
                 return False, _t(lang, "Это активный аккаунт, а переключить сессию на другой не удалось — ничего не удалено. ",
                                  "This is the active account and the session could not be moved to another one — nothing was deleted. ") + why, None
         _relogin_cleanup(name)
+        try:
+            cc_backup.note_deleted(BACKUP_DIR, oa.get("accountUuid"))  # копии хранят его токены, но «потерянным» он больше не считается
+        except Exception:
+            pass
         try:
             shutil.rmtree(pdir)
         except OSError as e:
@@ -2767,6 +2781,10 @@ class H(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
             return self._send(200, changelog())
+        if u.path == "/api/backup":  # копии профилей аккаунтов: что лежит и что можно вернуть
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            return self._send(200, backup_status())
         if u.path == "/api/console":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -3053,6 +3071,12 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, UPDATER.skip(str(body.get("version") or "")))
         if u.path == "/api/update/ack":
             return self._send(200, UPDATER.ack())
+        if u.path == "/api/backup/now":  # «Копия сейчас»
+            res = cc_backup.make(PROFILES, BACKUP_DIR)
+            return self._send(200, dict(backup_status(), ok=res.get("ok", False), why=res.get("why", ""), name=res.get("name", "")))
+        if u.path == "/api/backup/restore":  # «Восстановить недостающие»: живые профили не трогаются
+            res = cc_backup.restore_missing(PROFILES, BACKUP_DIR)
+            return self._send(200, dict(backup_status(), ok=True, restored=res["restored"]))
         if u.path == "/api/notion/save":  # окно ⚙ блока Notion и переключатель резерва: имя агента / ссылка агента / галочки резерва
             c = cfg()  # без lock — как /api/config: он не реентерабельный и занят на время опроса
             ok, conf, err = cc_notion.save(c.get("notion_agent") or {}, body)
@@ -3078,6 +3102,8 @@ class H(BaseHTTPRequestHandler):
                 c["update_check"] = body["update_check"]
             if isinstance(body.get("weekly_pause"), bool):
                 c["weekly_pause"] = body["weekly_pause"]
+            if isinstance(body.get("profile_backup"), bool):
+                c["profile_backup"] = body["profile_backup"]
             if "enabled_models" in body:
                 # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
                 # хотя бы одна модель должна остаться доступной для переключения
@@ -4349,6 +4375,8 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
   <div class="skgrid" id="skinGrid" role="radiogroup"></div>
   <div class="modalh" id="updHdr">Обновления</div>
   <div id="updBox"></div>
+  <div class="modalh" id="bkHdr">Копии аккаунтов</div>
+  <div id="bkBox"></div>
   <div class="modalh" id="modelsHdr">Модели</div>
   <div class="modalsub" id="modalSub">Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»</div>
   <div id="poolList"></div>
@@ -4504,6 +4532,21 @@ const I18N={
   updHintManual:'Вручную: покажу баннер о новой версии, а ты решишь — обновляться или нет.',
   updHintAuto:'Автоматически: сам скачаю релиз, проверю, заменю файлы и перезапущу панель. Перед заменой делается бэкап, при сбое файлы возвращаются.',
   updCheckLbl:'Проверять новые версии раз в 6 часов (один запрос к GitHub, без токена)',
+  bkHdr:'Копии аккаунтов',
+  bkLine:(n,k)=>`Аккаунтов сейчас: ${n} · копий: ${k}`,
+  bkLast:t=>`Последняя копия: ${t}`,
+  bkNone:'Копий пока нет — первая появится в течение минуты',
+  bkNow:'Копия сейчас',
+  bkNowEmpty:'Копировать нечего: настоящих аккаунтов нет.',
+  bkNowErr:'Не удалось сделать копию.',
+  bkLost:l=>`⚠️ Нет в панели, но есть в копии: ${l}`,
+  bkRestore:'Восстановить недостающие',
+  bkRestoreAsk:l=>`Вернуть из копий: ${l}? Живые аккаунты не тронутся.`,
+  bkRestored:l=>`Возвращено: ${l}. Если вход не сработает — нажми «Войти заново» у аккаунта.`,
+  bkRestoreNone:'Возвращать нечего.',
+  bkAuto:'Делать копии сами: раз в сутки и при новом входе, хранится 14 штук',
+  bkHint:'Копии лежат на сервере (только root) и содержат токены входа — никому не передавай. Аккаунт, удалённый кнопкой, не возвращается.',
+  bkErr:e=>`Ошибка копирования: ${e}`,
   updAutoConfirm:v=>`Сейчас доступна версия ${v} — её поставят сразу. Включить автоматическое обновление?`,
   updNoSupport:r=>`Автообновление здесь недоступно (${r}). Обнови вручную: sudo ./install.sh из архива релиза.`,
   updBTitle:v=>`⬆ Вышла новая версия — <b>${v}</b>`,
@@ -4994,6 +5037,21 @@ const I18N={
   updHintManual:'Manual: I show a banner about a new version and you decide whether to update.',
   updHintAuto:'Automatic: I download the release, verify it, replace the files and restart the panel. A backup is made first; on failure the files are put back.',
   updCheckLbl:'Check for new versions every 6 hours (one request to GitHub, no token)',
+  bkHdr:'Account backups',
+  bkLine:(n,k)=>`Accounts now: ${n} · backups: ${k}`,
+  bkLast:t=>`Last backup: ${t}`,
+  bkNone:'No backups yet — the first one appears within a minute',
+  bkNow:'Back up now',
+  bkNowEmpty:'Nothing to back up: there are no real accounts.',
+  bkNowErr:'Could not make a backup.',
+  bkLost:l=>`⚠️ Missing in the panel but present in a backup: ${l}`,
+  bkRestore:'Restore missing',
+  bkRestoreAsk:l=>`Bring back from backups: ${l}? Live accounts are not touched.`,
+  bkRestored:l=>`Restored: ${l}. If the sign-in does not work, press “Sign in again” on the account.`,
+  bkRestoreNone:'Nothing to restore.',
+  bkAuto:'Back up automatically: once a day and on a new sign-in, 14 are kept',
+  bkHint:'Backups live on the server (root only) and contain sign-in tokens — never share them. An account deleted with the button is not brought back.',
+  bkErr:e=>`Backup error: ${e}`,
   updAutoConfirm:v=>`Version ${v} is available right now — it will be installed immediately. Turn on automatic updates?`,
   updNoSupport:r=>`Auto-update is unavailable here (${r}). Update by hand: sudo ./install.sh from the release archive.`,
   updBTitle:v=>`⬆ New version released — <b>${v}</b>`,
@@ -5355,10 +5413,10 @@ function applyI18n(){
  $('#gear').title=tr('modelsBtnTitle');$('#addAcct').title=tr('addBtnTitle');$('#addAcct').setAttribute('aria-label',tr('addBtnTitle'));$('#modalTitle').textContent=tr('modelsTitle');
  $('#modelsHdr').textContent=tr('modelsHdr');$('#skinTitle').textContent=tr('skinTitle');buildSkinGrid();
  $('#tzMinus').title=tr('tzMinusTitle');$('#tzPlus').title=tr('tzPlusTitle');$('#tzVal').title=tr('tzResetTitle');
- $('#updHdr').textContent=tr('updHdr');
+ $('#updHdr').textContent=tr('updHdr');$('#bkHdr').textContent=tr('bkHdr');
  $('#autoHdr').textContent=tr('autoHdr');$('#optWrap').title=tr('optHint');$('#dockTabLbl').textContent=tr('dockTab');
  $('#autoNote').textContent=tr('optDisabledTitle');setConly(document.documentElement.classList.contains('conly'),false);
- if(typeof updRender==='function'){updRender();updSettingsRender();}  // смена языка перерисовывает баннер и блок настроек
+ if(typeof updRender==='function'){updRender();updSettingsRender();if(typeof bkRender==='function')bkRender();}  // смена языка перерисовывает баннер и блок настроек
  $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
@@ -7401,7 +7459,54 @@ $('#updBox').addEventListener('change',async e=>{
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({update_check:e.target.checked})});
  updLoad();
 });
-$('#gear').addEventListener('click',()=>{updSettingsRender();updLoad();});
+// «Копии аккаунтов» в ⚙: что лежит в копиях профилей, кнопки «Копия сейчас» и «Восстановить недостающие»
+let bkData=null,bkMsg='';
+const bkAt=ts=>{if(!ts)return '';const d=new Date(ts*1000),loc=LANG==='en'?'en-GB':'ru',t=d.toLocaleTimeString(loc,{hour:'2-digit',minute:'2-digit'});
+ return d.toDateString()===new Date().toDateString()?t:d.toLocaleDateString(loc,{day:'2-digit',month:'2-digit'})+' '+t;};
+async function bkPost(p){
+ const r=await fetch(API+'backup/'+p+'?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+ return r.json();
+}
+async function bkLoad(){
+ try{const r=await fetch(API+'backup?token='+TOKEN);if(!r.ok)throw new Error(r.status);bkData=await r.json();}catch(e){return;}
+ bkRender();
+}
+function bkRender(){
+ const box=$('#bkBox');if(!box||$('#scrim').hidden)return;
+ const d=bkData;if(!d){box.innerHTML='';return;}
+ const items=d.items||[],k=items.length+(d.latest?1:0);
+ const last=Math.max((d.latest&&d.latest.ts)||0,...items.map(x=>x.ts),0);
+ const lost=d.missing||[];
+ box.innerHTML='<div class="updrow"><div class="updtxt"><b>'+tr('bkLine',d.profiles||0,k)+'</b>'
+  +'<div class="updsub'+(d.error?' bad':'')+'">'+ccpEsc(d.error?tr('bkErr',d.error):(last?tr('bkLast',bkAt(last)):tr('bkNone')))+'</div></div>'
+  +'<button type="button" class="ghostbtn" id="bkNowBtn">'+tr('bkNow')+'</button></div>'
+  +(lost.length?'<div class="updrow"><div class="updtxt"><div class="updsub bad">'+ccpEsc(tr('bkLost',lost.join(', ')))+'</div></div>'
+   +'<button type="button" class="ghostbtn" id="bkRestoreBtn">'+tr('bkRestore')+'</button></div>':'')
+  +(bkMsg?'<div class="modalsub" style="margin:0">'+ccpEsc(bkMsg)+'</div>':'')
+  +'<label class="updchk"><input type="checkbox" id="bkChk"'+(d.enabled?' checked':'')+'><span>'+tr('bkAuto')+'</span></label>'
+  +'<div class="modalsub" style="margin:6px 0 0">'+tr('bkHint')+'</div>';
+}
+$('#bkBox').addEventListener('click',async e=>{
+ const d=bkData;if(!d)return;
+ if(e.target.id==='bkNowBtn'){
+  e.target.disabled=true;
+  try{const r=await bkPost('now');bkMsg=r.ok?'':tr(r.why==='empty'?'bkNowEmpty':'bkNowErr');bkData=r;}catch(x){bkMsg=tr('bkNowErr');}
+  return bkRender();
+ }
+ if(e.target.id==='bkRestoreBtn'){
+  const lost=(d.missing||[]).join(', ');
+  if(!confirm(tr('bkRestoreAsk',lost)))return;
+  e.target.disabled=true;
+  try{const r=await bkPost('restore');bkMsg=(r.restored&&r.restored.length)?tr('bkRestored',r.restored.join(', ')):tr('bkRestoreNone');bkData=r;}catch(x){bkMsg=tr('bkNowErr');}
+  bkRender();load();  // load() — перечитать карточки: вернувшиеся аккаунты появятся в списке
+ }
+});
+$('#bkBox').addEventListener('change',async e=>{
+ if(e.target.id!=='bkChk')return;
+ await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile_backup:e.target.checked})});
+ bkLoad();
+});
+$('#gear').addEventListener('click',()=>{bkMsg='';updSettingsRender();updLoad();bkLoad();});
 applyI18n();load();setInterval(()=>load(),60000);setInterval(ntRefresh,15000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
 updLoad();
 ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
@@ -7420,6 +7525,7 @@ if __name__ == "__main__":
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
     cc_codex_emergency.start()  # аварийный режим: после перезапуска довести до рабочего состояния или снять, запустить сторож срока
+    cc_backup.start(lambda: PROFILES, BACKUP_DIR, lambda: cfg().get("profile_backup", True) is not False)  # копии профилей аккаунтов
     cc_notion.start()  # резерв «Claude недоступен»: сторож лимитов, включает и выключает Codex + Notion-агент
     cc_codex_bridge.BRIDGE.sync()  # мост Telegram ↔ Codex: поднимется, только если включён в карточке
     port = cfg().get("port", 8877)

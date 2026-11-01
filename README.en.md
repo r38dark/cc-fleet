@@ -229,7 +229,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -851,7 +851,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -917,6 +917,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.27** — Account profile backups are built into the balancer. Once a day and whenever an account appears or goes
+  missing, it copies the profiles (sign-in tokens) into `/opt/cc-limits/profile_backups`: 14 dated copies plus a fresh
+  `latest.tar.gz` that every token change updates. Empty and test slots are never copied and never push old copies out. A new
+  ⚙ block “Account backups”: the list, “Back up now” and “Restore missing” (brings back only missing profiles, live ones are
+  never overwritten) and an auto-backup switch. An account deleted with the button, and a duplicate after a re-login, are not
+  brought back. The folder is root-only (700), files are 600; a new file `cc_backup.py`.
 - **v1.25.26** — Tests no longer touch the live profile folders. A full `unittest discover` run could wipe the Claude and Codex
   account profile folders: the commands test set only some of the paths while the limits tests clean the profiles folder before
   each case. Now the commands test points the Claude and Codex profiles to a temporary folder, and the tests that clean
