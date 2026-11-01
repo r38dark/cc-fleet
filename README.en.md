@@ -917,6 +917,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.26** — Tests no longer touch the live profile folders. A full `unittest discover` run could wipe the Claude and Codex
+  account profile folders: the commands test set only some of the paths while the limits tests clean the profiles folder before
+  each case. Now the commands test points the Claude and Codex profiles to a temporary folder, and the tests that clean
+  folders check the path is temporary and fail otherwise. The balancer itself is unchanged. Run the full suite on a working
+  server only in a sandbox.
 - **v1.25.25** — "Delete Codex completely" and "Codex +" is back. After the last ChatGPT account is deleted (on the bridge card or
   in the accounts list) the header shows "Codex +" again, the `>_` icon, the profile and ⚙ are hidden and the wizard starts at
   sign-in. At the very bottom of ⚙ there is a "Delete Codex completely" button (confirmed by typing the word): every ChatGPT

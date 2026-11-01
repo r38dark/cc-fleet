@@ -135,6 +135,8 @@ class CodexTest(unittest.TestCase):
         cc_codex._models_cache.clear()
         self.gate = os.path.join(self.tmp, f"gate{time.time_ns()}")
         os.environ["FAKE_CODEX_GATE"] = self.gate
+        # защита: чистим только временную папку (при общем прогоне cc_codex уже импортирован другим модулем)
+        assert os.path.realpath(cc_codex.PROFILES).startswith(os.path.realpath(tempfile.gettempdir()) + os.sep), cc_codex.PROFILES
         for d in os.listdir(cc_codex.PROFILES) if os.path.isdir(cc_codex.PROFILES) else []:
             shutil.rmtree(os.path.join(cc_codex.PROFILES, d), ignore_errors=True)
 

@@ -13,6 +13,9 @@ from unittest import mock
 HERE = os.path.dirname(os.path.abspath(__file__))
 TMP = tempfile.mkdtemp(prefix="cccmd_")
 os.environ["CC_LIMITS_BASE"] = os.path.join(TMP, "base0")
+# профили Claude и Codex тоже во временную папку: при общем прогоне (discover) cc_limits импортируется один раз, отсюда
+os.environ["CC_LIMITS_PROFILES"] = os.path.join(TMP, "profiles")
+os.environ["CC_CODEX_PROFILES"] = os.path.join(TMP, "cxprof")
 os.makedirs(os.environ["CC_LIMITS_BASE"], exist_ok=True)
 sys.path.insert(0, HERE)
 

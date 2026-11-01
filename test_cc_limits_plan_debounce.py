@@ -28,6 +28,8 @@ class PlanDebounce(unittest.TestCase):
 
     def setUp(self):
         for p in (L.PROFILES, L.BASE):
+            # защита: стираем только во временной папке (иначе при общем прогоне можно снести живые профили)
+            assert os.path.realpath(p).startswith(os.path.realpath(tempfile.gettempdir()) + os.sep), f"тест стёр бы живую папку: {p}"
             shutil.rmtree(p, ignore_errors=True)
             os.makedirs(p)
         far = int((time.time() + 86400) * 1000)

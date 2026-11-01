@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.26", "date": "2026-11-01",
+     "ru": {"t": "Тесты больше не трогают живые папки профилей", "p": ["Общий прогон тестов мог стереть папку профилей аккаунтов — теперь все пути тестов уходят во временную папку", "Тесты с очисткой папок сами проверяют, что стирают только временное, иначе падают"]},
+     "en": {"t": "Tests no longer touch the live profile folders", "p": ["A full test run could wipe the account profiles folder — now every test path points to a temporary folder", "Tests that clean folders check they only erase temporary ones and fail otherwise"]}},
     {"v": "1.25.25", "date": "2026-11-01",
      "ru": {"t": "«Удалить Codex целиком» и возврат «Codex +»", "p": ["Удалил последний аккаунт ChatGPT — в шапке снова «Codex +», мастер начинается со входа", "В ⚙ внизу «Удалить Codex целиком»: аккаунты, бот, профили, режим и память разговора стёрты (по слову)", "Сам Codex на сервере остаётся; выбранный профиль и свои профили моста сбрасываются"]},
      "en": {"t": "\"Delete Codex completely\" and \"Codex +\" is back", "p": ["Deleted the last ChatGPT account — \"Codex +\" is back in the header and the wizard starts at sign-in", "At the bottom of ⚙: \"Delete Codex completely\" — accounts, bot, profiles, mode and chat memory wiped (by word)", "Codex itself stays on the server; the chosen profile and your own bridge profiles are reset"]}},
