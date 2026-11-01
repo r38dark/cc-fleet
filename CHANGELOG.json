@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.22", "date": "2026-11-01",
+     "ru": {"t": "Подключение Codex кнопкой", "p": ["Пока Codex не установлен, в шапке кнопка «Codex +»: окно из трёх шагов и установка одной кнопкой", "Панель сама ставит Codex в свою папку, проверяет его и подключает; нужен Node.js 16 или новее", "Исправлена гонка в мосте Telegram→Codex: два быстрых сообщения не запускают два процесса Codex"]},
+     "en": {"t": "Connect Codex with a button", "p": ["While Codex is not installed, the header shows a \"Codex +\" button: a three-step window and a one-click install", "The panel installs Codex into its own folder, checks it and connects it; Node.js 16 or newer is required", "Fixed a race in the Telegram→Codex bridge: two quick messages no longer start two Codex processes"]}},
     {"v": "1.25.21", "date": "2026-11-01",
      "ru": {"t": "Серая рамка блока Notion", "p": ["Пока резерв выключен, у блока Notion обычная серая рамка, как у блока Codex", "Зелёная рамка при резерве и красная при потере связи остались без изменений"]},
      "en": {"t": "Gray frame on the Notion block", "p": ["While the reserve is off, the Notion block has the regular gray frame, like the Codex block", "The green frame in reserve and the red one on lost connection are unchanged"]}},

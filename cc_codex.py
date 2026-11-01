@@ -375,6 +375,159 @@ def login_cancel(slot):
     return True
 
 
+# ---------------------------------------------------------------- установка Codex из панели
+# Для тех, кто поставил панель и ещё не ставил Codex: одна кнопка вместо шагов из README. Команда фиксированная
+# (пакет NPM_PKG, ввода от человека в ней нет) и ставит в свою папку INSTALL_PREFIX: права root и запись в системные
+# каталоги не нужны, чужие пакеты не трогаются. Node.js за человека не ставим — его нет, значит, говорим, что поставить.
+NPM_PKG = "@openai/codex"
+NODE_MIN = 16  # engines.node пакета @openai/codex
+INSTALL_PREFIX = None  # cc_limits подставляет <BASE>/codex-cli (строка или функция)
+ON_INSTALLED = None  # cc_limits подставляет запись config.json "codex_bin" — путь к поставленному codex
+INSTALL_TTL = 15 * 60  # npm дольше — считаем зависшим и убиваем
+_NODE_DIRS = ("/usr/local/bin", "/usr/bin", "/bin", "/opt/homebrew/bin")  # у службы systemd PATH короткий
+_ilock = threading.Lock()
+_inst = {"state": "idle"}  # idle | running | done | failed; меняется только под _ilock
+
+
+def _tool(name):
+    p = shutil.which(name)
+    if p:
+        return p
+    for d in _NODE_DIRS:
+        c = os.path.join(d, name)
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def node_info():
+    """→ {node: 'v20.1.0'|None, npm: bool, ready: bool}; ready — можно ставить (Node не старше NODE_MIN и есть npm)."""
+    node, npm = _tool("node"), _tool("npm")
+    ver = None
+    if node:
+        try:
+            ver = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=8).stdout.strip() or None
+        except Exception:
+            ver = None
+    m = re.match(r"v?(\d+)", ver or "")
+    return {"node": ver, "npm": bool(npm), "ready": bool(npm and m and int(m.group(1)) >= NODE_MIN)}
+
+
+def _prefix():
+    return INSTALL_PREFIX() if callable(INSTALL_PREFIX) else INSTALL_PREFIX
+
+
+def install_status(lang="ru"):
+    """Состояние установки для панели: state, последние строки npm, версия, найденный Node.js."""
+    with _ilock:
+        st = {k: v for k, v in _inst.items() if k in ("state", "log", "err", "version")}
+    if st.get("state") != "running":
+        st.update(node_info())  # во время установки Node не опрашиваем: лишние процессы каждую секунду опроса
+    st.setdefault("log", "")
+    return st
+
+
+def install_start(lang="ru"):
+    """Запускает `npm install -g --prefix <папка> @openai/codex` → (ok, сообщение). Повторный вызов при работе — ok."""
+    global _inst
+    prefix = _prefix()
+    if not prefix:
+        return False, _t(lang, "Папка для установки не задана.", "Install folder is not set.")
+    info = node_info()
+    if not info["ready"]:
+        return False, (_t(lang, f"Нужен Node.js {NODE_MIN} или новее и npm — на сервере их не нашлось. Поставь их и нажми «Проверить снова».",
+                          f"Node.js {NODE_MIN} or newer and npm are required, but not found on this server. Install them and press “Check again”.")
+                       if not info["node"] or not info["npm"] else
+                       _t(lang, f"Node.js {info['node']} слишком старый: нужен {NODE_MIN} или новее.",
+                          f"Node.js {info['node']} is too old: {NODE_MIN} or newer is required."))
+    node, npm = _tool("node"), _tool("npm")
+    with _ilock:
+        if _inst.get("state") == "running":
+            return True, ""
+        try:
+            os.makedirs(prefix, exist_ok=True)
+        except OSError as e:
+            return False, _t(lang, f"Не удалось создать папку {prefix}: {e}", f"Could not create {prefix}: {e}")
+        env = dict(os.environ, NO_COLOR="1", npm_config_update_notifier="false", npm_config_fund="false",
+                   npm_config_audit="false", PATH=os.pathsep.join([os.path.dirname(node), os.environ.get("PATH", "")]))
+        try:
+            proc = subprocess.Popen([npm, "install", "-g", "--prefix", prefix, NPM_PKG], stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, cwd=prefix,
+                                    start_new_session=True, text=True, errors="replace")
+        except Exception as e:
+            return False, _t(lang, f"Не удалось запустить npm: {e}", f"Could not start npm: {e}")
+        st = {"state": "running", "proc": proc, "buf": [], "log": "", "err": None, "version": None,
+              "prefix": prefix, "env": env, "lang": lang}
+        _inst = st
+    threading.Thread(target=_install_run, args=(st,), daemon=True, name="codex-install").start()
+    return True, ""
+
+
+def _install_run(st):
+    proc = st["proc"]
+    lang = st["lang"]
+
+    def _timeout():
+        st["timeout"] = True
+        _kill(proc)
+    timer = threading.Timer(INSTALL_TTL, _timeout)
+    timer.daemon = True
+    timer.start()
+    try:
+        for line in proc.stdout:
+            line = _strip(line).rstrip()
+            if line:
+                st["buf"].append(line[:300])
+                del st["buf"][:-40]
+                st["log"] = "\n".join(st["buf"][-8:])
+        rc = proc.wait()
+    finally:
+        timer.cancel()
+    tail = "\n".join(st["buf"][-6:])
+    if st.get("cancelled"):
+        with _ilock:
+            st.update(state="idle", err=None)
+        return
+    if st.get("timeout"):
+        return _install_end(st, "failed", _t(lang, "Установка не уложилась в 15 минут и остановлена.", "The install took over 15 minutes and was stopped."))
+    if rc != 0:
+        return _install_end(st, "failed", _t(lang, "npm завершился с ошибкой:\n", "npm failed:\n") + tail)
+    bin_path = os.path.join(st["prefix"], "bin", "codex")
+    ver = None
+    if os.path.isfile(bin_path) and os.access(bin_path, os.X_OK):
+        try:  # поставился — проверяем, что действительно запускается
+            r = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=30, env=st["env"])
+            out = _strip((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+            ver = out[-1].strip() if r.returncode == 0 and out else None
+        except Exception:
+            ver = None
+    if not ver:
+        return _install_end(st, "failed", _t(lang, "Codex поставился, но не запускается:\n", "Codex was installed but does not start:\n") + tail)
+    try:
+        if ON_INSTALLED:
+            ON_INSTALLED(bin_path)
+    except Exception as e:
+        return _install_end(st, "failed", _t(lang, f"Codex поставлен ({bin_path}), но запомнить путь не вышло: {e}",
+                                             f"Codex is installed ({bin_path}), but saving its path failed: {e}"))
+    _install_end(st, "done", None, ver)
+
+
+def _install_end(st, state, err, version=None):
+    with _ilock:
+        st.update(state=state, err=err, version=version)
+
+
+def install_cancel():
+    with _ilock:
+        st = _inst
+        if st.get("state") != "running":
+            return False
+        st["cancelled"] = True
+        proc = st["proc"]
+    _kill(proc)
+    return True
+
+
 # ---------------------------------------------------------------- codex app-server (JSON-RPC по stdio)
 class AppServer:
     def __init__(self, bin_path, home, timeout=25):

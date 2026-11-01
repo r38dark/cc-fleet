@@ -16,7 +16,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.21"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.22"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -115,6 +115,16 @@ def codex_bin():
 cc_codex.RUN_AS = lambda: cfg().get("codex_user") or None
 # каталог профилей аккаунтов ChatGPT: переменная CC_CODEX_PROFILES, иначе config.json "codex_profiles" (читается при старте)
 cc_codex.PROFILES = os.environ.get("CC_CODEX_PROFILES") or cfg().get("codex_profiles") or cc_codex.PROFILES
+cc_codex.INSTALL_PREFIX = lambda: os.path.join(BASE, "codex-cli")  # кнопка «Установить Codex» в панели ставит сюда
+
+
+def _codex_installed(path):
+    c = cfg()  # без lock — как /api/notion/save и /api/config
+    c["codex_bin"] = path
+    jsave(CONFIG, c)
+
+
+cc_codex.ON_INSTALLED = _codex_installed
 cc_codex_bridge.BASE = BASE
 cc_codex_bridge.BIN = codex_bin
 cc_codex_bridge.SESSION = lambda: cfg().get("screen_session", "claude")
@@ -2711,10 +2721,16 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/chatgpt/bridge":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
-            if not codex_bin():
-                return self._send(200, {"ok": True, "available": False})
+            if not codex_bin():  # install — для кнопки «Подключить Codex» в шапке: что уже стоит и как идёт установка
+                return self._send(200, {"ok": True, "available": False,
+                                        "install": cc_codex.install_status(parse_qs(u.query).get("lang", ["ru"])[0])})
             return self._send(200, {"ok": True, "available": True, "bridge": cc_codex_bridge.public(),
                                     "emergency": cc_codex_emergency.public()})
+        if u.path == "/api/chatgpt/install":
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            return self._send(200, dict(cc_codex.install_status(parse_qs(u.query).get("lang", ["ru"])[0]), ok=True,
+                                        available=bool(codex_bin())))
         if u.path == "/api/chatgpt":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -2731,6 +2747,16 @@ class H(BaseHTTPRequestHandler):
     def _chatgpt_post(self, action, body):
         """POST /api/chatgpt/<login/start|login/status|login/cancel|prefs|delete> — аккаунты ChatGPT (Codex)."""
         lang = body.get("lang")
+        # установка Codex из панели: до проверки «Codex есть» — она как раз для случая, когда его ещё нет
+        if action == "install/start":
+            if codex_bin():
+                return self._send(200, {"ok": False, "message": _t(lang, "Codex уже установлен на этом сервере.",
+                                                                   "Codex is already installed on this server.")})
+            ok, message = cc_codex.install_start(lang=lang)
+            return self._send(200, dict(cc_codex.install_status(lang), ok=ok, message=message))
+        if action == "install/cancel":
+            cc_codex.install_cancel()
+            return self._send(200, dict(cc_codex.install_status(lang), ok=True))
         b = codex_bin()
         if not b:
             return self._send(400, {"ok": False, "message": _t(lang, "Codex не установлен на этом сервере.",
@@ -3929,6 +3955,27 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxgrp .hdrgear.cxgbtn{border-radius:0 8px 8px 0;margin-left:-1px}
 .cxgrp .hdrgear:hover,.cxgrp .hdrgear[aria-expanded="true"]{position:relative;z-index:1}
 .hdrgear.cxbtn svg.cxcar{width:12px;height:12px;opacity:.7;transition:transform .15s}
+.hdrgear.cxinst{width:auto;padding:0 9px 0 7px;gap:6px;font-size:12px;font-weight:600;color:var(--txt);border-style:dashed;cursor:pointer}
+.hdrgear.cxinst[hidden]{display:none}
+.hdrgear.cxinst svg{width:16px;height:16px}
+.hdrgear.cxinst .cxinstp{color:var(--acc);font-size:15px;line-height:1;font-weight:700}
+.cxinst[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
+.cxpop.cxinstpop{width:min(440px,calc(100vw - 20px))}
+.cxinstpop .cxpbody{padding-bottom:16px}
+.cxilead{font-size:13px;line-height:1.5;color:var(--txt);margin:6px 0 0}
+.cxisteps{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.cxisteps li{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4;color:var(--mut)}
+.cxisteps li b{flex:none;width:20px;height:20px;border-radius:50%;border:1px solid #2a3140;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.cxisteps li.cur{color:var(--txt)}
+.cxisteps li.cur b{border-color:var(--acc);color:var(--acc)}
+.cxinote{font-size:12.5px;line-height:1.45;color:var(--mut);margin:12px 0 0}
+.cxinote.warn{color:var(--warn)}
+.cxinote.bad{color:var(--bad)}
+.cxilog{margin:10px 0 0;padding:8px 10px;max-height:130px;overflow:auto;background:#0f1115;border:1px solid #2a3140;border-radius:8px;font:11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;color:#8b93a7}
+.cxirow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.cxirow button{margin-top:0}
+.cxispin{display:inline-block;width:12px;height:12px;border:2px solid #2a3140;border-top-color:var(--acc);border-radius:50%;animation:cxispin .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes cxispin{to{transform:rotate(360deg)}}
 .cxbtn[aria-expanded="true"] svg.cxcar{transform:rotate(180deg)}
 .cxpop{position:fixed;z-index:40;width:min(580px,calc(100vw - 20px));display:flex;flex-direction:column;background:var(--card);border:1px solid #2a3140;border-radius:16px;box-shadow:0 18px 50px -12px rgba(0,0,0,.7)}
 .cxpop[hidden]{display:none}
@@ -4153,7 +4200,7 @@ html[data-skin="slate"] .cxcode{background:#0e0f12;border:1px solid var(--sl-lin
 html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter><filter id="ccPhosphorT" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.075 0.255 0.0225 0 0  0.21 0.7125 0.075 0 0  0.12 0.39 0.0375 0 0  0 0 0 1 0"/></filter></svg>
-<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><div class="ntgrp" id="ntGrp" hidden><span id="ntInd" class="hdrgear ntind" role="img" aria-label="Notion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M9 16V8l6 8V8"/></svg><i class="cxdot" id="ntDot"></i></span><button id="ntBtn" class="hdrgear ntbtn" type="button" role="switch" aria-checked="false"><span class="ntname" id="ntBtnName">Резерв</span><i class="ntsw" aria-hidden="true"></i></button><button id="ntGear" class="hdrgear ntgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="ntgrp" id="ntGrp" hidden><span id="ntInd" class="hdrgear ntind" role="img" aria-label="Notion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M9 16V8l6 8V8"/></svg><i class="cxdot" id="ntDot"></i></span><button id="ntBtn" class="hdrgear ntbtn" type="button" role="switch" aria-checked="false"><span class="ntname" id="ntBtnName">Резерв</span><i class="ntsw" aria-hidden="true"></i></button><button id="ntGear" class="hdrgear ntgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="termwrap">
@@ -4182,6 +4229,10 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
 <div id="ntPop" class="cxpop ntpop" role="dialog" aria-labelledby="ntPopTitle" hidden>
  <div class="cxphead"><b id="ntPopTitle">Notion</b><span class="cxsub" id="ntPopSt"></span><button type="button" class="hdrgear" id="ntPopX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
  <div class="cxpbody" id="ntPopB"></div>
+</div>
+<div id="cxInstPop" class="cxpop cxinstpop" role="dialog" aria-labelledby="cxInstTitle" hidden>
+ <div class="cxphead"><b id="cxInstTitle">Codex</b><span class="cxsub"></span><button type="button" class="hdrgear" id="cxInstX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+ <div class="cxpbody" id="cxInstB"></div>
 </div>
 <div id="msg"></div>
 <div id="verTag" title="cc-fleet">cc-fleet v__PAGE_VER__</div>
@@ -4513,6 +4564,23 @@ const I18N={
   cxbModeOrch:'Оркестратор (Codex ведёт, Claude исполняет)',
   cxbModeSelf:'Самостоятельно',
   cxPopTitle:'Codex · ChatGPT',
+  cxiTip:'Подключить Codex: установка и вход',
+  cxiTitle:'Подключить Codex',
+  cxiLead:'Codex — отдельный ИИ-помощник от OpenAI, работает по подписке ChatGPT. Подключение в три шага:',
+  cxiS1:'Установить Codex на этот сервер (одной кнопкой)',
+  cxiS2:'Войти в аккаунт ChatGPT: по коду устройства, пароль вводить не нужно',
+  cxiS3:'Подключить своего Telegram-бота (по желанию)',
+  cxiNodeOk:v=>`Node.js ${v} найден — всё готово к установке.`,
+  cxiNodeOld:(v,np)=>`Найден Node.js ${v}${np}, а нужен Node.js 16 или новее вместе с npm. Обнови и нажми «Проверить снова».`,
+  cxiNoNpm:' (npm не найден)',
+  cxiNoNode:'Не нашёл Node.js и npm — они нужны для установки. Поставь Node.js 16 или новее (nodejs.org или менеджер пакетов системы) и нажми «Проверить снова». Сам Node.js я не ставлю.',
+  cxiInstall:'Установить Codex',
+  cxiRun:'Ставлю Codex… обычно это пара минут.',
+  cxiCancel:'Отмена',
+  cxiRetry:'Повторить',
+  cxiRecheck:'Проверить снова',
+  cxiFail:'Не получилось:',
+  cxiDone:v=>`Codex установлен${v?' ('+v+')':''}. Теперь добавь аккаунт ChatGPT.`,
   cxBtnTip:'Профиль Codex: выбрать',
   cxGearTip:'Настройки Codex: аккаунты, лимиты, мост Telegram',
   cxAccSec:'Аккаунты и лимиты ChatGPT',
@@ -4962,6 +5030,23 @@ const I18N={
   cxbModeOrch:'Orchestrator (Codex leads, Claude executes)',
   cxbModeSelf:'Standalone',
   cxPopTitle:'Codex · ChatGPT',
+  cxiTip:'Connect Codex: install and sign in',
+  cxiTitle:'Connect Codex',
+  cxiLead:'Codex is a separate AI assistant from OpenAI that runs on a ChatGPT subscription. Three steps to connect it:',
+  cxiS1:'Install Codex on this server (one button)',
+  cxiS2:'Sign in to your ChatGPT account with a device code, no password needed',
+  cxiS3:'Connect your own Telegram bot (optional)',
+  cxiNodeOk:v=>`Node.js ${v} found — ready to install.`,
+  cxiNodeOld:(v,np)=>`Found Node.js ${v}${np}, but Node.js 16 or newer with npm is required. Update it and press “Check again”.`,
+  cxiNoNpm:' (npm not found)',
+  cxiNoNode:'Node.js and npm were not found — they are required for the install. Install Node.js 16 or newer (nodejs.org or your system package manager) and press “Check again”. I do not install Node.js myself.',
+  cxiInstall:'Install Codex',
+  cxiRun:'Installing Codex… usually takes a couple of minutes.',
+  cxiCancel:'Cancel',
+  cxiRetry:'Retry',
+  cxiRecheck:'Check again',
+  cxiFail:'It did not work:',
+  cxiDone:v=>`Codex installed${v?' ('+v+')':''}. Now add a ChatGPT account.`,
   cxBtnTip:'Codex profile: pick one',
   cxGearTip:'Codex settings: accounts, limits, Telegram bridge',
   cxAccSec:'ChatGPT accounts and limits',
@@ -5932,7 +6017,7 @@ function cxpCur(){
 }
 function cxHdr(){
  const btn=$('#cxBtn'),grp=$('#cxGrp');if(!btn||!grp)return;
- const av=cxAvail();grp.hidden=!av;
+ const av=cxAvail();grp.hidden=!av;ciHdr();
  if(!av){cxPopClose();cxMenuClose();cxQClose();return;}
  const b=cxbData&&cxbData.bridge,cur=cxpCur();
  let cls='';
@@ -6139,6 +6224,105 @@ function cxPopClose(){
  const pop=$('#cxPop');if(!pop||pop.hidden)return;
  pop.hidden=true;$('#cxGear').setAttribute('aria-expanded','false');
 }
+// ---- «Подключить Codex»: пока Codex не установлен, вместо блока Codex в шапке — кнопка с мастером из трёх шагов ----
+// Шаг 1 (установка) делает этот поповер: сервер сам ставит Codex в свою папку. Шаги 2–3 (вход ChatGPT, бот) уже есть в окне ⚙ Codex —
+// туда человек попадает сразу после установки.
+let ciData=null,ciTimer=null,ciBusy=false;
+function ciShow(){return!!(cxbData&&cxbData.available===false&&!(cxData&&cxData.available));}
+function ciHdr(){
+ const b=$('#cxInst');if(!b)return;
+ const on=ciShow();b.hidden=!on;
+ if(on){
+  if(cxbData.install)ciData=cxbData.install;
+  b.title=tr('cxiTip');b.setAttribute('aria-label',tr('cxiTip'));
+ }else ciClose();
+}
+function ciPlace(){
+ const pop=$('#cxInstPop'),r=$('#cxInst').getBoundingClientRect();
+ const top=Math.round(r.bottom+8);
+ pop.style.top=top+'px';pop.style.maxHeight='calc(100vh - '+(top+12)+'px)';
+ if(innerWidth>640){pop.style.left='auto';pop.style.right=Math.max(10,Math.round(innerWidth-r.right-4))+'px';}
+ else{pop.style.right='';pop.style.left='';}
+}
+function ciRender(){
+ const pop=$('#cxInstPop');if(!pop||pop.hidden)return;
+ const d=ciData||{},st=d.state||'idle',run=st==='running';
+ $('#cxInstTitle').textContent=tr('cxiTitle');
+ const cur=run||st==='failed'||st==='idle'?1:2;
+ const steps=['cxiS1','cxiS2','cxiS3'].map((k,i)=>`<li class="${i+1===cur?'cur':''}"><b>${i+1}</b><span>${tr(k)}</span></li>`).join('');
+ let h=`<p class="cxilead">${tr('cxiLead')}</p><ol class="cxisteps">${steps}</ol>`;
+ if(run){
+  h+=`<p class="cxinote"><span class="cxispin"></span>${tr('cxiRun')}</p>`;
+  if(d.log)h+=`<pre class="cxilog" id="cxiLog">${acctEsc(d.log)}</pre>`;
+  h+=`<div class="cxirow"><button class="ghostbtn" onclick="ciCancel()">${tr('cxiCancel')}</button></div>`;
+ }else{
+  if(st==='failed'){
+   h+=`<p class="cxinote bad">${tr('cxiFail')}</p><pre class="cxilog">${acctEsc(d.err||d.log||'')}</pre>`;
+  }else if(d.ready){
+   h+=`<p class="cxinote">${tr('cxiNodeOk',acctEsc(d.node||''))}</p>`;
+  }else if(d.node||d.npm){
+   h+=`<p class="cxinote warn">${tr('cxiNodeOld',acctEsc(d.node||'—'),d.npm?'':tr('cxiNoNpm'))}</p>`;
+  }else if(d.node===null&&d.npm===false){
+   h+=`<p class="cxinote warn">${tr('cxiNoNode')}</p>`;
+  }
+  h+=`<div class="cxirow">`;
+  if(d.ready||st==='failed')h+=`<button id="cxiGo" onclick="ciStart()">${tr(st==='failed'?'cxiRetry':'cxiInstall')}</button>`;
+  else h+=`<button id="cxiGo" onclick="ciRecheck()">${tr('cxiRecheck')}</button>`;
+  h+=`</div>`;
+ }
+ const keep=$('#cxiLog');const atEnd=keep?keep.scrollTop+keep.clientHeight>=keep.scrollHeight-4:true;
+ $('#cxInstB').innerHTML=h;
+ const lg=$('#cxiLog');if(lg&&atEnd)lg.scrollTop=lg.scrollHeight;
+ ciPlace();
+}
+function ciOpen(){
+ if(!ciShow())return;
+ cxPopClose();cxMenuClose();cxQClose();ntClose();
+ $('#cxInstPop').hidden=false;$('#cxInst').setAttribute('aria-expanded','true');
+ ciRender();ciLoad();
+}
+function ciClose(){
+ const pop=$('#cxInstPop');if(!pop||pop.hidden)return;
+ pop.hidden=true;$('#cxInst').setAttribute('aria-expanded','false');
+ clearTimeout(ciTimer);ciTimer=null;
+}
+async function ciLoad(){
+ if(ciBusy)return;ciBusy=true;
+ try{
+  const r=await fetch(API+'chatgpt/install?token='+TOKEN+'&lang='+LANG);const d=await r.json();
+  if(d&&d.ok){ciData=d;await ciAfter(d);}
+ }catch(e){}
+ finally{ciBusy=false;}
+ clearTimeout(ciTimer);ciTimer=null;
+ if(!$('#cxInstPop').hidden&&ciData&&ciData.state==='running')ciTimer=setTimeout(ciLoad,1500);  // пока идёт установка — живой ход
+}
+// установка закончилась: панель узнаёт, что Codex есть, закрывает мастер и открывает окно ⚙ с шагами 2–3
+async function ciAfter(d){
+ ciRender();
+ if(d.state==='done'||d.available){
+  const v=d.version||'';
+  await cxbLoad(true);await cxLoad(true);
+  ciClose();
+  if(cxAvail()){toast(tr('cxiDone',v));cxPopOpen();}
+ }
+}
+async function ciStart(){
+ const b=$('#cxiGo');if(b)b.disabled=true;
+ try{
+  const d=await acctPost('chatgpt/install/start',{});
+  if(!d.ok){toast('⚠ '+d.message);ciData=Object.assign(ciData||{},d,{state:'failed',err:d.message});ciRender();return;}
+  ciData=d;ciRender();ciLoad();
+ }catch(e){toast('⚠ '+e);}
+}
+async function ciCancel(){try{ciData=await acctPost('chatgpt/install/cancel',{});}catch(e){}ciRender();}
+async function ciRecheck(){
+ const b=$('#cxiGo');if(b)b.disabled=true;
+ await cxbLoad(true);
+ if(cxbData&&cxbData.install)ciData=cxbData.install;
+ ciRender();
+}
+$('#cxInst').addEventListener('click',()=>{$('#cxInstPop').hidden?ciOpen():ciClose();});
+$('#cxInstX').addEventListener('click',ciClose);
 // ---- блок Notion-агента в шапке: выключатель и ⚙ с настройками и пояснениями ----
 let ntData=null,ntPrevRes=null,ntActAt=0;  // ntPrevRes — резерв был включён на прошлом показе; ntActAt — когда человек последний раз нажал
 function ntAfter(){ntActAt=Date.now();}
@@ -6273,7 +6457,7 @@ function ntPlace(){
 }
 function ntOpen(){
  if(!ntData)return;
- cxPopClose();cxMenuClose();cxQClose();
+ cxPopClose();cxMenuClose();cxQClose();ciClose();
  $('#ntPop').hidden=false;$('#ntGear').setAttribute('aria-expanded','true');
  ntRender();ntPlace();
  clearInterval(ntPollT);ntPollT=setInterval(ntRefresh,4000);ntRefresh();  // пока окно открыто — состояние резерва живое
@@ -6446,13 +6630,14 @@ document.addEventListener('pointerdown',e=>{
  if(e.target.closest('#acctScrim,#scrim'))return;
  if(!$('#cxPop').hidden&&!e.target.closest('#cxPop,#cxGear'))cxPopClose();
  if(!$('#ntPop').hidden&&!e.target.closest('#ntPop,#ntGear'))ntClose();
+ if(!$('#cxInstPop').hidden&&!e.target.closest('#cxInstPop,#cxInst'))ciClose();
  if(!$('#cxMenu').hidden&&!e.target.closest('#cxMenu,#cxBtn'))cxMenuClose();
  if(!$('#cxQ').hidden&&!e.target.closest('#cxQ,#cxMod'))cxQClose();
 });
 document.addEventListener('keydown',e=>{
- if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();cxQClose();ntClose();}
+ if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();cxQClose();ntClose();ciClose();}
 });
-addEventListener('resize',()=>{if(!$('#ntPop').hidden)ntPlace();if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();if(!$('#cxQ').hidden)cxQPlace();});
+addEventListener('resize',()=>{if(!$('#ntPop').hidden)ntPlace();if(!$('#cxInstPop').hidden)ciPlace();if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();if(!$('#cxQ').hidden)cxQPlace();});
 async function cxLoad(refresh){
  if(cxBusy){if(refresh)cxAgain=true;return;}
  cxBusy=true;

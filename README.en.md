@@ -594,11 +594,11 @@ failure caused by this race — it is prevention.
 Tests (standard library only, no `pytest`; live files are not touched):
 `python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock test_cc_update_banner`.
 
-## Connecting Codex from scratch (v1.25.17)
+## Connecting Codex from scratch (v1.25.17, install button — v1.25.22)
 
-What it is for: Codex is a spare leg for when your Claude accounts are unavailable, and a "helper" (the Orchestrator profile) that drives a goal while Claude executes the steps. Until Codex is installed it **does not show up in the panel at all**: no `>_` icon and no ⚙ next to it — that is by design, not a fault. The whole path is six steps, about ten minutes.
+What it is for: Codex is a spare leg for when your Claude accounts are unavailable, and a "helper" (the Orchestrator profile) that drives a goal while Claude executes the steps. Until Codex is installed the header shows a **"Codex +"** button (since 1.25.22): it opens the "Connect Codex" window with three steps and an install button. The `>_` icon and the ⚙ are not there yet — they appear the moment Codex is installed. The whole path is six steps, about ten minutes.
 
-1. **Install Codex on the server:** `npm i -g @openai/codex`, check with `codex --version`. The panel takes the `codex` command from the service's `PATH`. If the service cannot see it (npm installed it in a folder that is not on the service's `PATH`), put the full path in `/opt/cc-limits/config.json`: `"codex_bin": "/path/to/codex"` and restart the service (`systemctl restart cc-limits`). Reload the page — `>_` and ⚙ appear in the header.
+1. **Install Codex on the server — with a button.** Press **"Codex +"** in the header → "Install Codex". The panel runs `npm install -g --prefix /opt/cc-limits/codex-cli @openai/codex` itself (into its own folder, no root rights or system directories needed), shows the progress, checks `codex --version` and writes the path into `config.json` (`"codex_bin"`). You can stop the install with "Cancel". You need **Node.js 16 or newer** with npm: the panel does not install it — if Node is missing or too old the window says so; install it (nodejs.org or your system package manager) and press "Check again". When the install finishes the window closes, `>_` and ⚙ appear in the header, and the ⚙ window opens for step 3. The button works only with the panel token. By hand it is the same: `npm i -g @openai/codex`, `codex --version`; if the service cannot see the command (npm installed it in a folder that is not on the service's `PATH`), put the full path in `/opt/cc-limits/config.json`: `"codex_bin": "/path/to/codex"` and restart the service (`systemctl restart cc-limits`).
 2. **Turn on device-code sign-in in ChatGPT** (a beta feature, off by default). Personal account: ChatGPT → Settings → Security → the device-code switch for Codex (different ChatGPT versions word it a little differently: *Enable device code authorization for Codex* / *Allow device code login*). Workspace (Business, Enterprise): an admin turns it on in the workspace permissions. You need a ChatGPT plan that includes Codex. If the switch is off, the sign-in page will not accept the code or will not go further.
 3. **Add an account:** ⚙ next to `>_` → "ChatGPT accounts and limits" → "+" → a name (optional) → "Get code". A link and a one-time code appear: open the link in any browser where you are signed in to the right ChatGPT account, enter the code (it lives 15 minutes). The panel shows "✅ Connected". No password or email is typed here — the server never sees them, the token lives in `/root/.codex-profiles/gptN` with 700/600 rights.
 4. **Create a Telegram bot:** message @BotFather in Telegram → `/newbot` → get a token like `123456:ABC…`. It must be a **separate** bot, not the one Claude uses. Then open your new bot and press "Start" — without that the bot cannot write to you first.
@@ -611,7 +611,9 @@ If something went wrong:
 
 | What you see | Cause and what to do |
 |---|---|
-| No `>_` icon and no ⚙ | The service did not find `codex`: step 1, `codex_bin` |
+| No `>_` icon and no ⚙, the header shows "Codex +" | Codex is not installed yet: step 1, press "Codex +" → "Install Codex" |
+| The install window says "It did not work" | The window shows the tail of the npm output: most often no internet access to `registry.npmjs.org` or Node.js is too old. Fix it and press "Retry" |
+| Codex is installed but there is no `>_` icon | The service did not find `codex` in its `PATH`: put `codex_bin` in (step 1, by hand) |
 | "codex login showed no link and code" | An old Codex version (update: `npm i -g @openai/codex@latest`) or the server has no internet access |
 | The sign-in page does not accept the code / goes no further | Device-code sign-in is not enabled: step 2 |
 | "The code was not confirmed in time or the sign-in was cancelled" | The code lives 15 minutes: press "Get code" again |
@@ -896,6 +898,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.22** — Connect Codex with a button. While Codex is not installed the header shows a "Codex +" button: a
+  three-step window (install Codex, sign in to ChatGPT with a device code, connect a bot) and an "Install Codex"
+  button — the panel installs it into `/opt/cc-limits/codex-cli` itself, shows the progress, checks `codex --version`
+  and writes the path into `config.json`. Node.js 16+ is required; without it the window tells you what to install. The
+  "Connecting Codex from scratch" section is updated. Fixed a race in the Telegram→Codex bridge: two quick messages in a
+  row no longer start two Codex worker processes.
 - **v1.25.21** — Gray frame on the Notion block. While the reserve is off, the N icon, the "Reserve" switch and the ⚙ are
   outlined with the regular gray skin frame — the same as the Codex block (version 1.25.19 removed the frame of an off
   block completely). The green frame in reserve and the red one on lost connection are unchanged. The frame table in the
