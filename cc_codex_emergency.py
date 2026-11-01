@@ -510,10 +510,12 @@ def _forget_conv(cwd):
 
 
 # ---------------------------------------------------------------- включение и выключение
-def on(word, lang="ru"):
-    """Включить режим. → (ok, сообщение). Слово «аварийный» — и есть подтверждение."""
+def on(word, lang="ru", auto=None):
+    """Включить режим. → (ok, сообщение). Слово «аварийный» — и есть подтверждение.
+    auto — причина автовключения (резерв, когда лимиты Claude кончились): слово не нужно, человек
+    заранее разрешил это галочкой, а единственное сообщение о включении шлёт тот, кто включил."""
     t = lambda ru, en: cc_codex._t(lang, ru, en)
-    if str(word or "").strip().lower() not in WORDS:
+    if not auto and str(word or "").strip().lower() not in WORDS:
         return False, t("Введи слово «аварийный».", "Type the word «emergency».")
     with _lock:
         if _st().get("active"):
@@ -529,8 +531,10 @@ def on(word, lang="ru"):
         now = NOW()
         st = {"active": True, "since": now, "until": (now + p["hours"] * 3600) if p["hours"] else None, "warned": False,
               "prev": {k: s.get(k) for k in PREV_KEYS}, "plan": p}
+        if auto:
+            st["auto"] = str(auto)[:80]
         _st_save(st)  # сначала запись, потом действия: оборвалось на середине — при старте панели доубирается
-        journal(f"включение: {('до ' + _clock(st['until'])) if st['until'] else 'без срока'}, сервисов {len(p['svc_show'])}, файлов {len(p['files'])}"
+        journal(f"включение{(' (само: ' + st['auto'] + ')') if auto else ''}: {('до ' + _clock(st['until'])) if st['until'] else 'без срока'}, сервисов {len(p['svc_show'])}, файлов {len(p['files'])}"
                 + (", ключ SSH" if p["key"] else ""))
         try:
             _apply(p, st["until"])
@@ -545,15 +549,17 @@ def on(word, lang="ru"):
             _teardown(p, st["prev"], "откат")
             _st_save({"active": False, "last": {"ended": NOW(), "why": "ошибка включения", "error": str(e)[:300]}})
             return False, t("Не удалось включить, всё отменено: ", "Could not turn on, everything was undone: ") + str(e)[:300]
-    NOTIFY(f"🆘 Аварийный режим Codex ВКЛЮЧЁН {('до ' + _clock(st['until'])) if st['until'] else 'без срока'}.\n"
-           f"Codex получил полный доступ к проекту" + (f" и перезапуск сервисов ({len(p['svc_show'])})" if p["svc"] else "") +
-           ". Выключить — в меню профилей панели или /emergency_off." + ("" if st["until"] else " Срока нет: само не выключится."))
+    if not auto:
+        NOTIFY(f"🆘 Аварийный режим Codex ВКЛЮЧЁН {('до ' + _clock(st['until'])) if st['until'] else 'без срока'}.\n"
+               f"Codex получил полный доступ к проекту" + (f" и перезапуск сервисов ({len(p['svc_show'])})" if p["svc"] else "") +
+               ". Выключить — в меню профилей панели или /emergency_off." + ("" if st["until"] else " Срока нет: само не выключится."))
     threading.Thread(target=_restart_console, daemon=True, name="codex-emg-console").start()
     return True, t("Аварийный режим включён.", "Emergency mode is on.")
 
 
-def off(why="кнопка", lang="ru"):
-    """Выключить режим и снять всё. → (ok, сообщение)."""
+def off(why="кнопка", lang="ru", quiet=False):
+    """Выключить режим и снять всё. → (ok, сообщение). quiet — без своего сообщения в телеграм:
+    выключает резерв и пишет человеку одно общее сообщение сам."""
     t = lambda ru, en: cc_codex._t(lang, ru, en)
     with _lock:
         st = _st()
@@ -561,9 +567,10 @@ def off(why="кнопка", lang="ru"):
             return True, t("Аварийный режим не включён.", "Emergency mode is not on.")
         bad = _teardown(st["plan"], st.get("prev"), why)
         _st_save({"active": False, "last": {"ended": NOW(), "why": why, "problems": bad}})
-    NOTIFY(("✅ Аварийный режим Codex выключен (" + why + "). Доступы сняты.") if not bad else
-           ("⚠️ Аварийный режим Codex выключен (" + why + "), но не всё снято: " + "; ".join(bad)[:600] +
-            "\nПроверь вручную."))
+    if not quiet or bad:  # тихо — только если всё снято; проблему человек должен увидеть всегда
+        NOTIFY(("✅ Аварийный режим Codex выключен (" + why + "). Доступы сняты.") if not bad else
+               ("⚠️ Аварийный режим Codex выключен (" + why + "), но не всё снято: " + "; ".join(bad)[:600] +
+                "\nПроверь вручную."))
     threading.Thread(target=_restart_console, daemon=True, name="codex-emg-console").start()
     return (not bad), (t("Аварийный режим выключен.", "Emergency mode is off.") if not bad else
                        t("Выключен, но не всё снято: ", "Turned off, but not everything was undone: ") + "; ".join(bad)[:300])
@@ -667,7 +674,7 @@ def public():
     if p:
         out.update(services=p["svc_show"], files=len(p["files"]), ssh=bool(p["key"]), hours=p["hours"])
     if st.get("active"):
-        out.update(since=st["since"], until=st["until"])
+        out.update(since=st["since"], until=st["until"], auto=bool(st.get("auto")))
     elif st.get("last"):
         out["last"] = st["last"]
     return out

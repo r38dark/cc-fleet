@@ -24,6 +24,7 @@ HISTORY_LINES = 2000  # скроллбэк сверх экрана
 LOG_MAX = 16 * 1024 * 1024  # лог растёт, пока Codex что-то рисует; сверх лимита обнуляем
 _SANDBOXES = ("read-only", "workspace-write", "danger-full-access")
 APPROVAL = "never"  # никаких запросов подтверждения на экране: их некому нажать, мост ждал бы вечно
+MCP = lambda: []  # cc_limits: ключи `-c` с инструментами Notion-агента (пусто вне резерва); сменились — консоль перезапускается
 PROMPT_WAIT = 25  # после старта ждём, пока консоль нарисует поле ввода, секунд
 START_WAIT = 40  # консоль должна принять сообщение (начать ход), секунд
 PASTE_DELAY = 1.0  # пауза между вставкой и Enter: длинная вставка принимается не мгновенно
@@ -129,9 +130,10 @@ def start(lang="ru"):
         with open(rc, "w") as f:
             f.write("logfile flush 1\n")
         cc_codex.own(rc)
+        mcp = list(MCP())
         # прошлый разговор этой папки продолжается (`codex resume`): остановка и перезапуск его не теряют
         argv = ["screen", "-c", rc, "-dmS", NAME, "-L", "-Logfile", log, "sh", "-c", script, "sh", str(COLS), str(ROWS),
-                b] + (["resume", tid] if tid else []) + ["--no-alt-screen", "-s", sandbox, "-a", APPROVAL, "-C", cwd]
+                b] + (["resume", tid] if tid else []) + ["--no-alt-screen", "-s", sandbox, "-a", APPROVAL, "-C", cwd] + mcp
         argv, env = cc_codex.wrap(argv, cc_codex.profile_dir(slot), {"TERM": "xterm-256color", "LANG": "C.UTF-8"})
         p = subprocess.run(argv, env=env, cwd=cwd, capture_output=True, text=True, timeout=20)
         if p.returncode != 0:
@@ -145,7 +147,7 @@ def start(lang="ru"):
         if not pid:
             return False, t("Консоль Codex сразу закрылась — проверь вход в ChatGPT.", "The Codex console closed right away — check the ChatGPT sign-in.")
         cc_codex._jsave(_meta_path(), {"pid": pid, "sandbox": sandbox, "cwd": cwd, "slot": slot, "approval": APPROVAL,
-                                       "started": int(time.time()), "tids": tids})
+                                       "mcp": mcp, "started": int(time.time()), "tids": tids})
         cc_codex.own(_meta_path())
         return True, t("Консоль Codex запущена.", "The Codex console is running.")
 
@@ -340,6 +342,7 @@ def ensure(lang="ru"):
     if st.get("running"):
         meta = _meta()
         same = (st.get("sandbox") == st.get("plan_sandbox") and meta.get("approval") == APPROVAL
+                and list(meta.get("mcp") or []) == list(MCP())
                 and os.path.realpath(str(st.get("cwd") or "")) == os.path.realpath(str(st.get("plan_cwd") or "")))
         if same:
             return True, ""

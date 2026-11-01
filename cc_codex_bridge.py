@@ -21,6 +21,8 @@ RESERVED_TOKENS = lambda: []  # токены, которые мосту брат
 NOW = time.time  # в тестах подменяется
 ENTER_DELAY = 0.6  # пауза между текстом и Enter при печати в консоль Claude
 CONSOLE = None  # cc_limits подставляет cc_codex_console: разговор идёт в консоли Codex; None — отдельный `codex exec`
+MCP_ARGS = lambda: []  # cc_limits: ключи `-c` с инструментами Notion-агента (пусто вне резерва)
+RESERVE_NOTE = lambda: ""  # cc_limits: строка-напоминание Codex про резерв и агента (пусто вне резерва)
 EMERGENCY = None  # cc_limits подставляет cc_codex_emergency: пока аварийный режим включён, права и папка заморожены
 TG_API = "https://api.telegram.org"  # на стенде — локальная заглушка Bot API
 TG_TIMEOUT = 10  # длинный опрос getUpdates, секунд
@@ -41,6 +43,10 @@ BUILTIN_PROFILES = (
     ("orchestrator", {"mode": "orchestrator", "access": "read", "task_rights": "dev"}),
     ("codex", {"mode": "self", "access": "write", "task_rights": "dev"}),
 )
+# «Резерв» — служебный профиль: его включает и снимает сам резерв Notion (cc_notion), вручную он не выбирается.
+# Codex работает сам вместе с агентом (не раздаёт задания Claude, который в это время недоступен или отложен).
+RESERVE_ID = "reserve"
+RESERVE_DEF = {"mode": "self", "access": "write"}
 # профили прежних версий → нынешние (где состав совпадал); остальные выбором не считаются — настройки остаются как были
 LEGACY_PROFILES = {"standby": "codex"}
 ACCESS = ("read", "write", "full")
@@ -266,6 +272,8 @@ def _profiles(s):
 def active_profile(s):
     """Выбранный профиль, если настройки всё ещё ему соответствуют; иначе \"\" (набор правили вручную)."""
     cur = s.get("profile") or ""
+    if cur == RESERVE_ID:
+        return cur if (s["mode"], s["access"]) == (RESERVE_DEF["mode"], RESERVE_DEF["access"]) else ""
     for pid, d, _ in _profiles(s):
         if pid != cur:
             continue
@@ -279,6 +287,9 @@ def apply_profile(pid, confirm="", lang="ru"):
     """Применить профиль одним действием. Полный доступ в профиле включается тем же словом-подтверждением.
     Выключатель бота (enabled) профиль не трогает. → (ok, сообщение)."""
     s = load()
+    if pid == RESERVE_ID:
+        return False, _t(lang, "Профиль «Резерв» включается сам вместе с резервом Notion — вручную его не выбрать.",
+                         "The Reserve profile turns on by itself with the Notion reserve — it cannot be picked by hand.")
     found = [d for i, d, _ in _profiles(s) if i == pid]
     if not found:
         return False, _t(lang, "Такого профиля нет.", "No such profile.")
@@ -298,6 +309,43 @@ def apply_profile(pid, confirm="", lang="ru"):
             s["profile"] = pid
             _save(s)
     return ok, msg
+
+
+def reserve_profile(active, flipped=False):
+    """Профиль Codex следует за резервом Notion, чтобы в меню не было путаницы, какой режим сейчас.
+    Резерв включился (flipped) → «Резерв» (Codex работает сам вместе с агентом), прежние режим, доступ, права и профиль
+    запоминаются. Кончился → всё возвращается; если человек за это время выбрал другой профиль — его выбор не трогаем.
+    Пока включён аварийный режим, права заморожены: ничего не меняем, возврат повторится на следующем такте.
+    → True, если настройки поменялись."""
+    with _lock:
+        s = load()
+        cur = s.get("profile") or ""
+        frozen = EMERGENCY is not None and EMERGENCY.active()
+        if active:
+            if not flipped or cur == RESERVE_ID or frozen:
+                return False
+            prev = {k: s.get(k) for k in ("mode", "access", "task_rights", "profile")}
+            ok, _ = save(dict(RESERVE_DEF))
+            if not ok:
+                return False
+            s = load()
+            s.update(reserve_prev=prev, profile=RESERVE_ID)
+            _save(s)
+            return True
+        if cur == RESERVE_ID and frozen:
+            return False
+        prev = s.pop("reserve_prev", None)
+        if cur != RESERVE_ID or not prev:
+            if prev is not None or cur == RESERVE_ID:
+                if cur == RESERVE_ID:
+                    s["profile"] = ""  # возвращать нечего (запись потерялась) — настройки остаются, профиль не выбран
+                _save(s)
+            return False
+        s.update({k: prev.get(k, s.get(k)) for k in ("mode", "access", "task_rights", "profile")})
+        _save(s)
+    ensure_exchange()
+    BRIDGE.sync()
+    return True
 
 
 def delete_profile(pid, lang="ru"):
@@ -383,6 +431,45 @@ def tg_api(token, method, payload=None, timeout=30):
     if not data.get("ok"):
         raise TgError(data.get("error_code", 0), data.get("description", ""))
     return data
+
+
+ACTION_EVERY = 4  # Telegram гасит «печатает…» / «отправляет фото» через ~5 с, поэтому обновляем, пока идёт ход Codex
+
+
+class ChatAction:
+    """Индикатор в чате, который не гаснет, пока идёт ход: «отправляет фото» на время закачки, потом «печатает».
+    Шлёт из своего потока (сеть не задерживает ход), любая ошибка Telegram ход не ломает."""
+
+    def __init__(self, s):
+        self.token, self.chat = s["token"], chat_id(s)
+        self.action = "typing"
+        self.done = threading.Event()
+        self.kick = threading.Event()  # смена действия или остановка будят поток сразу, не ждут очередного тика
+        self.t = None
+
+    def start(self, action):
+        self.action = action
+        self.t = threading.Thread(target=self._loop, daemon=True, name="codex-action")
+        self.t.start()
+        return self
+
+    def set(self, action):
+        if action != self.action:
+            self.action = action
+            self.kick.set()
+
+    def stop(self):
+        self.done.set()
+        self.kick.set()
+
+    def _loop(self):
+        while not self.done.is_set():
+            self.kick.clear()  # до отправки: смена действия во время отправки не потеряется
+            try:
+                tg_api(self.token, "sendChatAction", {"chat_id": self.chat, "action": self.action}, 10)
+            except Exception:
+                pass
+            self.kick.wait(ACTION_EVERY)
 
 
 # ---------------------------------------------------------------- изображения из Telegram
@@ -730,6 +817,9 @@ def _run_console(prompt, s):
 def run_codex(prompt, s=None):
     """Один запуск: через консоль Codex, а если её нет — отдельным codex exec (новый разговор или resume). → (ответ, thread_id)."""
     s = s or load()
+    note = RESERVE_NOTE()
+    if note:  # резерв: каждое сообщение начинается с напоминания, как работать с агентом (одна строка — годится и консоли)
+        prompt = note + " " + prompt
     if CONSOLE is not None and CONSOLE.usable():
         return _run_console(prompt, s)
     b = BIN()
@@ -745,9 +835,9 @@ def run_codex(prompt, s=None):
     key = f"{s['mode']}|{cwd}"
     tid = _state()["threads"].get(key)
     if tid:
-        argv = [b, "exec", "resume", tid, "--json", "--skip-git-repo-check", "-c", f'sandbox_mode="{sandbox}"', "--", prompt]
+        argv = [b, "exec", "resume", tid, "--json", "--skip-git-repo-check", "-c", f'sandbox_mode="{sandbox}"', *MCP_ARGS(), "--", prompt]
     else:
-        argv = [b, "exec", "--json", "--skip-git-repo-check", "-C", cwd, "-s", sandbox, "--", prompt]
+        argv = [b, "exec", "--json", "--skip-git-repo-check", "-C", cwd, "-s", sandbox, *MCP_ARGS(), "--", prompt]
     argv, env = cc_codex.wrap(argv, cc_codex.profile_dir(slot), {"NO_COLOR": "1"})
     proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             env=env, cwd=cwd, text=True, bufsize=1, start_new_session=True)
@@ -953,25 +1043,25 @@ class Bridge:
 
     def ask_image(self, file_ids, caption):
         s = load()
+        act = ChatAction(s).start("upload_photo")  # «отправляет фото» на время закачки, дальше ask_codex переключит на «печатает»
         try:
-            tg_api(s["token"], "sendChatAction", {"chat_id": chat_id(s), "action": "upload_photo"}, 10)
-        except Exception:
-            pass
-        paths, n = [], len(file_ids)
-        try:
-            for i, fid in enumerate(file_ids, 1):
-                try:
-                    paths.append(fetch_image(s, fid))
-                except ImageError as e:
-                    raise ImageError((f"Фото {i} из {n}: " if n > 1 else "") + str(e)) from None
-        except ImageError as e:
-            self._drop_files(paths)  # альбом принимаем целиком или никак: Codex не должен ответить по части фото
-            return self.send(f"⚠️ {e}")
-        except Exception as e:
-            self._drop_files(paths)
-            log(f"картинка: {type(e).__name__} {e}")
-            return self.send("⚠️ Не удалось принять картинку, подробности в журнале.")
-        self.ask_codex(image_prompt(caption, paths))
+            paths, n = [], len(file_ids)
+            try:
+                for i, fid in enumerate(file_ids, 1):
+                    try:
+                        paths.append(fetch_image(s, fid))
+                    except ImageError as e:
+                        raise ImageError((f"Фото {i} из {n}: " if n > 1 else "") + str(e)) from None
+            except ImageError as e:
+                self._drop_files(paths)  # альбом принимаем целиком или никак: Codex не должен ответить по части фото
+                return self.send(f"⚠️ {e}")
+            except Exception as e:
+                self._drop_files(paths)
+                log(f"картинка: {type(e).__name__} {e}")
+                return self.send("⚠️ Не удалось принять картинку, подробности в журнале.")
+            self.ask_codex(image_prompt(caption, paths), act)
+        finally:
+            act.stop()
 
     @staticmethod
     def _drop_files(paths):
@@ -1014,6 +1104,8 @@ class Bridge:
             s = load()
             sb, cwd = plan(s)
             mode = {"mediator": "Посредник", "orchestrator": "Оркестратор"}.get(s["mode"], "Самостоятельно")
+            if active_profile(s) == RESERVE_ID:
+                mode = "Резерв (Codex вместе с Notion-агентом)"
             emg = EMERGENCY.status_line() if EMERGENCY is not None else ""
             return self.send((emg + "\n" if emg else "") + f"Режим: {mode}\nПесочница: {sb}\nПапка: {cwd}\nПрава заданий Claude (потолок): "
                              f"{RIGHTS_RU[s['task_rights']]}")
@@ -1036,24 +1128,27 @@ class Bridge:
         self.worker = threading.Thread(target=self.ask_codex, args=(text,), daemon=True, name="codex-ask")
         self.worker.start()
 
-    def ask_codex(self, text):
+    def ask_codex(self, text, act=None):
         s = load()
+        own = act is None  # индикатор передал ask_image — он же его и гасит
+        act = ChatAction(s).start("typing") if own else act
+        act.set("typing")
         try:
-            tg_api(s["token"], "sendChatAction", {"chat_id": chat_id(s), "action": "typing"}, 10)
-        except Exception:
-            pass
-        try:
-            answer, _ = run_codex(text, s)
-        except Stopped:
-            return
-        except RunError as e:
-            return self.send(f"⚠️ {e}")
-        except Exception as e:
-            log(f"run_codex: {type(e).__name__} {e}")
-            return self.send("⚠️ Не удалось запустить Codex, подробности в журнале.")
-        self.send(answer)
-        if s["mode"] in ("mediator", "orchestrator"):
-            self.take_draft(s)
+            try:
+                answer, _ = run_codex(text, s)
+            except Stopped:
+                return
+            except RunError as e:
+                return self.send(f"⚠️ {e}")
+            except Exception as e:
+                log(f"run_codex: {type(e).__name__} {e}")
+                return self.send("⚠️ Не удалось запустить Codex, подробности в журнале.")
+            self.send(answer)
+            if s["mode"] in ("mediator", "orchestrator"):
+                self.take_draft(s)
+        finally:
+            if own:
+                act.stop()
 
     def take_draft(self, s):
         d = read_draft(exchange_dir(s))

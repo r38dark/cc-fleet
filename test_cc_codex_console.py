@@ -172,6 +172,32 @@ class Start(unittest.TestCase):
         meta = cc_codex.jload(C._meta_path(), {})
         self.assertEqual((meta["pid"], meta["sandbox"], meta["cwd"], meta["slot"]), ("77", "read-only", self.work, "gpt1"))
 
+    def test_mcp_keys_go_into_command_line_and_meta_after_the_other_keys(self):
+        calls = []
+
+        def run(argv, **kw):
+            calls.append(argv)
+            return mock.Mock(returncode=0, stdout="", stderr="")
+        keys = ["-c", 'mcp_servers.notion.url="https://x/mcp"', "-c", "mcp_servers.notion.enabled_tools=[\"a\"]"]
+        pids = iter([None, "77"])
+        with mock.patch.object(C, "MCP", lambda: keys), mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), \
+                mock.patch.object(C.subprocess, "run", run):
+            ok, msg = C.start()
+        self.assertTrue(ok, msg)
+        argv = calls[0]
+        self.assertEqual(argv[-4:], keys)  # ключи в самом конце: не сбивают -s/-a/-C
+        self.assertLess(argv.index("-C"), argv.index("mcp_servers.notion.enabled_tools=[\"a\"]"))
+        self.assertEqual(cc_codex.jload(C._meta_path(), {})["mcp"], keys)
+
+    def test_no_mcp_keys_outside_reserve(self):
+        calls = []
+        pids = iter([None, "77"])
+        with mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), \
+                mock.patch.object(C.subprocess, "run", lambda argv, **kw: (calls.append(argv), mock.Mock(returncode=0, stdout="", stderr=""))[1]):
+            C.start()
+        self.assertFalse([x for x in calls[0] if "mcp_servers" in x])
+        self.assertEqual(cc_codex.jload(C._meta_path(), {})["mcp"], [])
+
     def test_status_shows_running_session_rights(self):
         cc_codex._jsave(C._meta_path(), {"pid": "77", "sandbox": "workspace-write", "cwd": "/w", "started": 5})
         with mock.patch.object(C, "_pid", return_value="77"):
@@ -470,6 +496,23 @@ class Ask(Rollout):
             sp.assert_called_once()
             st.assert_called_once()
             self.meta(sandbox="workspace-write", cwd=self.work, approval="never")
+
+    def test_ensure_restarts_when_reserve_mcp_keys_appear_or_go(self):
+        # резерв включился/закончился → набор ключей Notion другой → консоль перезапускается; тот же набор — не трогаем
+        keys = ["-c", 'mcp_servers.notion.url="https://x/mcp"']
+        for was, now in (([], keys), (keys, [])):
+            self.meta(mcp=was)
+            with mock.patch.object(C, "MCP", lambda now=now: now), mock.patch.object(C, "start", return_value=(True, "ok")) as st, \
+                    mock.patch.object(C, "stop", return_value=(True, "ok")) as sp:
+                self.assertEqual(C.ensure(), (True, "ok"), (was, now))
+            sp.assert_called_once()
+            st.assert_called_once()
+        self.meta(mcp=keys)
+        with mock.patch.object(C, "MCP", lambda: keys), mock.patch.object(C, "start") as st, mock.patch.object(C, "stop") as sp:
+            self.assertEqual(C.ensure(), (True, ""))
+        st.assert_not_called()
+        sp.assert_not_called()
+        self.meta(mcp=[])
 
     def test_ensure_does_not_restart_mid_request(self):
         self.make(self.TID, self.work, [dict(evt("task_started", turn_id="T6"), timestamp="2026-10-31T13:00:00Z")])

@@ -249,6 +249,56 @@ class Enable(Base):
         self.assertTrue(any("выключен" in ln for ln in em.public()["journal"]))  # у выключенного режима — общий хвост журнала
 
 
+class AutoOn(Base):
+    """Включение резервом (лимиты Claude кончились): слово не нужно, отдельного сообщения нет — одно общее шлёт резерв."""
+    def test_auto_on_needs_no_word_and_sends_no_own_message(self):
+        ok, msg = em.on("", auto="лимиты Claude кончились")
+        self.assertTrue(ok, msg)
+        self.assertTrue(em.active())
+        self.assertEqual(self.sent, [])
+        self.assertEqual(em._st()["auto"], "лимиты Claude кончились")
+        self.assertTrue(em.public()["auto"])
+        self.assertTrue(any("само: лимиты Claude кончились" in ln for ln in em.public()["journal"]))
+        s = br.load()
+        self.assertEqual((s["mode"], s["access"]), ("self", "full"))  # права те же, что при включении словом
+
+    def test_manual_on_still_needs_word_and_has_no_auto_flag(self):
+        self.assertFalse(em.on("")[0])
+        self.assertFalse(em.on("", auto="")[0])
+        self.assertFalse(em.active())
+        self.assertTrue(em.on("аварийный")[0])
+        self.assertEqual(len(self.sent), 1)
+        self.assertNotIn("auto", em._st())
+        self.assertFalse(em.public()["auto"])
+
+    def test_auto_on_has_the_same_checks_as_manual(self):
+        self.cfg = {}
+        ok, msg = em.on("", auto="x")
+        self.assertFalse(ok)
+        self.assertIn("не настроен", msg)
+        self.assertFalse(em.active())
+
+    def test_quiet_off_removes_everything_without_own_message(self):
+        self.assertTrue(em.on("", auto="x")[0])
+        ok, msg = em.off("лимиты снова есть", quiet=True)
+        self.assertTrue(ok, msg)
+        self.assertFalse(em.active())
+        self.assertFalse(os.path.exists(em.SUDOERS))
+        self.assertEqual(self.sent, [])
+
+    def test_quiet_off_still_reports_what_stayed(self):
+        self.assertTrue(em.on("", auto="x")[0])
+        real = em._teardown
+        em._teardown = lambda *a, **k: ["остался mount"]
+        try:
+            ok, msg = em.off("лимиты снова есть", quiet=True)
+        finally:
+            em._teardown = real
+        self.assertFalse(ok)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("остался mount", self.sent[0])
+
+
 class Disable(Base):
     def setUp(self):
         super().setUp()

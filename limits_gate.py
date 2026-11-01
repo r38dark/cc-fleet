@@ -47,6 +47,13 @@ def _weekly_cap():
 
 def main():
     ceil = float(sys.argv[1]) if len(sys.argv) > 1 else _default_threshold()
+    try:  # резерв включён вручную: Claude отключён (пауза без будильника) — фоновые прогоны не стартуют
+        ps = json.load(open(os.path.join(BASE, "pause_state.json")))
+        if ps.get("active") and ps.get("kind") == "reserve" and not ps.get("override"):
+            print("резерв: Claude отключён вручную (Codex + Notion-агент) — гейт закрыт")
+            return 10
+    except Exception:
+        pass
     try:
         d = json.load(open(SNAP))
     except Exception as e:

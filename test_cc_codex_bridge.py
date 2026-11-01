@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cc_codex, cc_codex_bridge as br
 
 FAKE = r'''#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
 a = sys.argv[1:]
 prompt = a[a.index("--") + 1]
 log = os.environ.get("FAKE_LOG")
@@ -22,6 +22,7 @@ if "оформи" in prompt:
     os.makedirs("outbox", exist_ok=True)
     with open("outbox/task.md", "w") as f:
         f.write(os.environ.get("FAKE_DRAFT", "права: полные\nсделай X в проекте\n"))
+time.sleep(float(os.environ.get("FAKE_SLEEP", "0")))
 print(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "ответ: " + prompt}}))
 print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 10, "output_tokens": 5}}))
 '''
@@ -56,6 +57,7 @@ class Base(unittest.TestCase):
         self.log = j("fake.log")
         os.environ["FAKE_LOG"] = self.log
         os.environ.pop("FAKE_DRAFT", None)
+        os.environ.pop("FAKE_SLEEP", None)
         self.saved = (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
                       br.RESERVED_TOKENS, br.ACK_TIMEOUT, br.CONSOLE)
         br.CONSOLE = None
@@ -191,6 +193,27 @@ class Chat(Base):
         self.say("/new")
         self.say("вопрос 3")
         self.assertNotIn("resume", self.runs()[2]["argv"])
+
+    def test_reserve_mcp_keys_and_note_reach_exec_new_and_resume(self):
+        keys = ["-c", 'mcp_servers.notion.url="https://x/mcp"']
+        saved = (br.MCP_ARGS, br.RESERVE_NOTE)
+        br.MCP_ARGS, br.RESERVE_NOTE = (lambda: keys), (lambda: "[РЕЗЕРВ: тест]")
+        self.addCleanup(lambda: setattr(br, "MCP_ARGS", saved[0]) or setattr(br, "RESERVE_NOTE", saved[1]))
+        self.say("вопрос 1")
+        self.say("вопрос 2")
+        new, resume = self.runs()[0]["argv"], self.runs()[1]["argv"]
+        self.assertEqual(resume[:2], ["exec", "resume"])
+        for argv in (new, resume):
+            i = argv.index("--")
+            self.assertEqual(argv[i - 2:i], keys, argv)  # ключи до «--», иначе Codex принял бы их за текст сообщения
+            self.assertEqual(argv[i + 1], "[РЕЗЕРВ: тест] " + argv[-1].split("] ", 1)[1])
+            self.assertTrue(argv[-1].endswith("вопрос 1") or argv[-1].endswith("вопрос 2"))
+
+    def test_no_reserve_means_clean_exec(self):
+        self.say("вопрос")
+        argv = self.runs()[0]["argv"]
+        self.assertFalse([x for x in argv if "mcp_servers" in x])
+        self.assertEqual(argv[-1], "вопрос")  # без напоминания про резерв
 
     def test_self_mode_cwd_and_sandbox(self):
         br.save({"mode": "self", "access": "write", "workdir": self.proj})
@@ -579,6 +602,122 @@ class Profiles(Base):
         self.seed_custom("c1", "Свой", "self", "write", "dev")
         self.assertEqual(br.public()["profiles"][-1]["name"], "Свой")
         self.assertFalse(br.public()["profiles"][-1]["builtin"])
+
+
+class FakeEmergency:
+    """Подставка вместо cc_codex_emergency: нужен только признак «включён»."""
+    def __init__(self, on=False):
+        self.on = on
+
+    def active(self):
+        return self.on
+
+    def status_line(self):
+        return ""
+
+
+class ReserveProfile(Base):
+    """Профиль «Резерв»: встаёт сам вместе с резервом Notion и сам возвращает прежний — чтобы не путать, какой режим выбран."""
+    def setUp(self):
+        super().setUp()
+        self.old_emg = br.EMERGENCY
+        self.emg = FakeEmergency()
+        br.EMERGENCY = self.emg
+        self.addCleanup(setattr, br, "EMERGENCY", self.old_emg)
+
+    def test_on_switches_profile_and_remembers_previous(self):
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertTrue(br.reserve_profile(True, True))
+        s = br.load()
+        self.assertEqual((s["mode"], s["access"], s["profile"]), ("self", "write", "reserve"))
+        self.assertEqual(s["reserve_prev"]["mode"], "orchestrator")
+        self.assertEqual(s["reserve_prev"]["profile"], "orchestrator")
+        self.assertEqual(br.public()["profile"], "reserve")
+
+    def test_repeated_calls_change_nothing(self):
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertTrue(br.reserve_profile(True, True))
+        before = br.load()
+        self.assertFalse(br.reserve_profile(True, False))
+        self.assertFalse(br.reserve_profile(True, True))  # уже «Резерв»: запомненное прежнее не затирается
+        self.assertEqual(br.load(), before)
+
+    def test_active_without_flip_does_not_switch(self):
+        # резерв уже шёл до запуска панели или человек потом сам выбрал профиль — «включился» приходит только по флагу
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertFalse(br.reserve_profile(True, False))
+        self.assertEqual(br.load()["profile"], "orchestrator")
+
+    def test_off_restores_everything(self):
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertTrue(br.reserve_profile(True, True))
+        self.assertTrue(br.reserve_profile(False, True))
+        s = br.load()
+        self.assertEqual((s["mode"], s["task_rights"], s["profile"]), ("orchestrator", "dev", "orchestrator"))
+        self.assertNotIn("reserve_prev", s)
+        self.assertEqual(br.public()["profile"], "orchestrator")
+        self.assertFalse(br.reserve_profile(False, False))  # повтор каждый такт ничего не пишет
+
+    def test_off_restores_manual_settings_without_profile(self):
+        self.assertTrue(br.save({"mode": "mediator", "task_rights": "read"})[0])
+        self.assertEqual(br.load()["profile"], "")
+        self.assertTrue(br.reserve_profile(True, True))
+        self.assertTrue(br.reserve_profile(False, True))
+        s = br.load()
+        self.assertEqual((s["mode"], s["task_rights"], s["profile"]), ("mediator", "read", ""))
+
+    def test_humans_own_choice_during_reserve_is_not_touched(self):
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertTrue(br.reserve_profile(True, True))
+        self.assertTrue(br.apply_profile("codex")[0])  # человек сам выбрал профиль посреди резерва
+        self.assertFalse(br.reserve_profile(False, True))
+        s = br.load()
+        self.assertEqual((s["profile"], s["mode"]), ("codex", "self"))
+        self.assertNotIn("reserve_prev", s)
+
+    def test_emergency_freezes_both_directions(self):
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.emg.on = True
+        self.assertFalse(br.reserve_profile(True, True))  # аварийный режим держит права: профиль не трогаем
+        self.assertEqual(br.load()["profile"], "orchestrator")
+        self.emg.on = False
+        self.assertTrue(br.reserve_profile(True, True))
+        self.emg.on = True
+        self.assertFalse(br.reserve_profile(False, True))  # возврат откладывается, пока аварийный режим активен
+        self.assertEqual(br.load()["profile"], "reserve")
+        self.emg.on = False
+        self.assertTrue(br.reserve_profile(False, False))  # на следующем такте — возвращается
+        self.assertEqual(br.load()["profile"], "orchestrator")
+
+    def test_cannot_be_picked_by_hand(self):
+        self.assertTrue(br.apply_profile("codex")[0])
+        ok, msg = br.apply_profile("reserve")
+        self.assertFalse(ok)
+        self.assertIn("сам", msg)
+        ok, msg = br.apply_profile("reserve", lang="en")
+        self.assertFalse(ok)
+        self.assertIn("by itself", msg)
+        self.assertEqual(br.load()["profile"], "codex")
+
+    def test_reserve_is_not_listed_among_profiles(self):
+        self.assertTrue(br.reserve_profile(True, True))
+        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex"])
+
+    def test_manual_edit_during_reserve_drops_mark_but_end_still_restores(self):
+        self.assertTrue(br.apply_profile("orchestrator")[0])
+        self.assertTrue(br.reserve_profile(True, True))
+        self.assertTrue(br.save({"access": "read"})[0])
+        self.assertEqual(br.public()["profile"], "")  # настройки уже не «Резерв» — метка снята
+        self.assertTrue(br.reserve_profile(False, True))
+        self.assertEqual(br.load()["profile"], "orchestrator")
+
+    def test_status_command_names_reserve(self):
+        self.assertTrue(br.reserve_profile(True, True))
+        self.say("/status")
+        self.assertIn("Резерв", self.sent[-1])
+        self.assertTrue(br.reserve_profile(False, True))
+        self.say("/status")
+        self.assertNotIn("Резерв", self.sent[-1])
 
 
 class Orchestrator(Base):
@@ -1214,6 +1353,129 @@ class Images(ImagesBase):
             cc_codex.RUN_AS = old
         self.assertEqual(calls[0][:4], ["runuser", "-u", "codexuser", "--"])
         self.assertEqual(calls[0][-2:], ["-r", "/x/y.jpg"])
+
+
+class ChatActionIndicator(ImagesBase):
+    """«Печатает…» / «отправляет фото» Telegram гасит через ~5 с: пока идёт ход Codex, индикатор обновляется (жалоба: 20 с без надписи)."""
+
+    def setUp(self):
+        super().setUp()
+        self.acts = []  # (время, действие) каждого sendChatAction
+        inner = br.tg_api
+        self.t0 = time.time()
+
+        def api(token, method, payload=None, timeout=30):
+            if method == "sendChatAction":
+                self.acts.append((time.time() - self.t0, payload["action"]))
+                if getattr(self, "act_fails", False):
+                    raise br.TgError(429, "Too Many Requests")
+                return {"ok": True, "result": True}
+            return inner(token, method, payload, timeout)
+        br.tg_api = api
+        self._every = br.ACTION_EVERY
+        br.ACTION_EVERY = 0.1
+        self.addCleanup(setattr, br, "ACTION_EVERY", self._every)
+
+    def names(self):
+        return [a for _, a in self.acts]
+
+    def assert_quiet_after_end(self):
+        n = len(self.acts)
+        time.sleep(0.5)  # 5 периодов: если поток не остановлен, вызовы прибавятся
+        self.assertEqual(len(self.acts), n, "индикатор шлётся после конца хода")
+
+    def test_text_turn_refreshes_typing_until_answer(self):
+        os.environ["FAKE_SLEEP"] = "0.7"
+        self.say("привет")
+        self.assertGreaterEqual(len(self.acts), 4, self.acts)  # 0,7 с / 0,1 с, с запасом на медленную машину
+        self.assertEqual(set(self.names()), {"typing"})
+        self.assertTrue(self.sent[-1].startswith("ответ:"))
+        self.assert_quiet_after_end()
+
+    def test_image_shows_upload_photo_while_downloading_then_typing(self):
+        os.environ["FAKE_SLEEP"] = "0.5"
+        real = br.tg_download
+
+        def slow(token, file_path, limit=br.IMG_MAX_BYTES):
+            time.sleep(0.45)  # «долгая» закачка
+            return real(token, file_path, limit)
+        br.tg_download = slow
+        self.addCleanup(setattr, br, "tg_download", real)
+        self.photo("что тут?")
+        names = self.names()
+        self.assertGreaterEqual(names.count("upload_photo"), 3, names)
+        self.assertGreaterEqual(names.count("typing"), 3, names)
+        i = names.index("typing")
+        self.assertNotIn("upload_photo", names[i:], "после закачки надпись «отправляет фото» не возвращается")
+        self.assertTrue(self.sent[-1].startswith("ответ:"))
+        self.assert_quiet_after_end()
+
+    def test_switch_to_typing_right_after_download_and_stop_is_prompt(self):
+        # период длинный: «печатает» обязано появиться сразу после закачки, а не на следующем тике; конец хода гасит поток сразу
+        br.ACTION_EVERY = 30
+        real = br.tg_download
+
+        def slow(token, file_path, limit=br.IMG_MAX_BYTES):
+            time.sleep(0.4)
+            return real(token, file_path, limit)
+        br.tg_download = slow
+        self.addCleanup(setattr, br, "tg_download", real)
+        seen = []
+        orig_stop = br.ChatAction.stop
+
+        def spy(me):
+            seen.append(me)
+            orig_stop(me)
+        br.ChatAction.stop = spy
+        self.addCleanup(setattr, br.ChatAction, "stop", orig_stop)
+        self.photo("что тут?")
+        self.assertEqual(self.names(), ["upload_photo", "typing"], self.acts)
+        self.assertLess(self.acts[1][0] - self.acts[0][0], 2, "«печатает» ждало тика")
+        self.assertEqual(len(seen), 1)
+        seen[0].t.join(2)
+        self.assertFalse(seen[0].t.is_alive(), "поток индикатора ждёт тик после конца хода")
+
+    def test_refused_image_stops_indicator(self):
+        self.photo("текст", doc={"file_id": "fid-text", "mime_type": "image/png"})
+        self.assertIn("⚠️", self.sent[-1])
+        self.assertIn("upload_photo", self.names())
+        self.assert_quiet_after_end()
+
+    def test_stop_command_stops_indicator(self):
+        os.environ["FAKE_SLEEP"] = "5"
+        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "text": "долго"}})
+        time.sleep(0.45)
+        self.assertGreaterEqual(len(self.acts), 3)
+        self.say("/stop")
+        br.BRIDGE.worker.join(10)
+        self.assertFalse(br.BRIDGE.worker.is_alive())
+        self.assert_quiet_after_end()
+
+    def test_telegram_error_on_indicator_does_not_break_turn(self):
+        self.act_fails = True
+        os.environ["FAKE_SLEEP"] = "0.3"
+        self.say("привет")
+        self.assertTrue(self.sent[-1].startswith("ответ:"), self.sent)
+        self.assertGreaterEqual(len(self.acts), 2)  # ошибка не останавливает повторы
+        self.assert_quiet_after_end()
+
+    def test_hung_indicator_call_does_not_delay_turn(self):
+        # зависший sendChatAction (таймаут 10 с) не должен задерживать ход и ответ
+        hang = threading.Event()
+        inner = br.tg_api
+
+        def api(token, method, payload=None, timeout=30):
+            if method == "sendChatAction":
+                hang.wait(3)
+                return {"ok": True, "result": True}
+            return inner(token, method, payload, timeout)
+        br.tg_api = api
+        t = time.time()
+        self.say("привет")
+        took = time.time() - t
+        hang.set()
+        self.assertLess(took, 2.5, "ход ждал ответа на sendChatAction")
+        self.assertTrue(self.sent[-1].startswith("ответ:"))
 
 
 class Albums(ImagesBase):

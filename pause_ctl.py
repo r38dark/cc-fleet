@@ -50,6 +50,7 @@ CC_STATE = os.path.join(BASE, "state.json")  # состояние балансе
 GATE = os.path.join(BASE, "limits_gate.py")
 TG_ENV = "/root/.claude/channels/telegram/.env"
 GRACE = 180  # будим не в секунду сброса, а через 3 минуты — окно отпускает не мгновенно
+RESERVE_GRACE = 120  # = GRACE хука pause_tool_gate: столько секунд после первого отказа Claude доделывает начатое (баннер показывает отсчёт)
 
 # Текст, который уходит в живую сессию при снятии паузы. СТРОГО ASCII: screen,
 # поднятый без -U, принимает не-ASCII побайтовым мусором и швыряет его прямо во
@@ -255,6 +256,15 @@ def level_state():
         "checks": st.get("checks") or 0,
         "kind": st.get("kind") or "session",
     }
+    if pause["active"] and pause["kind"] == "reserve":
+        # отсчёт «доделывает начатое» стартует с первого отказа инструмента (его пишет хук); не было — 0, баннер так и скажет
+        try:
+            mark = json.load(open(os.path.join(BASE, "pause_tool_gate.json")))
+            ok = float(mark.get("since") or 0) == float(pause["since"])
+            pause["notice_ts"] = float(mark.get("notice_ts") or 0) if ok else 0
+        except Exception:
+            pause["notice_ts"] = 0
+        pause["grace"] = RESERVE_GRACE
     c = _cfg()
     out = {"pause": pause, "threshold": thr, "level": "none", "accounts": {},
            "active": active, "stale": bool(not accs or (_now() - ts) > 900),
@@ -463,6 +473,8 @@ def cmd_wake(a):
         return 0
     if not st.get("active"):
         return 0
+    if st.get("kind") == "reserve":
+        return 0  # пауза резерва (Codex + Notion-агент вместо Claude) держится, пока человек не снимет галочку
     # пауза на неделе может стоять сутками, а уйти становится куда раньше будильника
     # (добавили аккаунт, выключили опцию, сняли потолок) — её проверяем каждую минуту
     week = st.get("kind") == "week"
@@ -579,6 +591,34 @@ def cmd_on(a):
         "а переключаться будет некуда"
         + (" или активный дойдёт до недельного потолка без запасного аккаунта." if _weekly_pause() else "."))
     return 0
+
+
+def reserve_hold(reason):
+    """Резерв включён вручную: Claude встаёт на паузу, пока человека обслуживают Codex + Notion-агент.
+    Пауза без будильника (resume_at = 0): по лимитам она не снимается, только галочкой. Уже стоящую паузу по лимитам
+    переписываем: иначе она сама поднялась бы, как только окно отпустит. «Отключена вручную» снимается — человек выбрал резерв.
+    → True, если пауза поставлена или уже была."""
+    old = load()
+    if old.get("active") and old.get("kind") == "reserve":
+        return True
+    save({"active": True, "since": _now(), "reason": str(reason or "резерв")[:200], "kind": "reserve", "note": "",
+          "resume_at": 0, "reset_of": "", "checks": 0})
+    _log("пауза резерва поставлена (%s)" % (reason or "резерв"))
+    return True
+
+
+def reserve_release():
+    """Галочка снята: пауза резерва снимается, живая сессия просыпается и разбирает очередь входящих.
+    Чужую паузу (по лимитам) не трогаем. → True, если пауза резерва была и снята."""
+    st = load()
+    if not (st.get("active") and st.get("kind") == "reserve"):
+        return False
+    st.update(active=False, resumed_at=_now(), cleared_at=_now())
+    save(st)
+    _log("пауза резерва снята")
+    _wake_session("[cc-pause] Reserve mode is off: the pause is lifted, Claude is back. "
+                  "Continue the paused task from the state saved earlier.")
+    return True
 
 
 def main():
