@@ -45,6 +45,11 @@ def get_bytes(path):
 
 class Base(unittest.TestCase):
     def setUp(self):
+        # Старый поддельный Codex отвечает точным эхом. Протокол вложений отдельно
+        # проверяется с настоящей подсказкой в test_cc_codex_output.
+        self.image_note_patch = unittest.mock.patch.object(br, "image_output_note", return_value="")
+        self.image_note_patch.start()
+        self.addCleanup(self.image_note_patch.stop)
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, self.tmp, True)
         j = lambda *p: os.path.join(self.tmp, *p)
@@ -657,6 +662,87 @@ class Profiles(Base):
         self.seed_custom("c1", "Свой", "self", "write", "dev")
         self.assertEqual(br.public()["profiles"][-1]["name"], "Свой")
         self.assertFalse(br.public()["profiles"][-1]["builtin"])
+
+
+class DelegateProfile(Base):
+    """Профиль «Агент»: основная сессия и Codex только ставят задачи агенту Notion. Виден лишь при настроенной команде поручения."""
+
+    def setUp(self):
+        super().setUp()
+        self.saved_cmd = br.DELEGATE_CMD
+        self.addCleanup(setattr, br, "DELEGATE_CMD", self.saved_cmd)
+
+    def note_file(self):
+        return os.path.join(br.BASE, "delegate_note.txt")
+
+    def test_hidden_without_command(self):
+        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex"])
+        ok, msg = br.apply_profile("agent")
+        self.assertFalse(ok)
+        self.assertFalse(os.path.exists(self.note_file()))
+        self.assertEqual(br.delegate_note("main"), "")
+
+    def test_apply_writes_note_for_main_session_and_agents_for_codex(self):
+        br.DELEGATE_CMD = lambda: "agent-delegate"
+        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex", "agent"])
+        ok, _ = br.apply_profile("agent")
+        self.assertTrue(ok)
+        self.assertEqual(br.public()["profile"], "agent")
+        note = get(self.note_file())
+        self.assertIn("agent-delegate", note)
+        self.assertNotIn("{cmd}", note)
+        self.assertEqual(note, br.delegate_note("main"))
+        self.assertIn("agent-delegate", br.delegate_note("codex"))
+        self.assertNotEqual(br.delegate_note("codex"), br.delegate_note("main"))
+        # настройки правят вручную → метка профиля сбрасывается, режима «Агент» больше нет
+        br.save({"task_rights": "read"})
+        self.assertEqual(br.public()["profile"], "")
+        self.assertEqual(br.delegate_note("main"), "")
+
+    def test_switching_profile_removes_note_and_restores_codex_agents(self):
+        br.DELEGATE_CMD = lambda: "agent-delegate"
+        ws = br.ensure_workspace()  # папка должна существовать, иначе save() отклонит рабочую папку
+        self.assertTrue(br.save({"mode": "self", "access": "write", "task_rights": "dev", "workdir": ws})[0])
+        self.assertTrue(br.apply_profile("agent")[0])
+        self.assertTrue(os.path.exists(self.note_file()))
+        text = get(os.path.join(ws, "AGENTS.md"))
+        self.assertIn("ставит задачи агенту", text)
+        self.assertIn('agent-delegate "текст"', text)
+        self.assertTrue(br.apply_profile("codex")[0])
+        self.assertFalse(os.path.exists(self.note_file()))
+        self.assertNotIn("ставит задачи агенту", get(os.path.join(ws, "AGENTS.md")))
+        self.assertEqual(br.delegate_note("codex"), "")
+
+    def test_command_removed_switches_mode_off(self):
+        br.DELEGATE_CMD = lambda: "agent-delegate"
+        self.assertTrue(br.apply_profile("agent")[0])
+        br.DELEGATE_CMD = lambda: ""
+        br.sync_delegate_file()
+        self.assertFalse(os.path.exists(self.note_file()))
+
+    def test_codex_message_gets_delegate_note(self):
+        br.DELEGATE_CMD = lambda: "agent-delegate"
+        self.assertTrue(br.apply_profile("agent")[0])
+        answer, _ = br.run_codex("привет")
+        self.assertIn("РЕЖИМ «АГЕНТ»", answer)
+        self.assertIn("привет", answer)
+        br.apply_profile("codex")
+        answer, _ = br.run_codex("привет")
+        self.assertNotIn("РЕЖИМ «АГЕНТ»", answer)
+
+    def test_hook_adds_note_only_while_file_exists(self):
+        import subprocess
+        hook = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hooks", "queue_on_limits.py")
+        env = dict(os.environ, CC_LIMITS_DIR=br.BASE)
+        run = lambda: subprocess.run([sys.executable, hook], input=json.dumps({"prompt": "привет"}), capture_output=True, text=True, env=env, timeout=20)
+        r = run()
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, ""))
+        put(self.note_file(), "[РЕЖИМ «АГЕНТ»: тест]")
+        out = json.loads(run().stdout)["hookSpecificOutput"]
+        self.assertEqual(out["hookEventName"], "UserPromptSubmit")
+        self.assertIn("РЕЖИМ «АГЕНТ»", out["additionalContext"])
+        os.unlink(self.note_file())
+        self.assertEqual(run().stdout.strip(), "")
 
 
 class FakeEmergency:

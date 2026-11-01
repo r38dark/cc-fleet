@@ -39,7 +39,19 @@ def log(msg):
         pass
 
 
+def note():
+    """Режим «Агент»: напоминание о роли. Файл ведёт мост (cc_codex_bridge) при выборе профиля; нет файла — нет напоминания."""
+    try:
+        with open(os.path.join(CCL, "delegate_note.txt"), encoding="utf-8") as f:
+            return f.read().strip()[:2500]
+    except OSError:
+        return ""
+
+
 def allow():
+    t = note()
+    if t:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": t}}, ensure_ascii=False))
     sys.exit(0)
 
 

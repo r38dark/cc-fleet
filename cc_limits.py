@@ -17,7 +17,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.27"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.28"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -199,6 +199,7 @@ cc_notion.EMERGENCY = cc_codex_emergency
 # инструменты Notion-агента у Codex — только пока резерв включён; при смене резерва консоль перезапускается (не посреди ответа)
 cc_codex_bridge.MCP_ARGS = cc_notion.codex_args
 cc_codex_bridge.RESERVE_NOTE = cc_notion.codex_note
+cc_codex_bridge.DELEGATE_CMD = cc_notion.delegate_cmd
 cc_codex_console.MCP = cc_notion.codex_args
 cc_notion.APPLY = cc_codex_emergency._restart_console
 cc_codex_bridge.EMERGENCY = cc_codex_emergency
@@ -4131,6 +4132,7 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxprof::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc,var(--acc))}
 .cxprof[data-id="orchestrator"]{--pc:linear-gradient(180deg,#19c3a0,#f0905f)}
 .cxprof[data-id="codex"]{--pc:#19c3a0}
+.cxprof[data-id="agent"]{--pc:linear-gradient(180deg,#f0905f,#9b8cff)}
 .cxprof[data-id="reserve"]{--pc:linear-gradient(180deg,#9b8cff,#19c3a0)}
 .cxprof.rsv:not(.act){opacity:.65;cursor:default}
 .cxprof.rsv:not(.act):hover{border-color:#2a3140}
@@ -4168,7 +4170,8 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxw.rd{color:var(--bad);background:rgba(224,91,91,.12);border-color:rgba(224,91,91,.5)}
 .cxemg{display:flex;align-items:flex-start;gap:10px;position:relative;overflow:hidden;margin:8px 0 0;padding:10px 12px 10px 15px;border:1px solid rgba(224,91,91,.5);border-radius:12px;background:rgba(224,91,91,.07)}
 .cxemg::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--bad),#f0905f)}
-.cxemg.on{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad);background:rgba(224,91,91,.15)}
+.cxemg.on{border:2px solid var(--bad);padding:9px 11px 9px 14px;box-shadow:none;background:rgba(224,91,91,.24)}
+.cxemg.on::before{background:var(--bad)}
 .cxemg .cxemm{flex:1;min-width:0;display:block}
 .cxemg .cxen{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
 .cxemg .cxen .cxpnm{color:var(--bad)}
@@ -4183,8 +4186,8 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxemg .cxembtn.off{background:var(--bad);color:#fff}
 .cxemg .cxemtime{margin-top:4px;font-size:13px;font-weight:700;color:var(--bad)}
 .cxemg .cxemj{margin-top:8px;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.18);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);white-space:pre-wrap;word-break:break-word}
-.cxdot.emg{background:var(--bad);animation:cxpulse 1.1s ease-in-out infinite}
-#cxBtn.emg{border-color:var(--bad)}
+.cxdot.emg{background:var(--ok);animation:cxpulse 1.1s ease-in-out infinite}
+#cxBtn.emg{border-color:var(--ok)}
 .cxeul{margin:0 0 12px;padding-left:18px;font-size:13px;line-height:1.5}
 .cxeul li{margin:2px 0}
 #cxeGo{background:var(--bad);color:#fff;border-color:var(--bad)}
@@ -4756,24 +4759,31 @@ const I18N={
   cxpHint:'Выбери — применится сразу.',
   cxpN_orchestrator:'Оркестратор',
   cxpN_codex:'Codex',
+  cxpN_agent:'Агент',
   cxpN_reserve:'Резерв',
   cxpS_reserve:'Включается само вместе с резервом Notion: Codex работает вместе с агентом, Claude на паузе. Вручную не выбирается.',
   cxpS_reserveOn:'Сейчас включён: Codex ведёт работу вместе с Notion-агентом. Прежний профиль вернётся, когда резерв закончится.',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Нативный ИИ'],
+  cxpRoute_agent:['Claude','Notion'],
   cxpS_orchestrator:'Codex — главный: ведёт цель к результату и принимает работу. Claude выполняет шаги, но каждый — только после твоего «да».',
+  cxpS_agent:'Claude и Codex только ставят задачи Notion-агенту: он делает всю черновую работу и присылает готовый результат, они проверяют и докладывают. Экономит лимиты.',
   cxpS_codex:'Работает сам, без Claude: отвечает на твои сообщения, читает и пишет в своей рабочей папке. Проект только читает.',
   cxpF_orchestrator:['Codex ведёт цель','Шаг — по твоему «да»','Claude исполняет','«Стоп» снимает всё'],
   cxpF_codex:['Работает сам','Пишет в своей папке','Проект — только чтение'],
+  cxpF_agent:['Ты даёшь задание','Агент делает работу','Claude проверяет'],
   cxpFlowLbl:'Как это идёт',
   cxpFlow_orchestrator:['Ты','Codex: составляет шаг','Твоё «да»','Claude: выполняет','Codex: принимает'],
   cxpFlow_codex:['Ты','Codex','Ответ и файлы'],
+  cxpFlow_agent:['Ты','Claude: ставит задачу','Агент: делает','Claude: проверяет'],
   cxpCanL:'Может:',
   cxpNotL:'Не может:',
   cxpCan_orchestrator:'Составлять шаги, вести цель, принимать результат от Claude и писать в общую папку обмена.',
   cxpNot_orchestrator:'Менять проект сам и отправлять шаг Claude без твоего «да». «Стоп» в Telegram снимает задание и ожидание.',
   cxpCan_codex:'Отвечать сам, читать проект, создавать и править файлы в своей рабочей папке.',
   cxpNot_codex:'Менять проект, видеть секреты и подключать Claude.',
+  cxpCan_agent:'Отправлять агенту задания, получать готовый результат, проверять его и внедрять.',
+  cxpNot_agent:'Присылать агенту ключи и пароли и принимать его ответ без проверки. Агент видит только присланный текст.',
   cxpManual:'Настройки изменены вручную — ни один профиль не выбран.',
   cxpManualShort:'Свои настройки',
   cxpDel:'Удалить профиль',
@@ -4784,6 +4794,7 @@ const I18N={
   cxpInfo:'Что делает этот профиль',
   cxpWhenLbl:'Когда выбрать:',
   cxpWhen_orchestrator:'Большая цель в несколько шагов: Codex планирует и проверяет, Claude делает.',
+  cxpWhen_agent:'Большая работа и мало лимитов: черновую часть делает агент, а Claude и Codex только ставят задачу, проверяют и внедряют.',
   cxpWhen_codex:'Нужен отдельный помощник: разобрать код, подготовить текст или скрипт, дать второе мнение — пока Claude занят своим.',
   cxeN:'Аварийный',
   cxeHdr:'🆘 Аварийный',
@@ -5261,24 +5272,31 @@ const I18N={
   cxpHint:'Pick one — it applies right away.',
   cxpN_orchestrator:'Orchestrator',
   cxpN_codex:'Codex',
+  cxpN_agent:'Agent',
   cxpN_reserve:'Reserve',
   cxpS_reserve:'Turns on by itself with the Notion reserve: Codex works together with the agent, Claude is paused. Cannot be picked by hand.',
   cxpS_reserveOn:'On now: Codex works together with the Notion agent. The previous profile comes back when the reserve ends.',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Native AI'],
+  cxpRoute_agent:['Claude','Notion'],
   cxpS_orchestrator:'Codex is in charge: it drives the goal and accepts the work. Claude runs the steps, but each one only after your "yes".',
+  cxpS_agent:'Claude and Codex only set tasks for the Notion agent: it does all the draft work and sends back a finished result, they check and report. Saves limits.',
   cxpS_codex:'Works on its own, without Claude: answers your messages, reads and writes in its own working folder. Only reads the project.',
   cxpF_orchestrator:['Codex drives the goal','Step — on your "yes"','Claude executes','"Stop" cancels all'],
   cxpF_codex:['Works on its own','Writes in its folder','Project — read only'],
+  cxpF_agent:['You give the task','Agent does the work','Claude checks'],
   cxpFlowLbl:'How it goes',
   cxpFlow_orchestrator:['You','Codex: drafts a step','Your "yes"','Claude: executes','Codex: accepts'],
   cxpFlow_codex:['You','Codex','Answer and files'],
+  cxpFlow_agent:['You','Claude: sets the task','Agent: does it','Claude: checks'],
   cxpCanL:'Can:',
   cxpNotL:'Cannot:',
   cxpCan_orchestrator:'Draft steps, drive the goal, accept Claude\'s result and write to the shared exchange folder.',
   cxpNot_orchestrator:'Change the project itself or send a step to Claude without your "yes". "Stop" in Telegram cancels the task and the wait.',
   cxpCan_codex:'Answer on its own, read the project, create and edit files in its own working folder.',
   cxpNot_codex:'Change the project, see secrets or involve Claude.',
+  cxpCan_agent:'Send tasks to the agent, get a finished result, check it and apply it.',
+  cxpNot_agent:'Send the agent keys or passwords, or accept its answer unchecked. The agent sees only the text it is sent.',
   cxpManual:'Settings were changed by hand — no profile is selected.',
   cxpManualShort:'Custom settings',
   cxpDel:'Delete profile',
@@ -5289,6 +5307,7 @@ const I18N={
   cxpInfo:'What this profile does',
   cxpWhenLbl:'When to pick it:',
   cxpWhen_orchestrator:'A big goal in several steps: Codex plans and checks, Claude does.',
+  cxpWhen_agent:'Big job, few limits left: the agent does the draft work, while Claude and Codex only set the task, check and apply.',
   cxpWhen_codex:'You need a separate helper: go through code, prepare a text or script, give a second opinion — while Claude is busy.',
   cxeN:'Emergency',
   cxeHdr:'🆘 Emergency',
@@ -5442,7 +5461,7 @@ function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
 let CONS='claude',consShown='claude',cxConsRun=null;
 try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
-function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}
+function consCur(){return CONS==='codex'&&cxConsOn()?'codex':'claude';}
 async function ccConsoleHistory(){
  const s=consCur();
  try{
@@ -5581,7 +5600,7 @@ document.addEventListener('keydown',e=>{
 });
 buildSkinGrid();applySkin(SKIN,false);
 function consTabs(){
- const av=cxAvail(),cur=consCur();
+ const av=cxConsOn(),cur=consCur();
  $('#cTabs').hidden=!av;$('.termwrap').classList.toggle('hastabs',av);
  [['claude','#ctClaude'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
@@ -6183,6 +6202,8 @@ let cxpBusy=false;
 const CXP_SEC={acc:false,br:false};
 try{Object.assign(CXP_SEC,JSON.parse(localStorage.getItem('cxpSec')||'{}'));}catch(e){}
 function cxAvail(){return!!((cxData&&cxData.available)||(cxbData&&cxbData.available));}
+// вкладка консоли Codex: Codex установлен И есть вход ChatGPT (после «Удалить Codex целиком» бинарь остаётся, входов нет)
+function cxConsOn(){return cxAvail()&&!!(((cxData&&cxData.accounts)||[]).length);}
 function cxpName(p){return p.builtin?tr('cxpN_'+p.id):p.name;}
 const CXO_MK={mediator:'cxbModeMed',orchestrator:'cxbModeOrch',self:'cxbModeSelf'},CXO_AK={read:'cxbAccRead',write:'cxbAccWrite',full:'cxbAccFull'},CXO_RK={read:'cxbRRead',dev:'cxbRDev',full:'cxbRFull'};
 function cxoMode(m){return tr(CXO_MK[m]||'cxbModeMed').replace(/\s*\(.*$/,'');}
@@ -6196,7 +6217,8 @@ function cxpSub(p){
 // оформление встроенных профилей: цвета названий маршрута, цвет и значок каждой основной функции, цвета шагов схемы
 const CXP_META={
  orchestrator:{caps:true,rc:['cx','cl'],fc:['g','b','o','r'],fi:['🧭','✋','🔨','⏹'],fl:['me','cx','ok','cl','cx']},
- codex:{caps:false,rc:['nat'],fc:['g','b','o'],fi:['⚡','✏️','👁'],fl:['me','cx','nat']}
+ codex:{caps:false,rc:['nat'],fc:['g','b','o'],fi:['⚡','✏️','👁'],fl:['me','cx','nat']},
+ agent:{caps:false,rc:['cl','nat'],fc:['g','b','o'],fi:['📝','🤖','✔'],fl:['me','cl','nat','cl']}
 };
 const CXP_ARR='<svg class="cxarr" viewBox="0 0 26 10" aria-hidden="true"><path d="M1 5h21M17.5 1.2 22.5 5l-5 3.8" fill="none" stroke="url(#cxpg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function cxpChip(c,t){return`<span class="cxw ${c}">${acctEsc(t)}</span>`;}

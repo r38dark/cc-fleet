@@ -753,8 +753,8 @@ class Page(unittest.TestCase):
 
     def test_tabs_are_hidden_until_codex_is_available(self):
         self.assertRegex(L.PAGE, r'<div class="ctabs" id="cTabs"[^>]*\bhidden\b')
-        self.assertIn("$('#cTabs').hidden=!av", L.PAGE)  # av = cxAvail(): Codex установлен
-        self.assertIn("function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("$('#cTabs').hidden=!av", L.PAGE)  # av = cxConsOn(): Codex установлен и есть вход ChatGPT
+        self.assertIn("function consCur(){return CONS==='codex'&&cxConsOn()?'codex':'claude';}", L.PAGE)
 
     def test_tabs_sit_inside_console_block_before_it(self):
         wrap = L.PAGE.index('<div class="termwrap">')

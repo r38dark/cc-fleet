@@ -490,6 +490,29 @@ class ReserveTick(unittest.TestCase):
         self.assertEqual(N.public()["reserve"]["why"], "claude_down")
         self.assertIn("лимиты кончились", N.codex_note())
 
+    def test_delegate_cmd_accepts_only_a_plain_command(self):
+        for v, want in (("agent-delegate", "agent-delegate"), (" /usr/local/bin/agent-delegate ", "/usr/local/bin/agent-delegate"),
+                        ("", ""), ("rm -rf /", ""), ("a;b", ""), ("x`y`", ""), ("$(id)", ""), (None, ""), ("a" * 81, "")):
+            self.conf = dict(self.conf, delegate_cmd=v)
+            self.assertEqual(N.delegate_cmd(), want, v)
+
+    def test_reserve_note_prefers_delegate_command_when_configured(self):
+        self.conf["reserve"] = {"manual": True}
+        self.run_for(60)
+        self.assertIn("notion-spawn-session", N.codex_note())  # команды нет — прежнее напоминание про инструменты агента
+        self.assertNotIn("ГЛАВНЫЙ путь", N.codex_note())
+        self.conf["delegate_cmd"] = "agent-delegate"
+        note = N.codex_note()
+        self.assertIn("ГЛАВНЫЙ путь", note)
+        self.assertIn('`agent-delegate "текст"`', note)
+        self.assertIn("-f файл", note)
+        self.assertIn("запасной путь", note)  # MCP-сессии агента остаются только запасными
+        self.assertIn("Helper", note)
+        self.assertIn("отключён человеком вручную", note)  # причина резерва по-прежнему названа
+        self.conf["reserve"] = {}
+        self.run_for(400)
+        self.assertEqual(N.codex_note(), "")  # вне резерва напоминания нет и с командой
+
     def test_no_agent_url_or_no_notion_means_not_ready(self):
         self.lv = LV("hard")
         for patch in ({"url": ""},):

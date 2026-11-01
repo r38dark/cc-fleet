@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.28", "date": "2026-11-02",
+     "ru": {"t": "Профиль «Агент», аварийный блок и скриншоты Codex", "p": ["Профиль «Агент»: Claude и Codex ставят задачи агенту командой из delegate_cmd; без неё профиль скрыт", "Аварийный блок: красная рамка целиком, кнопка и точка зелёные; консоль Codex прячется после удаления", "Мост шлёт скриншоты PNG и JPEG из Codex в Telegram оригинальными файлами"]},
+     "en": {"t": "Agent profile, emergency block and Codex screenshots", "p": ["Agent profile: Claude and Codex hand tasks to the agent via delegate_cmd; hidden without it", "Emergency block: full red frame, green button and dot; the Codex console hides after removal", "The bridge sends PNG and JPEG screenshots from Codex to Telegram as original files"]}},
     {"v": "1.25.27", "date": "2026-11-01",
      "ru": {"t": "Копии профилей аккаунтов встроены в балансер", "p": ["Раз в сутки и при новом входе балансер сам копирует профили аккаунтов, хранится 14 копий", "В ⚙ блок «Копии аккаунтов»: «Копия сейчас» и «Восстановить недостающие», живые аккаунты не трогаются", "Удалённый кнопкой аккаунт из копий не возвращается; папка копий открыта только для root"]},
      "en": {"t": "Account backups are built into the balancer", "p": ["Once a day and on a new sign-in the balancer copies the account profiles itself, 14 copies are kept", "New ⚙ block “Account backups”: “Back up now” and “Restore missing”, live accounts are never touched", "An account deleted with the button is not brought back; the backup folder is root-only"]}},

@@ -646,7 +646,14 @@ Below the Codex section there is a "Telegram ↔ Codex bridge" card: you write t
 - For Codex "rights" are a sandbox wall, for Claude they are a condition of the task. Tasks reach the console through `screen -X stuff` (ASCII only, Enter as a separate call), so it is best-effort: a busy console is not forced — answer "retry N".
 - Run Codex as a separate OS user: `"codex_user": "name"` in `config.json` (the profiles must then live where that user can write — `codex_profiles` in `config.json` or `CC_CODEX_PROFILES`).
 
-Tests: `python3 -m unittest test_cc_codex_bridge` (fake codex and Bot API, no network needed).
+Since v1.25.28 the bridge returns PNG/JPEG screenshots as original files in Telegram. Codex is told to save an image
+in its working folder's `outbox` and include a separate `![Caption](outbox/shot.png)` line in the final reply.
+For mediator/orchestrator this is `exchange/outbox`; self mode uses the selected working folder. Sandbox permissions
+are unchanged, and read-only mode gets no image-output hint. Up to five regular images of 10 MB each are accepted,
+directly inside `outbox`, without symlinks. Fenced code examples and external URLs remain text. The text reply is
+sent first; an attachment failure produces a short error message.
+
+Tests: `python3 -m unittest test_cc_codex_bridge test_cc_codex_output` (fake codex and Bot API, no network needed).
 
 ## Codex window, profiles, orchestrator and console (v1.25.0)
 
@@ -726,6 +733,14 @@ The reserve turns on in two ways. By hand — with the "Reserve" switch in the h
 - **The "…and also turn on Codex emergency mode" tick.** Available only together with "Turn on by itself". It needs a configured emergency mode (see "Codex emergency mode"): then, in the automatic case, the reserve also turns on Codex's full access to the project so it can apply the agent's result. If the mode is not set up, a note under the tick says so and the reserve runs without full access. The emergency mode turns off together with the reserve.
 
 Worth knowing: while the reserve is on manually, **Claude cannot work** — that is the point of the switch. The emergency way out is the "Turn off pause" button on the pause banner: Claude continues at once and the reserve stays on.
+
+**The "Agent" profile and the delegate command (v1.25.28).** If you have a command of your own that sends text to the agent and returns its answer, put it into `config.json` → `notion_agent.delegate_cmd` (letters, digits and `_ . / -` only, up to 80 characters). Then:
+
+- an **"Agent"** entry appears in the profile menu: Claude and Codex do not make big edits themselves but hand the task to the agent with `command "text"` (a long task: `command -f file`), check the answer independently with tests and apply it after your "yes";
+- Claude learns about the mode from the `delegate_note.txt` file in the balancer folder and a `UserPromptSubmit` hook, Codex from the working folder's `AGENTS.md` and a note in every message;
+- during the reserve this command becomes the main path to the agent and the Notion tools the fallback.
+
+While `delegate_cmd` is not set the "Agent" profile stays hidden and nothing changes.
 
 ### If something went wrong
 
@@ -917,6 +932,11 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.28** — "Agent" profile: Claude and Codex hand tasks to the agent with the command from `notion_agent.delegate_cmd`
+  instead of editing themselves; without the command the profile stays hidden. Emergency profile: a red frame around the whole
+  block with a stripe on the left, the blinking button and dot are green, the Codex console tab hides after "Remove Codex
+  entirely". The bridge returns PNG/JPEG screenshots from Codex to Telegram as original files: image lines in the final reply
+  become attachments from the working folder's `outbox`, with format, size, count and path checks; an attachment error does not lose the text.
 - **v1.25.27** — Account profile backups are built into the balancer. Once a day and whenever an account appears or goes
   missing, it copies the profiles (sign-in tokens) into `/opt/cc-limits/profile_backups`: 14 dated copies plus a fresh
   `latest.tar.gz` that every token change updates. Empty and test slots are never copied and never push old copies out. A new
