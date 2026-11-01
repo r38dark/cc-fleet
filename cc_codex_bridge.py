@@ -8,7 +8,7 @@
 #  • «Самостоятельно» — Codex работает сам по выбранному доступу: чтение / запись в рабочей папке / полный.
 #    Режим и доступ переключает только человек, в карточке балансера.
 # Инициативы у Codex нет: он отвечает только на сообщения человека и сам заданий не создаёт.
-import datetime, json, math, os, re, subprocess, threading, time, urllib.error, urllib.request
+import datetime, json, math, os, re, secrets, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
 import cc_codex
 
 BASE = os.environ.get("CC_LIMITS_BASE", "/opt/cc-limits")  # cc_limits подставляет свой BASE
@@ -385,6 +385,132 @@ def tg_api(token, method, payload=None, timeout=30):
     return data
 
 
+# ---------------------------------------------------------------- изображения из Telegram
+# Фото (и картинка, присланная документом) сохраняется в общую папку обмена, а в запрос к Codex идёт подпись и абсолютный путь:
+# Codex открывает файл инструментом view_image. Так работает и живая консоль, и запасной codex exec: оба получают одну строку.
+IMG_MAX_BYTES = 10 * 1024 * 1024  # больше не качаем (Bot API и так отдаёт боту файлы только до 20 МБ)
+IMG_KEEP_DAYS = 7  # файлы старше удаляются при следующей загрузке; до конца обработки сообщения файл точно на месте
+IMG_SIGNATURES = ((b"\xff\xd8\xff", "jpg"), (b"\x89PNG\r\n\x1a\n", "png"))  # формат определяем по байтам, не по имени и mime
+IMG_MIMES = ("image/jpeg", "image/png", "image/webp")
+IMG_TYPES_RU = "JPEG, PNG и WebP"
+ALBUM_WAIT = 1.5  # фото альбома Telegram шлёт отдельными сообщениями с общим media_group_id: ждём остальные и отдаём Codex разом
+ALBUM_MAX = 10  # больше фото в одном альбоме Telegram не бывает
+
+
+class ImageError(Exception):
+    """Вложение не принято. Текст безопасен для человека: без токена бота и без адреса скачивания."""
+
+
+def _img_ext(data):
+    for sig, ext in IMG_SIGNATURES:
+        if data.startswith(sig):
+            return ext
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def image_from_message(m):
+    """Сообщение без текста → (file_id, размер или None) для photo и для document-картинки; None — вложения-картинки нет.
+    Картинка, которую нельзя принять (формат, размер) → ImageError."""
+    photos = [p for p in (m.get("photo") or []) if isinstance(p, dict) and p.get("file_id")]
+    if photos:
+        # самый крупный вариант, который влезает в лимит: Telegram присылает одно фото в нескольких размерах
+        fit = [p for p in photos if not p.get("file_size") or p["file_size"] <= IMG_MAX_BYTES]
+        if not fit:
+            raise ImageError(f"Фото больше {IMG_MAX_BYTES // 1048576} МБ, не принимаю.")
+        best = max(fit, key=lambda p: (p.get("width") or 0) * (p.get("height") or 0) or (p.get("file_size") or 0))
+        return best["file_id"], best.get("file_size")
+    d = m.get("document")
+    if isinstance(d, dict) and d.get("file_id"):
+        if str(d.get("mime_type") or "").lower() not in IMG_MIMES:
+            raise ImageError(f"Файлы не принимаю. Картинку пришли как фото или документом {IMG_TYPES_RU}.")
+        if d.get("file_size") and d["file_size"] > IMG_MAX_BYTES:
+            raise ImageError(f"Картинка больше {IMG_MAX_BYTES // 1048576} МБ, не принимаю.")
+        return d["file_id"], d.get("file_size")
+    return None
+
+
+def tg_download(token, file_path, limit=IMG_MAX_BYTES):
+    """Скачать файл Bot API целиком (не больше limit байт). Адрес содержит токен — наружу (в ошибки и журнал) он не попадает."""
+    fp = str(file_path or "")
+    if not fp or fp.startswith("/") or ".." in fp.split("/"):
+        raise ImageError("Telegram вернул странный путь к файлу.")
+    url = f"{TG_API}/file/bot{token}/{urllib.parse.quote(fp)}"
+    try:
+        with urllib.request.urlopen(url, timeout=60) as r:
+            data = r.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        raise ImageError(f"Telegram не отдал файл (код {e.code}).") from None
+    except Exception as e:
+        raise ImageError("Не удалось скачать файл из Telegram: " + type(e).__name__) from None
+    if len(data) > limit:
+        raise ImageError(f"Картинка больше {limit // 1048576} МБ, не принимаю.")
+    return data
+
+
+def _readable_by_codex(path):
+    """Файл должен читаться тем пользователем ОС, от которого работает Codex (мост бывает root), а не только мостом."""
+    if not cc_codex.runas_user():
+        return os.access(path, os.R_OK)
+    argv, env = cc_codex.wrap(["test", "-r", path], BASE)
+    try:
+        return subprocess.run(argv, env=env, capture_output=True, timeout=10).returncode == 0
+    except Exception:
+        return False
+
+
+def _prune_images(d):
+    cut = NOW() - IMG_KEEP_DAYS * 86400
+    for n in os.listdir(d):
+        p = os.path.join(d, n)
+        try:
+            if n.startswith("img_") and os.path.isfile(p) and not os.path.islink(p) and os.path.getmtime(p) < cut:
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def fetch_image(s, file_id):
+    """Скачать картинку из Telegram в <обмен>/inbox/images под сгенерированным именем. → абсолютный путь; ошибка — ImageError."""
+    try:
+        info = tg_api(s["token"], "getFile", {"file_id": file_id}, 20).get("result")
+    except TgError as e:
+        raise ImageError("Telegram не отдаёт этот файл: " + _mask(e)[:200]) from None
+    if not isinstance(info, dict) or not info.get("file_path"):
+        raise ImageError("Telegram не вернул файл.")
+    if (info.get("file_size") or 0) > IMG_MAX_BYTES:
+        raise ImageError(f"Картинка больше {IMG_MAX_BYTES // 1048576} МБ, не принимаю.")
+    data = tg_download(s["token"], info["file_path"])
+    ext = _img_ext(data)
+    if not ext:
+        raise ImageError(f"Это не {IMG_TYPES_RU}.")
+    d = os.path.abspath(os.path.join(exchange_dir(s), "inbox", "images"))
+    os.makedirs(d, exist_ok=True)
+    os.chmod(d, 0o755)  # читает пользователь Codex; писать в папку может только мост
+    _prune_images(d)
+    name = "img_%s_%s.%s" % (time.strftime("%Y%m%d_%H%M%S", time.localtime(NOW())), secrets.token_hex(4), ext)  # имя из Telegram не берём
+    path, tmp = os.path.join(d, name), os.path.join(d, "." + name + ".tmp")
+    with open(tmp, "xb") as f:
+        f.write(data)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+    if not _readable_by_codex(path):
+        os.remove(path)
+        raise ImageError("Картинка сохранена, но пользователь Codex не может её прочитать. Проверь права на папку обмена.")
+    log(f"картинка принята: {name}, {len(data)} Б")
+    return path
+
+
+def image_prompt(caption, paths):
+    """Запрос к Codex: подпись и список абсолютных путей. Подпись — просто текст человека, команд моста в ней нет."""
+    n = len(paths)
+    head = (caption or "").strip() or ("Пользователь прислал изображение без подписи." if n == 1
+                                       else f"Пользователь прислал изображения ({n} шт.) без подписи.")
+    return (f"{head}\n\n[Вложения из Telegram: изображения лежат на сервере. Открой каждое инструментом view_image "
+            "по абсолютному пути:\n" + "\n".join(paths) + "]")
+
+
 def chunks(text, size=4000):
     """Кусками не длиннее size, режем по концу строки/пробелу."""
     text = (text or "").strip() or "(пусто)"
@@ -753,6 +879,8 @@ class Bridge:
         self.cancel = threading.Event()  # /stop и /new: прервать запрос, идущий в консоли
         self.in_console = False
         self.warned = set()
+        self.albums = {}  # media_group_id → {"ids": [file_id], "caption": str, "timer": Timer}: альбом, который ещё собирается
+        self.album_lock = threading.Lock()
 
     def busy(self):
         return bool(self.worker and self.worker.is_alive())
@@ -781,9 +909,77 @@ class Bridge:
             return
         text = (m.get("text") or "").strip()
         if not text:
-            self.send("Пока понимаю только текст.")
+            try:
+                img = image_from_message(m)
+            except ImageError as e:
+                return self.send(f"⚠️ {e}")
+            if img:
+                # подпись к картинке идёт мимо handle_text: «да», /stop и /new в подписи ничего не подтверждают и не останавливают
+                caption = (m.get("caption") or "").strip()
+                if m.get("media_group_id"):  # альбом: каждое фото приходит отдельным update, собираем их в одно сообщение
+                    return self.collect_album(str(m["media_group_id"]), img[0], caption)
+                return self.handle_image([img[0]], caption)
+            self.send(f"Пока понимаю текст и картинки ({IMG_TYPES_RU}).")
             return
         self.handle_text(text)
+
+    def collect_album(self, gid, file_id, caption):
+        """Фото альбома копятся, пока новые приходят чаще, чем раз в ALBUM_WAIT; потом уходят в Codex одним сообщением.
+        Подпись Telegram кладёт на одно из фото альбома — берём первую непустую."""
+        with self.album_lock:
+            a = self.albums.setdefault(gid, {"ids": [], "caption": "", "timer": None})
+            if len(a["ids"]) < ALBUM_MAX:
+                a["ids"].append(file_id)
+            a["caption"] = a["caption"] or caption
+            if a["timer"]:
+                a["timer"].cancel()
+            a["timer"] = threading.Timer(ALBUM_WAIT, self.flush_album, (gid,))
+            a["timer"].daemon = True
+            a["timer"].start()
+
+    def flush_album(self, gid):
+        with self.album_lock:
+            a = self.albums.pop(gid, None)
+        if a:
+            self.handle_image(a["ids"], a["caption"])
+
+    def handle_image(self, file_ids, caption):
+        if self.busy():  # сообщение не теряем молча: человек знает, что картинки надо прислать снова
+            one = len(file_ids) == 1
+            return self.send("Codex ещё работает над прошлым сообщением, " + ("картинку не принял. Пришли её" if one else "картинки не принял. Пришли их")
+                             + " снова, когда он закончит, или /stop.")
+        self.worker = threading.Thread(target=self.ask_image, args=(list(file_ids), caption), daemon=True, name="codex-image")
+        self.worker.start()
+
+    def ask_image(self, file_ids, caption):
+        s = load()
+        try:
+            tg_api(s["token"], "sendChatAction", {"chat_id": chat_id(s), "action": "upload_photo"}, 10)
+        except Exception:
+            pass
+        paths, n = [], len(file_ids)
+        try:
+            for i, fid in enumerate(file_ids, 1):
+                try:
+                    paths.append(fetch_image(s, fid))
+                except ImageError as e:
+                    raise ImageError((f"Фото {i} из {n}: " if n > 1 else "") + str(e)) from None
+        except ImageError as e:
+            self._drop_files(paths)  # альбом принимаем целиком или никак: Codex не должен ответить по части фото
+            return self.send(f"⚠️ {e}")
+        except Exception as e:
+            self._drop_files(paths)
+            log(f"картинка: {type(e).__name__} {e}")
+            return self.send("⚠️ Не удалось принять картинку, подробности в журнале.")
+        self.ask_codex(image_prompt(caption, paths))
+
+    @staticmethod
+    def _drop_files(paths):
+        for p in paths:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
     def handle_text(self, text):
         low = text.lower()

@@ -114,7 +114,7 @@ apt-get install -y -qq $APT_PKGS
 command -v claude >/dev/null 2>&1 || warn "Бинарник 'claude' не найден в PATH — веб-кнопка 'Войти заново' работать не будет, пока не поставишь Claude Code (npm i -g @anthropic-ai/claude-code)."
 
 # ---------- сервис ----------
-log "Копирую cc_limits.py, cc_update.py, cc_avail.py, cc_poll.py, cc_lock.py, cc_codex.py, cc_codex_bridge.py, cc_codex_console.py и cc_codex_emergency.py → $BASE"
+log "Копирую cc_limits.py, cc_update.py, cc_avail.py, cc_poll.py, cc_lock.py, cc_codex.py, cc_codex_bridge.py, cc_codex_console.py, cc_codex_emergency.py и cc_notion.py → $BASE"
 mkdir -p "$BASE"
 cp "$SCRIPT_DIR/cc_limits.py" "$BASE/cc_limits.py"
 chmod 644 "$BASE/cc_limits.py"
@@ -142,6 +142,9 @@ chmod 644 "$BASE/cc_codex_console.py"
 # аварийный режим Codex (полный доступ к проекту на время, включается только кнопкой) — импортирует cc_limits.py
 cp "$SCRIPT_DIR/cc_codex_emergency.py" "$BASE/cc_codex_emergency.py"
 chmod 644 "$BASE/cc_codex_emergency.py"
+# карточка Notion-агента на странице (состояние берёт из входа Claude Code, без сети) — импортирует cc_limits.py
+cp "$SCRIPT_DIR/cc_notion.py" "$BASE/cc_notion.py"
+chmod 644 "$BASE/cc_notion.py"
 # история изменений для «⚙ Настройки → Обновления» (дальше приезжает с обновлениями)
 cp "$SCRIPT_DIR/CHANGELOG.json" "$BASE/CHANGELOG.json"
 chmod 644 "$BASE/CHANGELOG.json"

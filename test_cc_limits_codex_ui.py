@@ -84,24 +84,46 @@ class Page(unittest.TestCase):
         self.assertIn("closest('#cxQ,#cxMod')", page)
         self.assertRegex(page, r"Escape'[^\n]*cxQClose\(\)")
 
+    def test_add_account_dialog_explains_device_code_signin(self):
+        """Окно «+»: человек с нуля узнаёт, что вход по коду устройства включается в ChatGPT (Безопасность) и что в рабочем
+        пространстве это делает администратор — и по-русски, и по-английски."""
+        src = open(os.path.join(os.path.dirname(__file__), "cc_limits.py"), encoding="utf-8").read()
+        ru = re.search(r"cxAddSub:'([^\n]*)',", src).group(1)
+        en = re.findall(r"cxAddSub:'([^\n]*)',", src)[1]
+        for text, words in ((ru, ("Безопасность", "администратор", "код")), (en, ("Security", "admin", "code"))):
+            for w in words:
+                self.assertIn(w, text)
+
     def test_bot_switch_is_not_a_profile(self):
-        # «Выключен» — не профиль: бот включается отдельным выключателем над списком, профиль при этом не меняется
+        # «Выключен» — не профиль; выключатель бота в меню профилей не нужен (просьба владельца): он живёт только в ⚙ → «Мост Telegram»
         self.assertNotRegex(L.PAGE, r"p\.on\b|on===false|cxpS_off|cxpOffStop")
         r = re.search(r"function cxpRender\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
-        self.assertLess(r.index("cxpBotHtml(b)"), r.index("cxplist"))
-        tog = re.search(r"async function cxpBotToggle\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
-        self.assertIn("chatgpt/bridge/save',{enabled:!b.enabled}", tog)
-        self.assertNotIn("profile", tog)
-        # клик по выключателю не применяет профиль и не закрывает меню
-        self.assertRegex(L.PAGE, r"closest\('\[data-bot\]'\)\)\{e\.stopPropagation\(\);cxpBotToggle\(\);return;\}")
+        self.assertNotIn("cxpBotHtml", r)
+        self.assertNotRegex(L.PAGE, r"cxpBot|data-bot|\.cxbot\b|\.cxsw\b")
+        form = re.search(r"function cxbRender\(force\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn('id="cxbOn"', form)
+        self.assertIn("const on=$('#cxbOn')", L.PAGE)
+        self.assertIn("enabled:!!(on&&on.checked)", L.PAGE)
 
-    def test_bot_switch_texts_say_pushes_still_arrive(self):
-        # бот выключен — ответы и Codex молчат, но пуши о лимитах и подписке идут (мост шлёт их, пока бот подключён)
-        def val(lang, key):
-            return re.search(r"^\s{2}%s:'(.*)',$" % key, i18n_block(lang), re.M).group(1)
-        for lang, word in (("ru", "пуши"), ("en", "pushes")):
-            self.assertIn(word, val(lang, "cxpBotOff").lower())
-            self.assertNotIn(word, val(lang, "cxpBotOn").lower())
+    def test_profiles_menu_is_side_drawer_on_desktop_only(self):
+        # ПК (>640 px): шторка справа на всю высоту, с крестиком и скримом; телефон — выпадающее меню под кнопкой, как раньше
+        self.assertIn('id="cxMenuScrim"', L.PAGE)
+        self.assertRegex(L.PAGE, r"@media \(min-width:641px\)\{[^@]*\.cxpop\.cxmenu\{[^}]*right:0[^}]*height:100%")
+        self.assertRegex(L.PAGE, r"@media \(max-width:640px\)\{\s*\.cxscrim\{display:none!important\}")
+        place = re.search(r"function cxMenuPlace\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn("innerWidth>640", place)
+        # «назад» закрывает шторку, а не приложение: pushState + popstate
+        self.assertIn("history.pushState({cxm:1}", L.PAGE)
+        self.assertRegex(L.PAGE, r"addEventListener\('popstate'")
+        # крестик в шапке закрывает меню
+        self.assertIn('data-close="1"', L.PAGE)
+        self.assertRegex(L.PAGE, r"closest\('\[data-close\]'\)\)\{e\.stopPropagation\(\);cxMenuClose\(\);return;\}")
+
+    def test_console_tabs_are_coloured_orange_claude_blue_codex(self):
+        # вкладки консолей: Claude — спокойный оранжевый, Codex — спокойный синий (просьба владельца); перекрывают скины
+        self.assertRegex(L.PAGE, r"html:root:root \.iconbtn\.ctab\[data-s\]\{--tc:224,144,90;")
+        self.assertRegex(L.PAGE, r'html:root:root \.iconbtn\.ctab\[data-s="codex"\]\{--tc:104,154,236;')
+        self.assertRegex(L.PAGE, r"\.iconbtn\.ctab\[data-s\]\.on\{")
 
     def test_form_has_project_and_own_workdir_fields(self):
         # «Проект» — всегда (Codex его только читает), «Рабочая папка Codex» — только в режиме «Самостоятельно»; project уходит, лишь если его правили
@@ -173,7 +195,6 @@ class Page(unittest.TestCase):
         used = set(re.findall(r"tr\('(cx\w+)'", L.PAGE)) - dyn
         for p in pfx:
             used |= {p + i for i in ("orchestrator", "codex")}
-        used |= {"cxpBotOnToast", "cxpBotOffToast"}  # tr(b.enabled?'…':'…') — в разбор по шаблону не попадает
         used |= {"cxoMode_" + i for i in ("mediator", "orchestrator", "self")}
         used |= {"cxoAcc_" + i for i in ("read", "write", "full")}
         used |= {"cxoRt_" + i for i in ("read", "dev", "full")}

@@ -224,7 +224,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -589,6 +589,33 @@ failure caused by this race — it is prevention.
 Tests (standard library only, no `pytest`; live files are not touched):
 `python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock test_cc_update_banner`.
 
+## Connecting Codex from scratch (v1.25.17)
+
+What it is for: Codex is a spare leg for when your Claude accounts are unavailable, and a "helper" (the Orchestrator profile) that drives a goal while Claude executes the steps. Until Codex is installed it **does not show up in the panel at all**: no `>_` icon and no ⚙ next to it — that is by design, not a fault. The whole path is six steps, about ten minutes.
+
+1. **Install Codex on the server:** `npm i -g @openai/codex`, check with `codex --version`. The panel takes the `codex` command from the service's `PATH`. If the service cannot see it (npm installed it in a folder that is not on the service's `PATH`), put the full path in `/opt/cc-limits/config.json`: `"codex_bin": "/path/to/codex"` and restart the service (`systemctl restart cc-limits`). Reload the page — `>_` and ⚙ appear in the header.
+2. **Turn on device-code sign-in in ChatGPT** (a beta feature, off by default). Personal account: ChatGPT → Settings → Security → the device-code switch for Codex (different ChatGPT versions word it a little differently: *Enable device code authorization for Codex* / *Allow device code login*). Workspace (Business, Enterprise): an admin turns it on in the workspace permissions. You need a ChatGPT plan that includes Codex. If the switch is off, the sign-in page will not accept the code or will not go further.
+3. **Add an account:** ⚙ next to `>_` → "ChatGPT accounts and limits" → "+" → a name (optional) → "Get code". A link and a one-time code appear: open the link in any browser where you are signed in to the right ChatGPT account, enter the code (it lives 15 minutes). The panel shows "✅ Connected". No password or email is typed here — the server never sees them, the token lives in `/root/.codex-profiles/gptN` with 700/600 rights.
+4. **Create a Telegram bot:** message @BotFather in Telegram → `/newbot` → get a token like `123456:ABC…`. It must be a **separate** bot, not the one Claude uses. Then open your new bot and press "Start" — without that the bot cannot write to you first.
+5. **Connect the bot:** ⚙ → "Telegram bridge and all settings" → paste the token → "Connect". The "chat_id" field must hold your number (ask @userinfobot for it; if you entered a chat_id for notifications during installation, it is already filled in) → "Save". The bridge answers only this chat_id.
+6. **Pick a profile:** `>_` in the header → "Orchestrator" (Codex drives the goal, Claude executes the steps after your "yes") or "Codex" (works on its own, without Claude). Once both a bot and a profile exist the bridge switches itself on; the "Bridge enabled" tick is in the same ⚙ → "Telegram bridge and all settings" window.
+
+Check: write "hi" to your bot — the answer arrives in Telegram, and the "Codex" tab of the console shows the same conversation.
+
+If something went wrong:
+
+| What you see | Cause and what to do |
+|---|---|
+| No `>_` icon and no ⚙ | The service did not find `codex`: step 1, `codex_bin` |
+| "codex login showed no link and code" | An old Codex version (update: `npm i -g @openai/codex@latest`) or the server has no internet access |
+| The sign-in page does not accept the code / goes no further | Device-code sign-in is not enabled: step 2 |
+| "The code was not confirmed in time or the sign-in was cancelled" | The code lives 15 minutes: press "Get code" again |
+| "This account is already connected as gptN" | It is already in the list — no need to add it twice |
+| "That token is already used by Claude" | You need a separate bot (step 4) |
+| The bot is silent | "Start" not pressed; wrong chat_id; no profile chosen; "Bridge enabled" not ticked |
+
+It is better to run Codex as a separate OS user (`"codex_user": "name"` in `config.json`) — details are in the bridge section below. For a first try it is not required.
+
 ## ChatGPT (Codex) accounts (v1.24.0)
 
 A "ChatGPT (Codex)" section appears under the Claude cards — a fallback in case the Claude accounts become unavailable. It is a **separate program with its own sign-in**: it is not part of Claude's automatic account switching, and limit optimisation does not touch it.
@@ -618,7 +645,7 @@ Tests: `python3 -m unittest test_cc_codex_bridge` (fake codex and Bot API, no ne
 
 When Codex is installed, a `>_` icon with the name of the selected profile appears in the header. A click opens a window: profiles, ChatGPT accounts and limits, the Telegram bridge and all its settings.
 
-- **Profiles.** Two built-in ones; each card shows arrows for the flow and coloured chips for the main functions, and the ⓘ icon opens a "How it goes" diagram, "Can / Cannot" and "When to pick it". **ORCHESTRATOR (Codex ➜ Claude)** — Codex is in charge: you write in Telegram, it drafts a step and shows it, waits for your "yes", Claude executes, Codex accepts the result; Codex changes nothing in the project and writes only to the exchange folder. **Codex (native AI)** — works on its own, without Claude: reads and writes in its own working folder and sees the project only as a read-only snapshot. The bot is switched on and off by a separate "Telegram bot" switch above the profiles — not by an "Off" profile. Full access is never part of a built-in profile — only the emergency mode (below) gives it. The bridge mode is set by the profile; the manual "mode / access / rights" lists and the own-profile builder are gone (removed in v1.25.11). Own profiles from earlier versions stay: they can be applied and deleted, new ones cannot be built. The bridge form holds the account, the token, the chat and the switch, plus two folders: in the "Codex" profile the "Codex working folder" comes first (Codex can do anything there — create files and folders, change and run things — and cannot write outside it), then "Project (read only)"; in the Orchestrator only the "Project" that Codex reads is shown.
+- **Profiles.** Two built-in ones; each card shows arrows for the flow and coloured chips for the main functions, and the ⓘ icon opens a "How it goes" diagram, "Can / Cannot" and "When to pick it". **ORCHESTRATOR (Codex ➜ Claude)** — Codex is in charge: you write in Telegram, it drafts a step and shows it, waits for your "yes", Claude executes, Codex accepts the result; Codex changes nothing in the project and writes only to the exchange folder. **Codex (native AI)** — works on its own, without Claude: reads and writes in its own working folder and sees the project only as a read-only snapshot. The bot is switched on and off by the "Bridge enabled" tick in ⚙ → "Telegram bridge and all settings" (since v1.25.17 it is no longer in the profile menu) — not by an "Off" profile. Full access is never part of a built-in profile — only the emergency mode (below) gives it. The bridge mode is set by the profile; the manual "mode / access / rights" lists and the own-profile builder are gone (removed in v1.25.11). Own profiles from earlier versions stay: they can be applied and deleted, new ones cannot be built. The bridge form holds the account, the token, the chat and the switch, plus two folders: in the "Codex" profile the "Codex working folder" comes first (Codex can do anything there — create files and folders, change and run things — and cannot write outside it), then "Project (read only)"; in the Orchestrator only the "Project" that Codex reads is shown.
 - **Limit counters and pushes.** Next to the profile in the header: the 5-hour and weekly windows of the active account (yellow from 80%, red from 95%; "until HH:MM" when spent, "login!" when the sign-in lapsed, the subscription is shown 7 days before its end). While the Telegram bot is connected this works even with the bot switched off (the switch silences Codex replies, not these messages). The bridge sends one Telegram message per threshold: 90%, spent, available again (after dropping below 80%) and the subscription ending at 7, 3, 1 days and on the day. If a paid account falls to Free, a red FREE tag appears in the header and the card, one Telegram push is sent and the bridge keeps running; "I renewed" re-reads the plan and subscription end and clears the warnings.
 - **Orchestrator.** Codex splits the goal into steps and drives them one at a time, Claude executes. Every step reaches Claude only after your "yes" in the chat; the result goes back to Codex, which compares it with the goal and drafts the next step or says the goal is reached. The word "stop" in the chat cancels everything, including a task waiting for "yes". There is no "auto for N steps" mode — no step goes out without "yes".
 - **Codex console.** A "Codex" tab appears next to the Claude console (small tabs at the top left, comfortable on a phone; the choice is remembered). Opening the tab starts the console by itself — an interactive `codex` in a separate `screen` session `cc-codex`; the page shows a mirror of its screen with scrollback; "Start" is only needed after a manual stop. **View only:** you cannot type into the console from the page — but the bridge types Telegram messages into this same console and reads the Codex reply from its session file and sends it to Telegram, so the tab shows the same conversation. If the console is closed or was started with other rights, the bridge starts it itself and continues the conversation (`codex resume`); it never restarts it while a request is running. `/stop` presses Esc in the console, `/new` restarts it with a clean conversation. The console runs with `-a never` (no approval prompts, the sandbox sets the limits); if the console is unavailable the bridge answers with a separate `codex exec` as before. Rights and working folder are the same as the bridge's (the console never takes full access on its own); stop it with the square next to the tabs. Without Codex there are no tabs.
@@ -742,7 +769,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -808,6 +835,16 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.17** — Codex understands pictures from Telegram: a photo (with or without a caption) or a picture sent as a file
+  is saved by the bridge and handed to Codex; an album of several photos (up to 10) becomes one request. A "yes" in
+  a caption does not confirm a task. The console tabs are coloured: Claude a calm orange, Codex blue. On a computer the
+  Codex profile list slides in from the right as a drawer (everything on one screen, no scroll bar); on a phone it is
+  still a drop-down, only more compact: no round switches or pills, a tick marks the chosen profile. The Telegram bot
+  switch is gone from this menu: "Bridge on" lives in ⚙ → "Telegram bridge". Next to the accounts there is a Notion agent
+  card (whether it is connected; the name comes from `config.json` → `notion_agent`), no tokens are shown on the page;
+  a new file `cc_notion.py`. The Codex profile name no longer overflows its button on a 360 px wide screen. A new section
+  "Connecting Codex from scratch": installation, device-code sign-in (it must be turned on in ChatGPT → Settings →
+  Security), the bot, chat_id, the profile, typical errors; the same in short is in the add-account window.
 - **v1.25.16** — the RU·EN language switch is gone from the header (on a phone it took a whole row). The default is still
   Russian; English is a link with `?lang=en` (`?lang=ru` brings Russian back), the choice is remembered in the browser.
   Switching accounts no longer wipes the MCP sign-ins (`mcpOAuth` in `~/.claude/.credentials.json`): a swap replaces only

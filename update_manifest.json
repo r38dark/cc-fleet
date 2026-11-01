@@ -1,5 +1,5 @@
 {
-  "version": "1.25.16",
+  "version": "1.25.17",
   "needs_install": false,
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
@@ -11,6 +11,7 @@
     {"src": "cc_codex_bridge.py", "mode": "644"},
     {"src": "cc_codex_console.py", "mode": "644"},
     {"src": "cc_codex_emergency.py", "mode": "644"},
+    {"src": "cc_notion.py", "mode": "644"},
     {"src": "CHANGELOG.json", "mode": "644"},
     {"src": "limits_gate.py", "mode": "755"},
     {"src": "pause_ctl.py", "mode": "755"},

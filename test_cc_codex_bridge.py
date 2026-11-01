@@ -37,6 +37,11 @@ def get(path):
         return f.read()
 
 
+def get_bytes(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -990,6 +995,363 @@ class PollError(Base):
         br.tg_api = api
         br.BRIDGE.poll_loop(ev)
         self.assertEqual(br._state().get("last_error"), "")
+
+JPG = b"\xff\xd8\xff\xe0" + b"jpeg-body" * 20
+PNG = b"\x89PNG\r\n\x1a\n" + b"png-body" * 20
+WEBP = b"RIFF\x10\x00\x00\x00WEBPVP8 " + b"webp-body" * 10
+
+
+class ImagesBase(Base):
+    """Фото из Telegram → файл в <обмен>/inbox/images, а в запрос к Codex идёт подпись и абсолютный путь (view_image)."""
+    TOKEN = "123456:" + "A" * 30
+
+    def setUp(self):
+        super().setUp()
+        self.api = []  # вызовы getFile
+        self.files = {"fid-big": ("photos/big.jpg", JPG), "fid-small": ("photos/small.jpg", JPG[:30]),
+                      "fid-png": ("documents/file_1.png", PNG), "fid-webp": ("documents/f.webp", WEBP),
+                      "fid-text": ("documents/f.png", "это вообще не картинка".encode())}
+        self.downloads = []
+        inner = br.tg_api
+
+        def api(token, method, payload=None, timeout=30):
+            if method == "getFile":
+                self.api.append(payload["file_id"])
+                if payload["file_id"] == "fid-gone":
+                    raise br.TgError(400, "Bad Request: file is too big")
+                if payload["file_id"] == "fid-badpath":
+                    return {"ok": True, "result": {"file_path": "../../etc/passwd"}}
+                fp = self.files[payload["file_id"]][0]
+                return {"ok": True, "result": {"file_id": payload["file_id"], "file_path": fp, "file_size": len(self.files[payload["file_id"]][1])}}
+            return inner(token, method, payload, timeout)
+        br.tg_api = api
+
+        def download(token, file_path, limit=br.IMG_MAX_BYTES):
+            self.downloads.append(file_path)
+            for fid, (fp, data) in self.files.items():
+                if fp == file_path:
+                    if len(data) > limit:
+                        raise br.ImageError("Картинка больше 10 МБ, не принимаю.")
+                    return data
+            raise br.ImageError("Telegram не отдал файл (код 404).")
+        br.tg_download = download
+        self.addCleanup(setattr, br, "tg_download", self._orig_dl)
+        self.images = os.path.join(self.ex, "inbox", "images")
+
+    _orig_dl = br.tg_download
+
+    def photo(self, caption=None, sizes=None, chat=100200300, doc=None):
+        m = {"chat": {"id": chat}}
+        if doc:
+            m["document"] = doc
+        else:
+            m["photo"] = sizes or [{"file_id": "fid-small", "width": 90, "height": 60, "file_size": 30},
+                                   {"file_id": "fid-big", "width": 1280, "height": 960, "file_size": 400}]
+        if caption is not None:
+            m["caption"] = caption
+        br.BRIDGE.handle_update({"update_id": 1, "message": m})
+        w = br.BRIDGE.worker
+        if w:
+            w.join(20)
+
+    def imgs(self):
+        return sorted(os.listdir(self.images)) if os.path.isdir(self.images) else []
+
+
+class Images(ImagesBase):
+    def test_photo_with_caption_reaches_exec_with_path(self):
+        self.photo("что на скрине?")
+        self.assertEqual(self.api, ["fid-big"], "взят самый крупный вариант фото")
+        (name,) = self.imgs()
+        self.assertRegex(name, r"^img_\d{8}_\d{6}_[0-9a-f]{8}\.jpg$")
+        path = os.path.join(self.images, name)
+        self.assertEqual(get_bytes(path), JPG)
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o644)
+        prompt = self.runs()[0]["argv"][-1]
+        self.assertTrue(prompt.startswith("что на скрине?"))
+        self.assertIn("view_image", prompt)
+        self.assertIn(path, prompt)
+        self.assertTrue(os.path.isabs(path))
+        self.assertEqual(self.sent[-1], "ответ: " + prompt)
+
+    def test_photo_without_caption_is_delivered(self):
+        self.photo()
+        prompt = self.runs()[0]["argv"][-1]
+        self.assertIn("без подписи", prompt)
+        self.assertIn(os.path.join(self.images, self.imgs()[0]), prompt)
+
+    def test_documents_png_and_webp(self):
+        self.photo("док", doc={"file_id": "fid-png", "mime_type": "image/png", "file_name": "../../evil.sh"})
+        self.photo("док2", doc={"file_id": "fid-webp", "mime_type": "image/webp"})
+        exts = sorted(n.rsplit(".", 1)[1] for n in self.imgs())
+        self.assertEqual(exts, ["png", "webp"])
+        self.assertNotIn("evil", " ".join(self.imgs()), "присланное имя в путь не попадает")
+        self.assertEqual(len(self.runs()), 2)
+
+    def test_non_image_document_refused_without_codex(self):
+        self.photo("pdf", doc={"file_id": "fid-big", "mime_type": "application/pdf"})
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(self.api, [])
+        self.assertIn("не принимаю", self.sent[-1])
+
+    def test_fake_image_content_refused(self):
+        self.photo("подделка", doc={"file_id": "fid-text", "mime_type": "image/png"})
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(self.imgs(), [])
+        self.assertIn("Это не JPEG", self.sent[-1])
+
+    def test_other_attachment_is_not_silent(self):
+        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "voice": {"file_id": "v"}}})
+        self.assertIn("картинки", self.sent[-1])
+        self.assertEqual(self.runs(), [])
+
+    def test_plain_text_unchanged(self):
+        self.say("вопрос")
+        self.assertEqual(self.runs()[0]["argv"][-1], "вопрос")
+        self.assertEqual(self.api, [])
+
+    def test_too_big_is_reported(self):
+        self.photo("огромное", sizes=[{"file_id": "fid-big", "width": 9000, "height": 9000, "file_size": br.IMG_MAX_BYTES + 1}])
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(self.api, [])
+        self.assertIn("не принимаю", self.sent[-1])
+        self.photo("большой документ", doc={"file_id": "fid-png", "mime_type": "image/png", "file_size": br.IMG_MAX_BYTES + 1})
+        self.assertIn("не принимаю", self.sent[-1])
+
+    def test_download_failures_are_explicit_and_token_free(self):
+        self.photo("а", sizes=[{"file_id": "fid-gone", "width": 5, "height": 5}])
+        self.assertIn("⚠️", self.sent[-1])
+        self.assertIn("too big", self.sent[-1])
+        self.photo("б", sizes=[{"file_id": "fid-badpath", "width": 5, "height": 5}])
+        self.assertEqual(self.runs(), [])
+        self.assertNotIn(self.TOKEN, "\n".join(self.sent))
+
+    def test_real_download_rejects_bad_path_and_hides_token(self):
+        real = type(self)._orig_dl
+        for bad in ("../x.jpg", "/etc/passwd", "a/../../b.jpg", ""):
+            with self.assertRaises(br.ImageError):
+                real(self.TOKEN, bad)
+        old = br.TG_API
+        br.TG_API = "http://127.0.0.1:9"  # порт закрыт
+        try:
+            with self.assertRaises(br.ImageError) as c:
+                real(self.TOKEN, "photos/a.jpg")
+        finally:
+            br.TG_API = old
+        self.assertNotIn("A" * 30, str(c.exception))
+        self.assertNotIn("127.0.0.1", str(c.exception))
+
+    def test_foreign_chat_ignored(self):
+        self.photo("чужое", chat=111)
+        self.assertEqual(self.api, [])
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(self.sent, [])
+
+    def test_yes_caption_does_not_confirm_task(self):
+        self.say("оформи задание")
+        self.assertIsNotNone(br._state()["pending"])
+        self.photo("да")
+        self.assertIsNotNone(br._state()["pending"], "задание всё ещё ждёт слова «да»")
+        self.assertEqual(self.console, [], "Claude не вызван")
+        self.assertTrue(self.runs()[-1]["argv"][-1].startswith("да\n\n"), "подпись ушла в Codex как обычный текст")
+
+    def test_stop_caption_does_not_stop_or_reset(self):
+        self.say("первый")
+        self.photo("/new")
+        self.assertNotIn("Разговор начат заново.", self.sent)
+        self.assertEqual(self.runs()[-1]["argv"][:2], ["exec", "resume"], "тот же разговор")
+        self.assertTrue(self.runs()[-1]["argv"][-1].startswith("/new"))
+
+    def test_busy_is_reported_not_dropped_silently(self):
+        gate = threading.Event()
+        br.BRIDGE.worker = threading.Thread(target=gate.wait, args=(10,), daemon=True)
+        br.BRIDGE.worker.start()
+        try:
+            br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "photo": [{"file_id": "fid-big", "width": 9, "height": 9}]}})
+        finally:
+            gate.set()
+            br.BRIDGE.worker.join(5)
+        self.assertIn("картинку не принял", self.sent[-1])
+        self.assertEqual(self.api, [])
+        self.assertEqual(self.imgs(), [])
+
+    def test_old_images_pruned_new_kept(self):
+        self.photo("1")
+        old = os.path.join(self.images, self.imgs()[0])
+        keep = os.path.join(self.images, "notes.txt")
+        put(keep, "чужой файл не трогаем")
+        os.utime(old, (1, 1))
+        os.utime(keep, (1, 1))
+        br.NOW = lambda: time.time()
+        self.photo("2")
+        left = self.imgs()
+        self.assertEqual(len(left), 2)
+        self.assertNotIn(os.path.basename(old), left)
+        self.assertIn("notes.txt", left)
+
+    def test_unreadable_for_codex_is_error_and_file_removed(self):
+        orig = br._readable_by_codex
+        br._readable_by_codex = lambda p: False
+        try:
+            self.photo("нечитаемо")
+        finally:
+            br._readable_by_codex = orig
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(self.imgs(), [])
+        self.assertIn("не может её прочитать", self.sent[-1])
+
+    def test_readable_check_runs_as_codex_user(self):
+        calls = []
+        real_run = br.subprocess.run
+        br.subprocess.run = lambda argv, **kw: (calls.append(argv), types.SimpleNamespace(returncode=0))[1]
+        old = cc_codex.RUN_AS
+        try:
+            with unittest.mock.patch.object(cc_codex, "runas_user", return_value="codexuser"), \
+                    unittest.mock.patch.object(cc_codex.pwd, "getpwnam", return_value=types.SimpleNamespace(pw_dir="/home/codexuser")):
+                self.assertTrue(br._readable_by_codex("/x/y.jpg"))
+        finally:
+            br.subprocess.run = real_run
+            cc_codex.RUN_AS = old
+        self.assertEqual(calls[0][:4], ["runuser", "-u", "codexuser", "--"])
+        self.assertEqual(calls[0][-2:], ["-r", "/x/y.jpg"])
+
+
+class Albums(ImagesBase):
+    """Альбом Telegram приходит отдельными update с общим media_group_id: все фото уходят в Codex одним сообщением."""
+
+    def setUp(self):
+        super().setUp()
+        for n in "abc":
+            self.files["fid-" + n] = ("photos/%s.jpg" % n, JPG)
+        self._wait = br.ALBUM_WAIT
+        br.ALBUM_WAIT = 0.15
+        self.addCleanup(setattr, br, "ALBUM_WAIT", self._wait)
+
+    def album(self, ids, captions=None, gid="grp1", chat=100200300, wait=True):
+        for i, fid in enumerate(ids):
+            m = {"chat": {"id": chat}, "media_group_id": gid,
+                 "photo": [{"file_id": fid, "width": 100, "height": 100, "file_size": len(self.files[fid][1])}]}
+            if captions and captions[i]:
+                m["caption"] = captions[i]
+            br.BRIDGE.handle_update({"update_id": i, "message": m})
+        if wait:
+            end = time.time() + 10
+            while br.BRIDGE.albums and time.time() < end:
+                time.sleep(0.02)
+            w = br.BRIDGE.worker
+            if w:
+                w.join(20)
+
+    def test_album_goes_to_codex_as_one_message(self):
+        self.album(["fid-a", "fid-b", "fid-c"], ["подпись к альбому", None, None], wait=False)
+        self.assertEqual(self.api, [], "пока ждём остальные фото, ничего не качаем и Codex не зовём")
+        self.assertEqual(self.runs(), [])
+        self.album([], wait=True)
+        self.assertEqual(self.api, ["fid-a", "fid-b", "fid-c"], "порядок фото сохранён")
+        self.assertEqual(len(self.runs()), 1, "один запрос к Codex на весь альбом")
+        names = self.imgs()
+        self.assertEqual(len(names), 3)
+        prompt = self.runs()[0]["argv"][-1]
+        self.assertTrue(prompt.startswith("подпись к альбому"))
+        paths = [os.path.join(self.images, n) for n in names]
+        for p in paths:
+            self.assertIn(p, prompt)
+        self.assertEqual(len(self.sent), 1)
+        self.assertNotIn("не принял", self.sent[0])
+
+    def test_album_caption_on_last_photo_is_used(self):
+        self.album(["fid-a", "fid-b"], [None, "что тут?"])
+        self.assertTrue(self.runs()[0]["argv"][-1].startswith("что тут?"))
+
+    def test_album_without_caption_says_how_many(self):
+        self.album(["fid-a", "fid-b", "fid-c"])
+        self.assertIn("изображения (3 шт.) без подписи", self.runs()[0]["argv"][-1])
+
+    def test_album_with_unacceptable_photo_is_refused_whole(self):
+        self.album(["fid-a", "fid-text", "fid-c"], ["тест", None, None])
+        self.assertEqual(self.runs(), [], "Codex не отвечает по части альбома")
+        self.assertEqual(self.imgs(), [], "уже сохранённые фото убраны")
+        self.assertEqual(len(self.sent), 1)
+        self.assertTrue(self.sent[0].startswith("⚠️ Фото 2 из 3:"), self.sent[0])
+        self.assertNotIn(self.TOKEN, self.sent[0])
+
+    def test_album_while_busy_is_reported_once(self):
+        gate = threading.Event()
+        br.BRIDGE.worker = threading.Thread(target=gate.wait, args=(10,), daemon=True)
+        br.BRIDGE.worker.start()
+        try:
+            self.album(["fid-a", "fid-b"], wait=False)
+            end = time.time() + 10
+            while br.BRIDGE.albums and time.time() < end:
+                time.sleep(0.02)
+        finally:
+            gate.set()
+            br.BRIDGE.worker.join(5)
+        self.assertEqual(len(self.sent), 1, "одно сообщение на весь альбом, а не по числу фото")
+        self.assertIn("картинки не принял", self.sent[0])
+        self.assertEqual(self.api, [])
+        self.assertEqual(self.imgs(), [])
+
+    def test_two_albums_do_not_mix(self):
+        self.album(["fid-a"], gid="g1", wait=False)
+        self.album(["fid-b", "fid-c"], gid="g2", wait=False)
+        self.assertEqual(sorted(br.BRIDGE.albums), ["g1", "g2"])
+        end = time.time() + 10
+        while br.BRIDGE.albums and time.time() < end:
+            time.sleep(0.02)
+        w = br.BRIDGE.worker
+        if w:
+            w.join(20)
+        # второй альбом пришёл, пока Codex занят первым → ему сказано прислать снова, а не склеено с первым
+        self.assertEqual(len(self.runs()), 1)
+        n = len(self.imgs())  # какой из альбомов успел первым, неважно: в запрос идёт ровно он
+        self.assertIn(n, (1, 2))
+        self.assertEqual(self.runs()[0]["argv"][-1].count("img_"), n)
+        self.assertTrue(any("не принял" in m for m in self.sent), self.sent)
+
+    def test_album_from_foreign_chat_ignored(self):
+        self.album(["fid-a", "fid-b"], chat=555)
+        self.assertEqual(self.api, [])
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(br.BRIDGE.albums, {})
+
+    def test_yes_caption_in_album_does_not_confirm_task(self):
+        self.say("оформи задание")
+        self.assertIsNotNone(br._state()["pending"])
+        self.album(["fid-a", "fid-b"], ["да", None])
+        self.assertIsNotNone(br._state()["pending"], "задание всё ещё ждёт слова «да»")
+        self.assertEqual(self.console, [], "Claude не вызван")
+
+    def test_single_photo_without_group_is_not_delayed(self):
+        t = time.time()
+        br.ALBUM_WAIT = 30
+        self.photo("одиночное")
+        self.assertLess(time.time() - t, 10)
+        self.assertEqual(len(self.runs()), 1)
+
+
+class ImagesConsole(ImagesBase):
+    """Тот же путь через живую консоль: в неё уходит та же строка с подписью и абсолютным путём."""
+
+    def setUp(self):
+        super().setUp()
+        self.con = FakeConsole()
+        br.CONSOLE = self.con
+
+    def test_photo_goes_to_console_not_exec(self):
+        self.photo("что тут?")
+        self.assertEqual(self.runs(), [])
+        (prompt,) = self.con.asked
+        self.assertTrue(prompt.startswith("что тут?"))
+        self.assertIn(os.path.join(self.images, self.imgs()[0]), prompt)
+        self.assertEqual(self.sent[-1], "ответ из консоли")
+
+    def test_caption_with_slash_is_made_safe_for_console(self):
+        import cc_codex_console as cc
+        self.photo("/status")
+        (prompt,) = self.con.asked
+        self.assertTrue(cc._paste_text(prompt).startswith("» /status"), "консоль не примет подпись за свою команду")
+
 
 
 if __name__ == "__main__":

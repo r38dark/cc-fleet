@@ -10,12 +10,13 @@ import cc_codex
 import cc_codex_bridge
 import cc_codex_console
 import cc_codex_emergency
+import cc_notion
 import cc_lock
 import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.16"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.17"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -138,6 +139,9 @@ cc_codex_emergency.BASE = BASE
 cc_codex_emergency.CONFIG = lambda: cfg().get("codex_emergency") or {}
 cc_codex_emergency.NOTIFY = tg_notify
 cc_codex.EXTRA_ENV = cc_codex_emergency.env_extra
+# Notion-агент: карточка на странице; вход берём из файла входа Claude Code, имя агента — из config.json
+cc_notion.CREDS = lambda: LIVE_CREDS
+cc_notion.CONFIG = lambda: cfg().get("notion_agent") or {}
 cc_codex_bridge.EMERGENCY = cc_codex_emergency
 
 
@@ -2636,6 +2640,7 @@ class H(BaseHTTPRequestHandler):
             snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
             snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
             snap["model"] = model_info()
+            snap["notion"] = cc_notion.public()
             return self._send(200, snap)
         if u.path == "/api/pause":
             if not self._authed():
@@ -3036,6 +3041,10 @@ h1{font-size:19px;margin:0}
 .email{font-weight:600;font-size:15px;word-break:break-all}
 .tag{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--acc);color:#0f1115;font-weight:700;white-space:nowrap}
 .tag.pin{position:absolute;top:0;right:14px;transform:translateY(-55%);background:#7c5cff;color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4);z-index:3}
+.card.notion .nrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0;font-size:14px;color:var(--mut)}
+.card.notion .nrow b{color:var(--txt);font-weight:600;text-align:right;min-width:0;overflow-wrap:anywhere}
+.card.notion .nrow b.ok{color:var(--ok)}.card.notion .nrow b.bad{color:var(--bad)}
+.card.notion .nnote{margin-top:6px;font-size:12.5px;color:var(--mut)}
 .hdrright{display:flex;align-items:center;gap:8px;flex:none}
 .chip{font-size:10.5px;padding:2px 8px;border-radius:99px;background:#1b2029;border:1px solid #2a3140;color:var(--mut);white-space:nowrap;vertical-align:2px;display:inline-flex;align-items:center;gap:3px}
 .chip b{color:var(--txt);font-weight:700}
@@ -3079,6 +3088,11 @@ button:disabled{opacity:.35;cursor:default}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
 .iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
 .iconbtn.ctab.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
+/* цвет вкладки: обе всегда цветные (Claude — оранжевый, Codex — синий), активная насыщеннее; перекрывает окраску тем */
+html:root:root .iconbtn.ctab[data-s]{--tc:224,144,90;--tt:#efbf9c;--ton:#ffe6d3;color:var(--tt);background:rgba(var(--tc),.10);border-color:rgba(var(--tc),.34)}
+html:root:root .iconbtn.ctab[data-s="codex"]{--tc:104,154,236;--tt:#aac6f6;--ton:#e4eeff}
+html:root:root .iconbtn.ctab[data-s]:hover{background:rgba(var(--tc),.18);border-color:rgba(var(--tc),.6);color:var(--tt)}
+html:root:root .iconbtn.ctab[data-s].on{background:rgba(var(--tc),.28);border-color:rgb(var(--tc));color:var(--ton);box-shadow:0 0 0 1px rgba(var(--tc),.35)}
 .termwrap.hastabs .termbox{padding-top:42px}
 .cxcons{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:48px 18px 18px;text-align:center;pointer-events:none}
 .cxcons>*{pointer-events:auto}
@@ -3894,16 +3908,6 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxpinfo .cxpik.can{color:var(--ok);font-weight:700}
 .cxpinfo .cxpik.not{color:var(--bad);font-weight:700}
 /* выключатель бота над профилями */
-.cxbot{display:flex;align-items:center;gap:12px;margin:0 0 10px;padding:9px 12px;border:1px solid #2a3140;border-radius:12px}
-.cxbot.on{border-color:rgba(52,192,124,.5);background:rgba(52,192,124,.07)}
-.cxbot .cxbotl{flex:1;min-width:0;display:block}
-.cxbot .cxbotl b{display:block;font-size:14px}
-.cxbot .cxbotl .cxsub{display:block;margin-top:1px}
-.cxsw{flex:none;position:relative;width:42px;height:24px;margin:0;padding:0;border-radius:999px;border:1px solid var(--mut);background:transparent;cursor:pointer}
-.cxsw i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--mut);transition:left .15s,background .15s}
-.cxsw.on{border-color:var(--ok);background:rgba(52,192,124,.22)}
-.cxsw.on i{left:20px;background:var(--ok)}
-.cxsw:disabled{opacity:.45;cursor:default}
 .cxpinfo{display:block;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(124,154,255,.08);font-size:12px;line-height:1.45;font-weight:400;color:var(--txt);cursor:default}
 .cxpinfo>span{display:block}
 .cxpinfo .cxpirow+.cxpirow{margin-top:6px}
@@ -3954,9 +3958,45 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxacc.open .cxacch .cxar{transform:rotate(180deg)}
 .cxacc:not(.open)>.cxsec{display:none}
 .cxpop #cxcards{grid-template-columns:1fr}
-.cxmenu{width:min(440px,calc(100vw - 20px))}
-.cxmenu .cxpbody{padding:12px 14px 14px}
-.cxmenu .cxhead{margin:0 0 8px}
+/* меню профилей Codex (просьба владельца): компактно, без «пилюль» и кружков, подробности — по шеврону.
+   ПК — боковая шторка справа во всю высоту, телефон — раскрывается под кнопкой, как раньше */
+.cxmenu{width:min(440px,calc(100vw - 20px));border-radius:12px}
+.cxscrim{position:fixed;inset:0;z-index:39;background:rgba(4,7,12,.5);animation:cxfade .18s ease-out}
+.cxscrim[hidden]{display:none}
+@keyframes cxfade{from{opacity:0}to{opacity:1}}
+@keyframes cxslide{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+.cxmenu .cxpbody{padding:10px 12px 12px}
+.cxmenu #cxp{display:flex;flex-direction:column;gap:8px}
+.cxmenu .cxhead{margin:0;flex-wrap:nowrap;align-items:baseline;gap:8px}
+.cxmenu .cxhead h2{font-size:14px;flex:none}
+.cxmenu .cxhead .cxsub{flex:1;min-width:0;font-size:11px}
+.cxmx{display:none;flex:none;align-self:center;width:26px;height:26px;margin:-2px -4px -2px 0;padding:0;align-items:center;justify-content:center;background:transparent;border:0;border-radius:6px;color:var(--mut);cursor:pointer}
+.cxmx svg{width:15px;height:15px}
+.cxmx:hover{color:var(--txt);background:rgba(255,255,255,.07)}
+.cxmenu .cxplist{gap:6px}
+.cxmenu .cxprof{gap:8px;padding:8px 6px 8px 12px;border-radius:8px}
+.cxmenu .cxprof::before{width:3px}
+.cxmenu .cxprof .cxpr{display:none}
+.cxmenu .cxprof.act .cxpn::after{content:"";flex:none;width:4px;height:9px;margin:0 0 2px 2px;border:solid var(--acc);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.cxmenu .cxprof .cxpn{gap:3px 7px}
+.cxmenu .cxpnm{font-size:13px}
+.cxmenu .cxw{font-size:10px;font-weight:600;padding:0 5px;border-radius:4px}
+.cxmenu .cxarr{width:18px;height:8px}
+.cxmenu .cxprof .cxps,.cxmenu .cxemg .cxes{font-size:11px;line-height:1.35;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cxmenu .cxprof .cxpf,.cxmenu .cxemg .cxpf{display:none}
+.cxmenu .cxprof .cxpi,.cxmenu .cxemg .cxpi{margin:-2px 0 0;width:22px;height:22px}
+.cxmenu .cxprof .cxpi svg,.cxmenu .cxemg .cxpi svg{width:14px;height:14px;transition:transform .15s}
+.cxmenu .cxprof .cxpi.on svg,.cxmenu .cxemg .cxpi.on svg{transform:rotate(180deg)}
+.cxmenu .cxpinfo{font-size:11px;margin-top:6px;padding:6px 8px;border-radius:6px}
+.cxmenu .cxemg{margin:0;padding:8px 6px 8px 12px;border-radius:8px}
+.cxmenu .cxemg::before{width:3px}
+.cxmenu .cxemg .cxembtn{margin-top:6px;padding:5px 12px;font-size:12px;border-radius:6px}
+.cxmenu .cxpmanual{margin:0;font-size:11px}
+@media (min-width:641px){
+html:root:root .cxpop.cxmenu{top:0;bottom:0;right:0;left:auto;width:340px;height:100%;max-height:none;border-width:0 0 0 1px;border-radius:12px 0 0 12px;animation:cxslide .2s cubic-bezier(.2,.8,.2,1)}
+.cxmx{display:flex}
+}
+@media (max-width:640px){.cxscrim{display:none!important}}
 /* быстрая смена модели и усилия: третья кнопка группы и маленькая панель под ней */
 .hdrgear.cxmodbtn{width:auto;min-width:28px;padding:0 8px;gap:6px;font-size:12px;font-weight:600;color:var(--txt);position:relative}
 .hdrgear.cxmodbtn[hidden]{display:none}
@@ -3996,7 +4036,7 @@ html:root:root .hdrgear.cxmodbtn svg{display:none}
 html:root:root .cxmodn{max-width:78px}
 }
 @media (max-width:360px){
-html:root:root .cxbtnname{display:none}
+html:root:root .cxbtnname{max-width:104px}
 html:root:root .cxmodn{display:none}
 html:root:root .hdrgear.cxmodbtn svg{display:block}
 }
@@ -4011,7 +4051,7 @@ html[data-skin="phosphor"] .cxprof{border-radius:0;border-color:var(--phl)}
 html[data-skin="phosphor"] .cxemg,html[data-skin="phosphor"] .cxemg .cxembtn{border-radius:0}
 html[data-skin="blocks"] .cxemg{border:2px solid var(--bk);border-radius:0;color:var(--bk);background:#ffd6d6}
 html[data-skin="blocks"] .cxw.rd{background:#ffb3b3}
-html[data-skin="phosphor"] .cxw,html[data-skin="phosphor"] .cxpf>span,html[data-skin="phosphor"] .cxbot,html[data-skin="phosphor"] .cxsw{border-radius:0}
+html[data-skin="phosphor"] .cxw,html[data-skin="phosphor"] .cxpf>span{border-radius:0}
 html[data-skin="blocks"] .cxw,html[data-skin="blocks"] .cxpf>span{color:var(--bk);border:2px solid var(--bk);border-radius:0}
 html[data-skin="blocks"] .cxw.cx,html[data-skin="blocks"] .cxpf .g{background:#7ff0d6}
 html[data-skin="blocks"] .cxw.cl,html[data-skin="blocks"] .cxpf .o{background:#ffc999}
@@ -4021,11 +4061,6 @@ html[data-skin="blocks"] .cxw.me{background:#eee}
 html[data-skin="blocks"] .cxpf .r{background:#ffb3b3}
 html[data-skin="blocks"] .cxpinfo .cxpik.can{color:#007a4d}
 html[data-skin="blocks"] .cxpinfo .cxpik.not{color:#c40000}
-html[data-skin="blocks"] .cxbot{border:2px solid var(--bk);border-radius:0;color:var(--bk)}
-html[data-skin="blocks"] .cxbot.on{background:var(--bl)}
-html[data-skin="blocks"] .cxsw{border:2px solid var(--bk);border-radius:0}
-html[data-skin="blocks"] .cxsw i{background:var(--bk);border-radius:0}
-html[data-skin="blocks"] .cxsw.on{background:var(--bl)}
 html[data-skin="phosphor"] .cxprof.act{background:#0c2a17}
 html[data-skin="phosphor"] .cxacc{border-color:var(--phl)}
 html[data-skin="blocks"] .cxacc{border-color:var(--bk)}
@@ -4052,6 +4087,7 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
 </div></div>
 <div id="cards">Загрузка…</div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="cxpg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#19c3a0"/><stop offset="1" stop-color="#f0905f"/></linearGradient></defs></svg>
+<div id="cxMenuScrim" class="cxscrim" hidden></div>
 <div id="cxMenu" class="cxpop cxmenu" role="dialog" aria-label="Codex" hidden><div class="cxpbody"><div id="cxp"></div></div></div>
 <div id="cxQ" class="cxpop cxquick" role="dialog" aria-label="Codex" hidden><div class="cxpbody" id="cxQb"></div></div>
 <div id="cxPop" class="cxpop" role="dialog" aria-labelledby="cxPopTitle" hidden>
@@ -4104,6 +4140,16 @@ const I18N={
   switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
   extended:'Я продлил',
   lapsedTag:'НЕАКТИВНЫЙ',
+  notionName:'Notion-агент',
+  notionTag:'ПОМОЩНИК',
+  notionLogin:'Вход',
+  notionOn:'подключён',
+  notionOff:'нужен вход заново',
+  notionAgent:'Агент',
+  notionNoAgent:'не выбран',
+  notionReserve:'Резерв при лимитах',
+  notionReserveOff:'выключен',
+  notionNote:'Работает помощником в Claude Code: получает задание текстом и отвечает. Файлы на сервере сам не правит.',
   lapsedTitle:'Аккаунт неактивный',
   lapsedNote:'подписка закончилась, в ротации не участвует. Опрос остановлен, пока не нажмёшь «Я продлил»',
   lapsedSince:t=>` (с ${t})`,
@@ -4293,7 +4339,7 @@ const I18N={
   cxTitle:'ChatGPT (Codex)',
   cxHint:'Отдельная программа со своим входом — в ротацию Claude не входит',
   cxAddTitle:'Добавить аккаунт ChatGPT',
-  cxAddSub:'Пароль и почту вводить не нужно — вход по коду устройства. В ChatGPT → Настройки → Безопасность должен быть включён «вход по коду устройства».',
+  cxAddSub:'Пароль и почту вводить не нужно — вход по коду устройства. Сначала включи его в ChatGPT → Настройки → Безопасность («вход по коду устройства для Codex»); в рабочем пространстве это делает администратор. Если страница входа не принимает код — причина почти всегда в этом.',
   cxLabelLbl:'Название (необязательно)',
   cxLabelPh:'например, «Основной»',
   cxGetCode:'Получить код',
@@ -4362,13 +4408,6 @@ const I18N={
   cxpNot_orchestrator:'Менять проект сам и отправлять шаг Claude без твоего «да». «Стоп» в Telegram снимает задание и ожидание.',
   cxpCan_codex:'Отвечать сам, читать проект, создавать и править файлы в своей рабочей папке.',
   cxpNot_codex:'Менять проект, видеть секреты и подключать Claude.',
-  cxpBotT:'Бот в Telegram',
-  cxpBotOn:'Включён — отвечает по выбранному профилю.',
-  cxpBotOff:'Выключен — не отвечает и ничего не запускает. Пуши о лимитах и подписке приходят.',
-  cxpBotNo:'Не подключён — вставь токен в ⚙ → «Мост Telegram».',
-  cxpBotTip:'Включить или выключить бота',
-  cxpBotOnToast:'Бот включён',
-  cxpBotOffToast:'Бот выключен',
   cxpManual:'Настройки изменены вручную — ни один профиль не выбран.',
   cxpManualShort:'Свои настройки',
   cxpDel:'Удалить профиль',
@@ -4503,6 +4542,16 @@ const I18N={
   switchBlockedTitle:'Blocked: limit-switch optimization is on',
   extended:'I renewed',
   lapsedTag:'INACTIVE',
+  notionName:'Notion agent',
+  notionTag:'HELPER',
+  notionLogin:'Sign-in',
+  notionOn:'connected',
+  notionOff:'sign in again',
+  notionAgent:'Agent',
+  notionNoAgent:'not chosen',
+  notionReserve:'Reserve on limits',
+  notionReserveOff:'off',
+  notionNote:'Works as a helper inside Claude Code: takes a task as text and replies. It does not edit server files itself.',
   lapsedTitle:'Account inactive',
   lapsedNote:'the subscription has ended, so it is out of the rotation. Polling is stopped until you press “I renewed”',
   lapsedSince:t=>` (since ${t})`,
@@ -4692,7 +4741,7 @@ const I18N={
   cxTitle:'ChatGPT (Codex)',
   cxHint:'A separate program with its own sign-in — not part of the Claude rotation',
   cxAddTitle:'Add a ChatGPT account',
-  cxAddSub:'No password or email needed — sign-in by device code. "Device code sign-in" must be enabled in ChatGPT → Settings → Security.',
+  cxAddSub:'No password or email needed — sign-in by device code. Turn it on first in ChatGPT → Settings → Security (the device-code switch for Codex); in a workspace an admin does it. If the sign-in page does not accept the code, this is almost always the reason.',
   cxLabelLbl:'Name (optional)',
   cxLabelPh:'e.g. "Main"',
   cxGetCode:'Get code',
@@ -4761,13 +4810,6 @@ const I18N={
   cxpNot_orchestrator:'Change the project itself or send a step to Claude without your "yes". "Stop" in Telegram cancels the task and the wait.',
   cxpCan_codex:'Answer on its own, read the project, create and edit files in its own working folder.',
   cxpNot_codex:'Change the project, see secrets or involve Claude.',
-  cxpBotT:'Telegram bot',
-  cxpBotOn:'On — replies according to the selected profile.',
-  cxpBotOff:'Off — does not reply and starts nothing. Limit and subscription pushes still arrive.',
-  cxpBotNo:'Not connected — paste the token in ⚙ → "Telegram bridge".',
-  cxpBotTip:'Turn the bot on or off',
-  cxpBotOnToast:'Bot is on',
-  cxpBotOffToast:'Bot is off',
   cxpManual:'Settings were changed by hand — no profile is selected.',
   cxpManualShort:'Custom settings',
   cxpDel:'Delete profile',
@@ -5138,6 +5180,16 @@ function urgCol(f){return f>.5?'var(--bad)':f>.2?'var(--warn)':'var(--ok)'}
 function frac(iso,windowSec){if(!iso)return 0;const remain=(new Date(iso)-Date.now())/1000;return Math.max(0,Math.min(1,remain/windowSec))}
 function ring(o,windowSec,size){o=o||{};size=size||34;const sw=Math.max(3,Math.round(size*.1));const rad=size/2-sw/2;const circ=2*Math.PI*rad;const f=frac(o.resets_at,windowSec);const uc=urgCol(f);const dash=(f*circ).toFixed(1);const c=size/2;
  return `<div class="ring" style="width:${size}px;height:${size}px" title="${rst(o.resets_at)}"><svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"><circle cx="${c}" cy="${c}" r="${rad}" fill="none" stroke="#242b38" stroke-width="${sw}"/><circle cx="${c}" cy="${c}" r="${rad}" fill="none" stroke="${uc}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${dash} ${circ.toFixed(1)}" transform="rotate(-90 ${c} ${c})"/></svg><span class="ringtxt" style="font-size:${Math.round(size*.26)}px">${Math.round(f*100)}%</span></div>`}
+function notionCard(n){
+ if(!n||!n.available)return'';
+ const ag=n.agent&&n.agent.name?ccpEsc(n.agent.name):tr('notionNoAgent');
+ return `<div class="card notion" id="notionCard">
+   <div class="top"><span class="email">${tr('notionName')} <span class="tag plan">${tr('notionTag')}</span></span></div>
+   <div class="nrow"><span>${tr('notionLogin')}</span><b class="${n.connected?'ok':'bad'}">${n.connected?tr('notionOn'):tr('notionOff')}</b></div>
+   <div class="nrow"><span>${tr('notionAgent')}</span><b>${ag}</b></div>
+   <div class="nrow"><span>${tr('notionReserve')}</span><b>${tr('notionReserveOff')}</b></div>
+   <div class="nnote">${tr('notionNote')}</div>
+  </div>`}
 function renderCards(d){
  const opt=!!(d.config&&d.config.optimize);
  $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>{
@@ -5161,7 +5213,7 @@ function renderCards(d){
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}')">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
   </div>`;
- }).join('');
+ }).join('')+notionCard(d.notion);
  renderDock(d);
 }
 // время последнего обновления данных — в подсказки зелёной точки и кнопки «Обновить»
@@ -5686,22 +5738,6 @@ function cxpFeatHtml(p){
  const m=p.builtin&&CXP_META[p.id];if(!m)return'';
  return`<span class="cxpf">${tr('cxpF_'+p.id).map((t,i)=>`<span class="${m.fc[i]}"><i>${m.fi[i]}</i>${acctEsc(t)}</span>`).join('')}</span>`;
 }
-// выключатель бота над профилями: не профиль, а отдельное «слушает / не слушает»
-function cxpBotHtml(b){
- const set=!!b.token_set,on=!!(b.enabled&&set);
- const sub=!set?tr('cxpBotNo'):on?tr('cxpBotOn'):tr('cxpBotOff');
- return`<div class="cxbot${on?' on':''}"><span class="cxbotl"><b>${acctEsc(tr('cxpBotT'))}</b><span class="cxsub">${acctEsc(sub)}</span></span>
-  <button type="button" class="cxsw${on?' on':''}" role="switch" aria-checked="${on}" data-bot="1" title="${acctEsc(tr('cxpBotTip'))}" aria-label="${acctEsc(tr('cxpBotT'))}"${set?'':' disabled'}><i></i></button></div>`;
-}
-async function cxpBotToggle(){
- const b=cxbData&&cxbData.bridge;if(!b||cxpBusy)return;cxpBusy=true;
- try{
-  const r=await acctPost('chatgpt/bridge/save',{enabled:!b.enabled});
-  toast(r.ok?tr(b.enabled?'cxpBotOffToast':'cxpBotOnToast'):'⚠ '+r.message);
- }catch(e){toast('⚠ '+e);}
- cxpBusy=false;
- await cxbLoad(true);
-}
 // пояснение по значку ⓘ: из чего состоит профиль и когда его выбирать
 const CXP_INFO=new Set();  // раскрытые пояснения переживают перерисовку
 function cxpInfoHtml(p){
@@ -5829,7 +5865,7 @@ function cxeHtml(e){
  if(!e||!(e.configured||e.active))return'';
  const open=CXP_INFO.has('emergency'),on=!!e.active;
  const rc=['cx','rd'],fc=['r','o','b','g'],fi=['🔓','🔁','⏱','🛑'];
- const infoBtn=`<button type="button" class="cxpi${open?' on':''}" data-info="emergency" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r=".7" fill="currentColor"/></svg></button>`;
+ const infoBtn=`<button type="button" class="cxpi${open?' on':''}" data-info="emergency" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>`;
  const name=`<span class="cxen"><span class="cxpnm caps">${on?acctEsc(tr('cxeOnT')):'🆘 '+acctEsc(tr('cxeN'))}</span>${on?'':`<span class="cxroute">${cxpSeq(tr('cxeRoute').map((t,i)=>cxpChip(rc[i],t)))}</span>`}</span>`;
  let body;
  if(on){
@@ -5889,10 +5925,10 @@ function cxpRender(){
   const act=p.id===b.profile,open=CXP_INFO.has(p.id);
   return`<div class="cxprof${act?' act':''}" role="radio" aria-checked="${act}" tabindex="0" data-id="${acctEsc(p.id)}"><span class="cxpr"></span>
    <span class="cxpt"><span class="cxpn">${cxpNameHtml(p)}</span><span class="cxps">${acctEsc(cxpSub(p))}</span>${cxpFeatHtml(p)}${open?cxpInfoHtml(p):''}</span>
-   <button type="button" class="cxpi${open?' on':''}" data-info="${acctEsc(p.id)}" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r=".7" fill="currentColor"/></svg></button>
+   <button type="button" class="cxpi${open?' on':''}" data-info="${acctEsc(p.id)}" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
    ${p.builtin?'':`<button type="button" class="cxpx" title="${acctEsc(tr('cxpDel'))}" aria-label="${acctEsc(tr('cxpDel'))}" data-del="${acctEsc(p.id)}">×</button>`}</div>`;
  }).join('');
- el.innerHTML=`${cxpBotHtml(b)}<div class="cxhead"><h2>${tr('cxpTitle')}</h2><span class="cxsub">${tr('cxpHint')}</span></div>
+ el.innerHTML=`<div class="cxhead"><h2>${tr('cxpTitle')}</h2><span class="cxsub">${tr('cxpHint')}</span><button type="button" class="cxmx" data-close="1" title="${acctEsc(tr('cxpClose'))}" aria-label="${acctEsc(tr('cxpClose'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}</div>
   ${cxeHtml(cxbData.emergency)}
   ${!b.profile&&b.enabled?`<div class="cxpmanual">${tr('cxpManual')}</div>`:''}`;
@@ -5928,23 +5964,30 @@ function cxPopClose(){
  const pop=$('#cxPop');if(!pop||pop.hidden)return;
  pop.hidden=true;$('#cxGear').setAttribute('aria-expanded','false');
 }
-// меню профилей под кнопкой «>_ Профиль ▾»: выбрал строку — применилось и закрылось
+// выбор профиля: на ПК боковая шторка справа, на телефоне — под кнопкой «>_ Профиль ▾» (просьба владельца); выбрал строку — применилось и закрылось
+let cxmPushed=false,cxmBacking=false;  // шаг в истории браузера: кнопка «назад» закрывает шторку, а не страницу
 function cxMenuPlace(){
- const m=$('#cxMenu'),r=$('#cxBtn').getBoundingClientRect(),top=Math.round(r.bottom+8);
- m.style.top=top+'px';m.style.maxHeight='calc(100vh - '+(top+12)+'px)';
- if(innerWidth>640){const w=Math.min(440,innerWidth-20);m.style.left=Math.max(10,Math.min(Math.round(r.left),innerWidth-w-10))+'px';m.style.right='auto';}
- else{m.style.left='';m.style.right='';}
+ const m=$('#cxMenu');
+ if(innerWidth>640){m.style.top=m.style.left=m.style.right=m.style.maxHeight='';return;}  // ПК: шторка стоит по CSS
+ const top=Math.round($('#cxBtn').getBoundingClientRect().bottom+8);
+ m.style.top=top+'px';m.style.maxHeight='calc(100vh - '+(top+12)+'px)';m.style.left='';m.style.right='';
 }
 function cxMenuOpen(){
  if(!cxAvail())return;
  cxPopClose();cxQClose();
- $('#cxMenu').hidden=false;$('#cxBtn').setAttribute('aria-expanded','true');
+ $('#cxMenu').hidden=false;$('#cxMenuScrim').hidden=false;$('#cxBtn').setAttribute('aria-expanded','true');
+ if(!cxmPushed&&!cxmBacking){try{history.pushState({cxm:1},'');cxmPushed=true;}catch(e){}}
  cxpRender();cxMenuPlace();cxbLoad(true);
 }
-function cxMenuClose(){
+function cxMenuClose(fromPop){
  const m=$('#cxMenu');if(!m||m.hidden)return;
- m.hidden=true;$('#cxBtn').setAttribute('aria-expanded','false');
+ m.hidden=true;$('#cxMenuScrim').hidden=true;$('#cxBtn').setAttribute('aria-expanded','false');
+ if(cxmPushed){cxmPushed=false;if(fromPop!==true){cxmBacking=true;try{history.back();}catch(e){cxmBacking=false;}}}
 }
+addEventListener('popstate',()=>{
+ if(cxmBacking){cxmBacking=false;return;}
+ if(cxmPushed){cxmPushed=false;cxMenuClose(true);}
+});
 // ---- быстрая смена модели и усилия: кнопка в шапке и маленькая панель под ней (те же настройки, что в окне ⚙ → Аккаунты) ----
 // Аккаунт — тот, чьи лимиты видны в шапке (им работает мост). Пустое значение = «по умолчанию Codex».
 function cxQCur(a){
@@ -6052,6 +6095,7 @@ $('#cxQ').addEventListener('click',e=>{
 });
 $('#cxPopX').addEventListener('click',cxPopClose);
 $('#cxp').addEventListener('click',e=>{
+ if(e.target.closest('[data-close]')){e.stopPropagation();cxMenuClose();return;}
  const d=e.target.closest('[data-del]');
  if(d){e.stopPropagation();cxpDelete(d.dataset.del);return;}
  const i=e.target.closest('[data-info]');
@@ -6063,8 +6107,6 @@ $('#cxp').addEventListener('click',e=>{
   return;
  }
  if(e.target.closest('.cxpinfo'))return;
- if(e.target.closest('[data-bot]')){e.stopPropagation();cxpBotToggle();return;}
- if(e.target.closest('.cxbot'))return;
  const em=e.target.closest('[data-emg]');
  if(em){e.stopPropagation();em.dataset.emg==='on'?cxeOn():cxeOff();return;}
  if(e.target.closest('.cxemg'))return;

@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.17", "date": "2026-11-01",
+     "ru": {"t": "Фото в Codex, цвета вкладок, шторка профилей, карточка Notion", "p": ["Codex принимает фото из Telegram, в том числе альбомом (до 10): все снимки уходят одним запросом", "Вкладки консолей: Claude оранжевая, Codex синяя; профили Codex на ПК — шторка справа без прокрутки", "Инструкция «Codex с нуля» в README и подсказка про вход по коду устройства; карточка Notion-агента"]},
+     "en": {"t": "Photos to Codex, tab colours, profile drawer, Notion card", "p": ["Codex accepts Telegram photos, albums too (up to 10): all pictures go in a single request", "Console tabs: Claude orange, Codex blue; Codex profiles on a PC open as a side drawer, no scrolling", "A from-scratch Codex guide in the README and a device-code hint in the sign-in window; Notion agent card"]}},
     {"v": "1.25.16", "date": "2026-11-01",
      "ru": {"t": "Шапка без RU·EN; вход в MCP не слетает при смене аккаунта", "p": ["Из шапки убран переключатель RU·EN (на телефоне занимал строку). Английский — ссылкой ?lang=en", "Смена аккаунта больше не стирает вход в MCP-серверы (Notion и др.): меняется только вход в Claude"]},
      "en": {"t": "No header language switch; MCP sign-ins survive account switch", "p": ["RU·EN switch removed from the header (it took a row on phones). English via the ?lang=en link", "Switching accounts no longer wipes MCP sign-ins (Notion etc.): only the Claude sign-in is replaced"]}},
