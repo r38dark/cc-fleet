@@ -971,6 +971,7 @@ class Bridge:
         self.warned = set()
         self.albums = {}  # media_group_id → {"ids": [file_id], "caption": str, "timer": Timer}: альбом, который ещё собирается
         self.album_lock = threading.Lock()
+        self.start_lock = threading.Lock()  # «занят? → запустить» одним шагом: два альбома/сообщение и альбом приходят из разных потоков
 
     def busy(self):
         return bool(self.worker and self.worker.is_alive())
@@ -1034,12 +1035,14 @@ class Bridge:
             self.handle_image(a["ids"], a["caption"])
 
     def handle_image(self, file_ids, caption):
-        if self.busy():  # сообщение не теряем молча: человек знает, что картинки надо прислать снова
-            one = len(file_ids) == 1
-            return self.send("Codex ещё работает над прошлым сообщением, " + ("картинку не принял. Пришли её" if one else "картинки не принял. Пришли их")
-                             + " снова, когда он закончит, или /stop.")
-        self.worker = threading.Thread(target=self.ask_image, args=(list(file_ids), caption), daemon=True, name="codex-image")
-        self.worker.start()
+        with self.start_lock:
+            if not self.busy():
+                self.worker = threading.Thread(target=self.ask_image, args=(list(file_ids), caption), daemon=True, name="codex-image")
+                self.worker.start()
+                return
+        one = len(file_ids) == 1  # сообщение не теряем молча: человек знает, что картинки надо прислать снова
+        return self.send("Codex ещё работает над прошлым сообщением, " + ("картинку не принял. Пришли её" if one else "картинки не принял. Пришли их")
+                         + " снова, когда он закончит, или /stop.")
 
     def ask_image(self, file_ids, caption):
         s = load()
@@ -1123,10 +1126,12 @@ class Bridge:
                     st["pending"] = None
                     _state_save(st)
                 return self.send("Задание отменено.")
-        if self.busy():
-            return self.send("Codex ещё работает над прошлым сообщением. Подожди или /stop.")
-        self.worker = threading.Thread(target=self.ask_codex, args=(text,), daemon=True, name="codex-ask")
-        self.worker.start()
+        with self.start_lock:
+            if not self.busy():
+                self.worker = threading.Thread(target=self.ask_codex, args=(text,), daemon=True, name="codex-ask")
+                self.worker.start()
+                return
+        return self.send("Codex ещё работает над прошлым сообщением. Подожди или /stop.")
 
     def ask_codex(self, text, act=None):
         s = load()

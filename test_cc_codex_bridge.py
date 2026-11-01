@@ -1555,6 +1555,10 @@ class Albums(ImagesBase):
         self.assertEqual(self.imgs(), [])
 
     def test_two_albums_do_not_mix(self):
+        # оба таймера срабатывают с разницей в миллисекунды; Codex должен быть занят первым, пока второй альбом ещё не дошёл
+        # (с быстрым поддельным Codex первый успевал закончиться, и второй тоже принимался)
+        os.environ["FAKE_SLEEP"] = "0.8"
+        self.addCleanup(os.environ.pop, "FAKE_SLEEP", None)
         self.album(["fid-a"], gid="g1", wait=False)
         self.album(["fid-b", "fid-c"], gid="g2", wait=False)
         self.assertEqual(sorted(br.BRIDGE.albums), ["g1", "g2"])
@@ -1569,6 +1573,32 @@ class Albums(ImagesBase):
         n = len(self.imgs())  # какой из альбомов успел первым, неважно: в запрос идёт ровно он
         self.assertIn(n, (1, 2))
         self.assertEqual(self.runs()[0]["argv"][-1].count("img_"), n)
+        self.assertTrue(any("не принял" in m for m in self.sent), self.sent)
+
+    def test_two_threads_never_start_two_codex_workers(self):
+        # два таймера альбомов (и текст из опроса) приходят из разных потоков: «занят? → запустить» не должно пускать обоих.
+        # Окно гонки между проверкой и запуском искусственно расширено: без замка start_lock оба потока видели «свободно»
+        started = []
+        gate = threading.Event()
+        b = br.BRIDGE
+        b.ask_image = lambda ids, caption: (started.append(list(ids)), gate.wait(5))
+        self.addCleanup(delattr, b, "ask_image")
+        self.addCleanup(gate.set)
+        real_busy = b.busy
+
+        def slow_busy():
+            v = real_busy()
+            time.sleep(0.1)
+            return v
+        b.busy = slow_busy
+        self.addCleanup(delattr, b, "busy")
+        ts = [threading.Thread(target=b.handle_image, args=([fid], "")) for fid in ("fid-a", "fid-b")]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(10)
+        time.sleep(0.2)
+        self.assertEqual(len(started), 1, "запущен один запрос к Codex, а не два")
         self.assertTrue(any("не принял" in m for m in self.sent), self.sent)
 
     def test_album_from_foreign_chat_ignored(self):

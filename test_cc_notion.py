@@ -13,6 +13,11 @@ import cc_notion as N  # noqa: E402
 
 class Public(unittest.TestCase):
     def setUp(self):
+        # подмены модуля возвращаем после каждого теста: иначе они доживают до других файлов тестов в том же процессе
+        # (test_cc_limits_codex_ui.NotionRoute читал бы чужой «конфиг» из последнего теста этого класса)
+        saved = (N.CREDS, N.CONFIG, N.BASE, N.LEVEL)
+        self.addCleanup(lambda: (setattr(N, "CREDS", saved[0]), setattr(N, "CONFIG", saved[1]),
+                                 setattr(N, "BASE", saved[2]), setattr(N, "LEVEL", saved[3])))
         self.d = tempfile.mkdtemp(prefix="ccnt_")
         self.creds = os.path.join(self.d, "c.json")
         N.CREDS = lambda: self.creds
