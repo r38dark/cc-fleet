@@ -58,38 +58,16 @@ class Public(unittest.TestCase):
         self.assertEqual(N.public(), {"available": False})
 
 
-class Enabled(unittest.TestCase):
-    def setUp(self):
-        self.d = tempfile.mkdtemp(prefix="ccnt_")
-        self.creds = os.path.join(self.d, "c.json")
-        with open(self.creds, "w") as f:
-            json.dump({"mcpOAuth": {"notion|h": {"serverName": "notion", "accessToken": "t"}}}, f)
-        N.CREDS = lambda: self.creds
-        self.conf = {}
-        N.CONFIG = lambda: self.conf
-
-    def test_enabled_by_default(self):
-        # у уже подключённого Notion блок был «включён» всегда — без ключа в конфиге остаётся так же
-        self.assertIs(N.public()["enabled"], True)
-
-    def test_enabled_false_only_when_explicit(self):
-        self.conf = {"enabled": False}
-        self.assertIs(N.public()["enabled"], False)
-        self.conf = {"enabled": True}
-        self.assertIs(N.public()["enabled"], True)
-
-
 class Save(unittest.TestCase):
-    def test_toggle_keeps_name_and_url(self):
+    def test_enabled_key_is_gone(self):
+        # переключателя «включить/выключить агента» больше нет: ключ enabled сервер не принимает и не хранит
         ok, conf, err = N.save({"name": "A", "url": "agent://s/a"}, {"enabled": False})
         self.assertEqual((ok, err), (True, ""))
-        self.assertEqual(conf, {"name": "A", "url": "agent://s/a", "enabled": False})
-
-    def test_enabled_must_be_bool(self):
-        for bad in ("false", 0, 1, None, []):
-            ok, conf, err = N.save({"name": "A"}, {"enabled": bad})
-            self.assertEqual((ok, err), (False, "enabled"), bad)
-            self.assertEqual(conf, {"name": "A"})
+        self.assertEqual(conf, {"name": "A", "url": "agent://s/a"})
+        self.assertNotIn("enabled", N.public())
+        # ключ, оставшийся в старом конфиге, при первом же сохранении исчезает
+        ok, conf, _ = N.save({"name": "A", "enabled": False}, {"name": "B"})
+        self.assertEqual(conf, {"name": "B"})
 
     def test_empty_url_keeps_old_one(self):
         ok, conf, _ = N.save({"url": "agent://s/a"}, {"name": "B", "url": ""})
@@ -123,7 +101,7 @@ class Save(unittest.TestCase):
 
     def test_source_conf_not_mutated(self):
         old = {"name": "A"}
-        N.save(old, {"name": "B", "enabled": False})
+        N.save(old, {"name": "B"})
         self.assertEqual(old, {"name": "A"})
 
 
@@ -181,30 +159,13 @@ class ReserveConf(unittest.TestCase):
         N.save(src, {"reserve": {"auto": False}})
         self.assertEqual(src, {"reserve": {"auto": True}})
 
-    def test_switching_block_off_clears_manual_only(self):
-        # выключили блок — ручная галочка снимается, авто и аварийная остаются (они про лимиты, а не про человека)
-        src = {"name": "A", "reserve": {"manual": True, "auto": True, "auto_emergency": True}}
-        ok, c, err = N.save(src, {"enabled": False})
-        self.assertTrue(ok)
-        self.assertEqual(c["reserve"], {"manual": False, "auto": True, "auto_emergency": True})
-        self.assertIs(c["enabled"], False)
-        self.assertEqual(src["reserve"]["manual"], True)  # исходный конфиг не тронут
-        # то же, если в одном запросе пришла и «вручную: да» — выключение блока сильнее
-        ok, c, _ = N.save({}, {"enabled": False, "reserve": {"manual": True}})
-        self.assertIs(c["reserve"]["manual"], False)
-
-    def test_switching_block_on_or_other_saves_keep_manual(self):
-        src = {"enabled": False, "reserve": {"manual": True, "auto": False}}
-        for body in ({"enabled": True}, {"name": "B"}, {"reserve": {"auto": True}}, {"clear_url": True}):
+    def test_other_saves_keep_manual(self):
+        # любое другое сохранение (имя, ссылка, авто-галочка, очистка ссылки) ручную галочку резерва не трогает
+        src = {"reserve": {"manual": True, "auto": False}}
+        for body in ({"name": "B"}, {"reserve": {"auto": True}}, {"clear_url": True}):
             ok, c, _ = N.save(src, body)
             self.assertTrue(ok, body)
             self.assertIs(c["reserve"]["manual"], True, body)
-
-    def test_switching_off_without_reserve_does_not_invent_the_key(self):
-        ok, c, _ = N.save({"name": "A"}, {"enabled": False})
-        self.assertNotIn("reserve", c)
-        ok, c, _ = N.save({"reserve": {"auto": True}}, {"enabled": False})
-        self.assertEqual(c["reserve"], {"auto": True})
 
 
 class FakeEmg:
@@ -377,23 +338,23 @@ class ReserveTick(unittest.TestCase):
         self.conf["reserve"] = {"manual": True}
         self.run_for(60)
         self.assertEqual(self.pauses, [True])
-        self.conf["enabled"] = False  # агента выключили: резерв невозможен — Claude нельзя держать на паузе без замены
+        self.conf["url"] = ""  # ссылку агента убрали: резерв невозможен — Claude нельзя держать на паузе без замены
         self.run_for(60)
         self.assertFalse(N.active())
         self.assertEqual(self.pauses, [True, False])
 
     def test_agent_toggle_off_releases_on_the_very_next_tick(self):
-        # переключатель Notion выключили: такт, запущенный сохранением, снимает паузу и профиль сразу, без ожидания TICK
+        # переключатель резерва выключили: такт, запущенный сохранением, снимает паузу и профиль сразу, без ожидания TICK
         self.conf["reserve"] = {"manual": True}
         self.run_for(60)
         self.assertEqual(self.pauses, [True])
-        self.conf["enabled"] = False
+        self.conf["reserve"] = {"manual": False}
         N.tick()  # ровно один такт, время не идёт
         self.assertFalse(N.active())
         self.assertEqual(self.pauses, [True, False])
         self.assertEqual(self.profiles[-1], (False, True))
         self.assertEqual(len(self.applies), 2)  # консоль Codex перезапущена и на включение, и на выключение
-        self.conf["enabled"] = True  # и обратно: тоже за один такт
+        self.conf["reserve"] = {"manual": True}  # и обратно: тоже за один такт
         N.tick()
         self.assertTrue(N.active())
         self.assertEqual(self.pauses, [True, False, True])
@@ -413,7 +374,7 @@ class ReserveTick(unittest.TestCase):
         a = threading.Thread(target=N.tick)
         a.start()
         self.assertTrue(inside.wait(5))
-        self.conf["enabled"] = False  # человек успел выключить, пока первый такт ещё ставит паузу
+        self.conf["reserve"] = {"manual": False}  # человек успел выключить, пока первый такт ещё ставит паузу
         b = threading.Thread(target=N.tick)
         b.start()
         b.join(0.3)
@@ -427,11 +388,11 @@ class ReserveTick(unittest.TestCase):
         self.assertIs(st["pause"], False)
 
     def test_manual_off_while_limits_are_still_over_says_claude_stays_paused(self):
-        # резерв выключили руками, а лимиты ещё кончились: сообщение не обещает, что Claude уже может работать
+        # резерв закончился (агент пропал), а лимиты ещё кончились: сообщение не обещает, что Claude уже может работать
         self.lv = LV("hard")
         self.run_for(300)
         self.assertEqual(len(self.sent), 1)
-        self.conf["enabled"] = False
+        self.conf["url"] = ""  # ссылку агента убрали: резерв невозможен
         N.tick()
         self.assertFalse(N.active())
         self.assertEqual(len(self.sent), 2)
@@ -524,9 +485,9 @@ class ReserveTick(unittest.TestCase):
         self.assertEqual(N.public()["reserve"]["why"], "claude_down")
         self.assertIn("лимиты кончились", N.codex_note())
 
-    def test_no_agent_url_or_disabled_or_no_notion_means_not_ready(self):
+    def test_no_agent_url_or_no_notion_means_not_ready(self):
         self.lv = LV("hard")
-        for patch in ({"url": ""}, {"enabled": False}):
+        for patch in ({"url": ""},):
             self.conf = dict(self.conf, **patch)
             self.run_for(300)
             self.assertFalse(N.active(), patch)
@@ -536,11 +497,11 @@ class ReserveTick(unittest.TestCase):
         self.run_for(300)
         self.assertFalse(N.active())
 
-    def test_agent_switched_off_during_case_ends_everything(self):
+    def test_agent_lost_during_case_ends_everything(self):
         self.lv = LV("hard")
         self.run_for(300)
         self.assertTrue(N.active())
-        self.conf = dict(self.conf, enabled=False)
+        self.conf = dict(self.conf, url="")
         self.run_for(60)
         self.assertFalse(N.active())
         self.assertEqual(len(self.emg.off_calls), 1)

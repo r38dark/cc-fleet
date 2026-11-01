@@ -67,7 +67,6 @@ def public(lv=None):
         "can_refresh": bool(e.get("refreshToken")),
         "expires_at": exp,
         "agent": {"name": str(conf.get("name") or "")[:80], "set": bool(conf.get("url"))},
-        "enabled": conf.get("enabled") is not False,
         "role": "reserve" if _st().get("active") else "helper",
         "reserve": reserve_public(conf, lv),
     }
@@ -78,10 +77,7 @@ def save(conf, body):
     Пустая ссылка в запросе = оставить прежнюю; стереть можно только явным clear_url.
     Ссылка агента — agent://…, её не показываем после сохранения (см. public())."""
     new = dict(conf or {})
-    if "enabled" in body:
-        if not isinstance(body["enabled"], bool):
-            return False, conf, "enabled"
-        new["enabled"] = body["enabled"]
+    new.pop("enabled", None)  # ключ старого переключателя «включить/выключить агента»: его больше нет, из конфига убираем
     if "name" in body:
         name = str(body["name"] or "").strip()
         if len(name) > 80 or any(ord(c) < 32 for c in name):
@@ -97,10 +93,6 @@ def save(conf, body):
         res = dict(new.get("reserve") or {})
         res.update(raw)
         new["reserve"] = res
-    # выключили блок — ручная галочка резерва снимается сама: включил обратно — Claude работает,
-    # резерв «вручную» включается отдельным действием (авто-галочка остаётся: она про лимиты, а не про человека)
-    if body.get("enabled") is False and (new.get("reserve") or {}).get("manual") is True:
-        new["reserve"] = dict(new["reserve"], manual=False)
     if body.get("clear_url") is True:
         new.pop("url", None)
     elif str(body.get("url") or "").strip():
@@ -140,8 +132,8 @@ def _level():
 
 
 def _ready(conf):
-    """Резерв возможен, когда агент подключён, включён и ссылка задана."""
-    return bool(_entry()) and (conf or {}).get("enabled") is not False and bool((conf or {}).get("url"))
+    """Резерв возможен, когда Notion подключён и ссылка агента задана."""
+    return bool(_entry()) and bool((conf or {}).get("url"))
 
 
 def _path():

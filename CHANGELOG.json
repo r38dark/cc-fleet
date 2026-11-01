@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.20", "date": "2026-11-01",
+     "ru": {"t": "Резерв — отдельный переключатель, Notion — индикатор", "p": ["Значок Notion теперь только индикатор: зелёная точка — подключён, красная — нужен вход", "Переключатель «Резерв» — ручной резерв; включается после вопроса с пояснением, что это значит", "Шапка на телефоне: кнопки Codex больше не налезают друг на друга"]},
+     "en": {"t": "Reserve is its own switch, Notion is an indicator", "p": ["The Notion icon is now just an indicator: green dot — connected, red — sign in again", "The \"Reserve\" switch is the manual reserve; it asks first and explains what that means", "Header on a phone: the Codex buttons no longer overlap each other"]}},
     {"v": "1.25.19", "date": "2026-11-01",
      "ru": {"t": "Рамка Notion, вкладки консоли, ручной резерв", "p": ["Рамка блока Notion зелёная только при включённом резерве, иначе без рамки (красная «нет связи» осталась)", "Вкладки Claude/Codex: неактивная — только окантовка, активная — полная заливка", "Выключил переключатель Notion — галочка «вручную» снимается сама, резерв выключается сразу"]},
      "en": {"t": "Notion frame, console tabs, manual reserve", "p": ["Notion block frame is green only while the reserve is on, otherwise none (red \"no connection\" stays)", "Claude/Codex tabs: inactive is an outline only, active is filled completely", "Switch the Notion block off and the \"manual\" tick clears itself, the reserve turns off at once"]}},

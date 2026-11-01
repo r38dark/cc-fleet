@@ -195,10 +195,10 @@ gear, a "Delete" button on every card and the windows for both flows
   card — no need to switch to the terminal: compact the context or start
   `/clear` with one click (same `screen`-session injection the model buttons
   use).
-- 🗂 **Notion agent and the "Codex + Notion" reserve** (v1.25.18) — a header block (switch + ⚙) shows whether your
-  Notion agent is connected. When Claude is unavailable — the limits ran out, or you ticked "work with the agent only" —
-  Claude really goes on pause and Codex works together with the agent, every change waiting for your "yes". Turning it
-  on and off is instant, the block frame shows the mode by itself. A from-scratch guide is in the "Notion agent and the
+- 🗂 **Notion agent and the "Codex + Notion" reserve** (v1.25.20) — a header block: the N icon shows whether your
+  Notion agent is connected, and the "Reserve" switch moves to reserve mode by hand (after a confirmation). In the
+  reserve — the limits ran out, or you pressed the switch — Claude really goes on pause and Codex works together with
+  the agent, every change waiting for your "yes". Turning it on and off is instant, the block frame shows the mode by itself. A from-scratch guide is in the "Notion agent and the
   reserve" section.
 - 🔐 No OAuth tokens ever leave your machine — everything lives on your own
   server, under your own root.
@@ -684,15 +684,15 @@ Configure it with the `"codex_emergency"` key in `config.json`:
 
 Tests: `python3 -m unittest test_cc_codex_emergency` (no real mount, sudo or systemctl — all stubbed).
 
-## Notion agent and the "Codex + Notion" reserve (v1.25.18)
+## Notion agent and the "Codex + Notion" reserve (v1.25.20)
 
 What it is for: you have an agent in Notion (it gathers, searches and drafts text from your pages) and you want the panel to show it next to the Claude accounts. And when Claude is unavailable — its limits ran out, or you stopped it yourself — **Codex can keep working together with that agent**: you give Codex the task, it sends the agent the text it needs, the agent returns a result, and Codex applies it to the project and checks it. Every change waits for your "yes".
 
 Until Notion is connected, **the panel has no such block at all** — that is by design. The whole path from scratch is four steps, about fifteen minutes. Steps 1–3 are needed for the header card, step 4 only for the reserve.
 
 1. **Create an agent in Notion.** You need a Notion account with your own agent in it. The agent has a name and a link like `agent://…`: copy both, step 3 needs them.
-2. **Connect Notion in Claude Code.** In a terminal on the server: `claude mcp add --transport http notion https://mcp.notion.com/mcp`. Then, inside Claude Code, open `/mcp`, pick `notion` and sign in to your Notion account (a link opens; on a server without a browser open it on your own machine and bring back the address it redirected you to). The sign-in lands in Claude Code's login file; the panel reads it to know Notion is connected. Reload the page — a Notion block with a switch and a ⚙ appears in the header, left of the orchestrator.
-3. **Tell the panel which agent is yours.** ⚙ in the Notion block → paste the name and the `agent://…` link → "Save". The block switch must be on. Tokens are never shown on the page — only "connected / not", the agent name and the sign-in expiry.
+2. **Connect Notion in Claude Code.** In a terminal on the server: `claude mcp add --transport http notion https://mcp.notion.com/mcp`. Then, inside Claude Code, open `/mcp`, pick `notion` and sign in to your Notion account (a link opens; on a server without a browser open it on your own machine and bring back the address it redirected you to). The sign-in lands in Claude Code's login file; the panel reads it to know Notion is connected. Reload the page — a Notion block with the N icon, a "Reserve" switch and a ⚙ appears in the header, left of the orchestrator.
+3. **Tell the panel which agent is yours.** ⚙ in the Notion block → paste the name and the `agent://…` link → "Save". Tokens are never shown on the page — only "connected / not", the agent name and the sign-in expiry.
 4. **Reserve only — sign in to Notion from Codex.** Claude and Codex keep their sign-ins apart, so Codex signs in on its own. You need Codex installed and a ChatGPT account added (see "Connecting Codex from scratch"). On the account card press "Launch command" (⚙ next to `>_` → "ChatGPT accounts and limits"): the copied command already carries the right OS user and the profile folder `CODEX_HOME`. Append this to the end of it:
 
    ```
@@ -705,31 +705,33 @@ Signing Codex in to Notion gives it access to your Notion workspace. That is why
 
 ### Reading the block in the header
 
-The switch and the ⚙ share one frame:
+On the left, the **N** icon is only an indicator — there is nothing to press: a green dot means Notion is connected, red means you need to sign in again. Next to it is the **"Reserve"** switch — it is the manual move to reserve mode and nothing else. The icon, the switch and the ⚙ share one frame:
 
 | Frame | Meaning |
 |---|---|
-| No frame | The block is off, or on without the reserve: Claude is working |
+| No frame | No reserve: Claude is working |
 | Green | Reserve is on: Claude is paused, Codex + agent are working |
-| Red | On, but no connection: the Notion sign-in is gone or the agent link is not set (`/mcp` → `notion` → sign in again) |
+| Red | No connection: the Notion sign-in is gone (`/mcp` → `notion` → sign in again) |
+
+The switch is greyed out until the agent link is saved: a reserve without an agent makes no sense.
 
 ### Two reserve scenarios
 
-In the ⚙ of the Notion block, the "Reserve" section has three ticks (all off by default; stored in `config.json` → `notion_agent.reserve` as `manual`, `auto`, `auto_emergency`):
+The reserve turns on in two ways. By hand — with the "Reserve" switch in the header; by itself — with a tick in the ⚙ of the Notion block, "Reserve" section. The settings are stored in `config.json` → `notion_agent.reserve` as `manual` (the switch), `auto` and `auto_emergency` (the two ticks in the ⚙), all off by default:
 
-- **"Work with the agent only" (manual).** You decided to do without Claude: the accounts are not spent. Once on, Claude **really goes on pause** (as with limits, but with no alarm clock), incoming Telegram messages wait in the queue, and the sender gets a reply "queued; reserve mode is on" (the text is the `queue_ack_reserve_message` key in `config.json`). Claude gets **two minutes** to finish what it started: the banner shows a countdown, then Claude's tools are blocked. The Codex profile switches by itself to the service profile "Reserve" (last in the menu, not selectable by hand) and Codex gets the Notion allow-list. Untick it and everything returns **instantly**: the pause is lifted, the Codex profile is the previous one, and the Claude session gets a message "reserve is off, N waiting in the queue" and carries on from where it stopped. If Claude's limits are still used up at that moment, the panel says so: reserve off, Claude stays paused until the window resets. Switching the block off clears the "manual" tick by itself: switch it back on and Claude works, the reserve is turned on separately (the "automatic" tick stays — it is about limits).
-- **"Turn on by itself" (automatic).** When the limits of **all** Claude accounts are used up (session, or week if the weekly pause is on) and it holds for two minutes — so a single polling hiccup does not trigger it — the reserve turns on by itself and a Telegram message arrives. When limits are back and that holds for two minutes, the reserve turns itself off and the Codex profile goes back to the previous one. If the limits data is stale (older than 15 minutes) the panel changes nothing.
-- **"…and also turn on Codex emergency mode".** Available only together with "Turn on by itself". It needs a configured emergency mode (see "Codex emergency mode"): then, in the automatic case, the reserve also turns on Codex's full access to the project so it can apply the agent's result. If the mode is not set up, a note under the tick says so and the reserve runs without full access. The emergency mode turns off together with the reserve.
+- **The "Reserve" switch (manual).** You decided to do without Claude: the accounts are not spent. Before it turns on, the panel asks "Really switch to reserve mode?" and explains what happens: Claude gets paused, Codex and the agent work instead, the Codex profile switches to the service profile "Reserve", and turning the switch off brings everything back at once. Once you agree, Claude **really goes on pause** (as with limits, but with no alarm clock), incoming Telegram messages wait in the queue, and the sender gets a reply "queued; reserve mode is on" (the text is the `queue_ack_reserve_message` key in `config.json`). Claude gets **two minutes** to finish what it started: the banner shows a countdown, then Claude's tools are blocked. The Codex profile switches by itself to the service profile "Reserve" (last in the menu, not selectable by hand) and Codex gets the Notion allow-list. Turn the switch off and everything returns **instantly**: the pause is lifted, the Codex profile is the previous one, and the Claude session gets a message "reserve is off, N waiting in the queue" and carries on from where it stopped. If Claude's limits are still used up at that moment, the panel says so: reserve off, Claude stays paused until the window resets.
+- **The "Turn on by itself" tick (automatic).** When the limits of **all** Claude accounts are used up (session, or week if the weekly pause is on) and it holds for two minutes — so a single polling hiccup does not trigger it — the reserve turns on by itself and a Telegram message arrives. When limits are back and that holds for two minutes, the reserve turns itself off and the Codex profile goes back to the previous one. If the limits data is stale (older than 15 minutes) the panel changes nothing.
+- **The "…and also turn on Codex emergency mode" tick.** Available only together with "Turn on by itself". It needs a configured emergency mode (see "Codex emergency mode"): then, in the automatic case, the reserve also turns on Codex's full access to the project so it can apply the agent's result. If the mode is not set up, a note under the tick says so and the reserve runs without full access. The emergency mode turns off together with the reserve.
 
-Worth knowing: while the reserve is on manually, **Claude cannot work** — that is the point of the tick. The emergency way out is the "Turn off pause" button on the pause banner: Claude continues at once and the reserve stays on.
+Worth knowing: while the reserve is on manually, **Claude cannot work** — that is the point of the switch. The emergency way out is the "Turn off pause" button on the pause banner: Claude continues at once and the reserve stays on.
 
 ### If something went wrong
 
 | What you see | Cause and what to do |
 |---|---|
 | No Notion block in the header | Notion is not connected in Claude Code: step 2 (`/mcp` → `notion` → sign in) |
-| Red frame | The sign-in is gone or the agent link is not set: step 2 or 3 |
-| "Reserve unavailable: it needs an enabled agent with a link" | The `agent://…` link is not saved or the block is off: step 3 |
+| Red frame, red dot on the N icon | The Notion sign-in is gone: step 2 |
+| The "Reserve" switch is grey, tooltip "Reserve is unavailable" | The `agent://…` link is not saved or Notion is not connected: step 2 or 3 |
 | `Auth` shows `Not logged in` for Codex | Codex never signed in to Notion: step 4 |
 | In the reserve Codex says it has no Notion tools | Codex was signed in under a different profile (another ChatGPT account) or the sign-in expired — repeat step 4 for the active account |
 | The emergency tick is greyed out | It only works together with "Turn on by itself" |
@@ -894,6 +896,13 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.20** — The reserve is its own switch, the Notion icon is only an indicator. The N icon in the header now just
+  shows the connection (green dot — Notion is connected, red — sign in again) and turns nothing on. The manual reserve
+  is the "Reserve" switch next to it: press it and the panel asks "Really move to reserve mode?" and explains what
+  will happen (Claude goes on pause, Codex and the agent work, the Codex profile changes to the service "Reserve" one,
+  turning it off brings everything back at once). Without a yes nothing changes; without a Notion login or an agent link
+  the switch is grey. The "manual" tick in ⚙ is gone — two are left: "turn on by itself" and "emergency mode". On a narrow
+  screen the Codex buttons in the header no longer overlap: if they do not fit next to the Notion block, they take their own row.
 - **v1.25.19** — Notion block frame, console tabs and the manual reserve. The frame around the switch and the ⚙ is now
   green only while the reserve is on; an off block and an on block without reserve have no frame (red — "on but no
   connection" — stays, yellow is gone). An inactive Claude/Codex console tab is an outline only, no fill (the console
