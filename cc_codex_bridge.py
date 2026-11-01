@@ -394,6 +394,17 @@ def set_token(token, lang="ru"):
                     f"Bot @{me.get('username', '')} connected" + (" — bridge is on." if turn_on else "."))
 
 
+def drop_slot(slot):
+    """Аккаунт ChatGPT удалён: если мост был привязан именно к нему — снова «первый подходящий». → было ли привязано."""
+    with _lock:
+        s = load()
+        if not slot or s.get("slot") != slot:
+            return False
+        s["slot"] = ""
+        _save(s)
+    return True
+
+
 def clear_token():
     with _lock:
         s = load()

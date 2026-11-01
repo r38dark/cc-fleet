@@ -34,6 +34,51 @@ class Page(unittest.TestCase):
         self.assertGreater(page.index('id="cxb" '), pop)
         self.assertRegex(page, r'<div id="cxPop"[^>]*\bhidden\b')
 
+    def test_gear_popup_accounts_section_is_last(self):
+        # ⚙-окно: «Мост Telegram и все настройки» сверху, «Аккаунты и лимиты ChatGPT» — в самом низу
+        self.assertLess(L.PAGE.index('id="cxBrW"'), L.PAGE.index('id="cxAccW"'))
+
+    def test_bridge_card_footer_save_left_delete_right(self):
+        page = L.PAGE
+        foot = page[page.index('class="cxbrow cxbfoot"'):]
+        foot = foot[:foot.index("</div>")]
+        self.assertLess(foot.index('id="cxbSave"'), foot.index('id="cxbDel"'))
+        self.assertIn('onclick="cxbDelAcct()"', foot)
+        self.assertIn("{margin-left:auto}", page[page.index(".cxbfoot .btn-del"):][:60])
+        # удаляется аккаунт из поля «Аккаунт ChatGPT»; «первый подходящий» — кнопка неактивна; подтверждение — то же окно, что у «Удалить» в карточке
+        m = re.search(r"function cxbDelAcct\(\)\{(.*?)\}\n", page)
+        self.assertTrue(m)
+        self.assertIn("cxDel(sel.value)", m.group(1))
+        self.assertIn("btn.disabled=!has", page)
+        self.assertIn('onchange="cxbDelSync()"', page)
+
+    def test_install_wizard_is_three_steps(self):
+        page = L.PAGE
+        for needle in ("function ciStage()", "function ciBody1(", "function ciBody2(", "function ciBody3(",
+                       "function ciFinish(", 'onclick="ciFinish(true)"', "function ciLogin(", "async function ciBot("):
+            self.assertIn(needle, page, needle)
+        # шаг 3 необязательный: кнопка пропуска есть, бот без токена и chat_id не отправляется
+        self.assertIn("cxiSkip", page)
+        # после установки мастер идёт дальше сам, а не закрывается: шаг 1 → 2 (вход) → 3 (бот) считает ciStage по данным сервера
+        stage = page[page.index("function ciStage()"):][:420]
+        self.assertIn("return 1", stage)
+        self.assertIn("return 2", stage)
+        self.assertIn("return b&&b.token_set?0:3", stage)
+
+    def test_install_wizard_same_width_as_gear_popup(self):
+        w = re.search(r"\.cxpop\{[^}]*?(width:min\([^;}]*\))", L.PAGE).group(1)
+        self.assertIn(".cxpop.cxinstpop{" + w + "}", L.PAGE)
+
+    def test_wizard_texts_both_languages(self):
+        # ключи шагов собираются в коде по таблице, поэтому парность проверяем явно
+        need = ("cxiS1", "cxiS1n", "cxiS1ok", "cxiS2", "cxiS2ok", "cxiS2Hint", "cxiS3", "cxiS3Hint", "cxiLogin",
+                "cxiBot", "cxiSkip", "cxiSkipped", "cxiAllDone", "cxiBotNoTok", "cxiBotNoChat",
+                "cxbDelAcct", "cxbDelTip", "cxbDelPick")
+        for lang in ("ru", "en"):
+            keys = set(re.findall(r"^\s{2}(cx\w*):", i18n_block(lang), re.M))
+            self.assertEqual(sorted(set(need) - keys), [], lang)
+        self.assertIn("Пропустить этот шаг и завершить", i18n_block("ru"))
+
     def test_header_has_no_language_switch(self):
         # переключатель RU·EN из шапки убран (на телефоне занимал целую строку): ни элемента, ни кнопок смены
         page = L.PAGE
@@ -658,6 +703,18 @@ class Routes(unittest.TestCase):
             self.assertEqual(self.post("bridge/profile/save", {"name": "Ночной"})[0], 404)
             self.assertEqual(self.post("bridge/profile/delete", {"id": "c1"}), (200, {"ok": False, "message": "no"}))
             dl.assert_called_once_with("c1", lang=None)
+
+    def test_delete_route_frees_bridge_slot_only_on_success(self):
+        # удалённый аккаунт: мост, привязанный к нему, возвращается к «первый подходящий»; при отказе привязка не трогается
+        with mock.patch.object(L.cc_codex, "delete_account", return_value=(True, "удалён")) as de, \
+                mock.patch.object(L.cc_codex_bridge, "drop_slot") as dr:
+            self.assertEqual(self.post("delete", {"slot": "gpt2", "confirm": "удалить"}), (200, {"ok": True, "message": "удалён"}))
+            de.assert_called_once_with("/x/codex", "gpt2", "удалить", lang=None)
+            dr.assert_called_once_with("gpt2")
+        with mock.patch.object(L.cc_codex, "delete_account", return_value=(False, "нет")), \
+                mock.patch.object(L.cc_codex_bridge, "drop_slot") as dr:
+            self.assertEqual(self.post("delete", {"slot": "gpt2", "confirm": "x"}), (200, {"ok": False, "message": "нет"}))
+            dr.assert_not_called()
 
     def test_renew_route_delegates_and_rechecks_bridge_on_success(self):
         import threading

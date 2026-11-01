@@ -161,6 +161,10 @@ cp "$SCRIPT_DIR/hooks/queue_on_limits.py" "$BASE/hooks/queue_on_limits.py"
 cp "$SCRIPT_DIR/hooks/pause_tool_gate.py" "$BASE/hooks/pause_tool_gate.py"
 chmod 755 "$BASE/tg_queue.py" "$BASE/hooks/queue_on_limits.py" "$BASE/hooks/pause_tool_gate.py"
 
+# консольные команды cl, cla, cln, clw (Claude) и cxw (Codex): сам скрипт — сюда, ссылки в /usr/local/bin сервис создаёт при старте
+cp "$SCRIPT_DIR/cc-cmd" "$BASE/cc-cmd"
+chmod 755 "$BASE/cc-cmd"
+
 log "Ставлю cc-switch → /usr/local/bin/cc-switch"
 cp "$SCRIPT_DIR/cc-switch" /usr/local/bin/cc-switch
 chmod 755 /usr/local/bin/cc-switch

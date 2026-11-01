@@ -1,5 +1,5 @@
 {
-  "version": "1.25.23",
+  "version": "1.25.24",
   "needs_install": false,
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
@@ -18,6 +18,7 @@
     {"src": "tg_queue.py", "mode": "755"},
     {"src": "hooks/queue_on_limits.py", "mode": "755"},
     {"src": "hooks/pause_tool_gate.py", "mode": "755"},
+    {"src": "cc-cmd", "mode": "755"},
     {"src": "cc-switch", "dst": "/usr/local/bin/cc-switch", "mode": "755"}
   ]
 }

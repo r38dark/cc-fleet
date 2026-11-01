@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.24", "date": "2026-11-01",
+     "ru": {"t": "Мастер Codex до конца, удаление аккаунта, команды cl и cxw", "p": ["Мастер сам переходит от установки ко входу в ChatGPT и к боту Telegram; бот необязателен — кнопка «Пропустить»", "В карточке моста внизу «Сохранить» и «Удалить аккаунт» (с подтверждением); «Аккаунты и лимиты» — в самом низу ⚙", "Команды cl, cla, cln, clw и cxw входят в панель и ставятся сами на любом сервере; запуск Claude — ключ claude_cmd"]},
+     "en": {"t": "Codex wizard to the end, delete account, cl and cxw commands", "p": ["The wizard moves on by itself from install to ChatGPT sign-in to the Telegram bot; the bot is optional — \"Skip\" button", "Bridge card: \"Save\" and \"Delete account\" (confirmed) at the bottom; \"Accounts and limits\" moved to the bottom of ⚙", "Commands cl, cla, cln, clw, cxw come with the panel and install themselves on any server; launch line — claude_cmd"]}},
     {"v": "1.25.23", "date": "2026-11-01",
      "ru": {"t": "«Поручить Claude» при подключении Codex", "p": ["Нет Node.js — кнопка «Поручить Claude» вставляет в консоль Claude готовый промт: он сам ставит Node.js и Codex", "«Скопировать промт» — тот же текст для ручной вставки; окно само переходит ко входу в ChatGPT", "Шаг 1 больше не обещает «одной кнопкой», когда кнопки «Установить» нет"]},
      "en": {"t": "\"Ask Claude\" when connecting Codex", "p": ["No Node.js: the \"Ask Claude\" button types a ready prompt into the Claude console — it installs Node.js and Codex itself", "\"Copy prompt\" gives the same text for pasting by hand; the window moves on to the ChatGPT sign-in by itself", "Step 1 no longer promises \"one button\" when there is no Install button"]}},

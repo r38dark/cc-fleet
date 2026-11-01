@@ -16,7 +16,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.23"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.24"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -60,6 +60,43 @@ def jsave(path, data):
 
 def cfg():
     return jload(CONFIG, {})
+
+
+# консольные команды балансера (cl, cla, cln, clw — Claude; cxw — Codex): один скрипт cc-cmd, имена — ссылки на него
+CMD_NAMES = ("cl", "cla", "cln", "clw", "cxw")
+
+
+def ensure_cmd_links(bin_dir="/usr/local/bin"):
+    """Ссылки команд на BASE/cc-cmd в bin_dir (при старте сервиса — после установки и после каждого обновления).
+    Чужое не трогаем: файл с таким именем или другая программа с таким именем в PATH — пропуск.
+    → {имя: 'создана' | 'есть' | 'пропущена: …'}."""
+    src = os.path.join(BASE, "cc-cmd")
+    out = {}
+    if not os.path.isfile(src):
+        return out
+    for n in CMD_NAMES:
+        p = os.path.join(bin_dir, n)
+        try:
+            if os.path.islink(p):
+                cur = os.readlink(p)
+                if cur == src:
+                    out[n] = "есть"
+                    continue
+                if os.path.basename(cur) != "cc-cmd":
+                    out[n] = "пропущена: чужая ссылка"
+                    continue
+                os.remove(p)  # наша ссылка со старого места установки — перекладываем
+            elif os.path.exists(p):
+                out[n] = "пропущена: файл не наш"
+                continue
+            elif shutil.which(n):
+                out[n] = "пропущена: имя занято в PATH"
+                continue
+            os.symlink(src, p)
+            out[n] = "создана"
+        except OSError as e:
+            out[n] = "пропущена: " + str(e)[:80]
+    return out
 
 
 def http_json(url, payload=None, headers=None, timeout=20):
@@ -2828,6 +2865,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, {"ok": ok, "message": message})
         if action == "delete":
             ok, message = cc_codex.delete_account(b, body.get("slot", ""), body.get("confirm", ""), lang=lang)
+            if ok:  # мост был привязан к этому аккаунту — возвращаем «первый подходящий», иначе он ждал бы стёртый вход
+                cc_codex_bridge.drop_slot(body.get("slot", ""))
             return self._send(200, {"ok": ok, "message": message})
         if action == "console/start":
             ok, message = cc_codex_console.start(lang=lang)
@@ -3947,6 +3986,9 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .cxbgrid[hidden],#cxb [hidden]{display:none}
 .cxbrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
 .cxbrow .dlginp{flex:1 1 220px;width:auto;min-width:0;margin-top:0}
+.cxbfoot{justify-content:space-between;margin-top:16px}
+.cxbfoot button{margin-top:0;margin-bottom:0}
+.cxbfoot .btn-del{margin-left:auto}
 .cxbstat{font-size:12.5px;color:var(--mut);margin-top:10px;line-height:1.5}
 .cxbstat b{color:var(--txt)}
 .cxbwarn{font-size:12.5px;color:var(--warn);margin-top:8px;line-height:1.4}
@@ -4008,7 +4050,7 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .hdrgear.cxinst svg{width:16px;height:16px}
 .hdrgear.cxinst .cxinstp{color:var(--acc);font-size:15px;line-height:1;font-weight:700}
 .cxinst[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
-.cxpop.cxinstpop{width:min(440px,calc(100vw - 20px))}
+.cxpop.cxinstpop{width:min(580px,calc(100vw - 20px))}
 .cxinstpop .cxpbody{padding-bottom:16px}
 .cxilead{font-size:13px;line-height:1.5;color:var(--txt);margin:6px 0 0}
 .cxisteps{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
@@ -4016,6 +4058,11 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxisteps li b{flex:none;width:20px;height:20px;border-radius:50%;border:1px solid #2a3140;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
 .cxisteps li.cur{color:var(--txt)}
 .cxisteps li.cur b{border-color:var(--acc);color:var(--acc)}
+.cxisteps li.done b{border-color:var(--ok);color:var(--ok)}
+.cxisteps li .cxist{flex:1;min-width:0}
+.cxisteps li.cur .cxist>span{font-weight:600}
+.cxisb .cxinote:first-child{margin-top:8px}
+.cxisb .dlglbl{display:block;margin-top:10px;font-size:12.5px;color:var(--mut)}
 .cxinote{font-size:12.5px;line-height:1.45;color:var(--mut);margin:12px 0 0}
 .cxinote.warn{color:var(--warn)}
 .cxinote.bad{color:var(--bad)}
@@ -4270,8 +4317,8 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
 <div id="cxPop" class="cxpop" role="dialog" aria-labelledby="cxPopTitle" hidden>
  <div class="cxphead"><b id="cxPopTitle">Codex</b><span class="cxsub" id="cxPopSt"></span><button type="button" class="hdrgear" id="cxPopX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
  <div class="cxpbody">
-  <div class="cxacc" id="cxAccW"><button type="button" class="cxacch" data-sec="acc"><span id="cxAccT"></span><span class="cxsum" id="cxAccS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cx" class="cxsec" hidden></div></div>
   <div class="cxacc" id="cxBrW"><button type="button" class="cxacch" data-sec="br"><span id="cxBrT"></span><span class="cxsum" id="cxBrS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cxb" class="cxsec" hidden></div></div>
+  <div class="cxacc" id="cxAccW"><button type="button" class="cxacch" data-sec="acc"><span id="cxAccT"></span><span class="cxsum" id="cxAccS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cx" class="cxsec" hidden></div></div>
  </div>
 </div>
 <div id="ntPop" class="cxpop ntpop" role="dialog" aria-labelledby="ntPopTitle" hidden>
@@ -4619,6 +4666,17 @@ const I18N={
   cxiS1n:'Поставить Node.js и Codex на этот сервер — поручи Claude кнопкой ниже или сделай сам',
   cxiS2:'Войти в аккаунт ChatGPT: по коду устройства, пароль вводить не нужно',
   cxiS3:'Подключить своего Telegram-бота (по желанию)',
+  cxiS1ok:'Codex установлен на сервер',
+  cxiS2ok:v=>'Вход в ChatGPT выполнен'+(v?': '+v:''),
+  cxiS2Hint:'Нажми — покажу код и ссылку: откроешь её в браузере и введёшь код. Когда войдёшь, окно само перейдёт к боту.',
+  cxiLogin:'Войти в ChatGPT',
+  cxiS3Hint:'Бот нужен, чтобы писать Codex из Telegram. Создай его у @BotFather и вставь токен; без бота Codex работает в консоли и в панели.',
+  cxiBot:'Подключить бота',
+  cxiSkip:'Пропустить этот шаг и завершить',
+  cxiBotNoTok:'Вставь токен бота',
+  cxiBotNoChat:'Нужен chat_id — число из Telegram',
+  cxiSkipped:'Готово. Бота можно подключить позже: ⚙ у Codex → «Мост Telegram и все настройки».',
+  cxiAllDone:'Готово: Codex установлен, вход выполнен, бот подключён.',
   cxiNodeOk:v=>`Node.js ${v} найден — всё готово к установке.`,
   cxiNodeOld:(v,np)=>`Найден Node.js ${v}${np}, а нужен Node.js 16 или новее вместе с npm. Поручи Claude обновить его или сделай сам и нажми «Проверить снова».`,
   cxiNoNpm:' (npm не найден)',
@@ -4634,7 +4692,7 @@ const I18N={
   cxiRetry:'Повторить',
   cxiRecheck:'Проверить снова',
   cxiFail:'Не получилось:',
-  cxiDone:v=>`Codex установлен${v?' ('+v+')':''}. Теперь добавь аккаунт ChatGPT.`,
+  cxiDone:v=>`Codex установлен${v?' ('+v+')':''}. Теперь войди в ChatGPT.`,
   cxBtnTip:'Профиль Codex: выбрать',
   cxGearTip:'Настройки Codex: аккаунты, лимиты, мост Telegram',
   cxAccSec:'Аккаунты и лимиты ChatGPT',
@@ -4763,6 +4821,9 @@ const I18N={
   cxbPending:' · ждёт твоё «да/нет» по заданию',
   cxbTasks:'Последние задания Claude: ',
   cxbSaved:'Сохранено',
+  cxbDelAcct:'Удалить аккаунт',
+  cxbDelTip:'Удалить выбранный аккаунт ChatGPT (с подтверждением)',
+  cxbDelPick:'Сначала выбери аккаунт в поле «Аккаунт ChatGPT» выше',
   cxbNoSlot:'Нет аккаунта ChatGPT — сначала добавь его выше.',
   cxcOff:'Консоль Codex не запущена',
   cxcSub:(sb,cwd)=>'Только просмотр: печатать в неё со страницы нельзя. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
@@ -5091,6 +5152,17 @@ const I18N={
   cxiS1n:'Get Node.js and Codex onto this server — ask Claude with the button below or do it yourself',
   cxiS2:'Sign in to your ChatGPT account with a device code, no password needed',
   cxiS3:'Connect your own Telegram bot (optional)',
+  cxiS1ok:'Codex is installed on the server',
+  cxiS2ok:v=>'Signed in to ChatGPT'+(v?': '+v:''),
+  cxiS2Hint:'Press the button — I will show a code and a link: open the link in a browser and enter the code. Once you are in, this window moves on to the bot.',
+  cxiLogin:'Sign in to ChatGPT',
+  cxiS3Hint:'A bot lets you write to Codex from Telegram. Create one with @BotFather and paste its token; without a bot Codex still works in the console and in the panel.',
+  cxiBot:'Connect the bot',
+  cxiSkip:'Skip this step and finish',
+  cxiBotNoTok:'Paste the bot token',
+  cxiBotNoChat:'A chat_id is required — a number from Telegram',
+  cxiSkipped:'Done. You can connect the bot later: ⚙ next to Codex → “Telegram bridge and all settings”.',
+  cxiAllDone:'Done: Codex is installed, signed in, and the bot is connected.',
   cxiNodeOk:v=>`Node.js ${v} found — ready to install.`,
   cxiNodeOld:(v,np)=>`Found Node.js ${v}${np}, but Node.js 16 or newer with npm is required. Ask Claude to update it, or do it yourself and press “Check again”.`,
   cxiNoNpm:' (npm not found)',
@@ -5106,7 +5178,7 @@ const I18N={
   cxiRetry:'Retry',
   cxiRecheck:'Check again',
   cxiFail:'It did not work:',
-  cxiDone:v=>`Codex installed${v?' ('+v+')':''}. Now add a ChatGPT account.`,
+  cxiDone:v=>`Codex installed${v?' ('+v+')':''}. Now sign in to ChatGPT.`,
   cxBtnTip:'Codex profile: pick one',
   cxGearTip:'Codex settings: accounts, limits, Telegram bridge',
   cxAccSec:'ChatGPT accounts and limits',
@@ -5235,6 +5307,9 @@ const I18N={
   cxbPending:' · waiting for your yes/no on a task',
   cxbTasks:'Recent Claude tasks: ',
   cxbSaved:'Saved',
+  cxbDelAcct:'Delete account',
+  cxbDelTip:'Delete the selected ChatGPT account (asks to confirm)',
+  cxbDelPick:'First pick an account in the “ChatGPT account” field above',
   cxbNoSlot:'No ChatGPT account — add one above first.',
   cxcOff:'The Codex console is not running',
   cxcSub:(sb,cwd)=>'View only: you cannot type into it from this page. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
@@ -5951,7 +6026,15 @@ function cxbProjVal(b){return b.mode==='self'&&b.project===b.workdir?'':(b.proje
 function cxbSync(){
  const b=(cxbData&&cxbData.bridge)||{};
  $('#cxbDirRow').hidden=b.mode!=='self';
+ cxbDelSync();
 }
+// «Удалить аккаунт» в карточке моста — тот аккаунт, что выбран в поле «Аккаунт ChatGPT»; «первый подходящий» — неясно какой, кнопка неактивна
+function cxbDelSync(){
+ const btn=$('#cxbDel');if(!btn)return;
+ const sel=$('#cxbSlot'),has=!!(sel&&sel.value);
+ btn.disabled=!has;btn.title=tr(has?'cxbDelTip':'cxbDelPick');
+}
+function cxbDelAcct(){const sel=$('#cxbSlot');if(sel&&sel.value)cxDel(sel.value);}
 function cxbStatus(b){
  const st=(b.running?'🟢 <b>'+tr('cxbRunning')+'</b>':'⚪ '+tr('cxbOff'))+(b.busy?tr('cxbBusy'):'')+(b.pending?tr('cxbPending'):'');
  const ts=(b.tasks||[]).map(t=>'#'+t.n+' '+(CXB_ST[t.state]||t.state)+' '+acctEsc(t.rights)).join(' · ');
@@ -5964,7 +6047,7 @@ function cxbRender(force){
  if(!force&&f&&el.contains(f)&&/^(INPUT|SELECT)$/.test(f.tagName)){const s=$('#cxbStat');if(s)s.innerHTML=cxbStatus(d.bridge);return;}
  const b=d.bridge,o=(v,l,cur)=>`<option value="${v}"${cur===v?' selected':''}>${acctEsc(l)}</option>`;
  const slots=(b.slots||[]).length
-  ?`<select class="dlginp" id="cxbSlot">${o('',tr('cxbSlotAuto'),b.slot)}${b.slots.map(s=>o(s,s+((cxAcc(s)||{}).email?' · '+cxAcc(s).email:''),b.slot)).join('')}</select>`
+  ?`<select class="dlginp" id="cxbSlot" onchange="cxbDelSync()">${o('',tr('cxbSlotAuto'),b.slot)}${b.slots.map(s=>o(s,s+((cxAcc(s)||{}).email?' · '+cxAcc(s).email:''),b.slot)).join('')}</select>`
   :`<div class="cxsub" style="margin-top:8px">${tr('cxbNoSlot')}</div>`;
  // профиль «Codex»: рабочая папка (где он может всё) идёт первой, проект — только чтение; в «Оркестраторе» видно только проект
  const self=b.mode==='self';
@@ -5988,8 +6071,10 @@ function cxbRender(force){
   <label class="dlglbl" for="cxbChat" style="margin-top:14px">${tr('cxbChat')}</label>
   <input id="cxbChat" class="dlginp" inputmode="numeric" autocomplete="off" value="${acctEsc(b.chat_id||'')}">
   <div class="cxbrow"><label class="cxfast"><input type="checkbox" id="cxbOn"${b.enabled?' checked':''}${b.token_set?'':' disabled'}><span>${tr('cxbOn')}</span></label>
-   <button id="cxbSave" onclick="cxbSave()">${tr('cxbSave')}</button><button class="ghostbtn" onclick="cxbReset()">${tr('cxbNew')}</button></div>
+   <button class="ghostbtn" onclick="cxbReset()">${tr('cxbNew')}</button></div>
   <div class="cxbstat" id="cxbStat">${cxbStatus(b)}</div>
+  <div class="cxbrow cxbfoot"><button id="cxbSave" onclick="cxbSave()">${tr('cxbSave')}</button>
+   <button class="btn-del" id="cxbDel" onclick="cxbDelAcct()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span>${tr('cxbDelAcct')}</span></button></div>
  </div>`;
  cxbSync();
 }
@@ -6284,18 +6369,43 @@ function cxPopClose(){
  const pop=$('#cxPop');if(!pop||pop.hidden)return;
  pop.hidden=true;$('#cxGear').setAttribute('aria-expanded','false');
 }
-// ---- «Подключить Codex»: пока Codex не установлен, вместо блока Codex в шапке — кнопка с мастером из трёх шагов ----
-// Шаг 1 (установка) делает этот поповер: сервер сам ставит Codex в свою папку. Шаги 2–3 (вход ChatGPT, бот) уже есть в окне ⚙ Codex —
-// туда человек попадает сразу после установки.
-let ciData=null,ciTimer=null,ciBusy=false,ciAsked=null;  // ciAsked — ответ на «Поручить Claude»: пока он есть, окно ждёт, что Claude сам запустит установку
-function ciShow(){return!!(cxbData&&cxbData.available===false&&!(cxData&&cxData.available));}
+// ---- «Подключить Codex»: мастер из трёх шагов — установка, вход в ChatGPT, бот Telegram (по желанию) ----
+// Пока Codex не установлен, вместо блока Codex в шапке — кнопка с мастером. Мастер ведёт до конца настройки: после установки сам
+// раскрывает шаг 2 (вход в ChatGPT), после входа — шаг 3 (бот; необязателен, есть «Пропустить этот шаг и завершить»).
+// Где мастер остановился, считаем по данным сервера; флаг «мастер начат» — в localStorage этого браузера (только удобство).
+let ciData=null,ciTimer=null,ciBusy=false,ciAsked=null,ciLast=0,ciAwait=0;  // ciAsked — ответ на «Поручить Claude»: пока он есть, окно ждёт, что Claude сам запустит установку; ciAwait — шаг, с которого человек ушёл во вход (вернуть окно, когда шаг сменится)
+function ciNeedInst(){return!!(cxbData&&cxbData.available===false&&!(cxData&&cxData.available));}
+function ciWizOn(){try{return localStorage.getItem('cxWiz')==='1';}catch(e){return false;}}
+function ciWizSet(on){try{if(on)localStorage.setItem('cxWiz','1');else localStorage.removeItem('cxWiz');}catch(e){}}
+function ciAcc(){return((cxData&&cxData.accounts)||[]).find(a=>!a.login_required)||null;}  // аккаунт, в который уже вошли
+// на каком шаге мастер: 1 — установка, 2 — вход в ChatGPT, 3 — бот Telegram, 0 — мастер не нужен
+function ciStage(){
+ if(ciNeedInst())return 1;
+ if(!ciWizOn()||!cxAvail())return 0;
+ if(!ciAcc())return 2;
+ const b=cxbData&&cxbData.bridge;
+ return b&&b.token_set?0:3;
+}
+function ciShow(){return ciStage()>0;}
 function ciHdr(){
  const b=$('#cxInst');if(!b)return;
- const on=ciShow();b.hidden=!on;
+ const st=ciStage(),on=st>0;b.hidden=!on;
+ if(ciNeedInst())ciWizSet(true);  // пока Codex нет, мастер уже начат — дальше он ведёт до конца
+ else if(!on&&ciWizOn()&&cxAvail())ciWizSet(false);  // вход и бот на месте — настройка закончена
  if(on){
-  if(cxbData.install)ciData=cxbData.install;
+  if(st===1&&cxbData.install)ciData=cxbData.install;
   b.title=tr('cxiTip');b.setAttribute('aria-label',tr('cxiTip'));
+  ciSync(st);
  }else ciClose();
+}
+// шаг сменился (вошли в ChatGPT, подключили бота): окно перерисовывается само; ушёл во вход и окно закрылось — возвращаем
+function ciSync(st){
+ const pop=$('#cxInstPop');if(!pop)return;
+ if(ciAwait&&st>ciAwait){ciAwait=0;if(pop.hidden)ciOpen();}
+ if(pop.hidden)return;
+ const f=document.activeElement;
+ if(st===ciLast&&f&&pop.contains(f)&&f.tagName==='INPUT')return;  // человек вводит токен — не перерисовываем под руками
+ ciRender();
 }
 function ciPlace(){
  const pop=$('#cxInstPop'),r=$('#cxInst').getBoundingClientRect();
@@ -6304,14 +6414,9 @@ function ciPlace(){
  if(innerWidth>640){pop.style.left='auto';pop.style.right=Math.max(10,Math.round(innerWidth-r.right-4))+'px';}
  else{pop.style.right='';pop.style.left='';}
 }
-function ciRender(){
- const pop=$('#cxInstPop');if(!pop||pop.hidden)return;
- const d=ciData||{},st=d.state||'idle',run=st==='running';
- $('#cxInstTitle').textContent=tr('cxiTitle');
- const cur=run||st==='failed'||st==='idle'?1:2;
- const one=run||d.ready;  // «одной кнопкой» — только когда Node.js уже есть и кнопка «Установить» правда есть
- const steps=[one?'cxiS1':'cxiS1n','cxiS2','cxiS3'].map((k,i)=>`<li class="${i+1===cur?'cur':''}"><b>${i+1}</b><span>${tr(k)}</span></li>`).join('');
- let h=`<p class="cxilead">${tr('cxiLead')}</p><ol class="cxisteps">${steps}</ol>`;
+// шаг 1 раскрыт: ход установки, подсказки про Node.js, кнопки «Установить» / «Поручить Claude» / «Скопировать промт»
+function ciBody1(d,st,run){
+ let h='';
  if(run){
   h+=`<p class="cxinote"><span class="cxispin"></span>${tr('cxiRun')}</p>`;
   if(d.log)h+=`<pre class="cxilog" id="cxiLog">${acctEsc(d.log)}</pre>`;
@@ -6337,8 +6442,37 @@ function ciRender(){
   }else h+=askBtn(true)+copyBtn+`<button class="ghostbtn" id="cxiRe" onclick="ciRecheck()">${tr('cxiRecheck')}</button>`;
   h+=`</div>`;
  }
+ return h;
+}
+// шаг 2 раскрыт: вход в ChatGPT по коду устройства — то же окно, что у «+» в ⚙
+function ciBody2(){
+ return `<p class="cxinote">${tr('cxiS2Hint')}</p><div class="cxirow"><button id="cxiLogin" onclick="ciLogin()">${tr('cxiLogin')}</button></div>`;
+}
+// шаг 3 раскрыт: токен бота и chat_id прямо здесь; шаг необязательный — «Пропустить этот шаг и завершить»
+function ciBody3(){
+ const b=(cxbData&&cxbData.bridge)||{};
+ return `<p class="cxinote">${tr('cxiS3Hint')}</p>
+  <input id="cxiTok" class="dlginp" type="password" autocomplete="off" spellcheck="false" aria-label="${acctEsc(tr('cxbTokLbl'))}" placeholder="${acctEsc(tr('cxbTokPh'))}">
+  <label class="dlglbl" for="cxiChat">${tr('cxbChat')}</label>
+  <input id="cxiChat" class="dlginp" inputmode="numeric" autocomplete="off" value="${acctEsc(b.chat_id||'')}">
+  <div class="cxirow"><button id="cxiBot" onclick="ciBot()">${tr('cxiBot')}</button><button class="ghostbtn" id="cxiSkip" onclick="ciFinish(true)">${tr('cxiSkip')}</button></div>`;
+}
+function ciRender(){
+ const pop=$('#cxInstPop');if(!pop||pop.hidden)return;
+ const d=ciData||{},st=d.state||'idle',run=st==='running';
+ const stage=ciStage()||1;ciLast=stage;
+ $('#cxInstTitle').textContent=tr('cxiTitle');
+ const one=run||d.ready;  // «одной кнопкой» — только когда Node.js уже есть и кнопка «Установить» правда есть
+ const acc=ciAcc();
+ const KEY=['','cxiS1','cxiS2','cxiS3'],KOK=['','cxiS1ok','cxiS2ok'];
+ const text=i=>i<stage?tr(KOK[i],acctEsc((acc&&acc.email)||'')):tr(i===1&&!one?'cxiS1n':KEY[i]);
+ const body=[ciBody1,ciBody2,ciBody3][stage-1];
+ const steps=[1,2,3].map(i=>`<li class="${i<stage?'done':i===stage?'cur':''}"><b>${i<stage?'✓':i}</b><div class="cxist"><span>${text(i)}</span>${i===stage?`<div class="cxisb">${body(d,st,run)}</div>`:''}</div></li>`).join('');
+ const h=`<p class="cxilead">${tr('cxiLead')}</p><ol class="cxisteps">${steps}</ol>`;
  const keep=$('#cxiLog');const atEnd=keep?keep.scrollTop+keep.clientHeight>=keep.scrollHeight-4:true;
+ const typed={};['cxiTok','cxiChat'].forEach(id=>{const e=$('#'+id);if(e&&e.value)typed[id]=e.value;});  // введённое не теряем при перерисовке
  $('#cxInstB').innerHTML=h;
+ Object.keys(typed).forEach(id=>{const e=$('#'+id);if(e)e.value=typed[id];});
  const lg=$('#cxiLog');if(lg&&atEnd)lg.scrollTop=lg.scrollHeight;
  ciPlace();
 }
@@ -6346,7 +6480,8 @@ function ciOpen(){
  if(!ciShow())return;
  cxPopClose();cxMenuClose();cxQClose();ntClose();
  $('#cxInstPop').hidden=false;$('#cxInst').setAttribute('aria-expanded','true');
- ciRender();ciLoad();
+ ciRender();
+ if(ciStage()===1)ciLoad();  // ход установки нужен только на шаге 1
 }
 function ciClose(){
  const pop=$('#cxInstPop');if(!pop||pop.hidden)return;
@@ -6361,18 +6496,43 @@ async function ciLoad(){
  }catch(e){}
  finally{ciBusy=false;}
  clearTimeout(ciTimer);ciTimer=null;
- if(!$('#cxInstPop').hidden&&ciData&&ciData.state==='running')ciTimer=setTimeout(ciLoad,1500);  // пока идёт установка — живой ход
- else if(!$('#cxInstPop').hidden&&ciAsked&&ciAsked.ok)ciTimer=setTimeout(ciLoad,3000);  // Claude ставит Node.js и запускает установку сам — ждём
+ if(!$('#cxInstPop').hidden&&ciStage()===1){
+  if(ciData&&ciData.state==='running')ciTimer=setTimeout(ciLoad,1500);  // пока идёт установка — живой ход
+  else if(ciAsked&&ciAsked.ok)ciTimer=setTimeout(ciLoad,3000);  // Claude ставит Node.js и запускает установку сам — ждём
+ }
 }
-// установка закончилась: панель узнаёт, что Codex есть, закрывает мастер и открывает окно ⚙ с шагами 2–3
+// установка закончилась: панель узнаёт, что Codex есть, и мастер сам переходит к шагу 2 (окно остаётся открытым)
 async function ciAfter(d){
+ if(ciStage()!==1)return;  // шаг 1 уже позади (данные успели обновиться опросом шапки)
  ciRender();
  if(d.state==='done'||d.available){
   const v=d.version||'';
+  ciWizSet(true);
   await cxbLoad(true);await cxLoad(true);
-  ciClose();
-  if(cxAvail()){toast(tr('cxiDone',v));cxPopOpen();}
+  ciAsked=null;
+  if(cxAvail()){toast(tr('cxiDone',v));ciHdr();ciRender();}
  }
+}
+// шаг 2: окно входа по коду; когда войдут, опрос шапки увидит аккаунт и мастер раскроет шаг 3 (ciSync)
+function ciLogin(){ciAwait=ciStage();cxAdd();}
+// шаг 3: токен бота и chat_id → бот подключён, мост включён, мастер завершён
+async function ciBot(){
+ const tok=(($('#cxiTok')||{}).value||'').trim(),chat=(($('#cxiChat')||{}).value||'').trim();
+ if(!tok){toast('⚠ '+tr('cxiBotNoTok'));return;}
+ if(!/^-?[0-9]{3,}$/.test(chat)){toast('⚠ '+tr('cxiBotNoChat'));return;}
+ const bt=$('#cxiBot');bt.disabled=true;
+ try{
+  const r=await acctPost('chatgpt/bridge/token',{token:tok});
+  if(!r.ok){toast('⚠ '+r.message);bt.disabled=false;return;}
+  const s=await acctPost('chatgpt/bridge/save',{chat_id:chat,enabled:true});
+  await cxbLoad(true);
+  ciFinish(false,s.ok?r.message:'⚠ '+s.message);
+ }catch(e){toast('⚠ '+e);bt.disabled=false;}
+}
+// конец мастера: кнопка из шапки уходит; skipped — бота не подключали
+function ciFinish(skipped,msg){
+ ciWizSet(false);ciClose();ciHdr();
+ toast(msg||tr(skipped?'cxiSkipped':'cxiAllDone'));
 }
 async function ciStart(){
  const b=$('#cxiGo');if(b)b.disabled=true;
@@ -6836,7 +6996,7 @@ function cxDel(slot){
   try{
    const d=await acctPost('chatgpt/delete',{slot,confirm:inp.value});
    acctBusy=false;
-   if(d.ok){acctClose();toast(d.message);cxLoad(true);return;}
+   if(d.ok){acctClose();toast(d.message);cxLoad(true);cxbLoad(true);return;}
    acctErr(d.message);go.textContent=tr('delGo');go.disabled=inp.value.trim().toLowerCase()!==word;
   }catch(e){acctBusy=false;acctErr(String(e));go.textContent=tr('delGo');go.disabled=false;}
  };
@@ -7199,6 +7359,12 @@ try{if(sessionStorage.getItem('cc_upd_reopen')){sessionStorage.removeItem('cc_up
 
 
 if __name__ == "__main__":
+    try:
+        made = {n: s for n, s in ensure_cmd_links().items() if s != "есть"}
+        if made:
+            print("команды cl/cla/cln/clw/cxw:", made, flush=True)
+    except Exception as e:  # команды — удобство, из-за них сервис не падает
+        print("команды cl/cla/cln/clw/cxw: ошибка", e, flush=True)
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()

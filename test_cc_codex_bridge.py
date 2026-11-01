@@ -170,6 +170,18 @@ class Settings(Base):
         self.assertFalse(br.save({"enabled": True})[0])
 
 
+    def test_drop_slot_releases_deleted_account(self):
+        # аккаунт удалён: мост, привязанный именно к нему, возвращается к «первый подходящий» и не ждёт стёртый вход
+        self.assertTrue(br.save({"slot": "gpt1"})[0])
+        self.assertEqual(br.load()["slot"], "gpt1")
+        self.assertFalse(br.drop_slot("gpt2"))  # чужой слот — привязка остаётся
+        self.assertEqual(br.load()["slot"], "gpt1")
+        self.assertFalse(br.drop_slot(""))
+        self.assertTrue(br.drop_slot("gpt1"))
+        self.assertEqual(br.load()["slot"], "")
+        self.assertFalse(br.drop_slot("gpt1"))  # повторно — уже отвязан
+
+
 class Chat(Base):
     def test_foreign_chat_ignored(self):
         self.say("привет", chat=111)

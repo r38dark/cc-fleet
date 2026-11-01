@@ -1,0 +1,128 @@
+#!/bin/bash
+# cc-cmd — консольные команды балансера cc-fleet на любом сервере, где он стоит:
+#   cl   — зайти в консоль Claude (нет сессии — создать, продолжив прошлый разговор)
+#   cla  — только подключиться к живой сессии Claude
+#   cln  — создать НОВУЮ сессию Claude (если есть живая — спросит, убивать ли)
+#   clw  — вернуться в рабочую сессию Claude (жива — подключиться, иначе пересоздать с --resume); clw -f — пересоздать
+#   cxw  — зайти в консоль Codex (screen cc-codex от пользователя codex_user); имя сессии — аргументом
+# Ссылки cl/cla/cln/clw/cxw в /usr/local/bin создаёт сам балансер при старте (cc_limits.ensure_cmd_links) и сам обновляет с релизом.
+# Настройки — из config.json балансера (рядом с этим файлом):
+#   screen_session — имя screen-сессии Claude (по умолчанию claude)
+#   claude_cmd     — как запускать Claude, целиком (по умолчанию просто claude),
+#                    например: IS_SANDBOX=1 claude --dangerously-skip-permissions --channels plugin:telegram@claude-plugins-official
+#   codex_user     — под кем живёт консоль Codex (по умолчанию codextrial)
+
+self=$(readlink -f "$0")
+name=$(basename "$0")
+if [ "$name" = "cc-cmd" ]; then
+    name=${1:-}
+    shift
+fi
+CONF="${CC_LIMITS_BASE:-$(dirname "$self")}/config.json"
+
+# значение ключа из config.json; нет ключа, пусто или файл не читается — запасное
+cfgget() {
+    python3 -c 'import json,sys
+try:
+    v = json.load(open(sys.argv[1])).get(sys.argv[2])
+except Exception:
+    v = None
+print(v.strip() if isinstance(v, str) and v.strip() else sys.argv[3])' "$CONF" "$1" "$2" 2>/dev/null || echo "$2"
+}
+
+need_screen() {
+    command -v screen >/dev/null 2>&1 && return 0
+    echo "Не нашёл screen — поставь его (например: apt install screen)."
+    exit 1
+}
+
+# имя сессии кладём в регулярку и в аргументы screen — оставляем только безопасные символы
+SESS=$(cfgget screen_session claude)
+case "$SESS" in
+    *[!A-Za-z0-9_.-]*|"") SESS=claude ;;
+esac
+CMD=$(cfgget claude_cmd claude)
+
+alive() {
+    screen -wipe >/dev/null 2>&1
+    screen -ls 2>/dev/null | grep -qE "[0-9]+\.${SESS}[[:space:]]"
+}
+
+# запустить сессию с готовой строкой запуска и подключиться
+launch() {
+    screen -S "$SESS" -dm bash -lc "$1"
+    sleep 1
+    screen -r "$SESS"
+}
+
+inside_screen() {
+    [ -z "$STY" ] && return 1
+    echo "Ты ВНУТРИ screen ($STY). Сначала detach: Ctrl+A, потом d. Затем $name."
+    return 0
+}
+
+case "$name" in
+    cl)
+        need_screen
+        if alive; then
+            exec screen -DR "$SESS"
+        fi
+        launch "$CMD --continue || $CMD"
+        ;;
+    cla)
+        need_screen
+        if alive; then
+            exec screen -DR "$SESS"
+        fi
+        echo "screen-сессия $SESS не найдена. Используй cln, чтобы создать новую."
+        exit 1
+        ;;
+    cln)
+        need_screen
+        if alive; then
+            read -r -p "screen $SESS уже существует. Убить и создать новую? [y/N] " ans </dev/tty
+            case "$ans" in
+                y|Y|yes) screen -S "$SESS" -X quit; sleep 1 ;;
+                *) echo "Отмена. Используй cla, чтобы подключиться к существующей."; exit 1 ;;
+            esac
+        fi
+        launch "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 $CMD"
+        ;;
+    clw)
+        need_screen
+        inside_screen && exit 1
+        # screen жив, но Claude внутри вышел (остался голый bash) — это не «жив», пересоздаём
+        if [ "$1" != "-f" ] && alive && pgrep -f '(^|/)claude( |$)|claude-code/' >/dev/null; then
+            echo "$SESS жив — переподключаюсь (пересоздать с нуля: clw -f)"
+            exec screen -rd "$SESS"
+        fi
+        screen -S "$SESS" -X quit 2>/dev/null
+        sleep 1
+        launch "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 $CMD --resume"
+        ;;
+    cxw)
+        inside_screen && exit 1
+        u=$(cfgget codex_user codextrial)
+        sname="${1:-cc-codex}"
+        home=$(getent passwd "$u" | cut -d: -f6)
+        if [ -z "$home" ]; then
+            echo "Пользователь $u не найден (config.json → codex_user)."
+            exit 1
+        fi
+        need_screen
+        run=(env HOME="$home" TERM="${TERM:-xterm-256color}")
+        [ "$(id -u)" = 0 ] && run=(runuser -u "$u" -- "${run[@]}")
+        "${run[@]}" screen -wipe >/dev/null 2>&1
+        if ! "${run[@]}" screen -ls 2>/dev/null | grep -q "[0-9]\.$sname\b"; then
+            echo "Консоль Codex не запущена (screen $sname нет)."
+            echo "Запусти её на странице балансера: вкладка Codex → «Запустить». Потом снова cxw."
+            exit 1
+        fi
+        echo "Подключаюсь к $sname (пользователь $u). Выйти, не останавливая Codex: Ctrl+A, потом d."
+        exec "${run[@]}" screen -rd "$sname"
+        ;;
+    *)
+        echo "cc-cmd: команды cl, cla, cln, clw (Claude) и cxw (Codex). Запускай их по имени, например: cl"
+        exit 2
+        ;;
+esac

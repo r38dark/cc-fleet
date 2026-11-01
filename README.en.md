@@ -594,15 +594,15 @@ failure caused by this race — it is prevention.
 Tests (standard library only, no `pytest`; live files are not touched):
 `python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock test_cc_update_banner`.
 
-## Connecting Codex from scratch (v1.25.17, install button — v1.25.22, "Ask Claude" — v1.25.23)
+## Connecting Codex from scratch (v1.25.17, install button — v1.25.22, "Ask Claude" — v1.25.23, wizard to the end — v1.25.24)
 
 What it is for: Codex is a spare leg for when your Claude accounts are unavailable, and a "helper" (the Orchestrator profile) that drives a goal while Claude executes the steps. Until Codex is installed the header shows a **"Codex +"** button (since 1.25.22): it opens the "Connect Codex" window with three steps and an install button. The `>_` icon and the ⚙ are not there yet — they appear the moment Codex is installed. The whole path is six steps, about ten minutes.
 
 1. **Install Codex on the server — with a button.** Press **"Codex +"** in the header → "Install Codex". The panel runs `npm install -g --prefix /opt/cc-limits/codex-cli @openai/codex` itself (into its own folder, no root rights or system directories needed), shows the progress, checks `codex --version` and writes the path into `config.json` (`"codex_bin"`). You can stop the install with "Cancel". You need **Node.js 16 or newer** with npm: the panel does not install it itself. **If Node is missing or too old, press "Ask Claude"** (since 1.25.23): the panel types a ready-made prompt into the Claude console on this server, and Claude checks Node.js, installs it if needed, starts the Codex install and tells you when to press "Sign in"; the window moves on to step 3 by itself as soon as the install is done. If Claude asks for permission or a password (sudo), answer it in the console. If you prefer not to, "Copy prompt" puts the same text on the clipboard (paste it into the Claude console yourself), or install Node.js by hand (nodejs.org or your system package manager) and press "Check again". When Node is present, "Ask Claude" and "Copy prompt" also sit next to "Install Codex" — for when the install fails and needs sorting out. When the install finishes the window closes, `>_` and ⚙ appear in the header, and the ⚙ window opens for step 3. The button works only with the panel token. By hand it is the same: `npm i -g @openai/codex`, `codex --version`; if the service cannot see the command (npm installed it in a folder that is not on the service's `PATH`), put the full path in `/opt/cc-limits/config.json`: `"codex_bin": "/path/to/codex"` and restart the service (`systemctl restart cc-limits`).
 2. **Turn on device-code sign-in in ChatGPT** (a beta feature, off by default). Personal account: ChatGPT → Settings → Security → the device-code switch for Codex (different ChatGPT versions word it a little differently: *Enable device code authorization for Codex* / *Allow device code login*). Workspace (Business, Enterprise): an admin turns it on in the workspace permissions. You need a ChatGPT plan that includes Codex. If the switch is off, the sign-in page will not accept the code or will not go further.
-3. **Add an account:** ⚙ next to `>_` → "ChatGPT accounts and limits" → "+" → a name (optional) → "Get code". A link and a one-time code appear: open the link in any browser where you are signed in to the right ChatGPT account, enter the code (it lives 15 minutes). The panel shows "✅ Connected". No password or email is typed here — the server never sees them, the token lives in `/root/.codex-profiles/gptN` with 700/600 rights.
+3. **Add an account:** ⚙ next to `>_` → "ChatGPT accounts and limits" → "+" → a name (optional) → "Get code". A link and a one-time code appear: open the link in any browser where you are signed in to the right ChatGPT account, enter the code (it lives 15 minutes). The panel shows "✅ Connected". No password or email is typed here — the server never sees them, the token lives in `/root/.codex-profiles/gptN` with 700/600 rights. If you follow the "Connect Codex" window, this step opens by itself right after the install. An extra account can be removed: the "Delete account" button at the bottom of the bridge card (⚙ → "Telegram bridge and all settings") or "Delete" on the account card — both ask you to type a word.
 4. **Create a Telegram bot:** message @BotFather in Telegram → `/newbot` → get a token like `123456:ABC…`. It must be a **separate** bot, not the one Claude uses. Then open your new bot and press "Start" — without that the bot cannot write to you first.
-5. **Connect the bot:** ⚙ → "Telegram bridge and all settings" → paste the token → "Connect". The "chat_id" field must hold your number (ask @userinfobot for it; if you entered a chat_id for notifications during installation, it is already filled in) → "Save". The bridge answers only this chat_id.
+5. **Connect the bot:** ⚙ → "Telegram bridge and all settings" → paste the token → "Connect". The "chat_id" field must hold your number (ask @userinfobot for it; if you entered a chat_id for notifications during installation, it is already filled in) → "Save". The bridge answers only this chat_id. In the "Connect Codex" window this step opens by itself after the ChatGPT sign-in and is optional — the "Skip this step and finish" button closes the wizard without a bot.
 6. **Pick a profile:** `>_` in the header → "Orchestrator" (Codex drives the goal, Claude executes the steps after your "yes") or "Codex" (works on its own, without Claude). Once both a bot and a profile exist the bridge switches itself on; the "Bridge enabled" tick is in the same ⚙ → "Telegram bridge and all settings" window.
 
 Check: write "hi" to your bot — the answer arrives in Telegram, and the "Codex" tab of the console shows the same conversation.
@@ -741,6 +741,25 @@ Worth knowing: while the reserve is on manually, **Claude cannot work** — that
 | Claude does not wake up after the reserve is lifted | If the console is busy, input into `screen` is silently dropped — type any message into the session |
 
 Tests: `python3 -m unittest test_cc_notion test_cc_reserve_pause` (no real Notion or Codex there — everything is stubbed).
+
+## Console commands cl, cla, cln, clw, cxw (v1.25.24)
+
+What they are for: get into the Claude or Codex console on a server with one short command, on any server where the balancer runs. The commands are part of the panel: `install.sh` sets them up, they update with every release, and when the service starts it puts the links into `/usr/local/bin` itself. Nothing has to be added to `.bashrc` by hand; if you already have your own functions with those names, they stay in charge, and the panel never touches someone else's file with such a name.
+
+| Command | What it does |
+|---|---|
+| `cl` | enter the Claude console; no session — create one, continuing the last conversation |
+| `cla` | only attach to a live session (none — it points you to `cln`) |
+| `cln` | create a NEW session; if a live one exists, asks whether to kill it |
+| `clw` | return to the working session; alive — attach, otherwise recreate with `--resume`; `clw -f` — recreate from scratch |
+| `cxw` | enter the Codex console (screen `cc-codex` of the `codex_user` user); another session name as an argument |
+
+Settings come from the panel's `config.json`:
+- `screen_session` — the name of the Claude screen session (default `claude`);
+- `claude_cmd` — how to start Claude, as a whole line (default just `claude`), for example `IS_SANDBOX=1 claude --dangerously-skip-permissions --channels plugin:telegram@claude-plugins-official`. Only needed if you start Claude with flags or channels;
+- `codex_user` — the OS user the Codex console lives under (default `codextrial`).
+
+The commands need screen (`apt install screen`) and python3. To leave a console without stopping it: `Ctrl+A`, then `d`.
 
 ## Management
 
@@ -898,6 +917,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.24** — Codex wizard to the end, delete account, `cl`/`cxw` commands. After Codex is installed, step 2 (ChatGPT
+  sign-in) opens by itself, and after sign-in step 3 (the Telegram bot); step 3 is optional, there is a "Skip this step and
+  finish" button. The wizard window is as wide as the ⚙ window. In ⚙ the "ChatGPT accounts and limits" section is at the very
+  bottom; the bridge card has "Save" on the left and "Delete account" on the right at the bottom (confirmed by typing a word;
+  the bridge binding to the deleted account is dropped). The commands `cl`, `cla`, `cln`, `clw` and `cxw` are now part of the
+  panel and install themselves on any server; the Claude launch line is the `claude_cmd` key in `config.json`.
 - **v1.25.23** — "Ask Claude" when connecting Codex. If the server has no Node.js (or an old one), the "Connect Codex" window's main
   button is "Ask Claude": the panel types a fixed prompt into the Claude console, and Claude installs Node.js, starts the
   Codex install and says when to sign in to ChatGPT; the window moves on by itself. Next to it, "Copy prompt" gives the
