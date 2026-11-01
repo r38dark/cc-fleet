@@ -1046,9 +1046,11 @@ class NotionInstantAndFrame(unittest.TestCase):
         css = L.PAGE
         rules = re.findall(r"^(html:root \.ntgrp[^{]*)\{([^}]*)\}$", css, re.M)
         sel = {a: b for a, b in rules}
-        # обе кнопки группы (переключатель и ⚙) красятся одним правилом по классу группы
-        self.assertEqual(sel["html:root .ntgrp .hdrgear"], "border-color:transparent;box-shadow:none")
-        # зелёная рамка — ТОЛЬКО при включённом резерве; «просто включён» рамки не даёт; нет связи — красная; жёлтого нет совсем
+        # без резерва рамка есть — обычная серая рамка скина, как у группы Codex; своего «прозрачного» правила у блока нет
+        self.assertNotIn("html:root .ntgrp .hdrgear", sel)
+        self.assertNotIn("border-color:transparent", "".join(sel.values()))
+        # обе кнопки группы (переключатель и ⚙) красятся одним правилом по классу группы:
+        # зелёная рамка — ТОЛЬКО при включённом резерве; «просто включён» цвета не меняет; нет связи — красная; жёлтого нет совсем
         self.assertIn("rgba(52,192,124", sel["html:root .ntgrp.res .hdrgear"])
         self.assertIn("var(--bad)", sel["html:root .ntgrp.bad .hdrgear"])
         self.assertNotIn("html:root .ntgrp.enab .hdrgear", sel)
@@ -1059,7 +1061,8 @@ class NotionInstantAndFrame(unittest.TestCase):
         # правила стоят позже всех скинов и в ТОЙ ЖЕ специфичности, что и их :hover (0,3,1) — выигрывают порядком
         # (правило «.hdrgear.ntbtn{color}» у blocks красит только текст, рамку и тень не трогает — в счёт не идёт)
         last_skin = max(m.start() for m in re.finditer(r'html\[data-skin="(?:phosphor|aurora|slate|blocks)"\] \.hdrgear(?::hover)?[,{]', css))
-        self.assertGreater(css.index("html:root .ntgrp .hdrgear{"), last_skin)
+        self.assertGreater(css.index("html:root .ntgrp.res .hdrgear{"), last_skin)
+        self.assertGreater(css.index("html:root .ntgrp.bad .hdrgear{"), last_skin)
         # старые рамки по кнопке (они красили только переключатель и не доходили до ⚙) убраны
         for old in ('.ntbtn[aria-checked="true"]{border-color', ".ntbtn.bad{border-color", ".ntbtn.res{border-color"):
             self.assertNotIn(old, css)

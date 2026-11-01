@@ -195,7 +195,7 @@ gear, a "Delete" button on every card and the windows for both flows
   card — no need to switch to the terminal: compact the context or start
   `/clear` with one click (same `screen`-session injection the model buttons
   use).
-- 🗂 **Notion agent and the "Codex + Notion" reserve** (v1.25.20) — a header block: the N icon shows whether your
+- 🗂 **Notion agent and the "Codex + Notion" reserve** (v1.25.21) — a header block: the N icon shows whether your
   Notion agent is connected, and the "Reserve" switch moves to reserve mode by hand (after a confirmation). In the
   reserve — the limits ran out, or you pressed the switch — Claude really goes on pause and Codex works together with
   the agent, every change waiting for your "yes". Turning it on and off is instant, the block frame shows the mode by itself. A from-scratch guide is in the "Notion agent and the
@@ -684,7 +684,7 @@ Configure it with the `"codex_emergency"` key in `config.json`:
 
 Tests: `python3 -m unittest test_cc_codex_emergency` (no real mount, sudo or systemctl — all stubbed).
 
-## Notion agent and the "Codex + Notion" reserve (v1.25.20)
+## Notion agent and the "Codex + Notion" reserve (v1.25.21)
 
 What it is for: you have an agent in Notion (it gathers, searches and drafts text from your pages) and you want the panel to show it next to the Claude accounts. And when Claude is unavailable — its limits ran out, or you stopped it yourself — **Codex can keep working together with that agent**: you give Codex the task, it sends the agent the text it needs, the agent returns a result, and Codex applies it to the project and checks it. Every change waits for your "yes".
 
@@ -709,7 +709,7 @@ On the left, the **N** icon is only an indicator — there is nothing to press: 
 
 | Frame | Meaning |
 |---|---|
-| No frame | No reserve: Claude is working |
+| Gray (regular, like the Codex block) | No reserve: Claude is working |
 | Green | Reserve is on: Claude is paused, Codex + agent are working |
 | Red | No connection: the Notion sign-in is gone (`/mcp` → `notion` → sign in again) |
 
@@ -896,6 +896,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.21** — Gray frame on the Notion block. While the reserve is off, the N icon, the "Reserve" switch and the ⚙ are
+  outlined with the regular gray skin frame — the same as the Codex block (version 1.25.19 removed the frame of an off
+  block completely). The green frame in reserve and the red one on lost connection are unchanged. The frame table in the
+  "Notion agent and reserve" section is updated.
 - **v1.25.20** — The reserve is its own switch, the Notion icon is only an indicator. The N icon in the header now just
   shows the connection (green dot — Notion is connected, red — sign in again) and turns nothing on. The manual reserve
   is the "Reserve" switch next to it: press it and the panel asks "Really move to reserve mode?" and explains what

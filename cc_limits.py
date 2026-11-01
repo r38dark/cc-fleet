@@ -16,7 +16,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.20"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.21"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3898,9 +3898,8 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .ntgrp .hdrgear:hover,.ntgrp .hdrgear[aria-expanded="true"]{position:relative;z-index:1}
 .ntgbtn[aria-expanded="true"]{color:var(--acc)}
 /* рамка блока Notion — одна по периметру на ВСЮ группу (индикатор + переключатель резерва + ⚙), цвет задаёт класс группы:
-   зелёная — только пока работает резерв; без резерва рамки нет совсем;
-   красная — Notion не подключён или нужен вход заново (перебивает скины) */
-html:root .ntgrp .hdrgear{border-color:transparent;box-shadow:none}
+   без класса — обычная серая рамка скина, как у группы Codex (резерв выключен);
+   зелёная — пока работает резерв; красная — Notion не подключён или нужен вход заново (обе перебивают скины) */
 html:root .ntgrp.res .hdrgear{border-color:rgba(52,192,124,.75)}
 html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .hdrgear.ntind svg{width:15px;height:15px;flex:none}
