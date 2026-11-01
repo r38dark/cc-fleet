@@ -16,7 +16,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.18"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.19"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3122,17 +3122,19 @@ button:disabled{opacity:.35;cursor:default}
 .termwrap{position:relative;display:flex;flex-direction:column;min-height:130px;margin-bottom:18px}
 .termdot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
 .tzoom{position:absolute;top:7px;right:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
-/* вкладки консолей Claude | Codex: плашка того же вида, что масштаб, но слева; показывается, только если Codex установлен */
-.ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
+/* вкладки консолей Claude | Codex: слева над консолью, без своей плашки; показываются, только если Codex установлен */
+.ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:transparent}
 .ctabs[hidden],.ctstop[hidden],.cxcons[hidden]{display:none}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
 .iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
 .iconbtn.ctab.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
-/* цвет вкладки: обе всегда цветные (Claude — оранжевый, Codex — синий), активная насыщеннее; перекрывает окраску тем */
-html:root:root .iconbtn.ctab[data-s]{--tc:224,144,90;--tt:#efbf9c;--ton:#ffe6d3;color:var(--tt);background:transparent;border-color:rgba(var(--tc),.5)}
-html:root:root .iconbtn.ctab[data-s="codex"]{--tc:104,154,236;--tt:#aac6f6;--ton:#e4eeff}
+/* цвет вкладки: обе всегда цветные (Claude — оранжевый, Codex — синий), перекрывает окраску тем.
+   Неактивная — только окантовка (фона нет совсем, плашки под кнопками тоже; чтобы подпись читалась поверх текста консоли — тёмный ореол у букв);
+   активная — залита цветом целиком */
+html:root:root .iconbtn.ctab[data-s]{--tc:224,144,90;--tt:#efbf9c;--ton:#1d1206;color:var(--tt);background:transparent;border:1px solid rgba(var(--tc),.7);box-shadow:none;text-shadow:0 0 2px #000,0 0 2px #000}
+html:root:root .iconbtn.ctab[data-s="codex"]{--tc:104,154,236;--tt:#aac6f6;--ton:#061429}
 html:root:root .iconbtn.ctab[data-s]:hover{background:transparent;border-color:rgb(var(--tc));color:var(--tt)}
-html:root:root .iconbtn.ctab[data-s].on{background:rgba(var(--tc),.28);border-color:rgb(var(--tc));color:var(--ton);box-shadow:0 0 0 1px rgba(var(--tc),.35)}
+html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:rgb(var(--tc));color:var(--ton);box-shadow:none;text-shadow:none}
 .termwrap.hastabs .termbox{padding-top:42px}
 .cxcons{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:48px 18px 18px;text-align:center;pointer-events:none}
 .cxcons>*{pointer-events:auto}
@@ -3894,18 +3896,17 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 .ntgrp .hdrgear:hover,.ntgrp .hdrgear[aria-expanded="true"]{position:relative;z-index:1}
 .ntgbtn[aria-expanded="true"]{color:var(--acc)}
 /* рамка блока Notion — одна по периметру на ВСЮ группу (переключатель + ⚙), цвет задаёт класс группы:
-   выключен — рамки нет совсем, включён — зелёная, нет связи — красная, работает резерв — жёлтая (перебивает скины) */
+   зелёная — только пока работает резерв; блок включён или выключен без резерва — рамки нет совсем;
+   красная — блок включён, но связи нет (перебивает скины) */
 html:root .ntgrp .hdrgear{border-color:transparent;box-shadow:none}
-html:root .ntgrp.enab .hdrgear{border-color:rgba(52,192,124,.55)}
+html:root .ntgrp.res .hdrgear{border-color:rgba(52,192,124,.75)}
 html:root .ntgrp.enab.bad .hdrgear{border-color:var(--bad)}
-html:root .ntgrp.res .hdrgear{border-color:var(--warn)}
 .hdrgear.ntbtn svg{width:15px;height:15px;flex:none}
 .ntsw{position:relative;width:22px;height:12px;border-radius:99px;background:#2a3140;flex:none;transition:background .15s}
 .ntsw::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--mut);transition:transform .15s,background .15s}
 .ntbtn[aria-checked="true"] .ntsw{background:rgba(52,192,124,.3)}
 .ntbtn[aria-checked="true"] .ntsw::after{transform:translateX(10px);background:var(--ok)}
-.ntbtn.res{color:var(--warn)}
-.ntbtn.res .ntsw::after{background:var(--warn)}
+.ntbtn.res{color:var(--ok)}
 .ntres .updchk{font-size:13px;color:var(--txt);margin-top:10px}
 .ntres .updchk.dis{opacity:.5;cursor:default}
 .ntres .cxsub{margin-top:10px}
@@ -4263,7 +4264,7 @@ const I18N={
   ntResWait:'Сейчас: лимиты кончились, проверяю, что это не сбой…',
   ntResUnknown:'Сейчас: данные о лимитах устарели — резерв не меняю.',
   ntResOnManual:'Сейчас: резерв включён вручную — Claude на паузе.',
-  ntResManualNote:'Галочка отключает Claude: аккаунты не тратятся, входящие сообщения ждут в очереди. Снял — Claude вернётся и продолжит с места остановки.',
+  ntResManualNote:'Галочка отключает Claude: аккаунты не тратятся, входящие сообщения ждут в очереди. Снял — Claude вернётся и продолжит с места остановки. Выключишь переключатель блока — галочка снимется сама.',
   ntResOnAuto:'Сейчас: лимиты кончились — резерв включён.',
   ntResReset:t=>' Ближайший сброс в '+t+'.',
   ntResEmgOn:' Аварийный режим включён.',
@@ -4713,7 +4714,7 @@ const I18N={
   ntResWait:'Now: limits are used up, checking it is not a glitch…',
   ntResUnknown:'Now: the limits data is stale — leaving the reserve as it is.',
   ntResOnManual:'Now: the reserve was turned on by hand — Claude is paused.',
-  ntResManualNote:'The box switches Claude off: accounts are not spent, incoming messages wait in the queue. Untick it and Claude comes back and continues where it stopped.',
+  ntResManualNote:'The box switches Claude off: accounts are not spent, incoming messages wait in the queue. Untick it and Claude comes back and continues where it stopped. Switch the block off and the box clears itself.',
   ntResOnAuto:'Now: limits are used up — the reserve is on.',
   ntResReset:t=>' Nearest reset at '+t+'.',
   ntResEmgOn:' Emergency mode is on.',
@@ -6202,8 +6203,8 @@ async function ntToggle(){
  if(!ntData)return;
  const prev=ntData,next=!prev.enabled;
  ntAfter();
- // сразу показываем, правду потом приносит сервер; выключенный блок резерва не держит — рамка и шапка меняются без ожидания
- ntApply(Object.assign({},prev,{enabled:next},next?{}:{reserve:Object.assign({},prev.reserve,{active:false})}));
+ // сразу показываем, правду потом приносит сервер; выключенный блок резерва не держит и ручную галочку снимает — рамка, шапка и галочка меняются без ожидания
+ ntApply(Object.assign({},prev,{enabled:next},next?{}:{reserve:Object.assign({},prev.reserve,{active:false,manual:false})}));
  try{
   const r=await acctPost('notion/save',{enabled:next});
   if(r&&r.ok)ntApply(r.notion);else{ntActAt=0;ntApply(prev);toast((r&&r.message)||tr('ntErr'));}  // откат — без тоста о смене режима

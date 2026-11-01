@@ -125,6 +125,35 @@ class Page(unittest.TestCase):
         self.assertRegex(L.PAGE, r'html:root:root \.iconbtn\.ctab\[data-s="codex"\]\{--tc:104,154,236;')
         self.assertRegex(L.PAGE, r"\.iconbtn\.ctab\[data-s\]\.on\{")
 
+    def test_console_tabs_inactive_is_outline_only_active_is_filled(self):
+        # просьба владельца (60742): неактивная вкладка — только окантовка без фона, активная окрашена целиком
+        css = L.PAGE
+        base = re.search(r"^html:root:root \.iconbtn\.ctab\[data-s\]\{([^}]*)\}$", css, re.M).group(1)
+        self.assertIn("background:transparent", base)
+        self.assertIn("box-shadow:none", base)             # скин blocks рисует жёсткую тень — это тоже «фон»
+        self.assertRegex(base, r"border:1px solid rgba\(var\(--tc\),\.7\)")
+        hov = re.search(r"^html:root:root \.iconbtn\.ctab\[data-s\]:hover\{([^}]*)\}$", css, re.M).group(1)
+        self.assertIn("background:transparent", hov)      # наведение заливку не даёт
+        on = re.search(r"^html:root:root \.iconbtn\.ctab\[data-s\]\.on\{([^}]*)\}$", css, re.M).group(1)
+        self.assertIn("background:rgb(var(--tc))", on)    # сплошная заливка цветом вкладки, не прозрачная
+        self.assertNotRegex(on, r"background:rgba")
+        self.assertIn("color:var(--ton)", on)
+        # «активная» стоит ПОСЛЕ «наведения»: активная под курсором остаётся залитой
+        self.assertGreater(css.index(".iconbtn.ctab[data-s].on{"), css.index(".iconbtn.ctab[data-s]:hover{"))
+        # у каждой вкладки свой тёмный цвет текста на заливке (оранжевая и синяя читаются)
+        self.assertRegex(css, r"\.iconbtn\.ctab\[data-s\]\{--tc:224,144,90;[^}]*--ton:#[0-9a-f]{6}")
+        self.assertRegex(css, r'\.iconbtn\.ctab\[data-s="codex"\]\{--tc:104,154,236;[^}]*--ton:#[0-9a-f]{6}')
+        # плашки под кнопками нет: тёмная подложка контейнера делала неактивную вкладку «залитой»
+        self.assertRegex(css, re.compile(r"^\.ctabs\{[^}]*background:transparent[^}]*\}$", re.M))
+        self.assertNotRegex(css, r"\.ctabs\{[^}]*background:rgba")
+
+    def test_console_tabs_rules_beat_every_skin(self):
+        # правило вкладок специфичнее любого скина (по скинам .iconbtn красится фоном/тенью/рамкой)
+        css = L.PAGE
+        for skin in ("phosphor", "aurora", "slate", "blocks"):
+            self.assertRegex(css, r'html\[data-skin="%s"\] \.hdrgear,html\[data-skin="%s"\] \.iconbtn\{' % (skin, skin))
+        self.assertIn("html:root:root .iconbtn.ctab[data-s]{", css)
+
     def test_form_has_project_and_own_workdir_fields(self):
         # «Проект» — всегда (Codex его только читает), «Рабочая папка Codex» — только в режиме «Самостоятельно»; project уходит, лишь если его правили
         form = re.search(r"function cxbRender\(force\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
@@ -910,15 +939,38 @@ class NotionInstantAndFrame(unittest.TestCase):
         assert r.returncode == 0, r.stderr
         cls.b = json.loads(r.stdout)
 
+    # --- вариант Б: выключили переключатель — галочка «вручную» снимается сразу ---
+    def test_toggle_off_clears_manual_tick_at_once_and_keeps_auto(self):
+        m = re.search(r"async function ntToggle\(\)\{.*?\n\}\n", L.PAGE, re.S)
+        self.assertTrue(m)
+        js = (
+            "let ntData={available:true,enabled:true,connected:true,reserve:{active:true,manual:true,auto:true,claude:'up'}};\n"
+            "const seen=[];function ntAfter(){}function ntSync(){}const toast=()=>{};const tr=k=>k;\n"
+            "function ntApply(n){seen.push(JSON.parse(JSON.stringify(n)));ntData=n;}\n"
+            "const posted=[];const acctPost=async(u,b)=>{posted.push(b);return {ok:true,notion:Object.assign({},ntData,{reserve:{active:false,manual:false,auto:true}})};};\n"
+            + m.group(0) +
+            "ntToggle().then(()=>console.log(JSON.stringify({seen,posted})));\n"
+        )
+        path = os.path.join(TMP, "nt_toggle.js")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(js)
+        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = json.loads(r.stdout)
+        first = out["seen"][0]                                   # показ ДО ответа сервера (мгновенный отклик)
+        self.assertIs(first["enabled"], False)
+        self.assertEqual(first["reserve"], {"active": False, "manual": False, "auto": True, "claude": "up"})
+        self.assertEqual(out["posted"], [{"enabled": False}])    # на сервер уходит только переключатель
+
     # --- рамка блока ---
     def test_group_classes_follow_state(self):
         o = self.o
-        self.assertEqual(o["on"]["g"], "enab")            # включён: зелёная рамка всей группы
+        self.assertEqual(o["on"]["g"], "enab")            # включён без резерва: класс есть, но рамку он не рисует (см. CSS-тест ниже)
         self.assertEqual(o["off"]["g"], "")               # выключен: рамки нет совсем
         self.assertEqual(o["bad"]["g"], "bad,enab")       # включён, но нет связи: красная
         self.assertEqual(o["offBad"]["g"], "")            # выключенный блок красным не светится
-        self.assertEqual(o["res"]["g"], "enab,res")       # идёт резерв: жёлтая
-        self.assertEqual(o["res"]["b"], "res")            # подпись кнопки тоже жёлтая
+        self.assertEqual(o["res"]["g"], "enab,res")       # идёт резерв: зелёная
+        self.assertEqual(o["res"]["b"], "res")            # подпись кнопки тоже зелёная
 
     def test_frame_is_drawn_on_both_buttons_of_the_group_and_beats_skins(self):
         css = L.PAGE
@@ -926,9 +978,14 @@ class NotionInstantAndFrame(unittest.TestCase):
         sel = {a: b for a, b in rules}
         # обе кнопки группы (переключатель и ⚙) красятся одним правилом по классу группы
         self.assertEqual(sel["html:root .ntgrp .hdrgear"], "border-color:transparent;box-shadow:none")
-        self.assertIn("rgba(52,192,124", sel["html:root .ntgrp.enab .hdrgear"])
+        # зелёная рамка — ТОЛЬКО при включённом резерве; «просто включён» рамки не даёт; нет связи — красная; жёлтого нет совсем
+        self.assertIn("rgba(52,192,124", sel["html:root .ntgrp.res .hdrgear"])
         self.assertIn("var(--bad)", sel["html:root .ntgrp.enab.bad .hdrgear"])
-        self.assertIn("var(--warn)", sel["html:root .ntgrp.res .hdrgear"])
+        self.assertNotIn("html:root .ntgrp.enab .hdrgear", sel)
+        self.assertNotIn("--warn", "".join(sel.values()))
+        self.assertIn(".ntbtn.res{color:var(--ok)}", css)
+        self.assertNotIn(".ntbtn.res{color:var(--warn)}", css)
+        self.assertNotIn(".ntbtn.res .ntsw::after{background:var(--warn)}", css)
         # правила стоят позже всех скинов и в ТОЙ ЖЕ специфичности, что и их :hover (0,3,1) — выигрывают порядком
         # (правило «.hdrgear.ntbtn{color}» у blocks красит только текст, рамку и тень не трогает — в счёт не идёт)
         last_skin = max(m.start() for m in re.finditer(r'html\[data-skin="(?:phosphor|aurora|slate|blocks)"\] \.hdrgear(?::hover)?[,{]', css))
@@ -960,7 +1017,7 @@ class NotionInstantAndFrame(unittest.TestCase):
 
     def test_switching_off_clears_reserve_on_screen_without_waiting_for_server(self):
         body = re.search(r"async function ntToggle\(\)\{(.*?)\n\}\n", L.PAGE, re.S).group(1)
-        self.assertIn("next?{}:{reserve:Object.assign({},prev.reserve,{active:false})}", body)
+        self.assertIn("next?{}:{reserve:Object.assign({},prev.reserve,{active:false,manual:false})}", body)
         self.assertIn("ntActAt=0;ntApply(prev)", body)  # неудачное сохранение откатывает показ без тоста о смене режима
 
     # --- баннер паузы резерва ---
@@ -1132,6 +1189,25 @@ class NotionRoute(unittest.TestCase):
         self.assertTrue(rv["manual"] and rv["auto"])
         self.assertFalse(rv["auto_emergency"])
         self.assertNotIn("agent://", json.dumps(out))
+
+    def test_switching_the_block_off_clears_manual_and_on_does_not_bring_it_back(self):
+        # вариант Б: выключил переключатель — «вручную» снята; включил — Claude работает, резерв включается отдельно
+        self.post({"name": "Helper", "url": "agent://s/a"})
+        self.post({"reserve": {"manual": True, "auto": True, "auto_emergency": False}})
+        code, out = self.post({"enabled": False})
+        self.assertEqual(code, 200)
+        self.assertEqual(L.cfg()["notion_agent"]["reserve"], {"manual": False, "auto": True, "auto_emergency": False})
+        rv = out["notion"]["reserve"]
+        self.assertFalse(rv["manual"])
+        self.assertFalse(rv["active"])
+        self.assertTrue(rv["auto"])
+        code, out = self.post({"enabled": True})
+        self.assertEqual(code, 200)
+        self.assertFalse(out["notion"]["reserve"]["manual"])
+        self.assertFalse(out["notion"]["reserve"]["active"])        # Claude работает
+        self.assertTrue(out["notion"]["enabled"])
+        code, out = self.post({"reserve": {"manual": True}})        # и включается отдельным действием
+        self.assertTrue(out["notion"]["reserve"]["active"])
 
     def test_manual_reserve_is_active_in_the_same_answer(self):
         # быстрый случай (без аварийного режима): ответ уже с новым состоянием, страница не ждёт опроса

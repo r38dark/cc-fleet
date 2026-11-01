@@ -709,16 +709,15 @@ The switch and the ⚙ share one frame:
 
 | Frame | Meaning |
 |---|---|
-| No frame | The block is off |
-| Green | On, Claude is working |
-| Yellow | Reserve is on: Claude is paused, Codex + agent are working |
+| No frame | The block is off, or on without the reserve: Claude is working |
+| Green | Reserve is on: Claude is paused, Codex + agent are working |
 | Red | On, but no connection: the Notion sign-in is gone or the agent link is not set (`/mcp` → `notion` → sign in again) |
 
 ### Two reserve scenarios
 
 In the ⚙ of the Notion block, the "Reserve" section has three ticks (all off by default; stored in `config.json` → `notion_agent.reserve` as `manual`, `auto`, `auto_emergency`):
 
-- **"Work with the agent only" (manual).** You decided to do without Claude: the accounts are not spent. Once on, Claude **really goes on pause** (as with limits, but with no alarm clock), incoming Telegram messages wait in the queue, and the sender gets a reply "queued; reserve mode is on" (the text is the `queue_ack_reserve_message` key in `config.json`). Claude gets **two minutes** to finish what it started: the banner shows a countdown, then Claude's tools are blocked. The Codex profile switches by itself to the service profile "Reserve" (last in the menu, not selectable by hand) and Codex gets the Notion allow-list. Untick it and everything returns **instantly**: the pause is lifted, the Codex profile is the previous one, and the Claude session gets a message "reserve is off, N waiting in the queue" and carries on from where it stopped. If Claude's limits are still used up at that moment, the panel says so: reserve off, Claude stays paused until the window resets. While the "manual" tick stays in the ⚙, switching the block on again turns the reserve on again.
+- **"Work with the agent only" (manual).** You decided to do without Claude: the accounts are not spent. Once on, Claude **really goes on pause** (as with limits, but with no alarm clock), incoming Telegram messages wait in the queue, and the sender gets a reply "queued; reserve mode is on" (the text is the `queue_ack_reserve_message` key in `config.json`). Claude gets **two minutes** to finish what it started: the banner shows a countdown, then Claude's tools are blocked. The Codex profile switches by itself to the service profile "Reserve" (last in the menu, not selectable by hand) and Codex gets the Notion allow-list. Untick it and everything returns **instantly**: the pause is lifted, the Codex profile is the previous one, and the Claude session gets a message "reserve is off, N waiting in the queue" and carries on from where it stopped. If Claude's limits are still used up at that moment, the panel says so: reserve off, Claude stays paused until the window resets. Switching the block off clears the "manual" tick by itself: switch it back on and Claude works, the reserve is turned on separately (the "automatic" tick stays — it is about limits).
 - **"Turn on by itself" (automatic).** When the limits of **all** Claude accounts are used up (session, or week if the weekly pause is on) and it holds for two minutes — so a single polling hiccup does not trigger it — the reserve turns on by itself and a Telegram message arrives. When limits are back and that holds for two minutes, the reserve turns itself off and the Codex profile goes back to the previous one. If the limits data is stale (older than 15 minutes) the panel changes nothing.
 - **"…and also turn on Codex emergency mode".** Available only together with "Turn on by itself". It needs a configured emergency mode (see "Codex emergency mode"): then, in the automatic case, the reserve also turns on Codex's full access to the project so it can apply the agent's result. If the mode is not set up, a note under the tick says so and the reserve runs without full access. The emergency mode turns off together with the reserve.
 
@@ -895,6 +894,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.19** — Notion block frame, console tabs and the manual reserve. The frame around the switch and the ⚙ is now
+  green only while the reserve is on; an off block and an on block without reserve have no frame (red — "on but no
+  connection" — stays, yellow is gone). An inactive Claude/Codex console tab is an outline only, no fill (the console
+  text shows through), an active one is filled completely. Switch the block off and the "manual" tick in the ⚙ clears
+  itself and the reserve turns off at once; switch it back on and Claude works, the reserve turns on separately. The
+  "automatic" tick is left alone. Tests: three for the tick reset, plus tabs and frame.
 - **v1.25.18** — "Codex + Notion instead of Claude" reserve. The ⚙ of the Notion block has three ticks: "work with the
   agent only" (manual), "turn on by itself when the limits of every Claude account are used up" and "…and also turn on
   Codex emergency mode". A manually enabled reserve really pauses Claude: the accounts are not spent, incoming messages

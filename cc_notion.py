@@ -97,6 +97,10 @@ def save(conf, body):
         res = dict(new.get("reserve") or {})
         res.update(raw)
         new["reserve"] = res
+    # выключили блок — ручная галочка резерва снимается сама: включил обратно — Claude работает,
+    # резерв «вручную» включается отдельным действием (авто-галочка остаётся: она про лимиты, а не про человека)
+    if body.get("enabled") is False and (new.get("reserve") or {}).get("manual") is True:
+        new["reserve"] = dict(new["reserve"], manual=False)
     if body.get("clear_url") is True:
         new.pop("url", None)
     elif str(body.get("url") or "").strip():

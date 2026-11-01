@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.19", "date": "2026-11-01",
+     "ru": {"t": "Рамка Notion, вкладки консоли, ручной резерв", "p": ["Рамка блока Notion зелёная только при включённом резерве, иначе без рамки (красная «нет связи» осталась)", "Вкладки Claude/Codex: неактивная — только окантовка, активная — полная заливка", "Выключил переключатель Notion — галочка «вручную» снимается сама, резерв выключается сразу"]},
+     "en": {"t": "Notion frame, console tabs, manual reserve", "p": ["Notion block frame is green only while the reserve is on, otherwise none (red \"no connection\" stays)", "Claude/Codex tabs: inactive is an outline only, active is filled completely", "Switch the Notion block off and the \"manual\" tick clears itself, the reserve turns off at once"]}},
     {"v": "1.25.18", "date": "2026-11-01",
      "ru": {"t": "Резерв «Codex + Notion» вместо Claude", "p": ["Три галочки в ⚙ Notion: вручную, само при кончившихся лимитах, плюс аварийный режим Codex", "Ручной резерв ставит Claude на паузу (две минуты доделать начатое), снятие мгновенное; профиль Codex «Резерв»", "Рамка блока: зелёная, жёлтая, красная; инструкция «с нуля» в README"]},
      "en": {"t": "\"Codex + Notion\" reserve instead of Claude", "p": ["Three ticks in the Notion ⚙: manual, automatic when limits run out, plus Codex emergency mode", "Manual reserve pauses Claude (two minutes to finish), lifting is instant; Codex profile \"Reserve\"", "Block frame: green, yellow, red; a from-scratch guide in the README"]}},

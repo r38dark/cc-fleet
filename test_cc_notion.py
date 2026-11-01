@@ -181,6 +181,31 @@ class ReserveConf(unittest.TestCase):
         N.save(src, {"reserve": {"auto": False}})
         self.assertEqual(src, {"reserve": {"auto": True}})
 
+    def test_switching_block_off_clears_manual_only(self):
+        # выключили блок — ручная галочка снимается, авто и аварийная остаются (они про лимиты, а не про человека)
+        src = {"name": "A", "reserve": {"manual": True, "auto": True, "auto_emergency": True}}
+        ok, c, err = N.save(src, {"enabled": False})
+        self.assertTrue(ok)
+        self.assertEqual(c["reserve"], {"manual": False, "auto": True, "auto_emergency": True})
+        self.assertIs(c["enabled"], False)
+        self.assertEqual(src["reserve"]["manual"], True)  # исходный конфиг не тронут
+        # то же, если в одном запросе пришла и «вручную: да» — выключение блока сильнее
+        ok, c, _ = N.save({}, {"enabled": False, "reserve": {"manual": True}})
+        self.assertIs(c["reserve"]["manual"], False)
+
+    def test_switching_block_on_or_other_saves_keep_manual(self):
+        src = {"enabled": False, "reserve": {"manual": True, "auto": False}}
+        for body in ({"enabled": True}, {"name": "B"}, {"reserve": {"auto": True}}, {"clear_url": True}):
+            ok, c, _ = N.save(src, body)
+            self.assertTrue(ok, body)
+            self.assertIs(c["reserve"]["manual"], True, body)
+
+    def test_switching_off_without_reserve_does_not_invent_the_key(self):
+        ok, c, _ = N.save({"name": "A"}, {"enabled": False})
+        self.assertNotIn("reserve", c)
+        ok, c, _ = N.save({"reserve": {"auto": True}}, {"enabled": False})
+        self.assertEqual(c["reserve"], {"auto": True})
+
 
 class FakeEmg:
     """Подставка вместо cc_codex_emergency: считает вызовы."""
