@@ -847,3 +847,18 @@ def delete_account(bin_path, slot, confirm, lang="ru"):
     with _lock:
         _cache.pop(slot, None)
     return True, _t(lang, "Аккаунт ChatGPT удалён.", "ChatGPT account deleted.")
+
+
+def delete_all(bin_path, confirm, lang="ru"):
+    """Стирает ВСЕ входы ChatGPT разом (для «Удалить Codex целиком»). Слово подтверждения проверяется один раз.
+    → (ok, сообщение, сколько удалено)."""
+    if (confirm or "").strip().lower() not in DELETE_WORDS:
+        return False, _t(lang, "Слово подтверждения введено неверно — ничего не удалено.",
+                         "The confirmation word is wrong — nothing was deleted."), 0
+    done = 0
+    for slot in profile_slots():
+        ok, msg = delete_account(bin_path, slot, confirm, lang)
+        if not ok:
+            return False, msg, done
+        done += 1
+    return True, "", done

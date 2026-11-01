@@ -438,6 +438,21 @@ class CodexTest(unittest.TestCase):
         self.assertFalse(os.path.exists(p))
         self.assertEqual(cc_codex.profile_slots(), [])
 
+    def test_delete_all_needs_word_and_wipes_every_slot(self):
+        s1 = self._add("a@example.com")
+        os.remove(self.gate)
+        s2 = self._add("b@example.com")
+        self.assertEqual(cc_codex.profile_slots(), [s1, s2])
+        ok, msg, n = cc_codex.delete_all(self.bin, "нет")
+        self.assertFalse(ok)
+        self.assertEqual((n, cc_codex.profile_slots()), (0, [s1, s2]))  # без слова не стёрто ничего
+        ok, msg, n = cc_codex.delete_all(self.bin, " Подтверждаю ")
+        self.assertTrue(ok, msg)
+        self.assertEqual(n, 2)
+        self.assertEqual(cc_codex.profile_slots(), [])
+        ok, msg, n = cc_codex.delete_all(self.bin, "confirm")  # стирать нечего — не ошибка
+        self.assertEqual((ok, n), (True, 0))
+
     def test_delete_rejects_bad_slot_and_symlink(self):
         self.assertFalse(cc_codex.delete_account(self.bin, "../etc", "confirm")[0])
         slot = self._add()

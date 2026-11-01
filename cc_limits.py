@@ -16,7 +16,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.24"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.25"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2842,6 +2842,9 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, {"ok": ok, "seen": seen, "message": "" if ok else _t(
                 lang, "Не удалось вставить промт в консоль Claude (сессия недоступна). Скопируй промт и вставь сам.",
                 "Could not paste the prompt into the Claude console (session unavailable). Copy the prompt and paste it yourself.")})
+        if action == "wipe":  # «Удалить Codex целиком»: бинарь не нужен — стираем и когда он уже пропал
+            ok, message = cc_codex_bridge.wipe_all(codex_bin(), body.get("confirm", ""), lang=lang)
+            return self._send(200, {"ok": ok, "message": message})
         b = codex_bin()
         if not b:
             return self._send(400, {"ok": False, "message": _t(lang, "Codex не установлен на этом сервере.",
@@ -4173,6 +4176,8 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxl::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;border-radius:2px;background:linear-gradient(90deg,var(--gc) calc(var(--p,0)*1%),rgba(128,128,128,.28) 0)}
 .cxl.nobar::after{display:none}
 .cxacc{margin-top:12px;border-top:1px solid #232a36}
+.cxwipe{margin-top:12px;padding-top:12px;border-top:1px solid #232a36;display:flex}
+.cxwipe .btn-del{margin:0}
 .cxacch{display:flex;align-items:center;gap:8px;width:100%;margin:0;padding:11px 2px;background:transparent;border:0;color:var(--txt);font-size:14px;font-weight:700;text-align:left;cursor:pointer;border-radius:0}
 .cxacch .cxsum{flex:1;min-width:0;text-align:right;font-weight:400;font-size:12px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cxacch .cxar{flex:none;width:16px;height:16px;transition:transform .15s}
@@ -4284,8 +4289,8 @@ html[data-skin="blocks"] .cxpf .r{background:#ffb3b3}
 html[data-skin="blocks"] .cxpinfo .cxpik.can{color:#007a4d}
 html[data-skin="blocks"] .cxpinfo .cxpik.not{color:#c40000}
 html[data-skin="phosphor"] .cxprof.act{background:#0c2a17}
-html[data-skin="phosphor"] .cxacc{border-color:var(--phl)}
-html[data-skin="blocks"] .cxacc{border-color:var(--bk)}
+html[data-skin="phosphor"] .cxacc,html[data-skin="phosphor"] .cxwipe{border-color:var(--phl)}
+html[data-skin="blocks"] .cxacc,html[data-skin="blocks"] .cxwipe{border-color:var(--bk)}
 html[data-skin="blocks"] .hdrgear.cxbtn,html[data-skin="blocks"] .hdrgear.cxmodbtn,html[data-skin="blocks"] .hdrgear.ntbtn,html[data-skin="blocks"] .hdrgear.ntind{color:var(--bk)}
 html[data-skin="blocks"] .ntsteps code{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 html[data-skin="phosphor"] .ntsteps code{background:#020603;border-color:var(--phl);border-radius:0;color:var(--ph)}
@@ -4319,6 +4324,7 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
  <div class="cxpbody">
   <div class="cxacc" id="cxBrW"><button type="button" class="cxacch" data-sec="br"><span id="cxBrT"></span><span class="cxsum" id="cxBrS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cxb" class="cxsec" hidden></div></div>
   <div class="cxacc" id="cxAccW"><button type="button" class="cxacch" data-sec="acc"><span id="cxAccT"></span><span class="cxsum" id="cxAccS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cx" class="cxsec" hidden></div></div>
+  <div class="cxwipe" id="cxWipeW" hidden><button type="button" class="btn-del" id="cxWipe" onclick="cxWipe()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span id="cxWipeT"></span></button></div>
  </div>
 </div>
 <div id="ntPop" class="cxpop ntpop" role="dialog" aria-labelledby="ntPopTitle" hidden>
@@ -4696,6 +4702,10 @@ const I18N={
   cxBtnTip:'Профиль Codex: выбрать',
   cxGearTip:'Настройки Codex: аккаунты, лимиты, мост Telegram',
   cxAccSec:'Аккаунты и лимиты ChatGPT',
+  cxWipe:'Удалить Codex целиком',
+  cxWipeTip:'Стереть все аккаунты ChatGPT и сбросить мост, бота и профили (с подтверждением)',
+  cxWipeTitle:'Удалить Codex целиком?',
+  cxWipeWarn:'<b>Это безвозвратно.</b> Будут стёрты все аккаунты ChatGPT (токены отозваны у OpenAI), отключён бот, сброшены чат, выбранный и свои профили, режим и доступ, память разговора. Сам Codex на сервере останется: в шапке снова появится «Codex +» и мастер начнётся со входа.',
   cxBrSec:'Мост Telegram и все настройки',
   cxS5:'5 ч',
   cxS7:'нед',
@@ -5182,6 +5192,10 @@ const I18N={
   cxBtnTip:'Codex profile: pick one',
   cxGearTip:'Codex settings: accounts, limits, Telegram bridge',
   cxAccSec:'ChatGPT accounts and limits',
+  cxWipe:'Delete Codex completely',
+  cxWipeTip:'Wipe every ChatGPT account and reset the bridge, the bot and the profiles (asks to confirm)',
+  cxWipeTitle:'Delete Codex completely?',
+  cxWipeWarn:'<b>This cannot be undone.</b> Every ChatGPT account is wiped (tokens revoked at OpenAI), the bot is disconnected, the chat, the chosen and your own profiles, the mode and access and the conversation memory are reset. Codex itself stays on the server: “Codex +” returns to the header and the wizard starts at sign-in.',
   cxBrSec:'Telegram bridge and all settings',
   cxS5:'5 h',
   cxS7:'wk',
@@ -6162,8 +6176,10 @@ function cxpCur(){
 }
 function cxHdr(){
  const btn=$('#cxBtn'),grp=$('#cxGrp');if(!btn||!grp)return;
- const av=cxAvail();grp.hidden=!av;ciHdr();
- if(!av){cxPopClose();cxMenuClose();cxQClose();return;}
+ const av=cxAvail();ciHdr();
+ const hide=!av||ciStage()===2;  // шаг 2 мастера (аккаунта нет): значок, профиль и ⚙ не нужны — вход ведёт «Codex +»
+ grp.hidden=hide;
+ if(hide){cxPopClose();cxMenuClose();cxQClose();return;}
  const b=cxbData&&cxbData.bridge,cur=cxpCur();
  let cls='';
  if(b){if(b.last_error)cls='err';else if(b.running)cls=b.busy?'busy':'on';}
@@ -6344,6 +6360,7 @@ function cxAll(){
  aw.hidden=!(cxData&&cxData.available);bw.hidden=!(cxbData&&cxbData.available);
  aw.classList.toggle('open',!!CXP_SEC.acc);bw.classList.toggle('open',!!CXP_SEC.br);
  $('#cxAccT').textContent=tr('cxAccSec');$('#cxBrT').textContent=tr('cxBrSec');
+ $('#cxWipeW').hidden=!cxAvail();$('#cxWipeT').textContent=tr('cxWipe');$('#cxWipe').title=tr('cxWipeTip');
  $('#cxAccS').textContent=cxAccSummary();
  const b=cxbData&&cxbData.bridge;
  $('#cxBrS').textContent=b?(b.token_set?'@'+(b.bot||'?'):''):'';
@@ -6977,6 +6994,40 @@ function cxStep2(head,d,slot,label){
   $('#cxRetry').onclick=()=>slot?cxAdd(slot):cxStart('',label,head);
  },2000);
 }
+// свежие данные аккаунтов: опрос мог быть в пути со старым ответом — ждём его и повторный (cxAgain), иначе флаг мастера снимется по устаревшему списку
+async function cxSettle(){
+ await cxLoad(true);
+ for(let i=0;i<40&&(cxBusy||cxAgain);i++)await new Promise(r=>setTimeout(r,150));
+}
+// аккаунтов не осталось → «Codex +» возвращается (мастер со шага 2)
+function cxAfterDel(){
+ if(cxAvail()&&!(((cxData&&cxData.accounts)||[]).length)){ciWizSet(true);cxPopClose();}
+ cxHdr();
+}
+function cxWipe(){
+ const word=tr('delWord');
+ acctShow(`<h3>${tr('cxWipeTitle')}</h3>
+  <div class="dlgwarn">${tr('cxWipeWarn')}</div>
+  <label class="dlglbl" for="delInp">${tr('delType',word)}</label>
+  <input id="delInp" class="dlginp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${word}">
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button class="btn-danger" id="delGo" disabled>${tr('delGo')}</button></div>`);
+ $('#acctCancel').onclick=acctClose;
+ const inp=$('#delInp'),go=$('#delGo');
+ inp.addEventListener('input',()=>{go.disabled=inp.value.trim().toLowerCase()!==word;});
+ inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!go.disabled)go.click();});
+ go.onclick=async()=>{
+  if(acctBusy||go.disabled)return;
+  acctBusy=true;go.disabled=true;go.textContent=tr('delWorking');acctErr('');
+  try{
+   const d=await acctPost('chatgpt/wipe',{confirm:inp.value});
+   acctBusy=false;
+   if(d.ok){acctClose();toast(d.message);await cxSettle();cxbLoad(true);ciWizSet(true);cxPopClose();cxHdr();return;}
+   acctErr(d.message);go.textContent=tr('delGo');go.disabled=inp.value.trim().toLowerCase()!==word;
+  }catch(e){acctBusy=false;acctErr(String(e));go.textContent=tr('delGo');go.disabled=false;}
+ };
+ setTimeout(()=>inp.focus(),30);
+}
 function cxDel(slot){
  const a=cxAcc(slot)||{};const word=tr('delWord');
  acctShow(`<h3>${tr('cxDelTitle')}</h3>
@@ -6996,7 +7047,7 @@ function cxDel(slot){
   try{
    const d=await acctPost('chatgpt/delete',{slot,confirm:inp.value});
    acctBusy=false;
-   if(d.ok){acctClose();toast(d.message);cxLoad(true);cxbLoad(true);return;}
+   if(d.ok){acctClose();toast(d.message);await cxSettle();cxbLoad(true);cxAfterDel();return;}
    acctErr(d.message);go.textContent=tr('delGo');go.disabled=inp.value.trim().toLowerCase()!==word;
   }catch(e){acctBusy=false;acctErr(String(e));go.textContent=tr('delGo');go.disabled=false;}
  };

@@ -594,7 +594,7 @@ failure caused by this race — it is prevention.
 Tests (standard library only, no `pytest`; live files are not touched):
 `python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock test_cc_update_banner`.
 
-## Connecting Codex from scratch (v1.25.17, install button — v1.25.22, "Ask Claude" — v1.25.23, wizard to the end — v1.25.24)
+## Connecting Codex from scratch (v1.25.17, install button — v1.25.22, "Ask Claude" — v1.25.23, wizard to the end — v1.25.24, delete completely — v1.25.25)
 
 What it is for: Codex is a spare leg for when your Claude accounts are unavailable, and a "helper" (the Orchestrator profile) that drives a goal while Claude executes the steps. Until Codex is installed the header shows a **"Codex +"** button (since 1.25.22): it opens the "Connect Codex" window with three steps and an install button. The `>_` icon and the ⚙ are not there yet — they appear the moment Codex is installed. The whole path is six steps, about ten minutes.
 
@@ -917,6 +917,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.25** — "Delete Codex completely" and "Codex +" is back. After the last ChatGPT account is deleted (on the bridge card or
+  in the accounts list) the header shows "Codex +" again, the `>_` icon, the profile and ⚙ are hidden and the wizard starts at
+  sign-in. At the very bottom of ⚙ there is a "Delete Codex completely" button (confirmed by typing the word): every ChatGPT
+  account (tokens revoked at OpenAI), the bot, the chat, the chosen and own profiles, the mode and access, and the conversation
+  memory are wiped. Codex itself stays on the server. Refused while emergency mode is on. API: `POST /api/chatgpt/wipe`
+  (body `{"confirm":"confirm"}`).
 - **v1.25.24** — Codex wizard to the end, delete account, `cl`/`cxw` commands. After Codex is installed, step 2 (ChatGPT
   sign-in) opens by itself, and after sign-in step 3 (the Telegram bot); step 3 is optional, there is a "Skip this step and
   finish" button. The wizard window is as wide as the ⚙ window. In ⚙ the "ChatGPT accounts and limits" section is at the very

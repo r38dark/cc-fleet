@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.25", "date": "2026-11-01",
+     "ru": {"t": "«Удалить Codex целиком» и возврат «Codex +»", "p": ["Удалил последний аккаунт ChatGPT — в шапке снова «Codex +», мастер начинается со входа", "В ⚙ внизу «Удалить Codex целиком»: аккаунты, бот, профили, режим и память разговора стёрты (по слову)", "Сам Codex на сервере остаётся; выбранный профиль и свои профили моста сбрасываются"]},
+     "en": {"t": "\"Delete Codex completely\" and \"Codex +\" is back", "p": ["Deleted the last ChatGPT account — \"Codex +\" is back in the header and the wizard starts at sign-in", "At the bottom of ⚙: \"Delete Codex completely\" — accounts, bot, profiles, mode and chat memory wiped (by word)", "Codex itself stays on the server; the chosen profile and your own bridge profiles are reset"]}},
     {"v": "1.25.24", "date": "2026-11-01",
      "ru": {"t": "Мастер Codex до конца, удаление аккаунта, команды cl и cxw", "p": ["Мастер сам переходит от установки ко входу в ChatGPT и к боту Telegram; бот необязателен — кнопка «Пропустить»", "В карточке моста внизу «Сохранить» и «Удалить аккаунт» (с подтверждением); «Аккаунты и лимиты» — в самом низу ⚙", "Команды cl, cla, cln, clw и cxw входят в панель и ставятся сами на любом сервере; запуск Claude — ключ claude_cmd"]},
      "en": {"t": "Codex wizard to the end, delete account, cl and cxw commands", "p": ["The wizard moves on by itself from install to ChatGPT sign-in to the Telegram bot; the bot is optional — \"Skip\" button", "Bridge card: \"Save\" and \"Delete account\" (confirmed) at the bottom; \"Accounts and limits\" moved to the bottom of ⚙", "Commands cl, cla, cln, clw, cxw come with the panel and install themselves on any server; launch line — claude_cmd"]}},

@@ -181,6 +181,49 @@ class Settings(Base):
         self.assertEqual(br.load()["slot"], "")
         self.assertFalse(br.drop_slot("gpt1"))  # повторно — уже отвязан
 
+    def test_wipe_all_resets_bridge_and_accounts(self):
+        # «Удалить Codex целиком»: аккаунты стёрты, бот, чат, профили и режимы — как у чистой установки
+        self.assertTrue(br.save({"mode": "orchestrator", "task_rights": "dev", "slot": "gpt1"})[0])
+        s = br.load()
+        s.update(profile="orchestrator", profiles=[{"id": "my1", "name": "Мой", "mode": "mediator", "access": "read", "task_rights": "read"}],
+                 reserve_prev={"mode": "self"}, exchange=os.path.join(self.tmp, "ex2"))
+        br._save(s)
+        st = br._state()
+        st.update(bot="cx_bot", offset=77, threads={"100200300": "T-1"}, next_task=5)
+        br._state_save(st)
+        con = FakeConsole()
+        old_con = br.CONSOLE
+        br.CONSOLE = con
+        self.addCleanup(setattr, br, "CONSOLE", old_con)
+        ok, msg = br.wipe_all(self.fake, "нет")
+        self.assertFalse(ok)  # без слова ничего не тронуто
+        self.assertTrue(br.load()["token"])
+        self.assertEqual(cc_codex.profile_slots(), ["gpt1"])
+        self.assertEqual(con.forgotten, 0)
+        ok, msg = br.wipe_all(self.fake, "подтверждаю")
+        self.assertTrue(ok, msg)
+        self.assertEqual(cc_codex.profile_slots(), [])
+        now = br.load()
+        for k, v in br.DEFAULTS.items():
+            self.assertEqual(now[k], v, k)
+        self.assertNotIn("reserve_prev", now)
+        self.assertEqual(br._state()["threads"], {})
+        self.assertEqual((br._state()["bot"] if "bot" in br._state() else ""), "")
+        self.assertEqual(br._state()["offset"], 0)
+        self.assertFalse(br.running())
+        self.assertEqual(con.forgotten, 1)
+        self.assertTrue(os.path.isdir(self.ex))  # папка обмена остаётся
+        self.assertTrue(br.wipe_all(self.fake, "confirm", "en")[0])  # повторно — тоже без ошибки
+
+    def test_wipe_all_refused_in_emergency(self):
+        old = br.EMERGENCY
+        br.EMERGENCY = FakeEmergency(True)
+        self.addCleanup(setattr, br, "EMERGENCY", old)
+        ok, msg = br.wipe_all(self.fake, "подтверждаю")
+        self.assertFalse(ok)
+        self.assertEqual(cc_codex.profile_slots(), ["gpt1"])
+        self.assertTrue(br.load()["token"])
+
 
 class Chat(Base):
     def test_foreign_chat_ignored(self):

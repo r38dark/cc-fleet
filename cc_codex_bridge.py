@@ -405,6 +405,26 @@ def drop_slot(slot):
     return True
 
 
+def wipe_all(bin_path, confirm, lang="ru"):
+    """«Удалить Codex целиком»: все входы ChatGPT, бот и чат, выбранный и свои профили, режим и доступ, память разговора,
+    консоль Codex. Сам Codex на сервере и папка обмена остаются. Аварийный режим включён — отказ: права заморожены.
+    → (ok, сообщение)."""
+    if EMERGENCY is not None and EMERGENCY.active():
+        return False, _t(lang, "Включён аварийный режим — сначала выключи его.", "Emergency mode is on — turn it off first.")
+    ok, msg, n = cc_codex.delete_all(bin_path, confirm, lang)
+    if not ok:
+        return False, msg  # на ошибке мост не трогаем: что стёрто, то стёрто, остальное можно повторить
+    with _lock:
+        _save(dict(DEFAULTS, profiles=[]))
+        _state_save({})
+    BRIDGE.sync()
+    if CONSOLE is not None:
+        BRIDGE.cancel.set()  # идущий запрос снимается; консоль Codex останавливается и забывает разговоры
+        CONSOLE.forget()
+    return True, _t(lang, f"Codex удалён целиком: аккаунтов ChatGPT — {n}, настройки моста сброшены.",
+                    f"Codex removed: ChatGPT accounts — {n}, bridge settings reset.")
+
+
 def clear_token():
     with _lock:
         s = load()

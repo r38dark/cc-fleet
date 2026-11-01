@@ -52,6 +52,34 @@ class Page(unittest.TestCase):
         self.assertIn("btn.disabled=!has", page)
         self.assertIn('onchange="cxbDelSync()"', page)
 
+    def test_wipe_button_is_last_in_gear_popup(self):
+        # «Удалить Codex целиком» — в самом низу окна ⚙, после секции аккаунтов; подтверждение словом, как у удаления аккаунта
+        page = L.PAGE
+        self.assertLess(page.index('id="cxAccW"'), page.index('id="cxWipeW"'))
+        self.assertLess(page.index('id="cxWipeW"'), page.index('id="ntPop"'))
+        m = re.search(r"function cxWipe\(\)\{(.*?)\n\}\n", page, re.S)
+        self.assertTrue(m)
+        self.assertIn("acctPost('chatgpt/wipe',{confirm:inp.value})", m.group(1))
+        self.assertIn("tr('delWord')", m.group(1))
+        self.assertIn("ciWizSet(true)", m.group(1))  # после удаления мастер начат: «Codex +» возвращается
+        for lang in ("ru", "en"):
+            keys = set(re.findall(r"^\s{2}(cx\w*):", i18n_block(lang), re.M))
+            self.assertEqual(sorted({"cxWipe", "cxWipeTip", "cxWipeTitle", "cxWipeWarn"} - keys), [], lang)
+
+    def test_header_shows_only_codex_plus_when_no_account_left(self):
+        # шаг 2 мастера (аккаунтов нет): значок, профиль и ⚙ скрыты; последний удалённый аккаунт возвращает «Codex +»
+        page = L.PAGE
+        m = re.search(r"function cxHdr\(\)\{(.*?)\n const b=cxbData", page, re.S)
+        self.assertTrue(m)
+        self.assertIn("ciStage()===2", m.group(1))
+        self.assertIn("grp.hidden=hide", m.group(1))
+        m = re.search(r"function cxAfterDel\(\)\{(.*?)\n\}\n", page, re.S)
+        self.assertTrue(m)
+        self.assertIn("ciWizSet(true)", m.group(1))
+        self.assertIn("accounts", m.group(1))
+        self.assertIn("cxAfterDel();", page[page.index("function cxDel(slot)"):])
+        self.assertIn("await cxSettle()", page)
+
     def test_install_wizard_is_three_steps(self):
         page = L.PAGE
         for needle in ("function ciStage()", "function ciBody1(", "function ciBody2(", "function ciBody3(",
