@@ -1,6 +1,9 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {"v": "1.25.23", "date": "2026-11-01",
+     "ru": {"t": "«Поручить Claude» при подключении Codex", "p": ["Нет Node.js — кнопка «Поручить Claude» вставляет в консоль Claude готовый промт: он сам ставит Node.js и Codex", "«Скопировать промт» — тот же текст для ручной вставки; окно само переходит ко входу в ChatGPT", "Шаг 1 больше не обещает «одной кнопкой», когда кнопки «Установить» нет"]},
+     "en": {"t": "\"Ask Claude\" when connecting Codex", "p": ["No Node.js: the \"Ask Claude\" button types a ready prompt into the Claude console — it installs Node.js and Codex itself", "\"Copy prompt\" gives the same text for pasting by hand; the window moves on to the ChatGPT sign-in by itself", "Step 1 no longer promises \"one button\" when there is no Install button"]}},
     {"v": "1.25.22", "date": "2026-11-01",
      "ru": {"t": "Подключение Codex кнопкой", "p": ["Пока Codex не установлен, в шапке кнопка «Codex +»: окно из трёх шагов и установка одной кнопкой", "Панель сама ставит Codex в свою папку, проверяет его и подключает; нужен Node.js 16 или новее", "Исправлена гонка в мосте Telegram→Codex: два быстрых сообщения не запускают два процесса Codex"]},
      "en": {"t": "Connect Codex with a button", "p": ["While Codex is not installed, the header shows a \"Codex +\" button: a three-step window and a one-click install", "The panel installs Codex into its own folder, checks it and connects it; Node.js 16 or newer is required", "Fixed a race in the Telegram→Codex bridge: two quick messages no longer start two Codex processes"]}},

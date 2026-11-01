@@ -16,7 +16,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.22"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.25.23"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1966,6 +1966,42 @@ def send_session_command(key):
                 if ok else "не удалось отправить (сессия недоступна)")
 
 
+def codex_setup_prompt(lang="ru"):
+    return cc_codex.setup_prompt(lang, CONFIG, cfg().get("port", 8877))
+
+
+SETUP_CHUNK = 200  # байт за один screen stuff (предел ~730; на старых screen ниже)
+SETUP_PAUSE = (0.4, 1.2)  # сек: между текстом и Enter; после Enter перед чтением экрана
+
+
+def send_codex_setup(lang="ru"):
+    """Вставляет промт «подключи Codex» в живую консоль Claude → (ok, seen). ok — screen принял ввод; seen — метка промта
+    видна на экране консоли (занятая консоль может молча потерять ввод, тогда seen=False и человек копирует промт руками)."""
+    scr = cfg().get("screen_session", "claude")
+    base = ["screen", "-S", scr, "-p", "0", "-X"]
+    try:
+        # screen stuff целиком выбрасывает ввод длиннее ~730 байт (rc=0, ничего не приходит) → кусками по SETUP_CHUNK байт (промт ASCII);
+        # потом Enter отдельным вводом: длинный ввод консоль принимает как вставку, и Enter в её конце не отправил бы запрос
+        text = codex_setup_prompt(lang)
+        for i in range(0, len(text), SETUP_CHUNK):
+            if subprocess.run(base + ["stuff", text[i:i + SETUP_CHUNK]], capture_output=True, timeout=10).returncode != 0:
+                return False, False
+        time.sleep(SETUP_PAUSE[0])
+        if subprocess.run(base + ["stuff", "\r"], capture_output=True, timeout=10).returncode != 0:
+            return False, False
+        time.sleep(SETUP_PAUSE[1])
+        fd, path = tempfile.mkstemp(prefix="ccsetup_", suffix=".txt")
+        os.close(fd)
+        try:
+            subprocess.run(base + ["hardcopy", path], capture_output=True, timeout=10)
+            with open(path, encoding="utf-8", errors="replace") as f:
+                return True, cc_codex.SETUP_MARK in f.read()
+        finally:
+            os.remove(path)
+    except Exception:
+        return False, False
+
+
 def snap_set_active():
     # после переключения обновить в снапшоте только флаги active — без похода в API
     snap = jload(SNAPSHOT) or {}
@@ -2726,6 +2762,10 @@ class H(BaseHTTPRequestHandler):
                                         "install": cc_codex.install_status(parse_qs(u.query).get("lang", ["ru"])[0])})
             return self._send(200, {"ok": True, "available": True, "bridge": cc_codex_bridge.public(),
                                     "emergency": cc_codex_emergency.public()})
+        if u.path == "/api/chatgpt/install/prompt":  # текст для кнопки «Скопировать промт»: человек вставит его в консоль Claude сам
+            if not self._authed():
+                return self._send(403, {"error": "forbidden"})
+            return self._send(200, {"ok": True, "prompt": codex_setup_prompt(parse_qs(u.query).get("lang", ["ru"])[0])})
         if u.path == "/api/chatgpt/install":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -2757,6 +2797,14 @@ class H(BaseHTTPRequestHandler):
         if action == "install/cancel":
             cc_codex.install_cancel()
             return self._send(200, dict(cc_codex.install_status(lang), ok=True))
+        if action == "install/ask-claude":  # «Поручить Claude»: фиксированный промт в консоль, чужой текст маршрут не принимает
+            if codex_bin():
+                return self._send(200, {"ok": False, "message": _t(lang, "Codex уже установлен на этом сервере.",
+                                                                   "Codex is already installed on this server.")})
+            ok, seen = send_codex_setup(lang if lang == "en" else "ru")
+            return self._send(200, {"ok": ok, "seen": seen, "message": "" if ok else _t(
+                lang, "Не удалось вставить промт в консоль Claude (сессия недоступна). Скопируй промт и вставь сам.",
+                "Could not paste the prompt into the Claude console (session unavailable). Copy the prompt and paste it yourself.")})
         b = codex_bin()
         if not b:
             return self._send(400, {"ok": False, "message": _t(lang, "Codex не установлен на этом сервере.",
@@ -4568,12 +4616,18 @@ const I18N={
   cxiTitle:'Подключить Codex',
   cxiLead:'Codex — отдельный ИИ-помощник от OpenAI, работает по подписке ChatGPT. Подключение в три шага:',
   cxiS1:'Установить Codex на этот сервер (одной кнопкой)',
+  cxiS1n:'Поставить Node.js и Codex на этот сервер — поручи Claude кнопкой ниже или сделай сам',
   cxiS2:'Войти в аккаунт ChatGPT: по коду устройства, пароль вводить не нужно',
   cxiS3:'Подключить своего Telegram-бота (по желанию)',
   cxiNodeOk:v=>`Node.js ${v} найден — всё готово к установке.`,
-  cxiNodeOld:(v,np)=>`Найден Node.js ${v}${np}, а нужен Node.js 16 или новее вместе с npm. Обнови и нажми «Проверить снова».`,
+  cxiNodeOld:(v,np)=>`Найден Node.js ${v}${np}, а нужен Node.js 16 или новее вместе с npm. Поручи Claude обновить его или сделай сам и нажми «Проверить снова».`,
   cxiNoNpm:' (npm не найден)',
-  cxiNoNode:'Не нашёл Node.js и npm — они нужны для установки. Поставь Node.js 16 или новее (nodejs.org или менеджер пакетов системы) и нажми «Проверить снова». Сам Node.js я не ставлю.',
+  cxiNoNode:'Не нашёл Node.js и npm — они нужны для установки. Проще всего поручить это Claude: он поставит Node.js и сам запустит установку Codex. Или поставь Node.js 16 или новее сам (nodejs.org или менеджер пакетов системы) и нажми «Проверить снова».',
+  cxiAsk:'Поручить Claude',
+  cxiAskAgain:'Отправить ещё раз',
+  cxiCopy:'Скопировать промт',
+  cxiAsked:'Отправил Claude в консоль. Он поставит Node.js и Codex — окно само перейдёт к входу в ChatGPT, когда закончит. Если он спросит разрешение или пароль — ответь ему в консоли.',
+  cxiAskedUnsure:'Отправил, но в консоли Claude не вижу промт — возможно, она занята. Проверь консоль; если пусто — нажми «Отправить ещё раз» или скопируй промт и вставь сам.',
   cxiInstall:'Установить Codex',
   cxiRun:'Ставлю Codex… обычно это пара минут.',
   cxiCancel:'Отмена',
@@ -5034,12 +5088,18 @@ const I18N={
   cxiTitle:'Connect Codex',
   cxiLead:'Codex is a separate AI assistant from OpenAI that runs on a ChatGPT subscription. Three steps to connect it:',
   cxiS1:'Install Codex on this server (one button)',
+  cxiS1n:'Get Node.js and Codex onto this server — ask Claude with the button below or do it yourself',
   cxiS2:'Sign in to your ChatGPT account with a device code, no password needed',
   cxiS3:'Connect your own Telegram bot (optional)',
   cxiNodeOk:v=>`Node.js ${v} found — ready to install.`,
-  cxiNodeOld:(v,np)=>`Found Node.js ${v}${np}, but Node.js 16 or newer with npm is required. Update it and press “Check again”.`,
+  cxiNodeOld:(v,np)=>`Found Node.js ${v}${np}, but Node.js 16 or newer with npm is required. Ask Claude to update it, or do it yourself and press “Check again”.`,
   cxiNoNpm:' (npm not found)',
-  cxiNoNode:'Node.js and npm were not found — they are required for the install. Install Node.js 16 or newer (nodejs.org or your system package manager) and press “Check again”. I do not install Node.js myself.',
+  cxiNoNode:'Node.js and npm were not found — they are required for the install. The easiest way is to ask Claude: it installs Node.js and starts the Codex install itself. Or install Node.js 16 or newer yourself (nodejs.org or your system package manager) and press “Check again”.',
+  cxiAsk:'Ask Claude',
+  cxiAskAgain:'Send again',
+  cxiCopy:'Copy prompt',
+  cxiAsked:'Sent to the Claude console. It will install Node.js and Codex — this window moves on to the ChatGPT sign-in when it is done. If it asks for permission or a password, answer it in the console.',
+  cxiAskedUnsure:'Sent, but I do not see the prompt in the Claude console — it may be busy. Check the console; if it is empty, press “Send again” or copy the prompt and paste it yourself.',
   cxiInstall:'Install Codex',
   cxiRun:'Installing Codex… usually takes a couple of minutes.',
   cxiCancel:'Cancel',
@@ -6227,7 +6287,7 @@ function cxPopClose(){
 // ---- «Подключить Codex»: пока Codex не установлен, вместо блока Codex в шапке — кнопка с мастером из трёх шагов ----
 // Шаг 1 (установка) делает этот поповер: сервер сам ставит Codex в свою папку. Шаги 2–3 (вход ChatGPT, бот) уже есть в окне ⚙ Codex —
 // туда человек попадает сразу после установки.
-let ciData=null,ciTimer=null,ciBusy=false;
+let ciData=null,ciTimer=null,ciBusy=false,ciAsked=null;  // ciAsked — ответ на «Поручить Claude»: пока он есть, окно ждёт, что Claude сам запустит установку
 function ciShow(){return!!(cxbData&&cxbData.available===false&&!(cxData&&cxData.available));}
 function ciHdr(){
  const b=$('#cxInst');if(!b)return;
@@ -6249,7 +6309,8 @@ function ciRender(){
  const d=ciData||{},st=d.state||'idle',run=st==='running';
  $('#cxInstTitle').textContent=tr('cxiTitle');
  const cur=run||st==='failed'||st==='idle'?1:2;
- const steps=['cxiS1','cxiS2','cxiS3'].map((k,i)=>`<li class="${i+1===cur?'cur':''}"><b>${i+1}</b><span>${tr(k)}</span></li>`).join('');
+ const one=run||d.ready;  // «одной кнопкой» — только когда Node.js уже есть и кнопка «Установить» правда есть
+ const steps=[one?'cxiS1':'cxiS1n','cxiS2','cxiS3'].map((k,i)=>`<li class="${i+1===cur?'cur':''}"><b>${i+1}</b><span>${tr(k)}</span></li>`).join('');
  let h=`<p class="cxilead">${tr('cxiLead')}</p><ol class="cxisteps">${steps}</ol>`;
  if(run){
   h+=`<p class="cxinote"><span class="cxispin"></span>${tr('cxiRun')}</p>`;
@@ -6265,9 +6326,15 @@ function ciRender(){
   }else if(d.node===null&&d.npm===false){
    h+=`<p class="cxinote warn">${tr('cxiNoNode')}</p>`;
   }
+  if(ciAsked)h+=`<p class="cxinote ${ciAsked.ok?'':'bad'}">${ciAsked.ok?tr(ciAsked.seen?'cxiAsked':'cxiAskedUnsure'):acctEsc(ciAsked.message||'')}</p>`;
+  // Node.js есть → одна кнопка «Установить». Иначе (или установка не вышла) главное — поручить Claude, он на этой машине уже работает
+  const askBtn=(main)=>`<button ${main?'id="cxiGo" ':'class="ghostbtn" id="cxiAsk" '}onclick="ciAsk()">${tr(ciAsked&&ciAsked.ok?'cxiAskAgain':'cxiAsk')}</button>`;
+  const copyBtn=`<button class="ghostbtn" id="cxiCopy" onclick="ciCopy(this)">${tr('cxiCopy')}</button>`;
   h+=`<div class="cxirow">`;
-  if(d.ready||st==='failed')h+=`<button id="cxiGo" onclick="ciStart()">${tr(st==='failed'?'cxiRetry':'cxiInstall')}</button>`;
-  else h+=`<button id="cxiGo" onclick="ciRecheck()">${tr('cxiRecheck')}</button>`;
+  if(d.ready||st==='failed'){
+   h+=d.ready?`<button id="cxiGo" onclick="ciStart()">${tr(st==='failed'?'cxiRetry':'cxiInstall')}</button>`+askBtn(false):askBtn(true);
+   h+=copyBtn;
+  }else h+=askBtn(true)+copyBtn+`<button class="ghostbtn" id="cxiRe" onclick="ciRecheck()">${tr('cxiRecheck')}</button>`;
   h+=`</div>`;
  }
  const keep=$('#cxiLog');const atEnd=keep?keep.scrollTop+keep.clientHeight>=keep.scrollHeight-4:true;
@@ -6284,7 +6351,7 @@ function ciOpen(){
 function ciClose(){
  const pop=$('#cxInstPop');if(!pop||pop.hidden)return;
  pop.hidden=true;$('#cxInst').setAttribute('aria-expanded','false');
- clearTimeout(ciTimer);ciTimer=null;
+ clearTimeout(ciTimer);ciTimer=null;ciAsked=null;
 }
 async function ciLoad(){
  if(ciBusy)return;ciBusy=true;
@@ -6295,6 +6362,7 @@ async function ciLoad(){
  finally{ciBusy=false;}
  clearTimeout(ciTimer);ciTimer=null;
  if(!$('#cxInstPop').hidden&&ciData&&ciData.state==='running')ciTimer=setTimeout(ciLoad,1500);  // пока идёт установка — живой ход
+ else if(!$('#cxInstPop').hidden&&ciAsked&&ciAsked.ok)ciTimer=setTimeout(ciLoad,3000);  // Claude ставит Node.js и запускает установку сам — ждём
 }
 // установка закончилась: панель узнаёт, что Codex есть, закрывает мастер и открывает окно ⚙ с шагами 2–3
 async function ciAfter(d){
@@ -6315,8 +6383,19 @@ async function ciStart(){
  }catch(e){toast('⚠ '+e);}
 }
 async function ciCancel(){try{ciData=await acctPost('chatgpt/install/cancel',{});}catch(e){}ciRender();}
+// «Поручить Claude»: панель вставляет в консоль Claude готовый промт (Node.js, запуск установки), окно ждёт результата
+async function ciAsk(){
+ document.querySelectorAll('#cxiGo,#cxiAsk').forEach(x=>x.disabled=true);
+ try{ciAsked=await acctPost('chatgpt/install/ask-claude',{});}catch(e){ciAsked={ok:false,message:String(e)};}
+ ciRender();
+ if(ciAsked.ok)ciLoad();
+}
+// запасной путь: тот же промт — в буфер, человек вставит его в консоль Claude сам
+async function ciCopy(b){
+ try{const r=await fetch(API+'chatgpt/install/prompt?token='+TOKEN+'&lang='+LANG);const d=await r.json();if(d&&d.prompt)await acctCopy(b,d.prompt);}catch(e){toast('⚠ '+e);}
+}
 async function ciRecheck(){
- const b=$('#cxiGo');if(b)b.disabled=true;
+ const b=$('#cxiRe');if(b)b.disabled=true;
  await cxbLoad(true);
  if(cxbData&&cxbData.install)ciData=cxbData.install;
  ciRender();

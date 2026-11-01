@@ -528,6 +528,27 @@ def install_cancel():
     return True
 
 
+# Промт для Claude: Codex подключают, когда Claude на машине уже работает, — техническую часть (Node.js и запуск установки) он делает
+# сам, человеку остаётся вход ChatGPT по коду. Текст фиксированный, секретов нет (токен Claude читает из config.json сам) и только ASCII
+# без `^` и `\`: он уходит в консоль через `screen -X stuff`, где эти символы и чужая кодировка ломают ввод.
+SETUP_MARK = "[cc-fleet]"  # по этой метке видно на экране консоли, что промт дошёл
+
+
+def setup_prompt(lang, config_path, port):
+    who = "English" if lang == "en" else "Russian"
+    return (f"{SETUP_MARK} Please connect Codex to the cc-fleet limits panel on this server. "
+            f"Step 1: run node -v and npm -v; Node.js {NODE_MIN} or newer with npm is required. "
+            "If they are missing or too old, install a current LTS Node.js in the way that suits this system "
+            "(if sudo or a password is needed, explain and ask me). "
+            "Step 2: once Node.js is ready, start the Codex install through the panel API: "
+            f"POST http://127.0.0.1:{int(port)}/api/chatgpt/install/start with header X-CC-Token "
+            f"(value: hook_token from {config_path}), then poll GET /api/chatgpt/install with the same header "
+            "every 5 seconds until state is done or failed. "
+            "Step 3: if failed, show me the error and work it out; if done, tell me in one line to open the Codex window "
+            "in the panel and press Sign in (it shows a device code). "
+            f"Change nothing else. Reply to me in {who}.")
+
+
 # ---------------------------------------------------------------- codex app-server (JSON-RPC по stdio)
 class AppServer:
     def __init__(self, bin_path, home, timeout=25):

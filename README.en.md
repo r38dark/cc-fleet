@@ -594,11 +594,11 @@ failure caused by this race — it is prevention.
 Tests (standard library only, no `pytest`; live files are not touched):
 `python3 -m unittest test_cc_poll test_cc_limits_poll test_cc_lock test_cc_switch test_cc_limits_lock test_cc_update_banner`.
 
-## Connecting Codex from scratch (v1.25.17, install button — v1.25.22)
+## Connecting Codex from scratch (v1.25.17, install button — v1.25.22, "Ask Claude" — v1.25.23)
 
 What it is for: Codex is a spare leg for when your Claude accounts are unavailable, and a "helper" (the Orchestrator profile) that drives a goal while Claude executes the steps. Until Codex is installed the header shows a **"Codex +"** button (since 1.25.22): it opens the "Connect Codex" window with three steps and an install button. The `>_` icon and the ⚙ are not there yet — they appear the moment Codex is installed. The whole path is six steps, about ten minutes.
 
-1. **Install Codex on the server — with a button.** Press **"Codex +"** in the header → "Install Codex". The panel runs `npm install -g --prefix /opt/cc-limits/codex-cli @openai/codex` itself (into its own folder, no root rights or system directories needed), shows the progress, checks `codex --version` and writes the path into `config.json` (`"codex_bin"`). You can stop the install with "Cancel". You need **Node.js 16 or newer** with npm: the panel does not install it — if Node is missing or too old the window says so; install it (nodejs.org or your system package manager) and press "Check again". When the install finishes the window closes, `>_` and ⚙ appear in the header, and the ⚙ window opens for step 3. The button works only with the panel token. By hand it is the same: `npm i -g @openai/codex`, `codex --version`; if the service cannot see the command (npm installed it in a folder that is not on the service's `PATH`), put the full path in `/opt/cc-limits/config.json`: `"codex_bin": "/path/to/codex"` and restart the service (`systemctl restart cc-limits`).
+1. **Install Codex on the server — with a button.** Press **"Codex +"** in the header → "Install Codex". The panel runs `npm install -g --prefix /opt/cc-limits/codex-cli @openai/codex` itself (into its own folder, no root rights or system directories needed), shows the progress, checks `codex --version` and writes the path into `config.json` (`"codex_bin"`). You can stop the install with "Cancel". You need **Node.js 16 or newer** with npm: the panel does not install it itself. **If Node is missing or too old, press "Ask Claude"** (since 1.25.23): the panel types a ready-made prompt into the Claude console on this server, and Claude checks Node.js, installs it if needed, starts the Codex install and tells you when to press "Sign in"; the window moves on to step 3 by itself as soon as the install is done. If Claude asks for permission or a password (sudo), answer it in the console. If you prefer not to, "Copy prompt" puts the same text on the clipboard (paste it into the Claude console yourself), or install Node.js by hand (nodejs.org or your system package manager) and press "Check again". When Node is present, "Ask Claude" and "Copy prompt" also sit next to "Install Codex" — for when the install fails and needs sorting out. When the install finishes the window closes, `>_` and ⚙ appear in the header, and the ⚙ window opens for step 3. The button works only with the panel token. By hand it is the same: `npm i -g @openai/codex`, `codex --version`; if the service cannot see the command (npm installed it in a folder that is not on the service's `PATH`), put the full path in `/opt/cc-limits/config.json`: `"codex_bin": "/path/to/codex"` and restart the service (`systemctl restart cc-limits`).
 2. **Turn on device-code sign-in in ChatGPT** (a beta feature, off by default). Personal account: ChatGPT → Settings → Security → the device-code switch for Codex (different ChatGPT versions word it a little differently: *Enable device code authorization for Codex* / *Allow device code login*). Workspace (Business, Enterprise): an admin turns it on in the workspace permissions. You need a ChatGPT plan that includes Codex. If the switch is off, the sign-in page will not accept the code or will not go further.
 3. **Add an account:** ⚙ next to `>_` → "ChatGPT accounts and limits" → "+" → a name (optional) → "Get code". A link and a one-time code appear: open the link in any browser where you are signed in to the right ChatGPT account, enter the code (it lives 15 minutes). The panel shows "✅ Connected". No password or email is typed here — the server never sees them, the token lives in `/root/.codex-profiles/gptN` with 700/600 rights.
 4. **Create a Telegram bot:** message @BotFather in Telegram → `/newbot` → get a token like `123456:ABC…`. It must be a **separate** bot, not the one Claude uses. Then open your new bot and press "Start" — without that the bot cannot write to you first.
@@ -611,7 +611,7 @@ If something went wrong:
 
 | What you see | Cause and what to do |
 |---|---|
-| No `>_` icon and no ⚙, the header shows "Codex +" | Codex is not installed yet: step 1, press "Codex +" → "Install Codex" |
+| No `>_` icon and no ⚙, the header shows "Codex +" | Codex is not installed yet: step 1, press "Codex +" → "Install Codex" (no Node.js — "Ask Claude") |
 | The install window says "It did not work" | The window shows the tail of the npm output: most often no internet access to `registry.npmjs.org` or Node.js is too old. Fix it and press "Retry" |
 | Codex is installed but there is no `>_` icon | The service did not find `codex` in its `PATH`: put `codex_bin` in (step 1, by hand) |
 | "codex login showed no link and code" | An old Codex version (update: `npm i -g @openai/codex@latest`) or the server has no internet access |
@@ -898,6 +898,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v1.25.23** — "Ask Claude" when connecting Codex. If the server has no Node.js (or an old one), the "Connect Codex" window's main
+  button is "Ask Claude": the panel types a fixed prompt into the Claude console, and Claude installs Node.js, starts the
+  Codex install and says when to sign in to ChatGPT; the window moves on by itself. Next to it, "Copy prompt" gives the
+  same text for pasting by hand. Step 1 no longer promises "one button" when there is no Install button. The prompt goes
+  to the console in chunks (`screen stuff` drops input longer than ~730 bytes) and holds no secrets: Claude reads the
+  token from `config.json` itself.
 - **v1.25.22** — Connect Codex with a button. While Codex is not installed the header shows a "Codex +" button: a
   three-step window (install Codex, sign in to ChatGPT with a device code, connect a bot) and an "Install Codex"
   button — the panel installs it into `/opt/cc-limits/codex-cli` itself, shows the progress, checks `codex --version`

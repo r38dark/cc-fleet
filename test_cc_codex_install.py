@@ -40,6 +40,19 @@ FAKE_NPM = textwrap.dedent('''\
 ''')
 
 
+# поддельный screen: пишет аргументы в FAKE_SCREEN_LOG; hardcopy кладёт в файл «экран консоли» из FAKE_SCREEN_TEXT; FAKE_SCREEN=dead — сессии нет
+FAKE_SCREEN = textwrap.dedent('''\
+    #!/usr/bin/env python3
+    import os, sys
+    a = sys.argv[1:]
+    open(os.environ["FAKE_SCREEN_LOG"], "a").write(repr(a) + "\\n")
+    if os.environ.get("FAKE_SCREEN") == "dead":
+        sys.exit(1)
+    if "hardcopy" in a:
+        open(a[-1], "w").write(os.environ.get("FAKE_SCREEN_TEXT", ""))
+''')
+
+
 def write_exec(path, text):
     with open(path, "w") as f:
         f.write(text)
@@ -217,8 +230,14 @@ class Routes(unittest.TestCase):
         os.makedirs(self.tools)
         write_exec(os.path.join(self.tools, "node"), FAKE_NODE)
         write_exec(os.path.join(self.tools, "npm"), FAKE_NPM)
+        write_exec(os.path.join(self.tools, "screen"), FAKE_SCREEN)
+        self.screen_log = os.path.join(self.dir, "screen.log")
         env = {"PATH": self.tools + os.pathsep + "/usr/bin:/bin", "FAKE_NPM_LOG": os.path.join(self.dir, "npm.log"),
-               "FAKE_NPM_CHILD": os.path.join(self.dir, "child")}
+               "FAKE_NPM_CHILD": os.path.join(self.dir, "child"), "FAKE_SCREEN_LOG": self.screen_log,
+               "FAKE_SCREEN_TEXT": "$ claude\n> " + cc_codex.SETUP_MARK + " Please connect Codex...\n"}
+        q0 = mock.patch.object(L, "SETUP_PAUSE", (0, 0))  # паузы между вводами нужны живой консоли, поддельному screen — нет
+        q0.start()
+        self.addCleanup(q0.stop)
         p = mock.patch.dict(os.environ, env)
         p.start()
         self.addCleanup(p.stop)
@@ -294,6 +313,82 @@ class Routes(unittest.TestCase):
         while time.time() < end and cc_codex.install_status()["state"] != "idle":
             time.sleep(0.05)
         self.assertEqual(cc_codex.install_status()["state"], "idle")
+
+    # ---- «Поручить Claude» и «Скопировать промт» ----
+    def screen_calls(self):
+        if not os.path.exists(self.screen_log):
+            return []
+        import ast
+        with open(self.screen_log) as f:
+            return [ast.literal_eval(x) for x in f.read().splitlines()]
+
+    def test_prompt_and_ask_require_token_and_touch_nothing_without_it(self):
+        self.assertEqual(self.call("GET", "/api/chatgpt/install/prompt", token="wrong")[0], 403)
+        self.assertEqual(self.call("POST", "/api/chatgpt/install/ask-claude", {}, token="wrong")[0], 403)
+        self.assertEqual(self.screen_calls(), [])  # без токена в консоль ничего не уходит
+
+    def test_prompt_is_fixed_safe_for_screen_and_has_no_secret(self):
+        code, d = self.call("GET", "/api/chatgpt/install/prompt")
+        self.assertEqual(code, 200)
+        p = d["prompt"]
+        self.assertTrue(p.startswith(cc_codex.SETUP_MARK))
+        self.assertTrue(p.isascii())  # кодировка консоли не вмешается
+        for bad in ("^", "\\", "\n", "\r"):
+            self.assertNotIn(bad, p)  # screen stuff читает ^x и \ooo как управляющие
+        self.assertLess(len(p), 1500)
+        self.assertIn("127.0.0.1:%d" % L.cfg().get("port", 8877), p)
+        self.assertIn(L.CONFIG, p)
+        self.assertIn("X-CC-Token", p)
+        self.assertNotIn("t-secret", p)  # сам токен в текст не попадает — Claude читает его из config.json
+        self.assertIn("Russian", p)
+        self.assertIn("English", self.call("GET", "/api/chatgpt/install/prompt?lang=en")[1]["prompt"])
+
+    def test_ask_claude_types_prompt_then_enter_and_sees_it_on_screen(self):
+        code, d = self.call("POST", "/api/chatgpt/install/ask-claude", {})
+        self.assertEqual((code, d["ok"], d["seen"]), (200, True, True))
+        calls = self.screen_calls()
+        base = ["-S", L.cfg().get("screen_session", "claude"), "-p", "0", "-X"]
+        want = L.codex_setup_prompt("ru")
+        n = -(-len(want) // L.SETUP_CHUNK)  # число кусков
+        self.assertGreater(n, 1)  # длиннее предела screen stuff — одним вводом нельзя
+        chunks = calls[:n]
+        for c in chunks:
+            self.assertEqual(c[:len(base) + 1], base + ["stuff"])
+            self.assertLessEqual(len(c[-1].encode()), L.SETUP_CHUNK)  # ни один ввод не длиннее предела
+        self.assertEqual("".join(c[-1] for c in chunks), want)  # куски вместе — ровно промт, без потерь
+        self.assertEqual(calls[n], base + ["stuff", "\r"])  # Enter — отдельным вводом
+        self.assertEqual(calls[n + 1][:len(base) + 1], base + ["hardcopy"])  # потом смотрим экран
+        self.assertEqual(len(calls), n + 2)
+
+    def test_ask_claude_reports_when_prompt_is_not_on_screen(self):
+        with mock.patch.dict(os.environ, {"FAKE_SCREEN_TEXT": "claude is busy...\n"}):
+            code, d = self.call("POST", "/api/chatgpt/install/ask-claude", {})
+        self.assertEqual((d["ok"], d["seen"]), (True, False))  # ввод принят, но метки на экране нет — человек увидит подсказку
+
+    def test_ask_claude_without_session_says_copy_it(self):
+        with mock.patch.dict(os.environ, {"FAKE_SCREEN": "dead"}):
+            code, d = self.call("POST", "/api/chatgpt/install/ask-claude", {"lang": "en"})
+        self.assertEqual((code, d["ok"], d["seen"]), (200, False, False))
+        self.assertIn("Copy the prompt", d["message"])
+        self.assertEqual(len(self.screen_calls()), 1)  # первый же ввод не принят — дальше не идём
+
+    def test_ask_claude_ignores_any_text_from_the_request(self):
+        self.call("POST", "/api/chatgpt/install/ask-claude", {"text": "rm -rf /", "prompt": "evil", "cmd": "evil"})
+        with open(self.screen_log) as f:
+            log = f.read()
+        self.assertNotIn("evil", log)
+        self.assertNotIn("rm -rf", log)
+
+    def test_ask_claude_when_codex_already_installed_does_nothing(self):
+        c = L.cfg()
+        fake = os.path.join(self.dir, "codex")
+        write_exec(fake, "#!/bin/sh\necho codex-cli 1\n")
+        c["codex_bin"] = fake
+        L.jsave(L.CONFIG, c)
+        code, d = self.call("POST", "/api/chatgpt/install/ask-claude", {"lang": "en"})
+        self.assertFalse(d["ok"])
+        self.assertIn("already installed", d["message"])
+        self.assertEqual(self.screen_calls(), [])
 
 
 if __name__ == "__main__":
