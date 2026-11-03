@@ -49,6 +49,7 @@ class Rotation:
         self.refreshing = False
         self.started = False
         self.stop_event = threading.Event()
+        self.suspended = lambda: False
         self.last_error = ''
         self.message = 'Проверяем лимиты Codex…'
         self.state = self.codex.jload(str(self.path), {}) or {}
@@ -144,6 +145,8 @@ class Rotation:
 
     def switch(self, slot, manual=False, reason='Плановая оптимизация'):
         with self.lock:
+            if self.suspended():
+                return False, 'Codex на паузе или применяется профиль. Дождись завершения переключения.'
             if manual and self.state['optimize']:
                 return False, 'Выключи оптимизацию Codex для ручного выбора аккаунта.'
             old = self.active()
@@ -209,6 +212,7 @@ class Rotation:
                 self.console._ask_lock.release()
 
     def tick(self):
+        if self.suspended():return
         self.refresh()
         # Профиль/папка/MCP, изменённые во время ответа, применяются и без нового сообщения.
         if not self.console.busy():

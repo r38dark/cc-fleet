@@ -1,0 +1,405 @@
+"""Durable mirrored profiles; all console changes are explicit, checked transactions."""
+import copy
+from contextlib import nullcontext
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import threading
+import time
+import uuid
+
+from cc_claude_profile import ClaudeProfile, ProfileError, atomic
+from cc_profile_state import ProfileScenarios, ProfileState, ENGINES
+
+class NativeProfiles:
+    def __init__(self, ns):
+        self.ns = ns;self.base = Path(ns['BASE']);self.claude = ClaudeProfile(ns);self.manager = None
+        self.bridge = ns['cc_codex_bridge'];self.codex = ns['cc_codex_console'];self.notion = ns['cc_notion'];self.emergency = ns['cc_codex_emergency']
+        self.original_notion_public = self.notion.public
+        self.original_notion_args = self.notion.codex_args
+        self.original_notion_note = self.notion.codex_note
+        initial_settings=self.bridge.load()
+        self.initial_codex = {k:initial_settings.get(k) for k in ('mode','access','task_rights','profile','workdir','project')}
+        self.claude_cwd = ns['_session_cwd']() or os.path.expanduser('~')
+        self.claude_work = str(self.base.parent/'claude-work')
+        self.exchange_root = self.base/'profile_exchange'
+
+    def seed(self):
+        s = ProfileState();pid = self.bridge.active_profile(self.bridge.load())
+        for e in ENGINES:
+            for p in s.definitions(e):p.setdefault('task_rights', 'dev')
+        if pid in {p['id'] for p in s.definitions('codex')}:s.selected['codex']=pid
+        # Adopt existing rights; installation never silently downgrades a running console.
+        cmd = self.ns['cfg']().get('claude_cmd') or ''
+        try:bypass=self.claude.capture()['bypass']
+        except Exception:bypass='--dangerously-skip-permissions' in cmd or 'bypassPermissions' in cmd
+        s.selected['claude']='claude_solo_full' if bypass else 'claude'
+        s.last_solo=dict(s.selected)
+        if pid=='orchestrator':s.leader='codex';s.last_solo['codex']='codex'
+        for pid,d,name in self.bridge._profiles(self.bridge.load()):
+            if name is None:continue
+            if d.get('mode') not in ('self','orchestrator','mediator') or d.get('access') not in ('read','write','full'):continue
+            kind='orchestrator' if d['mode']!='self' else 'full' if d['access']=='full' else 'solo'
+            template=next(p for p in s.definitions('codex') if p['kind']==kind)
+            template.update(id=pid,title=('Codex → Claude' if kind=='orchestrator' else 'Codex Full · самостоятельно' if kind=='full' else 'Codex · самостоятельно')+' · '+str(name),builtin=False,**d)
+            s.custom['codex'].append(template)
+        if pid in {p['id'] for p in s.definitions('codex')}:
+            s.selected['codex']=pid
+            profile=next(p for p in s.definitions('codex') if p['id']==pid)
+            if profile['kind']=='orchestrator':s.leader='codex';s.last_solo['codex']='codex'
+            else:s.last_solo['codex']=pid
+        legacy=self.notion.reserve_conf(self.notion.CONFIG() or {})
+        s.auto['codex']=dict(enabled=legacy['auto'],emergency=legacy['auto_emergency'] and legacy['auto'])
+        return s
+
+    def busy(self):
+        # A paused queue worker may be alive while waiting; it must not prevent unpausing.
+        if self.ns.get('_busy_tick'):self.ns['_busy_tick'](self.ns['screen_hardcopy']())
+        bridge_busy = self.bridge.BRIDGE.busy() and self.manager.input_allowed('codex')
+        return bool(self.codex.busy() or bridge_busy or self.ns['session_busy']())
+
+    def reserve_ready(self):
+        return self.notion._ready(self.notion.CONFIG() or {})
+
+    def plan(self, state, e):
+        data=state.public()['engines'][e];profile=next(p for p in data['profiles'] if p['id']==data['base_selected'])
+        service=state.service if state.service and state.service['engine']==e else None
+        access='full' if service and (service['kind']=='emergency' or service.get('emergency')) else 'write' if service else profile['access']
+        mode='self' if service or data['role']=='executor' else profile['mode']
+        return dict(role=data['role'],profile=data['selected'],base=data['base_selected'],access=access,mode=mode,task_rights=profile.get('task_rights','dev'),leader=state.leader,service=copy.deepcopy(service))
+
+    def prompt(self, state, e):
+        data=state.public()['engines'][e];other='codex' if e=='claude' else 'claude';name=e.capitalize() if e=='claude' else 'Codex';op=other.capitalize() if other=='claude' else 'Codex'
+        prefix='[Профиль балансера: '+data['label']+'.] '
+        if e=='claude' and self.plan(state,e)['access']!='full':prefix+='Папка для файлов: '+(str(self.manager.exchange('claude')) if data['role']=='leader' else self.claude_work)+'. Используй абсолютные пути. '
+        if data['role']=='leader':
+            out=self.manager.exchange(e)/'outbox/task.md'
+            return prefix+f'Ты ведущий, {op} исполнитель. Проект самостоятельно не изменяй. Один проверяемый шаг запиши в {out}; первая строка права: чтение / дев / полные. Шаг уходит исполнителю только после подтверждения человека в балансере. Не вызывай второго исполнителя самостоятельно и не создавай встречные связки. После получения результата проверь его относительно цели и подготовь следующий шаг либо сообщи итог.'
+        if data['role']=='executor':return prefix+f'Ты исполнитель {op}. Выполняй только подтверждённый шаг и его ограничения. Не делегируй задачу ведущему или другим агентам. Верни проверенный результат и проверки.'
+        if data['role']=='reserve':return prefix+'Другая сторона на паузе. Работай вместе с Notion-агентом через его четыре инструмента. Передавай только нужные фрагменты без секретов; изменения после подтверждения человека, результат агента проверь сам.'
+        return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. Другой исполнитель и Notion-агент не используются. Согласование изменений с человеком сохраняется; секреты не выводи.'
+
+    def claude_policy(self, state):
+        plan=self.plan(state,'claude');cwd=self.claude_cwd if plan['access']=='full' else str(self.manager.exchange('claude')) if plan['role']=='leader' else self.claude_work
+        project=self.bridge.project_dir()
+        workspace=cwd
+        return dict(expires=state.until if state.service and state.service['engine']=='claude' else 0,access=plan['access'],paused=plan['role']=='paused',reserve=plan['role']=='reserve',cwd=self.claude_cwd,workspace=workspace,
+                    write_roots=[workspace],read_roots=list(dict.fromkeys([workspace,str(self.manager.exchange('claude')),str(self.manager.exchange('codex'))]+([project] if project else []))))
+
+    def capture(self, changed):
+        out={}
+        if 'codex' in changed:
+            settings=self.bridge.load()
+            out['codex_settings']={k:settings.get(k) for k in ('mode','access','task_rights','profile','workdir','project')}
+            out['codex_runtime']=self.codex.active_settings()
+        if 'claude' in changed:out['claude']=self.claude.capture()
+        return out
+
+    def preflight(self, before, after, changed, captured):
+        if self.busy():raise ProfileError('console_busy')
+        legacy=self.bridge._state()
+        if legacy.get('pending') or any(t.get('state') in ('sent','accepted') for t in (legacy.get('tasks') or {}).values()):raise ProfileError('legacy_task_pending')
+        for e in ENGINES:
+            out=self.manager.exchange(e)/'outbox';out.mkdir(parents=True,exist_ok=True)
+            for directory in (out.parent.parent,out.parent,out):
+                if directory.is_symlink():raise ProfileError('exchange_symlink_rejected')
+            if e=='codex':self.ns['cc_codex'].own(str(out))
+        if after.service and after.service['kind']=='reserve' and not self.reserve_ready():raise ProfileError('reserve_not_ready')
+        if 'claude' in changed:Path(self.claude_work).mkdir(parents=True,exist_ok=True)
+        if 'claude' in changed:self.claude.prepare(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
+        if 'codex' in changed and not captured.get('codex_runtime',{}).get('thread_id'):raise ProfileError('codex_history_unknown')
+        if after.service and after.service['engine']=='codex' and (after.service['kind']=='emergency' or after.service.get('emergency')):
+            plan,error=self.emergency._plan()
+            if error:raise ProfileError('emergency_not_configured')
+
+    def _codex_pause(self, on):
+        path=self.base/'profile_runtime/codex-paused.json'
+        if not on:
+            try:rows=json.loads(path.read_text())
+            except (OSError,ValueError):rows=[]
+            for row in rows:
+                try:
+                    start=Path('/proc/'+str(row['pid'])+'/stat').read_text().rsplit(')',1)[1].split()[19]
+                    if start==row['start']:os.kill(row['pid'],signal.SIGCONT)
+                except (OSError,KeyError):pass
+            path.unlink(missing_ok=True);return
+        if path.exists():return
+        level=[str(self.codex._pid() or '')];rows=[]
+        for _ in range(5):
+            nxt=[]
+            for pid in level:
+                try:nxt+=Path('/proc/'+pid+'/task/'+pid+'/children').read_text().split()
+                except OSError:pass
+            for pid in nxt:
+                try:
+                    if Path('/proc/'+pid+'/comm').read_text().strip()=='codex':rows.append(dict(pid=int(pid),start=Path('/proc/'+pid+'/stat').read_text().rsplit(')',1)[1].split()[19]))
+                except OSError:pass
+            level=nxt
+        if not rows:raise ProfileError('codex_pause_process_missing')
+        atomic(path,rows)
+        for row in rows:os.kill(row['pid'],signal.SIGSTOP)
+
+    def ensure_codex(self):
+        ok,message=self.codex.apply_plan() if self.codex._pid() else self.codex.start()
+        if ok:ok,message=self.codex.verify_ready()
+        return ok,message
+
+    def apply(self, before, after, changed, captured):
+        self._codex_pause(False)
+        prev_emg=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')))
+        next_emg=bool(after.service and after.service['engine']=='codex' and (after.service['kind']=='emergency' or after.service.get('emergency')))
+        if prev_emg and not next_emg:
+            ok,_=self.emergency.off('смена профиля',quiet=True)
+            if not ok:raise ProfileError('emergency_teardown_failed')
+        if 'codex' in changed:
+            plan=self.plan(after,'codex')
+            if not next_emg and plan['role']!='paused':
+                config=self.bridge.load();config.update(mode=plan['mode'],access=plan['access'],task_rights=plan['task_rights'],profile=plan['profile'] if plan['profile']!='emergency' else '')
+                # Keep the user's selected workdir; the native leader sandbox still uses exchange.
+                if not config.get('workdir'):config['workdir']=self.initial_codex.get('workdir') or self.bridge.workspace_dir()
+                with self.bridge._lock:self.bridge._save(config)
+                self.bridge.ensure_exchange()
+            if next_emg and not prev_emg:
+                ok,_=self.emergency.on('аварийный',auto='подтверждено в профилях')
+                if not ok:raise ProfileError('emergency_start_failed')
+                after.until=self.emergency.until() or 0
+            if plan['role']!='paused':
+                ok,_=self.ensure_codex()
+                if not ok:raise ProfileError('codex_apply_failed')
+                saved=captured['codex_runtime'];current=self.codex.active_settings()
+                for key in ('model','effort','thread_id'):
+                    if saved.get(key) and current.get(key)!=saved[key]:raise ProfileError('codex_'+key+'_changed')
+            if plan['role']=='paused':self._codex_pause(True)
+        if 'claude' in changed:self.claude.apply(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
+
+    def rollback(self, before, changed, captured):
+        self._codex_pause(False)
+        if 'codex' in changed:
+            wanted=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')))
+            if self.emergency.active() and not wanted:
+                ok,_=self.emergency.off('откат профиля',quiet=True)
+                if not ok:raise ProfileError('rollback_emergency_failed')
+            if wanted and not self.emergency.active():raise ProfileError('emergency_revoked_no_regrant')
+            config=self.bridge.load();config.update(captured['codex_settings'])
+            with self.bridge._lock:self.bridge._save(config)
+            meta=self.codex._meta();meta['pending_settings']=captured['codex_runtime'];self.ns['cc_codex']._jsave(self.codex._meta_path(),meta);self.ns['cc_codex'].own(self.codex._meta_path())
+            if not wanted:
+                ok,_=self.ensure_codex()
+                if not ok:raise ProfileError('rollback_codex_failed')
+            if self.plan(before,'codex')['role']=='paused':self._codex_pause(True)
+        if 'claude' in changed:self.claude.apply(captured['claude'],self.claude_policy(before),self.prompt(before,'claude'))
+
+    def interrupt(self,e):
+        if e=='codex':self.codex.interrupt()
+        else:
+            import subprocess
+            subprocess.run(['/usr/bin/screen','-S',self.claude.screen(),'-p','0','-X','stuff','\x1b'],capture_output=True,timeout=5)
+
+    def availability(self):
+        claude=self.notion.claude_status(self.ns['pause_state']())
+        rotation=self.ns['FLEET_ROTATION'];rows=rotation.snapshot().get('accounts') or [];now=time.time();good=[]
+        for row in rows:
+            if row.get('loading') or row.get('stale') or row.get('error') or now-float(row.get('ts') or 0)>180:return dict(claude=claude,codex='unknown')
+            good.append(not(row.get('login_required') or row.get('lapsed') or row.get('reached') or row.get('usage_allowed') is False or any(float(w.get('pct') or 0)>=100 for w in row.get('windows') or [])))
+        return dict(claude=claude,codex=('up' if any(good) else 'down') if good else 'unknown')
+
+class Profiles:
+    def __init__(self, base, native, clock=time.time):
+        self.base=Path(base);self.native=native;native.manager=self;self.clock=clock;self.lock=threading.RLock();self.transitioning=False;self.error='';self.managed={'claude':False,'codex':False};self.worker=None;self.avail={e:dict(status='unknown',since=clock()) for e in ENGINES};self.tasks=None
+        self.path=self.base/'work_profiles.json';self.pending=self.base/'profile-transition.json'
+        if self.path.exists():
+            raw=json.loads(self.path.read_text());self.state=ProfileState.from_data(raw['core'],clock);self.managed.update(raw.get('managed') or {})
+            native.claude_cwd=raw.get('claude_cwd') or native.claude_cwd
+        else:self.state=native.seed();self.save()
+        if self.pending.exists():self.error='Обнаружено незавершённое переключение. Восстанавливаю прежний профиль.'
+
+    def exchange(self,e):
+        return getattr(self.native,'exchange_root',self.base/'profile_exchange')/e
+
+    def save(self):
+        atomic(self.path,dict(schema=1,core=self.state.export(),managed=self.managed,claude_cwd=self.native.claude_cwd))
+
+    def paused(self,e):
+        return bool(self.state.service and self.state.service['engine']!=e)
+
+    def input_allowed(self,e):
+        return not self.transitioning and not self.paused(e) and not self.pending.exists()
+
+    def public(self):
+        with self.lock:
+            out=self.state.public();out.update(snapshot_ts=self.clock(),transitioning=self.transitioning,last_error=self.error,availability={e:v['status'] for e,v in self.avail.items()})
+            if self.tasks:out['task']=self.tasks.public()
+            emergency=self.native.emergency.public() if hasattr(self.native,'emergency') else {}
+            for e in ENGINES:
+                out['engines'][e]['applied']=self.managed[e] or e=='codex'
+                if e=='claude' and not self.managed[e]:out['engines'][e]['label']='Claude Full · текущая сессия' if self.state.selected[e].endswith('_solo_full') else 'Claude · текущая сессия'
+                out['engines'][e]['emergency_hours']=emergency.get('hours',2) if e=='codex' else 2
+                for p in out['engines'][e]['profiles']:
+                    if p['kind']=='solo' and e=='claude':p.update(can='Читать проект, создавать и редактировать файлы в рабочей папке.',cannot='Менять файлы вне рабочей папки, запускать команды или других исполнителей.')
+                    if p['kind']=='emergency' and e=='codex':
+                        hours=emergency.get('hours',2);p['flow']=['Codex','Подтверждение',('Срок '+str(hours)+' ч') if hours else 'До ручного выключения']
+                    if p['kind']=='emergency' and e=='claude':p['description']='Временный полный доступ Claude в пределах прав его пользователя ОС. Срок 2 часа.'
+            return out
+
+    def _changed(self,before,after):
+        return [e for e in ENGINES if self.native.plan(before,e)!=self.native.plan(after,e)]
+
+    def transition(self,candidate,message,force=None):
+        rotation=getattr(self.native,'ns',{}).get('FLEET_ROTATION')
+        with rotation.lock if rotation else nullcontext():
+            return self._transition(candidate,message,force)
+
+    def _transition(self,candidate,message,force=None):
+        before=self.state;changed=self._changed(before,candidate)
+        if force and force not in changed:changed.append(force)
+        if not changed:
+            self.state=candidate;self.save();return dict(ok=True,message=message,state=self.public())
+        if self.pending.exists():return dict(ok=False,message='Идёт восстановление предыдущего переключения. Дождись завершения.')
+        if self.native.busy() or self.tasks and self.tasks.busy():return dict(ok=False,busy=True,message='Сейчас идёт ответ или подтверждённый шаг. Профили можно менять после его завершения.')
+        self.transitioning=True;old_managed=dict(self.managed);captured=None
+        try:
+            captured=self.native.capture(changed);self.native.preflight(before,candidate,changed,captured)
+            atomic(self.pending,dict(before=before.export(),after=candidate.export(),managed=old_managed,changed=changed,captured=captured))
+            self.state=candidate
+            for e in changed:self.managed[e]=True
+            self.native.apply(before,candidate,changed,captured);self.save();self.pending.unlink();self.error=''
+            return dict(ok=True,message=message,state=self.public())
+        except Exception as exc:
+            reasons={'reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.'}
+            self.error='Переключение отменено. '+reasons.get(str(exc),'Консоль не подтвердила применение профиля; проверь её экран перед повтором.')
+            revoked=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active() and self.pending.exists())
+            if revoked:
+                pending=json.loads(self.pending.read_text());pending['recover_to']='after';atomic(self.pending,pending);self.state=candidate;self.save();self.error='Аварийный доступ снят. Восстанавливаю консоль с выбранным профилем.'
+                return dict(ok=False,message=self.error,state=self.public())
+            self.state=before;self.managed=old_managed
+            if captured and self.pending.exists():
+                try:self.native.rollback(before,changed,captured);self.save();self.pending.unlink()
+                except Exception:self.error+='; требуется восстановление прежней консоли.'
+            return dict(ok=False,message=self.error,state=self.public())
+        finally:self.transitioning=False
+
+    def action(self,e,action,body):
+        if e not in ENGINES:return dict(ok=False,message='Неизвестный исполнитель.')
+        if not self.lock.acquire(blocking=False):return dict(ok=False,message='Переключение уже выполняется. Дождись результата.')
+        try:
+            candidate=ProfileState.from_data(self.state.export(),self.clock)
+            if action=='apply':result=candidate.apply(e,body.get('id'),body.get('confirm',''),body.get('revision'))
+            elif action=='stop':result=candidate.stop_service(e,body.get('revision'))
+            elif action=='config':result=candidate.configure(e,body.get('enabled'),body.get('emergency'),body.get('confirm',''),body.get('revision'))
+            elif action=='delete':result=candidate.delete(e,body.get('id'),body.get('revision'))
+            else:return dict(ok=False,message='Неизвестное действие.')
+            if not result.get('ok'):return result
+            message='Настройки резерва сохранены.' if action=='config' else 'Предыдущий сценарий восстановлен.' if action=='stop' else 'Профиль применён к консоли.'
+            original=self.state
+            result=self.transition(candidate,message,e if action=='apply' and e=='claude' and not self.managed[e] else None)
+            if result.get('ok') and action=='delete' and e=='codex':
+                try:ok,_=self.native.bridge.delete_profile(body.get('id'))
+                except Exception:ok=False
+                if not ok:
+                    self.state=original;self.save();return dict(ok=False,message='Профиль не удалён. Повтори после обновления данных.',state=self.public())
+            return result
+        finally:self.lock.release()
+
+    def recover(self):
+        if not self.pending.exists():return
+        raw=json.loads(self.pending.read_text());before=ProfileState.from_data(raw['before'],self.clock)
+        forward=raw.get('recover_to')=='after';self.state=ProfileState.from_data(raw['after'],self.clock) if forward else before
+        self.managed.update({e:True for e in raw['changed']} if forward else raw.get('managed') or {})
+        if self.native.busy():return
+        self.transitioning=True
+        try:
+            if forward:self.native.apply(before,self.state,raw['changed'],raw['captured'])
+            else:self.native.rollback(before,raw['changed'],raw['captured'])
+            self.save();self.pending.unlink();self.error=''
+        finally:self.transitioning=False
+
+    def tick(self):
+        if not self.lock.acquire(blocking=False):return
+        try:
+            if self.pending.exists():self.recover();return
+            statuses=self.native.availability();now=self.clock()
+            for e in ENGINES:
+                if self.avail[e]['status']!=statuses[e]:self.avail[e]=dict(status=statuses[e],since=now)
+            if self.state.service and self.state.until and now>=self.state.until:
+                if self.tasks:self.tasks.cancel.set()
+                if self.native.busy():
+                    if hasattr(self.native,'interrupt'):self.native.interrupt(self.state.service['engine'])
+            candidate=ProfileState.from_data(self.state.export(),self.clock);candidate._expire()
+            if candidate.service and candidate.service['engine']=='codex' and (candidate.service['kind']=='emergency' or candidate.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active():candidate._restore()
+            # Unknown/stale snapshots cannot activate or remove a reserve; expiry remains authoritative.
+            if all(v['status']!='unknown' and now-v['since']>=120 for v in self.avail.values()):
+                candidate.availability={e:self.avail[e]['status']=='up' for e in ENGINES}
+                auto=copy.deepcopy(candidate.auto)
+                for e in ENGINES:
+                    if not candidate.leader and not candidate.service and candidate.selected[e].endswith('_solo_full'):candidate.auto[e]['enabled']=False
+                ProfileScenarios._reconcile(candidate)
+                candidate.auto=auto
+            if candidate.export()!=self.state.export():self.transition(candidate,'Автоматический сценарий обновлён.')
+        finally:self.lock.release()
+
+    def start(self):
+        if self.worker and self.worker.is_alive():return
+        def work():
+            while True:
+                try:
+                    self.tick()
+                    if self.tasks:self.tasks.tick()
+                except Exception as exc:self.error='Проверка профилей: '+type(exc).__name__
+                time.sleep(3)
+        self.worker=threading.Thread(target=work,daemon=True,name='mirrored-profiles');self.worker.start()
+
+
+def bind(ns, inputs):
+    from cc_profile_tasks import ProfileTasks, completed_claude_answer
+    native=NativeProfiles(ns);profiles=Profiles(ns['BASE'],native)
+    bridge,console,notion=native.bridge,native.codex,native.notion
+    original_mcp=console.MCP
+    def codex_mcp():
+        if not profiles.managed['codex']:return original_mcp()
+        args=native.original_notion_args() if profiles.state.service and profiles.state.service['engine']=='codex' and profiles.state.service['kind']=='reserve' else []
+        return args+['-c','sandbox_workspace_write.writable_roots='+json.dumps([str(profiles.exchange('codex')/'outbox')]),'-c','developer_instructions='+json.dumps(native.prompt(profiles.state,'codex'),ensure_ascii=False)]
+    console.MCP=codex_mcp;bridge.MCP_ARGS=codex_mcp
+    ns['FLEET_ROTATION'].suspended=lambda:not profiles.input_allowed('codex')
+    console.PRESERVE_THREAD=lambda:profiles.managed['codex']
+    console.INPUT_ALLOWED=lambda:profiles.input_allowed('codex')
+    bridge.DISPATCH_ALLOWED=lambda:profiles.input_allowed('codex')
+    bridge.TAKE_DRAFT_ALLOWED=lambda:not profiles.managed['codex']
+    bridge.RESERVE_NOTE=lambda:native.prompt(profiles.state,'codex') if profiles.managed['codex'] else native.original_notion_note()
+    # One scheduler owns both directions. The legacy service remains the connector/UI adapter.
+    notion.active=lambda:bool(profiles.state.service and profiles.state.service['engine']=='codex' and profiles.state.service['kind']=='reserve')
+    def notion_public(lv=None):
+        data=native.original_notion_public(lv)
+        if not data.get('available'):data=dict(available=True,connected=False,agent=dict(name='',set=False))
+        state=profiles.state;active=bool(state.service and state.service['engine']=='codex' and state.service['kind']=='reserve');auto=state.auto['codex']
+        data['reserve']=dict(ready=native.reserve_ready(),active=active,manual=active and state.service.get('source')=='manual',auto=auto['enabled'],auto_emergency=auto['emergency'],claude=profiles.avail['claude']['status'],why=state.service.get('source') if active else '')
+        return data
+    notion.public=notion_public;notion.tick=profiles.tick;notion.start=profiles.start
+    # Native emergency changes are coordinated synchronously by a profile transaction.
+    native.emergency._restart_console=lambda:None
+    bridge.PROFILE_APPLIED=console.apply_plan
+    def send(engine,text):
+        if engine=='codex':bridge.BRIDGE.enqueue_work(('text',text));return
+        ok,_=inputs.send('claude',text,'profile-'+uuid.uuid4().hex)
+        if not ok:raise ProfileError('claude_input_rejected')
+    def ask(engine,text):
+        if engine=='codex':return console.ask(text,abort=profiles.tasks.cancel)[0]
+        snapshot=native.claude.capture();history=Path(snapshot['history']);offset=history.stat().st_size;carry=b'';send(engine,text);deadline=time.monotonic()+6*3600;started=False
+        while time.monotonic()<deadline:
+            if profiles.tasks.cancel.is_set():raise ProfileError('step_cancelled_at_expiry')
+            time.sleep(1)
+            with history.open('rb') as f:f.seek(offset);raw=f.read();offset=f.tell()
+            lines=(carry+raw).split(b'\n');carry=lines.pop()
+            for line in lines:
+                try:event=json.loads(line)
+                except ValueError:continue
+                if event.get('type')=='user':started=True
+                if event.get('type')=='assistant' and (event.get('message') or {}).get('stop_reason')=='max_tokens':raise ProfileError('claude_incomplete_answer')
+                answer=completed_claude_answer(event)
+                if answer:return answer
+            if not started and time.monotonic()>deadline-6*3600+45:raise ProfileError('claude_start_not_confirmed')
+        raise ProfileError('claude_step_timeout')
+    profiles.tasks=ProfileTasks(profiles,send,ask)
+    ns['FLEET_PROFILES']=profiles
+    return profiles

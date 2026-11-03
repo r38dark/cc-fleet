@@ -23,6 +23,8 @@ ENTER_DELAY = 0.6  # пауза между текстом и Enter при печ
 CONSOLE = None  # cc_limits подставляет cc_codex_console: разговор идёт в консоли Codex; None — отдельный `codex exec`
 MCP_ARGS = lambda: []  # cc_limits: ключи `-c` с инструментами Notion-агента (пусто вне резерва)
 RESERVE_NOTE = lambda: ""  # cc_limits: строка-напоминание Codex про резерв и агента (пусто вне резерва)
+TAKE_DRAFT_ALLOWED = lambda: True
+DISPATCH_ALLOWED = lambda: True  # profile coordinator: hold incoming work while the engine is paused
 PROFILE_APPLIED = lambda: None  # cc_limits: обновить права и MCP-инструменты работающей консоли
 EMERGENCY = None  # cc_limits подставляет cc_codex_emergency: пока аварийный режим включён, права и папка заморожены
 TG_API = "https://api.telegram.org"  # на стенде — локальная заглушка Bot API
@@ -1168,6 +1170,11 @@ class Bridge:
 
     def _drain_work_queue(self):
         while True:
+            if not DISPATCH_ALLOWED():
+                if self.stop_ev.wait(.5):
+                    with self.start_lock:self.worker = None
+                    return
+                continue
             with self.start_lock:
                 if not self.work_queue:
                     # Атомарно освобождаем worker: новый update либо добавится до этой проверки,
@@ -1411,7 +1418,7 @@ class Bridge:
                 return self.send("⚠️ Не удалось запустить Codex, подробности в журнале.")
             log(f"delivery stage=codex_end outcome=ok elapsed_ms={round((time.monotonic() - ask_started) * 1000)}")
             self.send_answer(answer, act, s)
-            if s["mode"] in ("mediator", "orchestrator"):
+            if s["mode"] in ("mediator", "orchestrator") and TAKE_DRAFT_ALLOWED():
                 self.take_draft(s)
         finally:
             if own:

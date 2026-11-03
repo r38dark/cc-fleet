@@ -139,7 +139,7 @@ chmod 644 "$BASE/cc_codex_bridge.py"
 # консоль Codex на странице (вкладка рядом с консолью Claude) — импортирует cc_limits.py
 cp "$SCRIPT_DIR/cc_codex_console.py" "$BASE/cc_codex_console.py"
 chmod 644 "$BASE/cc_codex_console.py"
-for fleet_module in cc_session.py cc_codex_rotation.py cc_overview.py cc_fleet.py; do
+for fleet_module in cc_session.py cc_codex_rotation.py cc_overview.py cc_fleet.py cc_profiles.py cc_profile_state.py cc_profile_tasks.py cc_profile_gate.py cc_claude_profile.py; do
   cp "$SCRIPT_DIR/$fleet_module" "$BASE/$fleet_module"
   chmod 644 "$BASE/$fleet_module"
 done

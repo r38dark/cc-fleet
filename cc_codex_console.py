@@ -26,6 +26,8 @@ HISTORY_LINES = 2000  # скроллбэк сверх экрана
 LOG_MAX = 16 * 1024 * 1024  # лог растёт, пока Codex что-то рисует; сверх лимита обнуляем
 _SANDBOXES = ("read-only", "workspace-write", "danger-full-access")
 APPROVAL = "never"  # никаких запросов подтверждения на экране: их некому нажать, мост ждал бы вечно
+PRESERVE_THREAD = lambda: False
+INPUT_ALLOWED = lambda: True
 MCP = lambda: []  # cc_limits: ключи `-c` с инструментами Notion-агента (пусто вне резерва); сменились — консоль перезапускается
 PROMPT_WAIT = 25  # после старта ждём, пока консоль нарисует поле ввода, секунд
 START_WAIT = 40  # консоль должна принять сообщение (начать ход), секунд
@@ -158,6 +160,8 @@ def send_input(text, lang='ru'):
     if not isinstance(text, str) or not text.strip() or len(text.encode('utf-8')) > 48000:
         return False, 'Нужно непустое сообщение размером до 48 КБ.'
     text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text.replace('\r\n', '\n').replace('\r', '\n')).strip()
+    if not INPUT_ALLOWED():
+        return False, 'Codex на паузе: активен служебный режим другой стороны.'
     if busy() or not _ask_lock.acquire(blocking=False):
         return False, 'В консоли Codex идёт ответ. Дождись завершения или нажми Esc.'
     try:
@@ -508,9 +512,10 @@ def ensure(lang="ru"):
         new_cwd = os.path.realpath(str(st.get("plan_cwd") or ""))
         if new_cwd != os.path.realpath(str(st.get("cwd") or "")):
             saved["cwd"] = new_cwd
-            saved["thread_id"] = (meta.get("tids") or {}).get(new_cwd)
-            saved.pop("rollout_path", None)
-            saved["new_session"] = not bool(saved["thread_id"])
+            if not PRESERVE_THREAD():
+                saved["thread_id"] = (meta.get("tids") or {}).get(new_cwd)
+                saved.pop("rollout_path", None)
+                saved["new_session"] = not bool(saved["thread_id"])
         meta["pending_settings"] = saved
         cc_codex._jsave(_meta_path(), meta)
         cc_codex.own(_meta_path())
@@ -576,6 +581,8 @@ def compact(lang="ru"):
 def ask(prompt, abort=None, timeout=None, lang="ru"):  # timeout: None — ход без ограничения, число — секунды на ход
     """Напечатать prompt в консоль и дождаться ответа Codex из файла сессии. → (ответ, id разговора).
     ConsoleError — консоль не приняла запрос / закрылась / не ответила; Aborted — abort (Event) взведён."""
+    if not INPUT_ALLOWED():
+        raise ConsoleError('Codex на паузе: активен служебный режим другой стороны.')
     text = _paste_text(prompt)
     if not text:
         raise ConsoleError("Пустое сообщение.")

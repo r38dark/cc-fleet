@@ -154,6 +154,10 @@ class Policy(unittest.TestCase):
         self.assertFalse(obj.switch('gpt2')[0]);self.assertEqual(bridge['slot'],'gpt1');self.assertEqual(con.start.call_count,2)
         self.assertNotIn('history',obj.state)
 
+    def test_profile_transition_suspends_rotation_and_plan_refresh(self):
+        obj,con,_,bridge=self.fixture();obj.suspended=lambda:True;obj.state['optimize']=False
+        self.assertFalse(obj.switch('gpt2',manual=True)[0]);obj.tick();con.stop.assert_not_called();con.apply_plan.assert_not_called();self.assertEqual(bridge['slot'],'gpt1')
+
     def test_manual_choice_requires_optimization_off(self):
         obj,con,_,bridge=self.fixture();self.assertFalse(obj.switch('gpt2',manual=True)[0]);con.stop.assert_not_called()
 
@@ -257,15 +261,17 @@ class Routes(unittest.TestCase):
             def _chatgpt_post(self,action,body):return 'old-'+action
         ns={'H':H,'PAGE':'<html><head></head><body></body></html>','BASE':str(rotation_obj.path.parent),
             'cc_codex':codex,'cc_codex_console':con,'cc_codex_bridge':rotation_obj.bridge,'codex_bin':lambda:'/fake'}
-        cc_fleet.install(ns)
+        import cc_profiles
+        profile_stub=types.SimpleNamespace(transitioning=False,public=lambda:{'ok':True,'available':True},input_allowed=lambda e:True,action=lambda *a:{'ok':True},tasks=types.SimpleNamespace(confirm=lambda body:{'ok':True}))
+        with mock.patch.object(cc_profiles,'bind',return_value=profile_stub):cc_fleet.install(ns)
         h=ns['H']();h.path=path;h.authorized=authed
         raw=json.dumps(body or {}).encode();h.rfile=io.BytesIO(raw);h.headers={'Content-Length':str(len(raw))}
         return h,ns
 
     def test_new_routes_require_authentication_before_body_read(self):
-        for path in ['/api/console/input','/api/console/key','/api/chatgpt/rotation/config','/api/chatgpt/rotation/switch']:
+        for path in ['/api/profiles/claude/apply','/api/profiles/task/confirm','/api/console/input','/api/console/key','/api/chatgpt/rotation/config','/api/chatgpt/rotation/switch']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_POST()[0],403);self.assertEqual(h.rfile.tell(),0)
-        for path in ['/api/chatgpt','/api/chatgpt/rotation']:
+        for path in ['/api/profiles','/api/chatgpt/bridge','/api/chatgpt','/api/chatgpt/rotation']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_GET()[0],403)
 
     def test_existing_routes_still_delegate(self):

@@ -50,3 +50,62 @@ Added provider-specific profile/reserve controls to the active account tiles and
 The reproducible `preview/` server and pure scenario module implement **demo state only**: reversible role changes, word-confirmed Full/emergency, reserve restoration, two-hour deadlines, revision conflicts and symmetric auto-reserve settings. Manual stop prevents automatic reactivation until recovery. They do not implement native console adapters, persistence, real limit eligibility, OS permissions or busy-turn coordination; approval of the preview must not be treated as a completed production integration.
 
 Twelve pure scenario tests passed. Browser checks exercised both provider palettes, reversed leadership, Full cancellation, manual reserve/restore, emergency on/off, automatic options and confirmations, shared connector settings, model/effort preservation, search/autofill, keyboard, 320–2560px bounds and actual touch emulation. All profile mutations targeted mock profile endpoints only. The complete console/composer and active quotas fit on the first Full HD screen. No production runtime files or native console services were changed.
+
+## Mirrored work profiles — production integration 1.27.0
+
+Approved by Denis: «да отлично. делай релиз». The production candidate adds the
+actual `/api/profiles` controller and native adapters, rather than installing the
+demo's in-memory state as if it controlled real sessions.
+
+- Durable provider registries and a recoverable transaction journal; five mirrored
+  built-in scenarios per side, existing custom Codex profiles retained. One leader
+  per pair, explicit executor and paused roles. Existing live Claude permissions
+  are adopted as current settings; an explicit profile selection installs its
+  hooks without relaunching either console at deployment.
+- Native Codex uses its existing launch/session reader with explicit thread,
+  model/effort/history and cwd. Managed role changes retain the same conversation
+  across sandbox and cwd changes. Rotation and model changes are suspended during
+  profile transitions and when the provider is paused.
+- Claude resumes the exact session from its PID metadata, never the newest file.
+  Launch arguments retain current model and effort, append role instructions and
+  refresh the system-prompt snapshot. Later profile-driven launches use a separate
+  systemd unit, so a panel restart does not own the native console lifetime.
+  Restricted Claude profiles permit file operations in their workspace and project
+  reads; command execution requires Full. Profile hooks block out-of-root paths,
+  symlinks, other agents and unauthorized Notion calls; channel replies remain.
+- Both directions use immutable, stored task text, human approval in the balance
+  panel, and result feedback to the native leader. Full task scope needs a word.
+  Interrupted/uncertain dispatches are not automatically replayed. Native Claude
+  result parsing covers both end_turn and the locally observed stop_sequence.
+- Mirrored manual/automatic reserve, stable fresh availability, unknown-data hold,
+  manual-off suppression and restoration. Standalone Full suppresses automatic
+  agent activation. Codex emergency retains its existing configured OS grants and
+  duration, including the current manual-off-only configuration. Claude temporary
+  Full lasts two hours; hooks reject tools at expiry and the active owner is
+  interrupted before restoring its prior profile. Revoked emergency permissions
+  are not re-granted during a failed console restoration.
+
+Validation: 58 controller/routing/session tests, 77 existing console tests and
+7 installer tests passed in isolated directories as the unprivileged user.
+Separate real GNU screen/PTY checks used fake Codex and Claude executables; no
+model or external-agent calls were made. They exercised exact conversation/model/
+effort retention, profile changes and separate account history. Browser checks
+used the real durable coordinator with fake native effects, including both task
+approval directions, search/autofill, comparison, confirmations and 320–2560px
+layouts/touch. A separate staged browser check used real read-only account and
+console snapshots and an expected bootstrap registry, with all POSTs blocked.
+Physical switching between two real authenticated Codex accounts remains untested
+because only one account is currently connected.
+
+Official references for explicit configuration and resume behavior:
+[Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference),
+[Codex resume](https://learn.chatgpt.com/docs/developer-commands?surface=cli),
+[Claude CLI](https://code.claude.com/docs/en/cli-reference) and
+[Claude permissions/hooks](https://code.claude.com/docs/en/permissions).
+Installed native CLI help was also checked. No model migration was performed.
+
+Deployment replaces only the listed public runtime modules after current Telegram
+reply delivery and native idle, with baseline hashes, backups and rollback. Health
+checks verify both unchanged native conversations/models/efforts, real mirrored
+API, original controls and the actual served UI. Account credentials and console
+commands are outside the installation file set. No remote push is authorized.

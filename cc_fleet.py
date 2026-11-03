@@ -115,15 +115,22 @@ def install(ns):
     codex, console, bridge = ns['cc_codex'], ns['cc_codex_console'], ns['cc_codex_bridge']
     rotation = cc_codex_rotation.Rotation(ns['BASE'], codex, console, ns['codex_bin'], bridge)
     inputs = ConsoleInput(ns)
+    ns['FLEET_ROTATION'] = rotation
+    import cc_profiles
+    profiles = cc_profiles.bind(ns, inputs)
     original = ns['H']
 
     class FleetHandler(original):
         def do_GET(self):
             parsed = urlparse(self.path)
-            if parsed.path not in ('/api/chatgpt/rotation', '/api/chatgpt'):
+            if parsed.path not in ('/api/profiles', '/api/chatgpt/bridge', '/api/chatgpt/rotation', '/api/chatgpt'):
                 return original.do_GET(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
+            if parsed.path == '/api/profiles':
+                return self._send(200, profiles.public())
+            if parsed.path == '/api/chatgpt/bridge':
+                return self._send(200, dict(ok=True, available=True, bridge=bridge.public(), emergency=ns['cc_codex_emergency'].public(), profile_system=profiles.public()))
             if parsed.path == '/api/chatgpt':
                 force = bool(parse_qs(parsed.query).get('refresh'))
                 return self._send(200, rotation.snapshot(force))
@@ -132,7 +139,10 @@ def install(ns):
 
         def do_POST(self):
             path = urlparse(self.path).path
-            if path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch'):
+            if path in ('/api/model','/api/effort') and not profiles.input_allowed('claude'):
+                if not self._authed():return self._send(403, {'ok':False})
+                return self._send(200, {'ok':False,'message':'Claude на паузе или меняется профиль. Повтори выбор модели после завершения переключения.'})
+            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch'):
                 return original.do_POST(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
@@ -146,7 +156,13 @@ def install(ns):
             except (ValueError, UnicodeDecodeError):
                 return self._send(400, {'ok': False, 'message': 'Неверный JSON.'})
             try:
+                if path.startswith('/api/profiles/'):
+                    parts = path.split('/')
+                    result = profiles.tasks.confirm(body) if path == '/api/profiles/task/confirm' else profiles.action(parts[3] if len(parts)>3 else '',parts[4] if len(parts)>4 else '',body)
+                    return self._send(200, result)
                 if path == '/api/console/input':
+                    if body.get('session') in ('claude','codex') and not profiles.input_allowed(body['session']):
+                        return self._send(200, dict(ok=False, message='Консоль на паузе. Выключи служебный режим другой стороны.'))
                     ok, message = inputs.send(body.get('session'), body.get('text'), body.get('request_id'))
                 elif path == '/api/console/key':
                     ok, message = inputs.key(body.get('session'), body.get('key'))
@@ -159,6 +175,15 @@ def install(ns):
                 return self._send(500, {'ok': False, 'message': 'Действие не выполнено: '+type(exc).__name__})
 
         def _chatgpt_post(self, action, body):
+            if action=='bridge/save' and profiles.transitioning:
+                return self._send(200, {'ok':False,'message':'Сейчас применяется профиль. Сохрани настройки после завершения переключения.'})
+            if action=='prefs' and not profiles.input_allowed('codex'):
+                return self._send(200, {'ok':False,'message':'Codex на паузе или меняется профиль. Повтори выбор модели после завершения переключения.'})
+            if action in ('bridge/profile/apply','bridge/profile/delete','emergency/on','emergency/off'):
+                name = 'delete' if action.endswith('/delete') else 'stop' if action.endswith('/off') else 'apply'
+                body = dict(body)
+                if action.startswith('emergency/'):body.update(id='emergency', confirm=body.get('word',''))
+                return self._send(200, profiles.action('codex',name,body))
             if action in ('delete', 'wipe'):
                 slot = body.get('slot')
                 if console.busy() and (action == 'wipe' or slot == rotation.active()):
