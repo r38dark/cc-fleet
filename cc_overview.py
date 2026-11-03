@@ -406,6 +406,8 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
  #cxMenu .fleet-profile-card .cxpnm{font-size:15px}
  #cxMenu .fleet-profile-card .cxps{margin-top:3px}
 }
+
+.fleet-profile-service-heading{grid-column:1/-1;font-size:11px;font-weight:550;color:var(--fleet-muted);margin-top:2px}
 '''
 
 JS = r'''
@@ -664,8 +666,8 @@ JS = r'''
  foldPauseBanner();
 
  // Заголовок начинаетcя с реальных ролей: ведущий, затем исполнитель.
- Object.assign(I18N.ru,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · самостоятельно',cxpN_codex_solo_full:'Codex Full · самостоятельно',cxpN_reserve:'Codex + Notion · резерв'});
- Object.assign(I18N.en,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · solo',cxpN_codex_solo_full:'Codex Full · solo',cxpN_reserve:'Codex + Notion · reserve'});
+ Object.assign(I18N.ru,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · самостоятельно',cxpN_codex_solo_full:'Codex Full · самостоятельно',cxpN_reserve:'Codex + Notion · резерв',cxeN:'Codex · самостоятельно · аварийный',cxeHdr:'Codex · самостоятельно · аварийный',cxeOnT:'Codex · самостоятельно · аварийный включён'});
+ Object.assign(I18N.en,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · solo',cxpN_codex_solo_full:'Codex Full · solo',cxpN_reserve:'Codex + Notion · reserve',cxeN:'Codex · solo · emergency',cxeHdr:'Codex · solo · emergency',cxeOnT:'Codex · solo · emergency enabled'});
  const originalProfileDisplayName=cxpName;
  cxpName=function(profile){
   const name=originalProfileDisplayName(profile);if(profile.builtin)return name;
@@ -688,12 +690,13 @@ JS = r'''
  const profileCopy={orchestrator:'Codex ведёт задачу. Claude выполняет шаги после твоего подтверждения.',codex:'Самостоятельная работа в своей папке. Проект доступен для чтения.',codex_solo_full:'Работает самостоятельно с полной песочницей Codex и правами пользователя ОС.'};
  function repaintProfileResults(){
   const nodes=Array.from(profileRoot.querySelectorAll('.cxprof:not([data-auto])')),visible=nodes.filter(node=>!node.hidden).length;
-  putText(paletteCount,search.value.trim()?'Найдено: '+visible+' из '+nodes.length:nodes.length+' '+(nodes.length===1?'профиль':nodes.length>1&&nodes.length<5?'профиля':'профилей'));
+  const services=profileRoot.querySelectorAll('.cxprof[data-auto],.cxemg').length;
+  putText(paletteCount,(search.value.trim()?'Найдено: '+visible+' из '+nodes.length:nodes.length+' '+(nodes.length===1?'профиль':nodes.length>1&&nodes.length<5?'профиля':'профилей'))+(services?' · служебных режимов: '+services:''));
   paletteEmpty.hidden=visible>0||!!profileRoot.querySelector('.cxprof[data-auto]:not([hidden])');
  }
  function decorateProfilePalette(){
   const bridge=cxbData&&cxbData.bridge,profiles=bridge?.profiles||[],current=profiles.find(profile=>profile.id===bridge.profile);
-  putText(paletteCurrent,current?'Сейчас: '+cxpName(current):bridge?.profile==='reserve'?'Сейчас: '+tr('cxpN_reserve'):'Сейчас: свои настройки');
+  putText(paletteCurrent,cxbData?.emergency?.active?'Сейчас: '+tr('cxeHdr'):current?'Сейчас: '+cxpName(current):bridge?.profile==='reserve'?'Сейчас: '+tr('cxpN_reserve'):'Сейчас: свои настройки');
   paletteCurrent.title=current?cxpSub(current):'';menu.dataset.compare=String(compareProfiles);compareButton.setAttribute('aria-pressed',String(compareProfiles));putText(compareButton,compareProfiles?'Краткий вид':'Сравнить');compareButton.title=compareProfiles?'Вернуть краткий вид':'Показать состав и возможности всех профилей';
   for(const card of profileRoot.querySelectorAll('.cxprof:not([data-auto])')){
    const profile=profiles.find(profile=>profile.id===card.dataset.id);if(!profile)continue;
@@ -711,7 +714,7 @@ JS = r'''
    if(info){info.hidden=compareProfiles;info.classList.add('fleet-profile-more');info.prepend(document.createTextNode('Подробнее'));info.setAttribute('aria-label','Подробнее о профиле '+cxpName(profile));footer.append(info)}card.append(footer);
   }
   const selected=profileRoot.querySelector('.cxprof.act:not([data-auto])');if(selected)selected.parentElement.prepend(selected);
-  const reserveCard=profileRoot.querySelector('.cxprof[data-auto]');if(reserveCard){reserveCard.classList.add('fleet-profile-service');reserveCard.querySelector('.cxps').title=reserveCard.querySelector('.cxps').textContent;reserveCard.append(el('span','fleet-profile-auto','Автоматически'))}
+  const reserveCard=profileRoot.querySelector('.cxprof[data-auto]');if(reserveCard){reserveCard.parentElement.insertBefore(el('div','fleet-profile-service-heading','Служебные режимы'),reserveCard);reserveCard.classList.add('fleet-profile-service');reserveCard.querySelector('.cxps').title=reserveCard.querySelector('.cxps').textContent;reserveCard.append(el('span','fleet-profile-auto','Автоматически'))}
   filterProfiles();repaintProfileResults();
  }
  const originalProfileRender=cxpRender;
