@@ -1,5 +1,5 @@
 {
-  "version": "1.26.0",
+  "version": "1.27.1",
   "needs_install": false,
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
@@ -24,6 +24,12 @@
     {"src": "cc_session.py", "mode": "644"},
     {"src": "cc_codex_rotation.py", "mode": "644"},
     {"src": "cc_overview.py", "mode": "644"},
-    {"src": "cc_fleet.py", "mode": "644"}
+    {"src": "cc_fleet.py", "mode": "644"},
+    {"src": "cc_profiles.py", "mode": "644"},
+    {"src": "cc_profile_state.py", "mode": "644"},
+    {"src": "cc_profile_tasks.py", "mode": "644"},
+    {"src": "cc_profile_gate.py", "mode": "644"},
+    {"src": "cc_claude_profile.py", "mode": "644"},
+    {"src": "cc_codex_models.py", "mode": "644"}
   ]
 }

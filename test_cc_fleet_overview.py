@@ -128,7 +128,7 @@ class Policy(unittest.TestCase):
         bridge_state={'slot':'gpt1'}
         bridge=types.SimpleNamespace(_lock=threading.RLock(),load=lambda:dict(bridge_state),_save=lambda d:bridge_state.update(d))
         codex=types.SimpleNamespace(jload=lambda p,d:dict(d),_jsave=lambda p,d:Path(p).write_text(json.dumps(d)),own=lambda p:None,
-                profile_slots=lambda:['gpt1','gpt2'],meta=lambda s:{'label':s},get_accounts=lambda b,force=False:[account('gpt1'),account('gpt2')],set_prefs=mock.Mock(return_value=(True,'')))
+                profile_slots=lambda:['gpt1','gpt2'],meta=lambda s:{'label':s},cached_models=lambda s:None,get_accounts=lambda b,force=False:[account('gpt1'),account('gpt2')],set_prefs=mock.Mock(return_value=(True,'')))
         con=types.SimpleNamespace(active_settings=lambda:dict(settings),_pid=lambda:'fake-pid',_meta=lambda:{'slot':'gpt1'},
             _meta_path=lambda:os.path.join(temp.name,'console.json'),busy=lambda:False,current_turn_open=lambda:False,
             _ask_lock=threading.Lock(),stop=mock.Mock(return_value=(True,'')),start=mock.Mock(return_value=(True,'')),request_settings=mock.Mock(),apply_plan=mock.Mock(),verify_ready=mock.Mock(return_value=(True,'')))
@@ -269,9 +269,9 @@ class Routes(unittest.TestCase):
         return h,ns
 
     def test_new_routes_require_authentication_before_body_read(self):
-        for path in ['/api/profiles/claude/apply','/api/profiles/task/confirm','/api/console/input','/api/console/key','/api/chatgpt/rotation/config','/api/chatgpt/rotation/switch']:
+        for path in ['/api/profiles/claude/apply','/api/profiles/task/confirm','/api/console/input','/api/console/key','/api/chatgpt/rotation/config','/api/chatgpt/rotation/switch','/api/chatgpt/models/check']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_POST()[0],403);self.assertEqual(h.rfile.tell(),0)
-        for path in ['/api/profiles','/api/chatgpt/bridge','/api/chatgpt','/api/chatgpt/rotation']:
+        for path in ['/api/profiles','/api/chatgpt/bridge','/api/chatgpt','/api/chatgpt/rotation','/api/chatgpt/models']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_GET()[0],403)
 
     def test_existing_routes_still_delegate(self):

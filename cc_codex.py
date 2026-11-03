@@ -6,7 +6,7 @@
 # показывает план, лимиты и срок подписки (через `codex app-server`), пишет в config.toml
 # выбранные модель, усилие рассуждения и режим Fast. Запускает `codex` под нужным профилем
 # человек: у каждого аккаунта свой CODEX_HOME = <PROFILES>/gptN (команда есть на карточке).
-import base64, datetime, json, os, pwd, queue, re, shlex, shutil, signal, subprocess, tempfile, threading, time
+import base64, copy, datetime, json, os, pwd, queue, re, shlex, shutil, signal, subprocess, tempfile, threading, time
 
 PROFILES = os.environ.get("CC_CODEX_PROFILES", "/root/.codex-profiles")
 LOGIN_TTL = 16 * 60  # код устройства живёт 15 минут; ещё минута на то, чтобы CLI дописал auth.json
@@ -28,7 +28,8 @@ _PASS_ENV = ("PATH", "LANG", "LC_ALL", "TERM", "HTTP_PROXY", "HTTPS_PROXY", "ALL
 _lock = threading.Lock()  # состояние входов (_logins) и кэш карточек (_cache)
 _logins = {}  # slot -> {state, new, label, url, code, started, err, email, plan, proc, home}
 _cache = {}  # slot -> {ts, data}
-_models_cache = {}  # plan -> {ts, models}
+_models_cache = {}  # slot -> {ts, models}; каталог может отличаться даже на одном плане
+_model_locks = {}
 _slot_locks = {}
 
 
@@ -616,7 +617,14 @@ class AppServer:
 
 def _models_view(raw):
     out = []
+    seen = set()
     for m in raw or []:
+        if not isinstance(m, dict) or m.get('hidden'):
+            continue
+        mid = m.get('id')
+        if not isinstance(mid, str) or not mid or mid in seen:
+            continue
+        seen.add(mid)
         tiers = [t for t in (m.get("serviceTiers") or []) if t.get("id")]
         out.append({"id": m.get("id"), "name": m.get("displayName") or m.get("id"),
                     "efforts": [e.get("reasoningEffort") for e in (m.get("supportedReasoningEfforts") or [])],
@@ -624,6 +632,73 @@ def _models_view(raw):
                     "fast": tiers[0]["id"] if tiers else None,
                     "is_default": bool(m.get("isDefault"))})
     return out
+
+
+def _auth_stamp(slot):
+    try:
+        info = os.stat(os.path.join(profile_dir(slot), 'auth.json'))
+        return info.st_ino, info.st_mtime_ns, info.st_size
+    except OSError:
+        return None
+
+
+def cached_models(slot):
+    with _lock:
+        cached = _models_cache.get(slot)
+        return copy.deepcopy(cached['models']) if cached and cached.get('auth_stamp') == _auth_stamp(slot) else None
+
+
+def _catalog(client, slot, force=False):
+    with _lock:
+        guard = _model_locks.setdefault(slot, threading.Lock())
+    # Чтение карточки и ручная проверка не должны перезаписывать каталог старым ответом.
+    with guard:
+        with _lock:
+            cached = _models_cache.get(slot)
+            if cached and cached.get('auth_stamp') == _auth_stamp(slot) and not force and time.time()-cached['ts'] < MODELS_TTL:
+                return copy.deepcopy(cached['models'])
+        raw, cursors, cursor = [], set(), None
+        deadline = time.monotonic()+45
+        for _ in range(32):
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                raise CodexError('Model catalog timed out')
+            params = {'includeHidden': False, 'limit': 100}
+            if cursor is not None:
+                params['cursor'] = cursor
+            page = client.request('model/list', params, timeout=min(25, remaining))
+            if not isinstance(page, dict) or not isinstance(page.get('data'), list):
+                raise CodexError('Invalid model catalog')
+            raw.extend(page['data'])
+            cursor = page.get('nextCursor')
+            if cursor is None:
+                break
+            if not isinstance(cursor, str) or not cursor or cursor in cursors:
+                raise CodexError('Invalid model catalog cursor')
+            cursors.add(cursor)
+        else:
+            raise CodexError('Model catalog is too large')
+        models = _models_view(raw)
+        if not models:
+            raise CodexError('Empty model catalog')
+        with _lock:
+            _models_cache[slot] = {'ts': time.time(), 'models': copy.deepcopy(models), 'auth_stamp': _auth_stamp(slot)}
+        return models
+
+
+def refresh_models(bin_path, slot):
+    """Обновляет только каталог: без запросов к модели и изменения настроек консоли."""
+    if not isinstance(slot, str) or not _SLOT_RE.fullmatch(slot) or slot not in profile_slots():
+        raise CodexError('Unknown account')
+    with AppServer(bin_path, profile_dir(slot)) as client:
+        models = _catalog(client, slot, force=True)
+    if slot not in profile_slots():
+        raise CodexError('Account was removed')
+    with _lock:
+        cached = _cache.get(slot)
+        if cached:
+            cached['data'] = dict(cached['data'], models=copy.deepcopy(models))
+    return models
 
 
 def _is_paid(plan):
@@ -682,16 +757,7 @@ def _read_account(bin_path, slot):
             out["reached"] = snap.get("rateLimitReachedType")
             out["credits"] = snap.get("credits")
             out["usage_allowed"] = rl.get("ordinaryUsageAllowed")
-            plan = out["plan"] or "?"
-            with _lock:
-                mc = _models_cache.get(plan)
-            if mc and time.time() - mc["ts"] < MODELS_TTL:
-                out["models"] = mc["models"]
-            else:
-                ml = c.request("model/list", {"includeHidden": False})
-                out["models"] = _models_view(ml.get("data"))
-                with _lock:
-                    _models_cache[plan] = {"ts": time.time(), "models": out["models"]}
+            out["models"] = _catalog(c, slot)
             conf = (c.request("config/read", {"includeLayers": False}).get("config")) or {}
             out["model"] = conf.get("model")
             out["effort"] = conf.get("model_reasoning_effort")
@@ -722,6 +788,8 @@ def get_accounts(bin_path, force=False):
     def work(s):
         d = fetch_account(bin_path, s)
         with _lock:
+            if s in _models_cache:
+                d['models'] = copy.deepcopy(_models_cache[s]['models'])
             old = (_cache.get(s) or {}).get("data")
             if d.get("error") and old and not old.get("error"):
                 old = dict(old, stale=True, error=d["error"], login_required=d.get("login_required", False))

@@ -92,6 +92,10 @@ class Rotation:
                 binary = self.binary()
                 rows = self.codex.get_accounts(binary, force=force) if binary else []
                 with self.lock:
+                    for row in rows:
+                        models = self.codex.cached_models(row['slot'])
+                        if models is not None:
+                            row['models'] = models
                     self.accounts, self.updated = rows, time.time()
             except Exception as exc:
                 self.last_error = 'Не удалось обновить лимиты: '+type(exc).__name__
@@ -99,6 +103,11 @@ class Rotation:
                 with self.lock:
                     self.refreshing = False
         threading.Thread(target=work, name='codex-account-snapshot', daemon=True).start()
+
+    def publish_models(self, slot, models):
+        with self.lock:
+            self.accounts = [dict(row, models=models) if row['slot'] == slot else row
+                             for row in self.accounts]
 
     def snapshot(self, force=False):
         self.refresh(force)

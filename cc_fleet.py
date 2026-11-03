@@ -10,6 +10,7 @@ import time
 from urllib.parse import urlparse, parse_qs
 
 import cc_codex_rotation
+import cc_codex_models
 import cc_overview
 
 
@@ -114,6 +115,7 @@ class ConsoleInput:
 def install(ns):
     codex, console, bridge = ns['cc_codex'], ns['cc_codex_console'], ns['cc_codex_bridge']
     rotation = cc_codex_rotation.Rotation(ns['BASE'], codex, console, ns['codex_bin'], bridge)
+    models = cc_codex_models.Discovery(codex, rotation, ns['codex_bin'])
     inputs = ConsoleInput(ns)
     ns['FLEET_ROTATION'] = rotation
     import cc_profiles
@@ -123,12 +125,14 @@ def install(ns):
     class FleetHandler(original):
         def do_GET(self):
             parsed = urlparse(self.path)
-            if parsed.path not in ('/api/profiles', '/api/chatgpt/bridge', '/api/chatgpt/rotation', '/api/chatgpt'):
+            if parsed.path not in ('/api/profiles', '/api/chatgpt/bridge', '/api/chatgpt/rotation', '/api/chatgpt', '/api/chatgpt/models'):
                 return original.do_GET(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
             if parsed.path == '/api/profiles':
                 return self._send(200, profiles.public())
+            if parsed.path == '/api/chatgpt/models':
+                return self._send(200, models.public())
             if parsed.path == '/api/chatgpt/bridge':
                 return self._send(200, dict(ok=True, available=True, bridge=bridge.public(), emergency=ns['cc_codex_emergency'].public(), profile_system=profiles.public()))
             if parsed.path == '/api/chatgpt':
@@ -142,7 +146,7 @@ def install(ns):
             if path in ('/api/model','/api/effort') and not profiles.input_allowed('claude'):
                 if not self._authed():return self._send(403, {'ok':False})
                 return self._send(200, {'ok':False,'message':'Claude на паузе или меняется профиль. Повтори выбор модели после завершения переключения.'})
-            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch'):
+            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch', '/api/chatgpt/models/check'):
                 return original.do_POST(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
@@ -156,6 +160,8 @@ def install(ns):
             except (ValueError, UnicodeDecodeError):
                 return self._send(400, {'ok': False, 'message': 'Неверный JSON.'})
             try:
+                if path == '/api/chatgpt/models/check':
+                    return self._send(200, models.start())
                 if path.startswith('/api/profiles/'):
                     parts = path.split('/')
                     result = profiles.tasks.confirm(body) if path == '/api/profiles/task/confirm' else profiles.action(parts[3] if len(parts)>3 else '',parts[4] if len(parts)>4 else '',body)

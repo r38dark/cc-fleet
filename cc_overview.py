@@ -1,6 +1,7 @@
 """Компоновка «Обзор»: существующие узлы и обработчики остаются на месте в DOM."""
 
 CSS = r'''
+.fleet-model-catalog{max-height:180px;overflow:auto;margin:10px 0}.fleet-catalog-row{display:flex;align-items:center;gap:8px;min-width:0;padding:9px 0;border-bottom:1px solid var(--fleet-line)}.fleet-catalog-name{min-width:0;flex:1;font-size:12px;overflow-wrap:anywhere}.fleet-catalog-name small{display:block;color:var(--fleet-muted);font-size:10px;margin-top:3px}.fleet-catalog-chip{flex:none;border:1px solid var(--fleet-line);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--fleet-accent)}.fleet-catalog-note{font-size:11px;line-height:1.6;color:var(--fleet-muted);overflow-wrap:anywhere;margin:8px 0}.fleet-catalog-note[data-error="true"]{color:var(--warn)}#fleetCxCheckNew:disabled{opacity:.6;cursor:default}
 /* Оформление первоначального «Обзора». Действующие контролы сохраняют свои ID. */
 :root{--fleet-line:#25303f;--fleet-muted:#8c9bad;--fleet-faint:#647388;--fleet-accent:#45d6ab;--fleet-accent-soft:#16352e;--fleet-claude:#e7af85;--fleet-claude-soft:#372b25;--fleet-terminal:#0a0e14;--fleet-toolbar:#111722}
 html:not([data-skin]){--bg:#0c1017;--card:#131923;--txt:#e8edf4;--mut:#8c9bad;--ok:#45d6ab;--warn:#ecc277;--bad:#ef969e;--acc:#45d6ab}
@@ -620,6 +621,57 @@ JS = r'''
  for(const [title,body] of [['skinTitle','skinGrid'],['updHdr','updBox'],['bkHdr','bkBox']])common.append(group('',[document.getElementById(title),document.getElementById(body)]));
  modalBody.prepend(autoGroup,modelGroup,common);
  const codexThresholds=group('Переключение и лимиты Codex',[cxOptions]);document.querySelector('#cxPop > .cxpbody').prepend(codexThresholds);
+ // Каталог моделей: ручная проверка в фоне, без изменения выбранной модели.
+ const catalogAccount=el('div','fleet-catalog-note'),catalogList=el('div','fleet-model-catalog'),catalogStatus=el('div','fleet-catalog-note'),catalogCheck=el('button','ghostbtn','🔄 Проверить новые модели');
+ catalogAccount.id='fleetCxCatalogAccount';catalogList.id='fleetCxModelList';catalogStatus.id='fleetCxModelStatus';catalogStatus.setAttribute('role','status');catalogStatus.setAttribute('aria-live','polite');catalogCheck.id='fleetCxCheckNew';catalogCheck.type='button';
+ const catalogGroup=group('Модели Codex',[catalogAccount,catalogList,catalogStatus,catalogCheck]);catalogGroup.id='fleetCxModels';codexThresholds.after(catalogGroup);
+ let catalogState=null,catalogTimer=0,catalogBusy=false,catalogApplied='',catalogSignature='',catalogFailures=0;
+ function paintCodexCatalog(){
+  const account=cxLimAcc(),same=!!account&&catalogState?.slot===account.slot;
+  catalogCheck.disabled=!!catalogState?.checking||!account;
+  putText(catalogCheck,catalogState?.checking?'⏳ Проверяем модели…':'🔄 Проверить новые модели');
+  putText(catalogAccount,account?'Активный аккаунт: '+(account.label||account.email||account.slot)+' · '+account.slot:'Сначала добавь и выбери аккаунт Codex.');
+  const models=account?.models||[],signature=JSON.stringify([account?.slot,account?.model,models,same?catalogState:null]);
+  if(signature!==catalogSignature){
+   catalogSignature=signature;catalogList.replaceChildren();
+   for(const model of models){
+    const row=el('div','fleet-catalog-row'),name=el('div','fleet-catalog-name',model.name||model.id);name.append(el('small','',model.id));row.append(name);row.dataset.model=model.id;
+    if(same&&catalogState.new_ids?.includes(model.id))row.append(el('span','fleet-catalog-chip','Новая'));
+    if(account.model===model.id)row.append(el('span','fleet-catalog-chip','Выбрана'));
+    catalogList.append(row);
+   }
+  }
+  let note=same?catalogState.message:'';
+  if(catalogState?.checking&&!same)note='Идёт проверка аккаунта '+catalogState.slot+'…';
+  if(!note)note=models.length?'Моделей в списке: '+models.length+'. Выбор — в плитке Codex.':'Каталог пока не загружен. Нажми «Проверить новые модели».';
+  putText(catalogStatus,note);catalogStatus.dataset.error=String(same&&catalogState.ok===false);
+ }
+ function acceptCodexCatalog(data){
+  catalogState=data;
+  const key=data.slot+':'+data.checked_at;
+  if(!data.checking&&data.ok&&data.checked_at&&data.models?.length&&catalogApplied!==key){
+   catalogApplied=key;
+   if(cxData){cxData={...cxData,accounts:cxData.accounts.map(a=>a.slot===data.slot?{...a,models:data.models}:a)};cxRender();cxAll();if(!document.getElementById('cxQ').hidden)cxQRender()}
+  }
+  paintCodexCatalog();clearTimeout(catalogTimer);
+  if(data.checking)catalogTimer=setTimeout(loadCodexCatalog,900);
+ }
+ async function loadCodexCatalog(){
+  if(catalogBusy)return;catalogBusy=true;
+  try{const response=await fetch(API+'chatgpt/models',{headers:{'X-CC-Token':TOKEN},signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error();catalogFailures=0;acceptCodexCatalog(await response.json())}
+  catch(e){if(catalogState?.checking){if(++catalogFailures<4)catalogTimer=setTimeout(loadCodexCatalog,2000);else{catalogState={...catalogState,ok:false,checking:false,message:'Не удалось получить результат проверки. Попробуй ещё раз.'};paintCodexCatalog()}}}
+  finally{catalogBusy=false}
+ }
+ catalogCheck.addEventListener('click',async()=>{
+  if(catalogBusy||catalogState?.checking)return;catalogBusy=true;catalogCheck.disabled=true;
+  try{catalogFailures=0;acceptCodexCatalog(await acctPost('chatgpt/models/check',{}))}
+  catch(e){putText(catalogStatus,'Не удалось запустить проверку. Попробуй ещё раз.');catalogStatus.dataset.error='true'}
+  finally{catalogBusy=false;catalogCheck.disabled=!!catalogState?.checking||!cxLimAcc()}
+ });
+ const catalogCxRender=cxRender;cxRender=function(){catalogCxRender();paintCodexCatalog()};
+ const catalogRotation=renderRotation;renderRotation=function(data){catalogRotation(data);paintCodexCatalog()};
+ const catalogOpen=cxPopOpen;cxPopOpen=function(){catalogOpen();paintCodexCatalog();loadCodexCatalog()};
+ paintCodexCatalog();
  const backdrop=el('div','fleet-settings-backdrop');backdrop.id='fleetSettingsBackdrop';backdrop.hidden=true;document.body.append(backdrop);backdrop.addEventListener('click',()=>{cxPopClose();ntClose()});
  function paintSettingsState(){
   backdrop.hidden=document.getElementById('cxPop').hidden&&document.getElementById('ntPop').hidden;

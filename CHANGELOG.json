@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.27.1",
+      "date": "2026-11-03",
+      "ru": {
+        "t": "Проверка новых моделей Codex",
+        "p": [
+          "Кнопка «Проверить новые модели» в настройках Codex с результатом и пометкой новых моделей",
+          "Проверка активного аккаунта в фоне, отдельный каталог для каждого аккаунта и сохранение списка при ошибке",
+          "Найденные модели доступны в выборе; текущие модель, усилие и беседа сохраняются"
+        ]
+      },
+      "en": {
+        "t": "Check for new Codex models",
+        "p": [
+          "Check for new models in Codex settings, with results and new model badges",
+          "Background checks for the active account, separate catalogs per account and retained lists on errors",
+          "Discovered models appear in the picker; current model, effort and conversation are preserved"
+        ]
+      }
+    },
+    {
       "v": "1.26.0",
       "date": "2026-11-03",
       "ru": {
