@@ -41,6 +41,9 @@ _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
 _lock = threading.Lock()  # start/stop
 _ask_lock = threading.Lock()  # одно сообщение в консоль за раз
+_live_lock = threading.Lock()  # короткие операции с вводом, без ожидания ответа модели
+_live_request = None
+LIVE_INPUT = True
 _mlock = threading.Lock()  # состояние зеркала
 _m = {"pid": None, "screen": None, "stream": None, "offset": 0, "geom": (0, 0)}
 
@@ -365,7 +368,7 @@ def _utc(iso):
         return 0
 
 
-def _turn_open(path, since=0):
+def _open_turn_id(path, since=0):
     """Последнее управляющее событие: начало длинного хода может быть далеко за хвостом."""
     try:
         with open(path, 'rb') as stream:
@@ -392,10 +395,15 @@ def _turn_open(path, since=0):
                     if kind in ('task_complete', 'turn_aborted'):
                         completed.add(payload.get('turn_id'))
                     if kind == 'task_started':
-                        return payload.get('turn_id') not in completed and _utc(event.get('timestamp')) >= since
+                        tid = payload.get('turn_id')
+                        return tid if tid not in completed and _utc(event.get('timestamp')) >= since else None
     except OSError:
         return False
     return False
+
+
+def _turn_open(path, since=0):
+    return bool(_open_turn_id(path, since))
 
 
 def _paste_text(text):
@@ -578,9 +586,147 @@ def compact(lang="ru"):
         _ask_lock.release()
 
 
-def ask(prompt, abort=None, timeout=None, lang="ru"):  # timeout: None — ход без ограничения, число — секунды на ход
+def clear_live():
+    with _live_lock:
+        if not _live_request:
+            return 0
+        count = len(_live_request['queue'])
+        _live_request['queue'].clear()
+        return count
+
+
+def _ask_live(prompt, abort=None, timeout=None, lang='ru', pull=None):
+    """Один читатель результата; новые сообщения вводит между чтениями, а не после ответа."""
+    global _live_request
+    text = _paste_text(prompt)
+    if not text:
+        raise ConsoleError('Пустое сообщение.')
+    aborted = lambda: bool(abort and abort.is_set())
+    request = dict(queue=[text], awaiting=[], aborted=aborted)
+    with _ask_lock:
+        if aborted():
+            raise Aborted()
+        if not INPUT_ALLOWED():
+            raise ConsoleError('Codex на паузе: активен служебный режим другой стороны.')
+        meta = _meta()
+        saved = active_settings() if _pid() else {}
+        path = saved.get('rollout_path')
+        turn = _open_turn_id(path, meta.get('started') or 0) if path else None
+        # У уже работающей консоли сохраняем модель, права и текущий ход.
+        if not turn:
+            ok, message = ensure(lang)
+            if not ok:
+                raise ConsoleError(message)
+            meta = _meta()
+            if time.time()-(meta.get('started') or 0) < PROMPT_WAIT+10:
+                _wait_ready()
+            saved = active_settings()
+            path = saved.get('rollout_path')
+        slot, key = meta.get('slot') or '', os.path.realpath(meta.get('cwd') or '')
+        tid = saved.get('thread_id') or (meta.get('tids') or {}).get(key)
+        if not path and tid:
+            path = find_rollout(slot, tid)
+        off = os.path.getsize(path) if path else 0
+        if path:
+            turn = _open_turn_id(path, meta.get('started') or 0)
+        attached_running = bool(turn)
+        started = time.time()
+        deadline = None if timeout is None else started+timeout
+        last_say, finished, last_input, sent_count = '', False, started, 0
+        with _live_lock:
+            _live_request = request
+        try:
+            while True:
+                if aborted():
+                    raise Aborted()
+                if pull:
+                    with _live_lock:
+                        # Забираем по одному: ещё не отправленные сообщения остаются у моста.
+                        capacity = 1 if not request['queue'] and len(request['awaiting']) < 20 else 0
+                    incoming = pull(capacity) if capacity else []
+                    with _live_lock:
+                        request['queue'].extend(_paste_text(value) for value in incoming)
+                with _live_lock:
+                    queued = request['queue'].pop(0) if request['queue'] else None
+                    if queued is not None:
+                        last_input = time.time()
+                        request['awaiting'].append((queued, last_input))
+                if queued is not None:
+                    sent_count += 1
+                    if aborted():
+                        raise Aborted()
+                    if not INPUT_ALLOWED():
+                        raise ConsoleError('Codex на паузе: ввод не передан.')
+                    if not _paste(queued):
+                        raise ConsoleError('Не удалось подтвердить ввод в консоль. Проверь вкладку Codex перед повтором.')
+                if path is None:
+                    path = _new_rollout(slot, key, started-2)
+                    off = 0
+                events, off = _events(path, off) if path else ([], off)
+                for event in events:
+                    payload = event.get('payload') or {}
+                    kind = payload.get('type')
+                    if event.get('type') == 'response_item' and kind == 'message':
+                        if payload.get('role') == 'user':
+                            incoming = ''.join(c.get('text','') for c in payload.get('content') or []
+                                               if c.get('type') in ('input_text','text'))
+                            with _live_lock:
+                                if request['awaiting'] and incoming.strip() == request['awaiting'][0][0]:
+                                    request['awaiting'].pop(0)
+                                    # Ответ, записанный до принятия уточнения, ему не соответствует.
+                                    last_say = ''
+                                    if finished:
+                                        turn, finished = None, False
+                        elif payload.get('role') == 'assistant' and payload.get('channel') in (None,'final'):
+                            for content in payload.get('content') or []:
+                                if content.get('type') == 'output_text' and (content.get('text') or '').strip():
+                                    last_say = content['text'].strip()
+                    if event.get('type') != 'event_msg':
+                        continue
+                    if kind == 'task_started' and payload.get('root_turn_id',payload.get('turn_id')) == payload.get('turn_id'):
+                        if payload.get('turn_id') != turn:
+                            turn, finished, last_say = payload.get('turn_id'), False, ''
+                        tid = _tid_of(path) or tid
+                        if tid:
+                            _remember(key,tid)
+                    if payload.get('turn_id') == turn:
+                        if kind == 'task_complete':
+                            finished = True
+                        elif kind == 'turn_aborted':
+                            if aborted():
+                                raise Aborted()
+                            with _live_lock:
+                                pending = request['queue'] or request['awaiting']
+                            if not pending and sent_count == 1 and not attached_running:
+                                raise ConsoleError('Запрос в консоли Codex прерван.')
+                            turn, finished, last_say = None, False, ''
+                with _live_lock:
+                    if finished and last_say and not request['queue'] and not request['awaiting']:
+                        _live_request = None
+                        return last_say, _tid_of(path) or tid
+                    oldest = request['awaiting'][0][1] if request['awaiting'] else None
+                if not _pid():
+                    raise ConsoleError('Консоль Codex закрылась, не ответив.')
+                now = time.time()
+                if oldest and now-oldest > START_WAIT:
+                    raise ConsoleError('Не получил подтверждение приёма сообщения. Оно могло попасть в консоль; проверь вкладку Codex перед повтором.')
+                if (not turn or finished and not last_say) and now-last_input > START_WAIT and not oldest:
+                    raise ConsoleError('Консоль приняла сообщение, но новый ответ не подтверждён. Проверь вкладку Codex.')
+                if deadline is not None and now > deadline:
+                    interrupt()
+                    raise ConsoleError('Codex не ответил за отведённое время, запрос прерван.')
+                time.sleep(POLL)
+        finally:
+            with _live_lock:
+                if _live_request is request:
+                    _live_request = None
+
+
+def ask(prompt, abort=None, timeout=None, lang="ru", live=False, pull=None):  # timeout: None — ход без ограничения
     """Напечатать prompt в консоль и дождаться ответа Codex из файла сессии. → (ответ, id разговора).
     ConsoleError — консоль не приняла запрос / закрылась / не ответила; Aborted — abort (Event) взведён."""
+    if live:
+        return _ask_live(prompt, abort, timeout, lang, pull)
     if not INPUT_ALLOWED():
         raise ConsoleError('Codex на паузе: активен служебный режим другой стороны.')
     text = _paste_text(prompt)

@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.27.2",
+      "date": "2026-11-03",
+      "ru": {
+        "t": "Telegram: уточнения во время ответа",
+        "p": [
+          "Текст из Telegram передаётся в текущую консоль во время ответа Codex, включая разговор, начатый в терминале",
+          "Убраны служебные уведомления о постановке текста и фото в очередь",
+          "Сохраняются порядок сообщений, один получатель результата и /stop; поиск новых моделей Codex включён в этот выпуск"
+        ]
+      },
+      "en": {
+        "t": "Telegram: follow-ups during a reply",
+        "p": [
+          "Telegram text steers the active native Codex conversation, including turns started in the terminal",
+          "Removed routine text and photo queue notifications",
+          "Ordered input, a single reply reader and /stop are retained; includes Codex model discovery"
+        ]
+      }
+    },
+    {
       "v": "1.27.1",
       "date": "2026-11-03",
       "ru": {

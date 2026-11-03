@@ -213,6 +213,7 @@ def public(s=None):
                bot=st.get("bot", ""), exchange=exchange_dir(s), running=running(),
                last_error=st.get("last_error", ""), busy=BRIDGE.busy(), slots=cc_codex.profile_slots(),
                sandbox=plan(s)[0], pending=bool(st.get("pending")),
+               live_input=bool(CONSOLE is not None and getattr(CONSOLE, 'LIVE_INPUT', False)),
                tasks=[dict(n=int(n), **{k: v for k, v in t.items() if k not in ("text", "feed")})
                       for n, t in sorted(st["tasks"].items(), key=lambda kv: -int(kv[0]))[:5]])
     return out
@@ -970,10 +971,13 @@ class Stopped(RunError):
 def _run_console(prompt, s):
     """Сообщение уходит в живую консоль Codex (screen cc-codex), ответ читается из файла её сессии: консоль и
     Telegram — один разговор. → (ответ, thread_id)."""
-    BRIDGE.cancel.clear()
     BRIDGE.in_console = True
     try:
-        answer, tid = CONSOLE.ask(prompt, abort=BRIDGE.cancel, timeout=RUN_TIMEOUT)
+        options = dict(abort=BRIDGE.cancel, timeout=RUN_TIMEOUT)
+        if getattr(CONSOLE, 'LIVE_INPUT', False):
+            options['live'] = True
+            options['pull'] = BRIDGE.take_live_texts
+        answer, tid = CONSOLE.ask(prompt, **options)
     except CONSOLE.Aborted:
         raise Stopped("")
     except CONSOLE.ConsoleError as e:
@@ -1142,7 +1146,7 @@ class Bridge:
         self.poll_t = None
         self.watch_t = None
         self.worker = None
-        self.work_queue = []  # обычные сообщения Telegram, обрабатываются одним потоком по порядку
+        self.work_queue = []  # FIFO ввода; живая консоль забирает текст и во время ответа
         self.queue_generation = 0  # /stop инвалидирует уже вынутую, но ещё не запущенную работу
         self.proc = None
         self.cancel = threading.Event()  # /stop и /new: прервать запрос, идущий в консоли
@@ -1168,8 +1172,30 @@ class Bridge:
                 return True, 0
             return True, position
 
+    def take_live_texts(self, limit=20):
+        """Читатель живой консоли забирает уточнения во время ответа, сохраняя порядок."""
+        texts = []
+        with self.start_lock:
+            if self.cancel.is_set() or not DISPATCH_ALLOWED():
+                return texts
+            while self.work_queue and len(texts) < limit:
+                generation, item, queued_at, delivery = self.work_queue[0]
+                if generation != self.queue_generation:
+                    self.work_queue.pop(0)
+                    continue
+                if item[0] != 'text':
+                    break
+                self.work_queue.pop(0)
+                texts.append(item[1])
+                log(f"delivery stage=live_input update={delivery.get('update_id')} queue_wait_ms={round((time.monotonic()-queued_at)*1000)}")
+        return texts
+
     def _drain_work_queue(self):
         while True:
+            with self.start_lock:
+                if not self.work_queue:
+                    self.worker = None
+                    return
             if not DISPATCH_ALLOWED():
                 if self.stop_ev.wait(.5):
                     with self.start_lock:self.worker = None
@@ -1184,6 +1210,7 @@ class Bridge:
                 generation, item, queued_at, delivery = self.work_queue.pop(0)
                 if generation != self.queue_generation:
                     continue
+                self.cancel.clear()
             log(f"delivery stage=dispatch update={delivery.get('update_id')} kind={item[0]} queue_wait_ms={round((time.monotonic() - queued_at) * 1000)}")
             if item[0] == "image":
                 self.ask_image(item[1], item[2])
@@ -1291,8 +1318,6 @@ class Bridge:
         log(f"delivery stage=queued update={(delivery or {}).get('update_id')} kind=image position={position if accepted else 'full'}")
         if not accepted:
             return self.send(f"Очередь заполнена ({WORK_QUEUE_MAX} сообщений). Картинку не принял — пришли её позже или /stop.")
-        if position:
-            return self.send(f"Принял картинку в очередь. Перед ней: {position - 1} сообщ.")
 
     def ask_image(self, file_ids, caption):
         s = load()
@@ -1332,7 +1357,7 @@ class Bridge:
             ok, msg = EMERGENCY.off("команда из телеграма")
             return self.send(msg)
         if low in ("/start", "/help"):
-            return self.send("Пишу в Codex. Пока он занят, следующие сообщения встанут в очередь (до 20). Команды: "
+            return self.send("Сообщения передаю в текущий разговор Codex, уточнения — в том числе во время ответа. Команды: "
                              "/new — начать разговор заново, /stop — прервать текущий запрос и очистить очередь, "
                              "/status — режим, доступ и размер очереди. Задание Claude: «да» / «нет» после того, как я его покажу. «Стоп» — снять всё.")
         if low == "/new":
@@ -1350,6 +1375,9 @@ class Bridge:
                 queued = len(self.work_queue)
                 self.queue_generation += 1
                 self.work_queue.clear()
+                clear = getattr(CONSOLE, 'clear_live', None) if CONSOLE is not None else None
+                if clear:
+                    queued += clear()
             with self.album_lock:
                 album_timers = [a["timer"] for a in self.albums.values() if a.get("timer")]
                 queued += len(self.albums)
@@ -1361,7 +1389,7 @@ class Bridge:
             if c:
                 self.cancel.set()
                 CONSOLE.interrupt()  # Esc в консоль: Codex бросает ход
-            if p or c or had or queued:
+            if p or c or had or queued or self.busy():
                 if self.busy() or queued:
                     self.cancel.set()
                 return self.send("Остановил." + (" Задание, ждавшее «да», снято." if had else "") +
@@ -1396,8 +1424,6 @@ class Bridge:
         log(f"delivery stage=queued update={(delivery or {}).get('update_id')} kind=text position={position if accepted else 'full'}")
         if not accepted:
             return self.send(f"Очередь заполнена ({WORK_QUEUE_MAX} сообщений). Сообщение не принято — пришли его позже или /stop.")
-        if position:
-            return self.send(f"Принял в очередь #{position}. Обработаю после текущего сообщения.")
 
     def ask_codex(self, text, act=None):
         s = load()
