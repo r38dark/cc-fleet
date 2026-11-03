@@ -125,6 +125,41 @@ html:root:root .hdr .cxmode{font-size:12px}
  .fleet-group-footer{gap:7px}.fleet-group-note{font-size:12px;max-width:100%}.fleet-rotation-state{font-size:12px;max-width:100%}
  .fleet-card-details summary{width:34px;height:34px}.hdr .cxbtnname{font-size:13px!important;max-width:160px!important}.hdr .cxmodn{font-size:13px!important}
 }
+
+/* Состояние паузы: короткая строка с таймером, подробности — по раскрытию. */
+#ccPause:not([hidden]):has(>.fleet-pause-fold){display:block;padding:0;overflow:visible}
+.fleet-pause-fold{width:100%;min-width:0}
+.fleet-pause-summary{display:grid;grid-template-columns:8px minmax(0,1fr) auto 16px;column-gap:11px;align-items:center;min-height:48px;padding:10px 14px;list-style:none;cursor:pointer;border-radius:10px;color:var(--txt);user-select:none;-webkit-tap-highlight-color:transparent}
+.fleet-pause-summary::-webkit-details-marker{display:none}
+.fleet-pause-summary::marker{content:""}
+.fleet-pause-summary:focus-visible{outline:2px solid var(--ccp-accent);outline-offset:3px}
+.fleet-pause-summary .ccp-dot{width:8px;height:8px;margin:0}
+.fleet-pause-summary .ccp-title{font-size:14px;font-weight:600;line-height:1.45;letter-spacing:0;min-width:0}
+.fleet-pause-summary .ccp-timer{display:flex;align-items:baseline;gap:7px;text-align:right;margin:0;white-space:nowrap}
+.fleet-pause-summary .ccp-timer .t{font-size:14px;line-height:1.45;font-weight:650}
+.fleet-pause-summary .ccp-timer .l{font-size:11px;line-height:1.45;margin:0;color:var(--mut)}
+.fleet-pause-chevron{grid-column:4;display:block;width:16px;height:16px;color:var(--mut);transition:transform .15s}
+.fleet-pause-fold[open] .fleet-pause-chevron{transform:rotate(180deg)}
+.fleet-pause-content{padding:0 14px 14px 33px}
+.fleet-pause-content .ccp-body{min-width:0}
+.fleet-pause-content .ccp-sub{margin-top:0;font-size:13px;line-height:1.5}
+.fleet-pause-content .ccp-actions{margin-top:12px}
+.fleet-pause-content .ccp-btn{min-height:34px}
+@media(max-width:640px){
+ .fleet-pause-summary{grid-template-columns:8px minmax(0,1fr) 16px;gap:3px 10px;padding:10px 12px;min-height:48px}
+ .fleet-pause-summary .ccp-dot{grid-column:1;grid-row:1;align-self:start;margin-top:6px}
+ .fleet-pause-summary .ccp-title{grid-column:2;grid-row:1;font-size:13px;white-space:normal;overflow-wrap:anywhere}
+ .fleet-pause-summary .ccp-timer{grid-column:2;grid-row:2;justify-content:flex-start;flex-wrap:wrap;white-space:normal;text-align:left;gap:5px}
+ .fleet-pause-summary .ccp-timer .t{font-size:13px}
+ .fleet-pause-summary .ccp-timer .l{font-size:11px}
+ .fleet-pause-chevron{grid-column:3;grid-row:1/span 2;align-self:center}
+ .fleet-pause-content{padding:4px 12px 14px 30px}
+ .fleet-pause-content .ccp-sub{font-size:13px;overflow-wrap:anywhere}
+ .fleet-pause-content .ccp-chip{white-space:normal;font-size:12px}
+ .fleet-pause-content .ccp-btn{min-height:40px;font-size:13px}
+ .fleet-pause-content .ccp-hint{font-size:12px;line-height:1.5}
+}
+@media(prefers-reduced-motion:reduce){.fleet-pause-chevron{transition:none}}
 '''
 
 JS = r'''
@@ -241,6 +276,26 @@ JS = r'''
  document.addEventListener('click',event=>{document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
  document.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>menu.open=false)});
  refreshVisuals();
+
+ // Меняется только представление; исходные кнопки паузы и живой таймер сохраняются.
+ let pauseFoldOpen=false;
+ function foldPauseBanner(){
+  const root=document.getElementById('ccPause');
+  if(!root||root.hidden){pauseFoldOpen=false;return;}
+  if(root.querySelector(':scope > .fleet-pause-fold'))return;
+  const title=root.querySelector('.ccp-title'),body=root.querySelector('.ccp-body');if(!title||!body)return;
+  const dot=root.querySelector('.ccp-dot'),timer=root.querySelector('.ccp-timer');
+  const fold=el('details','fleet-pause-fold');fold.id='fleetPauseDetails';fold.open=pauseFoldOpen;
+  const summary=el('summary','fleet-pause-summary');summary.setAttribute('aria-controls','fleetPauseContent');
+  if(dot)summary.append(dot);summary.append(title);if(timer)summary.append(timer);
+  const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('viewBox','0 0 24 24');arrow.setAttribute('class','fleet-pause-chevron');arrow.setAttribute('aria-hidden','true');
+  const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','m6 9 6 6 6-6');path.setAttribute('fill','none');path.setAttribute('stroke','currentColor');path.setAttribute('stroke-width','2');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');arrow.append(path);summary.append(arrow);
+  const content=el('div','fleet-pause-content');content.id='fleetPauseContent';content.append(body);fold.append(summary,content);
+  fold.addEventListener('toggle',()=>{if(fold.isConnected)pauseFoldOpen=fold.open});root.replaceChildren(fold);
+ }
+ const previousPauseRender=ccpRender;
+ ccpRender=function(){const root=document.getElementById('ccPause'),previous=root&&!root.hidden?root.querySelector(':scope > .fleet-pause-fold'):null;if(previous)pauseFoldOpen=previous.open;previousPauseRender();foldPauseBanner()};
+ foldPauseBanner();
 
  loadRotation();setInterval(()=>{if(!document.hidden)loadRotation()},5000);
 })();

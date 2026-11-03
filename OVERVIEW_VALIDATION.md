@@ -19,3 +19,7 @@ Restored the approved first Overview palette, header, console tabs, account card
 ## Selected preview: full width and readable account controls (3 November 2026)
 
 Preserved the selected reference layout, original action handlers and popup account menus. Removed the 1680px content cap; console and account groups use the browser width with small gutters. Account names are 16px, email 14px, and model/profile controls are larger. Browser verification compared original IDs and onclick handlers and exercised both provider switches, optimization, models, console input, settings, profiles, fullscreen and 320–2560px layouts. The isolated demo also supports test add/relogin/delete flows without OAuth or command execution and clearly identifies sample data. This presentation candidate is published to the protected preview only; production runtime files are unchanged.
+
+## Collapsed pause status (3 November 2026)
+
+Wrapped the native pause banner in a closed details/summary element. The row retains the original status, automatic-resume text and live countdown. The original reason, account chips and pause action stay inside; handlers and backend logic are unchanged. Expansion survives native render/data refreshes and resets after the banner disappears. Browser checks covered mouse, keyboard, touch, warning states, native mock pause off/on, countdown updates and widths 320–2560px without errors or live API calls. The protected preview has an explicit synthetic pause example at /cc-demo/?pause=1. Normal demo data and production runtime files are unchanged.
