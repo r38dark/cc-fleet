@@ -663,6 +663,17 @@ JS = r'''
  ccpRender=function(){const root=document.getElementById('ccPause'),previous=root&&!root.hidden?root.querySelector(':scope > .fleet-pause-fold'):null;if(previous)pauseFoldOpen=previous.open;previousPauseRender();foldPauseBanner()};
  foldPauseBanner();
 
+ // Заголовок начинаетcя с реальных ролей: ведущий, затем исполнитель.
+ Object.assign(I18N.ru,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · самостоятельно',cxpN_codex_solo_full:'Codex Full · самостоятельно',cxpN_reserve:'Codex + Notion · резерв'});
+ Object.assign(I18N.en,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · solo',cxpN_codex_solo_full:'Codex Full · solo',cxpN_reserve:'Codex + Notion · reserve'});
+ const originalProfileDisplayName=cxpName;
+ cxpName=function(profile){
+  const name=originalProfileDisplayName(profile);if(profile.builtin)return name;
+  const solo=profile.mode==='self',paired=['orchestrator','mediator'].includes(profile.mode);if(!solo&&!paired)return name;
+  const roles=paired?'Codex → Claude':('Codex'+(profile.access==='full'?' Full':'')+(LANG==='en'?' · solo':' · самостоятельно'));
+  return name?.startsWith(roles)?name:roles+(name?' · '+name:'');
+ };
+
  // Палитра профилей: сравнение меняет только раскрытие сведений, выбор — нативный.
  const profileRoot=document.getElementById('cxp'),profileBody=menu.querySelector(':scope > .cxpbody');
  menu.classList.add('fleet-profile-palette');menu.setAttribute('aria-label','Выбор профиля');menu.setAttribute('aria-modal','true');document.getElementById('cxMenuScrim').classList.add('fleet-profile-backdrop');
@@ -682,7 +693,7 @@ JS = r'''
  }
  function decorateProfilePalette(){
   const bridge=cxbData&&cxbData.bridge,profiles=bridge?.profiles||[],current=profiles.find(profile=>profile.id===bridge.profile);
-  putText(paletteCurrent,current?'Сейчас: '+cxpName(current):bridge?.profile==='reserve'?'Сейчас: Резерв':'Сейчас: свои настройки');
+  putText(paletteCurrent,current?'Сейчас: '+cxpName(current):bridge?.profile==='reserve'?'Сейчас: '+tr('cxpN_reserve'):'Сейчас: свои настройки');
   paletteCurrent.title=current?cxpSub(current):'';menu.dataset.compare=String(compareProfiles);compareButton.setAttribute('aria-pressed',String(compareProfiles));putText(compareButton,compareProfiles?'Краткий вид':'Сравнить');compareButton.title=compareProfiles?'Вернуть краткий вид':'Показать состав и возможности всех профилей';
   for(const card of profileRoot.querySelectorAll('.cxprof:not([data-auto])')){
    const profile=profiles.find(profile=>profile.id===card.dataset.id);if(!profile)continue;
