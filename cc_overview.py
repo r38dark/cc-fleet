@@ -160,6 +160,69 @@ html:root:root .hdr .cxmode{font-size:12px}
  .fleet-pause-content .ccp-hint{font-size:12px;line-height:1.5}
 }
 @media(prefers-reduced-motion:reduce){.fleet-pause-chevron{transition:none}}
+
+/* Главное на первом экране; исходные настройки доступны в меню управления. */
+html:not(.conly) .hdr{margin-bottom:14px!important}
+.hdr #cxLim{display:none!important}
+.hdr .hdrbtns:empty{display:none!important}
+.fleet-preview{margin-bottom:12px}
+.fleet-active-strip{position:relative;margin:0 0 12px;min-width:0}
+.fleet-live-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:26px;margin-bottom:6px}
+.fleet-live-label{font-size:10px;font-weight:500;letter-spacing:.025em;color:var(--fleet-muted)}
+.fleet-live-rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fleet-live-account{display:grid;grid-template-columns:minmax(0,1fr) 104px 104px;gap:18px;align-items:center;min-width:0;min-height:60px;padding:10px 14px;border:1px solid var(--fleet-line);border-radius:9px;color:var(--txt);text-decoration:none;background:var(--card);--live-accent:var(--fleet-claude);-webkit-tap-highlight-color:transparent}
+.fleet-live-account.codex{--live-accent:var(--fleet-accent)}
+.fleet-live-account:hover{border-color:var(--live-accent)}
+.fleet-live-account:focus-visible{outline:2px solid var(--live-accent);outline-offset:2px}
+.fleet-live-identity{min-width:0}
+.fleet-live-name{display:block;font-size:14px;font-weight:600;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fleet-live-name::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--live-accent);margin-right:7px;vertical-align:2px}
+.fleet-live-email{display:block;font-size:11px;color:var(--fleet-muted);line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fleet-live-account[data-state="warning"] .fleet-live-email{color:var(--warn)}
+.fleet-live-meter{min-width:0}
+.fleet-live-meter-label{display:flex;align-items:baseline;justify-content:space-between;gap:6px;font-size:11px;color:var(--fleet-muted);white-space:nowrap}
+.fleet-live-meter-label b{font-size:14px;font-weight:600;color:var(--txt);font-variant-numeric:tabular-nums}
+.fleet-live-track{display:block;height:3px;border-radius:3px;background:var(--fleet-line);margin-top:6px;overflow:hidden}
+.fleet-live-fill{display:block;height:100%;background:var(--live-accent);border-radius:3px}
+.fleet-live-meter[data-tone="warn"] .fleet-live-fill{background:var(--warn)}
+.fleet-live-meter[data-tone="bad"] .fleet-live-fill{background:var(--bad)}
+.fleet-tools{position:relative;flex:none;z-index:38}
+.fleet-tools>summary{display:flex;align-items:center;gap:7px;list-style:none;padding:4px 7px;margin:0;border-radius:5px;color:var(--fleet-muted);font-size:11px;line-height:1.5;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.fleet-tools>summary::-webkit-details-marker{display:none}
+.fleet-tools>summary::after{content:"⌄";font-size:13px;line-height:1}
+.fleet-tools[open]>summary,.fleet-tools>summary:hover{background:var(--card);color:var(--txt)}
+.fleet-tools>summary:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
+.fleet-tools-panel{position:absolute;right:0;top:calc(100% + 5px);width:410px;max-width:calc(100vw - 24px);max-height:min(620px,calc(100dvh - 180px));overflow:auto;padding:16px;background:var(--card);border:1px solid var(--fleet-line);border-radius:11px;box-shadow:0 18px 45px #0007;color:var(--txt)}
+.fleet-tools-block+.fleet-tools-block{border-top:1px solid var(--fleet-line);padding-top:14px;margin-top:14px}
+.fleet-tools-label{display:block;font-size:11px;font-weight:500;color:var(--fleet-muted);margin-bottom:10px}
+.fleet-tools-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fleet-tools-panel .hdrgear{width:auto;min-height:34px;margin:0;padding:7px 9px;border:1px solid var(--fleet-line);border-radius:6px;background:transparent;color:var(--txt);display:inline-flex;gap:7px;align-items:center;font-size:12px;max-width:100%}
+.fleet-tools-panel [hidden]{display:none!important}
+.fleet-tools-panel .hdrgear svg{flex:none;width:15px;height:15px}
+.fleet-tools-panel #cxGear::after{content:"Настройки Codex"}
+.fleet-tools-panel #rfBtn::after{content:"Обновить данные"}
+.fleet-tools-panel #gear::after{content:"Общие настройки"}
+.fleet-tools-panel .toolrow{display:flex;flex-wrap:wrap;gap:8px;margin:0!important;padding:0!important;min-height:0;border:0}
+.fleet-tools-panel .fleet-model-label{display:none}
+.fleet-tools-panel #mrow{display:flex;flex-wrap:wrap;gap:5px;max-width:100%;min-width:0;flex-basis:100%}
+.fleet-tools-panel .efrow{flex-wrap:wrap;max-width:100%}
+.fleet-tools-panel .cxmodbtn{flex:1 1 auto;border-radius:6px;min-width:0}
+.fleet-tools-panel .cxmodn{font-size:13px;overflow:hidden;text-overflow:ellipsis}
+html.conly .fleet-active-strip{display:none!important}
+/* Одна тонкая строка; исходный текст целиком доступен внутри. */
+#ccPause:not([hidden]):has(>.fleet-pause-fold){margin-bottom:8px}
+.fleet-pause-summary{grid-template-columns:6px minmax(0,1fr) auto 12px;gap:9px;min-height:30px;padding:5px 11px;border-radius:7px}
+.fleet-pause-summary .ccp-dot{width:6px;height:6px;grid-column:1;grid-row:1;align-self:center;margin:0}
+.fleet-pause-summary .ccp-title{grid-column:2;grid-row:1;font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fleet-pause-summary .ccp-timer{grid-column:3;grid-row:1;justify-content:flex-end;gap:6px;flex-wrap:nowrap;white-space:nowrap;line-height:1.5}
+.fleet-pause-summary .ccp-timer .t{font-size:12px;line-height:1.5}
+.fleet-pause-summary .ccp-timer .l{font-size:10px;line-height:1.5}
+.fleet-pause-chevron{grid-column:4;grid-row:1;width:12px;height:12px}
+.fleet-pause-content .ccp-title{font-size:13px;font-weight:600;margin-bottom:7px}
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) #termBox{height:clamp(340px,calc(100dvh - 430px),640px)!important;min-height:340px!important}}
+@media(max-width:1100px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 78px 78px;gap:12px}.fleet-live-name{font-size:13px}}
+@media(max-width:740px){.fleet-live-rows{grid-template-columns:minmax(0,1fr);gap:7px}.fleet-live-account{grid-template-columns:minmax(0,1fr) 78px 78px;min-height:54px;padding:8px 11px}.fleet-live-head{gap:7px}.fleet-live-label{font-size:10px}.fleet-tools>summary{font-size:11px;padding-right:3px}.fleet-pause-summary{padding:5px 9px;gap:7px}.fleet-pause-summary .ccp-timer .l{display:none}.fleet-pause-content{padding-left:24px}.fleet-tools-panel{max-height:calc(100dvh - 240px)}}
+@media(max-width:380px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 62px 62px;gap:9px}.fleet-live-name{font-size:12px}.fleet-live-email{font-size:10px}.fleet-live-meter-label{font-size:10px}.fleet-live-meter-label b{font-size:12px}.fleet-live-label{max-width:180px;line-height:1.4}}
 '''
 
 JS = r'''
@@ -261,7 +324,65 @@ JS = r'''
   else if(session?.pct==null&&week?.pct==null){text='Нет данных';caption='Ожидаем данные лимитов'}
   const state=card.querySelector('.fleet-card-state');state.className='fleet-card-state'+(tone?' '+tone:'');putText(state,text);putText(card.querySelector('.fleet-card-caption'),caption);
  }
+ // Короткая сводка использует уже загруженные лимиты; отдельного опроса нет.
+ const liveStrip=el('section','fleet-active-strip');liveStrip.id='fleetActiveAccounts';liveStrip.setAttribute('aria-label','Активные аккаунты и использованные лимиты');
+ const liveHead=el('div','fleet-live-head');liveHead.append(el('span','fleet-live-label','Активные аккаунты · использовано лимита'));
+ const tools=el('details','fleet-tools');tools.id='fleetTools';
+ const toolsSummary=el('summary','','Управление');toolsSummary.setAttribute('aria-controls','fleetToolsPanel');
+ const toolsPanel=el('div','fleet-tools-panel');toolsPanel.id='fleetToolsPanel';
+ const codexTools=el('div','fleet-tools-block');codexTools.append(el('span','fleet-tools-label','Codex · модель и настройки'));
+ const codexToolsRow=el('div','fleet-tools-row');codexToolsRow.append(document.getElementById('cxMod'),document.getElementById('cxGear'));codexTools.append(codexToolsRow);
+ const claudeTools=el('div','fleet-tools-block');claudeTools.append(el('span','fleet-tools-label','Claude · модель и рассуждения'),models);
+ const pageTools=el('div','fleet-tools-block fleet-tools-row');pageTools.append(document.getElementById('rfBtn'),document.getElementById('gear'));
+ const extraTools=el('div','fleet-tools-block fleet-tools-row');extraTools.append(document.getElementById('ntGrp'),document.getElementById('cxInst'));
+ toolsPanel.append(codexTools,claudeTools,pageTools,extraTools);tools.append(toolsSummary,toolsPanel);liveHead.append(tools);
+ const liveRows=el('div','fleet-live-rows');liveStrip.append(liveHead,liveRows);term.before(liveStrip);
+ const liveNodes={},liveSnapshots=new Map();
+ for(const engine of ['claude','codex']){
+  const link=el('a','fleet-live-account '+engine);link.href=engine==='claude'?'#fleetClaude':'#fleetCodex';link.dataset.engine=engine;
+  const identity=el('div','fleet-live-identity');identity.append(el('strong','fleet-live-name'),el('span','fleet-live-email'));
+  link.append(identity);
+  for(const kind of ['session','week']){
+   const meter=el('div','fleet-live-meter');meter.dataset.window=kind;
+   const caption=el('div','fleet-live-meter-label');caption.append(el('span','',kind==='session'?'5 часов':'Неделя'),el('b','','—'));
+   const track=el('span','fleet-live-track');track.setAttribute('aria-hidden','true');track.append(el('span','fleet-live-fill'));meter.append(caption,track);link.append(meter);
+  }
+  link.addEventListener('click',event=>{event.preventDefault();const selected=engine==='claude'?document.querySelector('#cards .card.active'):document.querySelector('#cxcards .card.fleet-active');(selected||document.querySelector(link.getAttribute('href')))?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'})});
+  liveRows.append(link);liveNodes[engine]=link;
+ }
+ function updateLiveAccount(engine,slot,account,pending){
+  const node=liveNodes[engine],provider=engine==='claude'?'Claude':'Codex';
+  const signature=JSON.stringify([slot,account,pending]);if(liveSnapshots.get(engine)===signature)return;liveSnapshots.set(engine,signature);
+  const name=account?(account.label||account.name||slot):slot?slot:pending?'Загрузка…':'Не выбран';
+  putText(node.querySelector('.fleet-live-name'),provider+' · '+name);
+  const issue=account&&(account.login_required||account.lapsed||account.error)?'Нужна проверка':account&&account.stale?'Данные устарели':'';
+  putText(node.querySelector('.fleet-live-email'),account?((account.email||slot)+(issue?' · '+issue:'')):slot?'Лимиты пока недоступны':pending?'Получаем сохранённые данные':'Нет активного аккаунта');
+  node.dataset.state=issue?'warning':account?'ready':'empty';node.dataset.slot=slot||'';
+  node.title=provider+' · '+name+(account?.email?' · '+account.email:'')+' · открыть полную карточку'+(issue?' · '+issue:'');
+  const windows=engine==='claude'?[account?.five_hour,account?.seven_day]:[account?.windows?.find(w=>w.mins===300),account?.windows?.find(w=>w.mins===10080)];
+  windows.forEach((window,i)=>{
+   const meter=node.querySelectorAll('.fleet-live-meter')[i],pct=Number.isFinite(window?.pct)?window.pct:null;
+   putText(meter.querySelector('b'),pct==null?'—':Math.round(pct)+'%');meter.querySelector('.fleet-live-fill').style.width=(pct==null?0:Math.min(100,Math.max(0,pct)))+'%';
+   meter.dataset.tone=pct==null?'unknown':pct>=99?'bad':pct>=90?'warn':'normal';
+   const reset=window?.resets_at?new Date(window.resets_at):null;
+   meter.title=(i?'Неделя':'5 часов')+' · использовано '+(pct==null?'нет данных':Math.round(pct)+'%')+(reset&&!Number.isNaN(reset.getTime())?' · сброс '+reset.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'');
+  });
+ }
+ function renderLiveAccounts(snapshot){
+  const d=snapshot||((typeof lastSnap!=='undefined'&&lastSnap)||null),entries=Object.entries(d?.accounts||{});
+  const current=d?.active?entries.find(([slot])=>slot===d.active):entries.find(([,a])=>a.active);
+  updateLiveAccount('claude',current?.[0]||d?.active,current?.[1],!d);
+  const accounts=(typeof cxData!=='undefined'&&cxData?.accounts)||[],slot=rotationData?.active;
+  updateLiveAccount('codex',slot,slot?accounts.find(a=>a.slot===slot):null,!rotationData||!!(typeof cxData!=='undefined'&&cxData?.loading));
+  codexTools.hidden=typeof cxAvail==='function'&&!cxAvail();
+  extraTools.hidden=!Array.from(extraTools.children).some(node=>!node.hidden);
+ }
+ document.addEventListener('click',event=>{if(tools.open&&!tools.contains(event.target)&&!event.target.closest('.cxpop,#scrim,#acctScrim,#ntPop'))tools.open=false});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&tools.open){tools.open=false;toolsSummary.focus()}});
+ tools.addEventListener('toggle',()=>{if(!tools.open){cxQClose();cxPopClose()}});
+
  function refreshVisuals(snapshot){
+  renderLiveAccounts(snapshot);
   const d=snapshot||((typeof lastSnap!=='undefined'&&lastSnap)||{}),rows=Object.entries(d.accounts||{});
   document.querySelectorAll('#cards > .card').forEach((card,i)=>{if(rows[i])decorateCard(card,rows[i][1],rows[i][0],'claude')});
   putText(ch.querySelector('.fleet-count'),countText(rows.length));
@@ -287,7 +408,10 @@ JS = r'''
   const dot=root.querySelector('.ccp-dot'),timer=root.querySelector('.ccp-timer');
   const fold=el('details','fleet-pause-fold');fold.id='fleetPauseDetails';fold.open=pauseFoldOpen;
   const summary=el('summary','fleet-pause-summary');summary.setAttribute('aria-controls','fleetPauseContent');
-  if(dot)summary.append(dot);summary.append(title);if(timer)summary.append(timer);
+  const brief=el('span','ccp-title');brief.title=title.textContent;
+  const pause=ccpData?.pause,english=typeof LANG!=='undefined'&&LANG==='en';
+  brief.textContent=pause?.active&&pause.kind!=='reserve'?(english?'Claude paused · auto resume':'Claude на паузе · автовозобновление'):title.textContent;
+  if(dot)summary.append(dot);summary.append(brief);if(timer)summary.append(timer);
   const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('viewBox','0 0 24 24');arrow.setAttribute('class','fleet-pause-chevron');arrow.setAttribute('aria-hidden','true');
   const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','m6 9 6 6 6-6');path.setAttribute('fill','none');path.setAttribute('stroke','currentColor');path.setAttribute('stroke-width','2');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');arrow.append(path);summary.append(arrow);
   const content=el('div','fleet-pause-content');content.id='fleetPauseContent';content.append(body);fold.append(summary,content);
