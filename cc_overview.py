@@ -318,6 +318,94 @@ html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0;gap:7px!impo
  .fleet-settings-panel .cxphead{padding:12px;min-height:52px}.fleet-settings-panel>.cxpbody{padding:12px}
 }
 @media(max-width:380px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 60px 60px;gap:4px 9px}.fleet-live-name{font-size:12px}.fleet-provider-controls .fleet-model-tile>svg{display:none}.fleet-provider-controls .hdrgear{padding-left:6px;padding-right:6px}.fleet-provider-controls .cxmode{font-size:10px}}
+
+/* Панель профилей в том же наборе компонентов, что и меню провайдеров. */
+html:root:root #cxMenu.fleet-profile-palette{box-sizing:border-box;position:fixed;display:flex;flex-direction:column;width:min(940px,calc(100vw - 24px));height:auto;bottom:auto;max-width:calc(100vw - 24px);max-height:calc(100dvh - 100px);border:1px solid var(--fleet-line);border-radius:12px;background:var(--card);color:var(--txt);box-shadow:0 20px 60px #0006;z-index:55;overflow:hidden;animation:none}
+html:root:root #cxMenu.fleet-profile-palette[hidden]{display:none}
+html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!important;z-index:54;background:#06080c99}
+.fleet-palette-header{display:flex;align-items:center;gap:14px;padding:16px 18px;border-bottom:1px solid var(--fleet-line);flex:none;min-height:76px}
+.fleet-palette-heading{flex:1;min-width:0}.fleet-palette-heading h2{font-size:19px;font-weight:600;letter-spacing:-.3px;margin:5px 0 0;line-height:1.3}
+.fleet-palette-heading .fleet-eyebrow{font-size:9px;letter-spacing:.12em;color:var(--fleet-muted)}
+.fleet-palette-current{display:flex;align-items:center;gap:7px;min-width:0;max-width:50%;font-size:12px;color:var(--fleet-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fleet-palette-current::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--fleet-accent);flex:none}
+.fleet-palette-header .fleet-palette-close{display:grid;place-items:center;width:30px;height:30px;padding:7px;margin:0;border:1px solid var(--fleet-line);border-radius:6px;background:transparent;box-shadow:none;color:var(--fleet-muted);flex:none}
+.fleet-palette-close svg{width:14px;height:14px}
+.fleet-palette-tools{display:flex;align-items:center;gap:10px;padding:14px 18px;flex:none}
+.fleet-palette-search{position:relative;display:block;min-width:0;flex:1}
+.fleet-palette-search::before{content:"⌕";position:absolute;left:12px;top:9px;font-size:21px;line-height:1;color:var(--fleet-muted);pointer-events:none}
+#cxMenu .fleet-profile-search{box-sizing:border-box;width:100%;margin:0;padding:10px 12px 10px 36px;min-height:40px;height:40px;font-size:14px;background:var(--bg);border:1px solid var(--fleet-line);border-radius:7px;box-shadow:none}
+#cxMenu .fleet-profile-search:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:1px}
+.fleet-palette-tools .fleet-profile-compare{display:flex;align-items:center;justify-content:center;gap:7px;min-height:40px;margin:0;padding:9px 12px;font-size:12px;font-weight:500;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--txt);box-shadow:none;flex:none}
+.fleet-profile-compare::before{content:"▥";font-size:16px;color:var(--fleet-muted)}
+.fleet-palette-tools .fleet-profile-compare[aria-pressed="true"]{background:var(--fleet-accent-soft);border-color:var(--fleet-accent)}
+#cxMenu.fleet-profile-palette>.cxpbody{padding:0 18px 18px;min-height:0;overflow:auto;overscroll-behavior:contain}
+#cxMenu.fleet-profile-palette #cxp{gap:12px}
+#cxMenu.fleet-profile-palette #cxp>.cxhead{display:none}
+#cxMenu.fleet-profile-palette .cxplist{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch}
+#cxMenu.fleet-profile-palette .fleet-profile-card{box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:stretch;gap:0;min-width:0;min-height:250px;margin:0;padding:15px;border:1px solid var(--fleet-line);border-radius:10px;box-shadow:none;background:var(--bg);color:var(--txt);cursor:pointer;text-align:left}
+#cxMenu .fleet-profile-card::before,#cxMenu .fleet-profile-card.act .cxpn::after{display:none}
+#cxMenu .fleet-profile-card:hover{border-color:var(--fleet-muted)}
+#cxMenu .fleet-profile-card.act{border-color:var(--fleet-accent);background:linear-gradient(140deg,var(--fleet-accent-soft),var(--bg) 74%)}
+#cxMenu .fleet-profile-card:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
+.fleet-profile-card-head{display:flex;align-items:center;gap:8px;min-height:34px;margin-bottom:14px}
+#cxMenu .fleet-profile-card .cxpr{display:grid;place-items:center;position:static;width:32px;height:32px;border:1px solid var(--fleet-line);border-radius:8px;margin:0;background:var(--card);color:var(--fleet-accent);font:600 15px/1 ui-monospace,monospace;flex:none}
+#cxMenu .fleet-profile-card .cxpr::after{display:none}#cxMenu .fleet-profile-card .cxpr::before{content:"›_"}
+#cxMenu .fleet-profile-card[data-kind="team"] .cxpr{color:var(--fleet-claude)}#cxMenu .fleet-profile-card[data-kind="team"] .cxpr::before{content:"⇄"}
+.fleet-profile-status{margin-left:auto;font-size:10px;color:var(--fleet-muted);line-height:1.4}
+.fleet-profile-card.act .fleet-profile-status{color:var(--fleet-accent)}.fleet-profile-card.act .fleet-profile-status::before{content:"✓ ";font-size:12px}
+#cxMenu .fleet-profile-card .cxpx{position:static;margin:0;padding:3px 5px;min-width:22px;min-height:22px;line-height:1;font-size:17px;background:none;border:0;border-radius:4px;color:var(--fleet-muted)}
+#cxMenu .fleet-profile-card .cxpt{display:flex;flex-direction:column;flex:1;min-width:0}
+#cxMenu .fleet-profile-card .cxpn{display:block;min-width:0;margin:0 0 10px;padding:0;line-height:1.35}
+#cxMenu .fleet-profile-card .cxpnm{font-size:17px;font-weight:600;text-transform:none;letter-spacing:-.2px;line-height:1.35}
+#cxMenu .fleet-profile-card .cxps{display:block;margin:0;overflow:visible;font-size:13px;font-weight:400;line-height:1.6;color:var(--fleet-muted);-webkit-line-clamp:unset}
+.fleet-profile-meta{display:flex;flex-wrap:wrap;gap:5px;margin:13px 0 0;font-size:10px;line-height:1.4;color:var(--fleet-muted)}
+.fleet-profile-meta>span:not(.cxroute){padding:4px 6px;border:1px solid var(--fleet-line);border-radius:5px;background:var(--card)}
+#cxMenu .fleet-profile-meta>.cxroute{display:none}
+#cxMenu .fleet-profile-card:not([data-info-open="true"]) .cxpf{display:none}
+#cxMenu .fleet-profile-card[data-info-open="true"] .cxpf{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px;font-size:11px;line-height:1.5}
+#cxMenu .fleet-profile-card .cxpf>span{font-size:11px;padding:2px 0;color:var(--fleet-muted);background:none;border:0}
+#cxMenu .fleet-profile-card .cxpf i{display:none}
+#cxMenu .fleet-profile-card .cxpinfo{display:block;font-size:12px;line-height:1.6;padding:12px 0 0;margin:12px 0 0;border:0;border-top:1px solid var(--fleet-line);background:transparent;border-radius:0}
+#cxMenu .fleet-profile-card .cxpinfo .cxpirow{font-size:12px;line-height:1.55}
+#cxMenu .fleet-profile-card .cxw{font-size:10px;line-height:1.5;border-radius:4px;padding:1px 5px}
+.fleet-profile-original{display:block;color:var(--fleet-muted);font-size:12px;line-height:1.6;margin-bottom:12px}
+.fleet-profile-card-footer{display:flex;align-items:center;justify-content:space-between;gap:7px;border-top:1px solid var(--fleet-line);padding-top:11px;margin-top:16px;min-height:30px}
+.fleet-profile-choose{font-size:11px;color:var(--fleet-accent);font-weight:500}
+#cxMenu .fleet-profile-card .fleet-profile-more{display:flex;align-items:center;justify-content:center;gap:4px;width:auto;height:28px;min-height:28px;margin:0;padding:5px 6px;border:1px solid var(--fleet-line);border-radius:5px;background:transparent;color:var(--fleet-muted);box-shadow:none;font-size:11px;font-weight:500;line-height:1}
+#cxMenu .fleet-profile-more svg{width:12px;height:12px}
+#cxMenu .fleet-profile-service{grid-column:1/-1;display:grid;grid-template-columns:0 minmax(0,1fr) auto;align-items:center;gap:0 10px;margin:0;padding:12px 14px;min-height:64px;border:1px solid var(--fleet-line);border-radius:9px;background:transparent;box-shadow:none;cursor:default}
+#cxMenu .fleet-profile-service::before,#cxMenu .fleet-profile-service .cxpr{display:none}
+#cxMenu .fleet-profile-service .cxpt{grid-column:2;min-width:0}.fleet-profile-auto{grid-column:3;font-size:10px;color:var(--fleet-muted);padding:4px 7px;border:1px solid var(--fleet-line);border-radius:5px}
+#cxMenu .fleet-profile-service .cxpnm{font-size:13px;text-transform:none;letter-spacing:0}#cxMenu .fleet-profile-service .cxroute{display:none}
+#cxMenu .fleet-profile-service .cxps{font-size:11px;line-height:1.5;-webkit-line-clamp:2;margin-top:3px}
+#cxMenu .cxemg{border:1px solid color-mix(in srgb,var(--bad),var(--fleet-line) 55%);border-radius:9px;background:transparent;padding:13px;margin:0}
+#cxMenu .cxemg::before{display:none}#cxMenu .cxemg .cxpnm{font-size:13px;text-transform:none;letter-spacing:0}#cxMenu .cxemg .cxes{font-size:12px;line-height:1.5}
+.fleet-palette-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;border-top:1px solid var(--fleet-line);flex:none;font-size:11px;line-height:1.5;color:var(--fleet-muted)}
+.fleet-palette-help{color:var(--fleet-faint)}
+.fleet-profile-empty{display:grid;place-items:center;gap:10px;text-align:center;min-height:180px;color:var(--fleet-muted);font-size:13px;padding:24px}
+.fleet-profile-empty strong{font-size:16px;font-weight:550;color:var(--txt)}.fleet-profile-empty button{font-size:12px;padding:8px 11px;background:transparent;border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);margin:0}
+.fleet-profile-empty[hidden],.fleet-profile-index[hidden]{display:none!important}
+@keyframes fleetPaletteIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media(max-width:900px){#cxMenu.fleet-profile-palette .cxplist{grid-template-columns:repeat(2,minmax(0,1fr))}.fleet-palette-current{font-size:11px}}
+@media(max-width:600px){
+ .fleet-palette-header{padding:13px 12px;gap:9px;min-height:62px;flex-wrap:wrap}.fleet-palette-heading h2{font-size:17px;margin-top:4px}.fleet-palette-heading .fleet-eyebrow{font-size:8px}.fleet-palette-current{font-size:10px;max-width:46%;line-height:1.5;white-space:normal}.fleet-palette-current::before{display:none}
+ .fleet-palette-tools{padding:12px;gap:7px}#cxMenu .fleet-profile-search{font-size:16px;padding-right:8px;min-height:40px}.fleet-palette-tools .fleet-profile-compare{padding:8px;font-size:11px}.fleet-profile-compare::before{display:none}
+ #cxMenu.fleet-profile-palette>.cxpbody{padding:0 12px 12px}#cxMenu.fleet-profile-palette .cxplist{grid-template-columns:minmax(0,1fr);gap:9px}
+ #cxMenu.fleet-profile-palette .fleet-profile-card{padding:12px;min-height:0}.fleet-profile-card-head{margin-bottom:8px;min-height:27px}#cxMenu .fleet-profile-card .cxpr{width:27px;height:27px;font-size:14px;border-radius:6px}
+ #cxMenu .fleet-profile-card .cxpnm{font-size:16px}#cxMenu .fleet-profile-card .cxpn{margin-bottom:7px}#cxMenu .fleet-profile-card .cxps{font-size:12px;line-height:1.55}.fleet-profile-meta{margin-top:10px;font-size:10px}.fleet-profile-card-footer{margin-top:11px;padding-top:9px}
+ .fleet-palette-footer{padding:11px 12px;font-size:10px}.fleet-palette-help{max-width:52%;text-align:right;font-size:9px}
+ #cxMenu .fleet-profile-service{padding:11px;grid-template-columns:minmax(0,1fr) auto;gap:8px}#cxMenu .fleet-profile-service .cxpt{grid-column:1}.fleet-profile-auto{grid-column:2;font-size:9px;padding:4px 5px}
+}
+@media(prefers-reduced-motion:reduce){html:root:root #cxMenu.fleet-profile-palette{animation:none}}
+
+#cxMenu .fleet-profile-more[hidden],#cxMenu[data-compare="true"] .fleet-profile-card .cxpf,#cxMenu[data-compare="true"] .fleet-profile-original{display:none!important}
+@media(max-width:640px){html:root:root #cxMenu.fleet-profile-palette{left:12px!important;right:auto!important}}
+@media(max-width:600px){
+ #cxMenu .fleet-profile-card-head{position:absolute;left:12px;right:12px;top:12px;margin:0;min-height:27px}
+ #cxMenu .fleet-profile-card .cxpn{min-height:27px;margin-left:36px;padding-right:54px;display:flex;align-items:center}
+ #cxMenu .fleet-profile-card .cxpnm{font-size:15px}
+ #cxMenu .fleet-profile-card .cxps{margin-top:3px}
+}
 '''
 
 JS = r'''
@@ -574,6 +662,70 @@ JS = r'''
  const previousPauseRender=ccpRender;
  ccpRender=function(){const root=document.getElementById('ccPause'),previous=root&&!root.hidden?root.querySelector(':scope > .fleet-pause-fold'):null;if(previous)pauseFoldOpen=previous.open;previousPauseRender();foldPauseBanner()};
  foldPauseBanner();
+
+ // Палитра профилей: сравнение меняет только раскрытие сведений, выбор — нативный.
+ const profileRoot=document.getElementById('cxp'),profileBody=menu.querySelector(':scope > .cxpbody');
+ menu.classList.add('fleet-profile-palette');menu.setAttribute('aria-label','Выбор профиля');menu.setAttribute('aria-modal','true');document.getElementById('cxMenuScrim').classList.add('fleet-profile-backdrop');
+ const paletteHeader=el('div','fleet-palette-header'),paletteHeading=el('div','fleet-palette-heading');paletteHeading.append(el('span','fleet-eyebrow','РЕЖИМ РАБОТЫ'),el('h2','','Выбор профиля'));
+ const paletteCurrent=el('span','fleet-palette-current'),paletteClose=el('button','hdrgear fleet-palette-close');paletteClose.id='fleetProfileClose';paletteClose.type='button';paletteClose.title='Закрыть';paletteClose.setAttribute('aria-label','Закрыть профили');paletteClose.innerHTML=document.getElementById('cxPopX').innerHTML;paletteClose.addEventListener('click',()=>{cxMenuClose();document.getElementById('cxBtn').focus()});paletteHeader.append(paletteHeading,paletteCurrent,paletteClose);
+ const paletteTools=el('div','fleet-palette-tools');search.placeholder='Найти по названию или возможностям…';
+ const searchWrap=el('label','fleet-palette-search');searchWrap.append(search);const compareButton=el('button','fleet-profile-compare','Сравнить');compareButton.id='fleetProfileCompare';compareButton.type='button';compareButton.setAttribute('aria-pressed','false');compareButton.title='Показать состав и возможности всех профилей';paletteTools.append(searchWrap,compareButton);
+ const paletteFooter=el('div','fleet-palette-footer'),paletteCount=el('span','fleet-palette-count');paletteCount.setAttribute('role','status');const paletteHelp=el('span','fleet-palette-help','Enter — выбрать · Esc — закрыть');paletteFooter.append(paletteCount,paletteHelp);
+ note.remove();menu.replaceChildren(paletteHeader,paletteTools,profileBody,paletteFooter);
+ const paletteEmpty=el('div','fleet-profile-empty');paletteEmpty.hidden=true;paletteEmpty.append(el('strong','','Профили не найдены'),el('span','','Попробуй другое название или возможность.'));const clearSearch=el('button','','Очистить поиск');clearSearch.type='button';clearSearch.addEventListener('click',()=>{search.value='';filterProfiles();repaintProfileResults();search.focus()});paletteEmpty.append(clearSearch);profileBody.append(paletteEmpty);
+ let compareProfiles=false,normalProfileInfo=new Set();
+ const profileCopy={orchestrator:'Codex ведёт задачу. Claude выполняет шаги после твоего подтверждения.',codex:'Самостоятельная работа в своей папке. Проект доступен для чтения.',codex_solo_full:'Работает самостоятельно с полной песочницей Codex и правами пользователя ОС.'};
+ function repaintProfileResults(){
+  const nodes=Array.from(profileRoot.querySelectorAll('.cxprof:not([data-auto])')),visible=nodes.filter(node=>!node.hidden).length;
+  putText(paletteCount,search.value.trim()?'Найдено: '+visible+' из '+nodes.length:nodes.length+' '+(nodes.length===1?'профиль':nodes.length>1&&nodes.length<5?'профиля':'профилей'));
+  paletteEmpty.hidden=visible>0||!!profileRoot.querySelector('.cxprof[data-auto]:not([hidden])');
+ }
+ function decorateProfilePalette(){
+  const bridge=cxbData&&cxbData.bridge,profiles=bridge?.profiles||[],current=profiles.find(profile=>profile.id===bridge.profile);
+  putText(paletteCurrent,current?'Сейчас: '+cxpName(current):bridge?.profile==='reserve'?'Сейчас: Резерв':'Сейчас: свои настройки');
+  paletteCurrent.title=current?cxpSub(current):'';menu.dataset.compare=String(compareProfiles);compareButton.setAttribute('aria-pressed',String(compareProfiles));putText(compareButton,compareProfiles?'Краткий вид':'Сравнить');compareButton.title=compareProfiles?'Вернуть краткий вид':'Показать состав и возможности всех профилей';
+  for(const card of profileRoot.querySelectorAll('.cxprof:not([data-auto])')){
+   const profile=profiles.find(profile=>profile.id===card.dataset.id);if(!profile)continue;
+   const nameNode=card.querySelector('.cxpn');if(nameNode&&!nameNode.querySelector('.cxpnm'))nameNode.replaceChildren(el('span','cxpnm',cxpName(profile)));
+   card.classList.add('fleet-profile-card');card.dataset.kind=profile.mode==='self'?'solo':'team';card.dataset.infoOpen=String(CXP_INFO.has(profile.id));
+   const text=card.querySelector('.cxpt'),description=card.querySelector('.cxps'),fullText=description?.textContent||'';
+   const heading=el('div','fleet-profile-card-head'),icon=card.querySelector('.cxpr');if(icon){icon.setAttribute('aria-hidden','true');heading.append(icon)}
+   const status=el('span','fleet-profile-status',profile.id===bridge.profile?'Выбран':profile.builtin?'Встроенный':'Свой профиль');heading.append(status);const remove=card.querySelector('[data-del]');if(remove)heading.append(remove);card.prepend(heading);
+   if(description&&profile.builtin&&profileCopy[profile.id]&&LANG!=='en')putText(description,profileCopy[profile.id]);
+   if(description)description.title=fullText;
+   const meta=el('span','fleet-profile-meta');meta.append(el('span','',cxoMode(profile.mode)),el('span','',profile.mode==='self'?cxoAcc(profile.access):cxoRt(profile.task_rights)));const route=text.querySelector('.cxroute');if(route)meta.append(route);description?.after(meta);
+   const index=el('span','fleet-profile-index',fullText+' '+profile.id+' '+cxoAcc(profile.access)+' '+cxoRt(profile.task_rights));index.hidden=true;text.append(index);
+   const details=card.querySelector('.cxpinfo');if(details&&description?.textContent!==fullText)details.prepend(el('span','fleet-profile-original',fullText));
+   const footer=el('div','fleet-profile-card-footer'),info=card.querySelector('[data-info]');footer.append(el('span','fleet-profile-choose',profile.id===bridge.profile?'Работает сейчас':'Выбрать →'));
+   if(info){info.hidden=compareProfiles;info.classList.add('fleet-profile-more');info.prepend(document.createTextNode('Подробнее'));info.setAttribute('aria-label','Подробнее о профиле '+cxpName(profile));footer.append(info)}card.append(footer);
+  }
+  const selected=profileRoot.querySelector('.cxprof.act:not([data-auto])');if(selected)selected.parentElement.prepend(selected);
+  const reserveCard=profileRoot.querySelector('.cxprof[data-auto]');if(reserveCard){reserveCard.classList.add('fleet-profile-service');reserveCard.querySelector('.cxps').title=reserveCard.querySelector('.cxps').textContent;reserveCard.append(el('span','fleet-profile-auto','Автоматически'))}
+  filterProfiles();repaintProfileResults();
+ }
+ const originalProfileRender=cxpRender;
+ cxpRender=function(){
+  const scroll=profileBody.scrollTop,focused=document.activeElement,focusCard=focused?.closest('#cxp .cxprof'),focusId=focusCard?.dataset.id,focusAction=focused?.closest('[data-info]')?'[data-info]':focused?.closest('[data-del]')?'[data-del]':null;
+  if(compareProfiles)for(const profile of cxbData?.bridge?.profiles||[])CXP_INFO.add(profile.id);
+  originalProfileRender();decorateProfilePalette();profileBody.scrollTop=scroll;if(!menu.hidden){cxMenuPlace();if(focusId){const card=Array.from(profileRoot.querySelectorAll('.cxprof')).find(card=>card.dataset.id===focusId);if(card&&!card.hidden)(focusAction?card.querySelector(focusAction):card)?.focus({preventScroll:true})}}
+ };
+ compareButton.addEventListener('click',()=>{
+  compareProfiles=!compareProfiles;
+  if(compareProfiles){normalProfileInfo=new Set(CXP_INFO);for(const profile of cxbData?.bridge?.profiles||[])CXP_INFO.add(profile.id)}
+  else for(const profile of cxbData?.bridge?.profiles||[])normalProfileInfo.has(profile.id)?CXP_INFO.add(profile.id):CXP_INFO.delete(profile.id);
+  cxpRender();
+ });
+ search.addEventListener('input',repaintProfileResults);
+ search.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();profileRoot.querySelector('.cxprof:not([data-auto]):not([hidden])')?.focus()}});
+ new MutationObserver(()=>{if(!menu.hidden){if(!search.value.trim())profileBody.scrollTop=0;if(matchMedia('(pointer:fine)').matches)search.focus({preventScroll:true})}else if(document.activeElement?.closest('#cxMenu'))document.getElementById('cxBtn').focus()}).observe(menu,{attributes:true,attributeFilter:['hidden']});
+ profileRoot.addEventListener('keydown',event=>{
+  if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)||!event.target.matches('.cxprof:not([data-auto])'))return;
+  const visible=Array.from(profileRoot.querySelectorAll('.cxprof:not([data-auto]):not([hidden])')),index=visible.indexOf(event.target);if(index<0)return;
+  event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?visible.length-1:(index+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1)+visible.length)%visible.length;visible[next]?.focus();
+ });
+ cxMenuPlace=function(){placePanel(menu,document.getElementById('cxBtn'),940)};
+ document.getElementById('cxBtn').addEventListener('click',()=>{if(!menu.hidden){scrim.hidden=true;closeClaudeQ();cxMenuPlace()}});
+ cxpRender();
 
  loadRotation();setInterval(()=>{if(!document.hidden)loadRotation()},5000);
 })();
