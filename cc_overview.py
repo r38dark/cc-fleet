@@ -70,124 +70,6 @@ html:root:root .fleet-console-toolbar #cTabs .ctab.on{color:#ecf1f6!important}
 
 .fleet-console-toolbar .iconbtn{color:#8799ae!important;border-color:#2a3542!important;box-shadow:none!important}
 .fleet-card-panel.fleet-menu-above{top:auto;bottom:30px}
-
-/* Мобильный обзор: аккаунты всегда остаются в обычной прокрутке страницы. */
-.fleet-current-accounts,.fleet-account-jump{display:none}
-html:root:root.fleet-mobile{height:auto!important;min-height:100%;overflow-x:hidden;overflow-y:auto}
-html:root:root.fleet-mobile body{height:auto!important;min-height:100svh;max-width:none;display:block!important;overflow:visible!important;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
-html:root:root.fleet-mobile .hdr{display:flex!important;flex-wrap:wrap;gap:10px!important;margin:0 0 14px;align-items:center}
-html:root:root.fleet-mobile .hdrl{display:flex;flex:1;gap:12px;min-width:0!important}
-html:root:root.fleet-mobile #h1{display:flex;font-size:21px;order:0;white-space:normal}
-html:root:root.fleet-mobile #termDot{order:0;margin:0 0 0 auto}
-html:root:root.fleet-mobile .hdrctl{display:flex;flex:1 0 100%;width:100%;max-width:100%;margin:0;gap:8px!important;justify-content:stretch!important}
-html:root:root.fleet-mobile #cxGrp:not([hidden]){display:grid!important;grid-template-columns:minmax(0,1fr) 44px;gap:6px;flex:1 0 100%;width:100%;min-width:0!important;max-width:100%;border:1px solid var(--fleet-line);border-radius:10px;padding:7px;background:var(--card)}
-html:root:root.fleet-mobile #cxBtn:not([hidden]){grid-column:1;grid-row:1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-start;width:100%;max-width:none;height:auto;min-height:44px;margin:0;padding:7px 6px;border:0;box-shadow:none;border-radius:7px;font-size:13px}
-html:root:root.fleet-mobile .cxbtnname,html:root:root.fleet-mobile .cxmodn{max-width:none!important;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;font-size:13px}
-html:root:root.fleet-mobile .cxbtnname{flex:1;min-width:0}
-html:root:root.fleet-mobile #cxLim:not([hidden]){display:flex!important;flex:1 0 100%;gap:9px;justify-content:flex-start;margin:1px 0 0 22px;opacity:1;white-space:normal;font-size:11px}
-html:root:root.fleet-mobile #cxGear{grid-column:2;grid-row:1;align-self:start;width:44px;height:44px;margin:0;border:1px solid var(--fleet-line);border-radius:8px}
-html:root:root.fleet-mobile #cxMod:not([hidden]){display:flex;grid-column:1/-1;grid-row:2;gap:8px;justify-content:flex-start;flex:none;min-height:44px;height:auto;width:100%;max-width:none;margin:0;padding:8px 10px;border:1px solid var(--fleet-line);border-radius:7px;box-shadow:none}
-html:root:root.fleet-mobile #cxModE{font-size:12px;margin-left:auto}
-html:root:root.fleet-mobile .hdrbtns{display:flex;gap:8px!important;justify-content:flex-end;width:100%;margin:0}
-html:root:root.fleet-mobile #rfBtn{width:44px;height:44px;border:1px solid var(--fleet-line)}
-html:root:root.fleet-mobile #gear{min-height:44px;height:auto;padding:9px 12px!important}
-html:root:root.fleet-mobile #gear::after{display:inline;content:"Настройки";font-size:13px}
-html:root:root.fleet-mobile .termwrap{display:flex!important;flex-direction:column;flex:none!important;height:auto!important;min-height:0!important;overflow:hidden;margin:0;border-radius:12px}
-html:root:root.fleet-mobile .fleet-console-toolbar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:0 10px;padding:0 10px;min-height:48px}
-html:root:root.fleet-mobile #cTabs:not([hidden]){display:flex!important;position:static;flex:1 1 auto;gap:12px;min-height:48px;flex-wrap:wrap;align-items:center}
-html:root:root.fleet-mobile .fleet-console-toolbar .ctab{font-size:13px!important;min-height:48px;padding:0 3px}
-html:root:root.fleet-mobile .fleet-console-toolbar .ctacts{display:flex;gap:5px!important;flex-wrap:nowrap;margin:0!important}
-html:root:root.fleet-mobile .fleet-console-toolbar .iconbtn{width:36px;height:40px;flex:none}
-html:root:root.fleet-mobile .fleet-console-toolbar .tzoom{position:static;display:flex;flex:1 0 100%;justify-content:flex-end;gap:7px!important;margin:0;padding:0 0 5px;background:transparent;border-top:1px solid #242d39;border-radius:0}
-html:root:root.fleet-mobile .fleet-console-toolbar .tzval{font-size:12px;min-width:44px}
-html:root:root.fleet-mobile #termBox{height:clamp(220px,40svh,340px)!important;min-height:220px!important;max-height:none;flex:none!important;padding:14px 12px!important;white-space:pre-wrap!important;word-break:break-word;overflow-wrap:anywhere;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:auto;font-size:calc(12px * var(--tz,1));line-height:1.5}
-html:root:root.fleet-mobile.conly #termBox{height:clamp(280px,65svh,560px)!important;min-height:280px!important;flex:none!important}
-html:root:root.fleet-mobile .fleet-composer{display:flex;gap:8px;padding:10px 12px;align-items:center}
-html:root:root.fleet-mobile #fleetInput{font-size:16px;line-height:1.45;min-height:44px;padding:9px 0}
-html:root:root.fleet-mobile #fleetSend{width:40px;height:44px;font-size:22px}
-html:root:root.fleet-mobile .fleet-key{min-height:36px;padding:7px 5px!important;font-size:11px!important}
-html:root:root.fleet-mobile .fleet-input-status{display:flex;flex-wrap:wrap;gap:5px 8px;padding:0 12px;min-height:44px;font-size:11px}
-html:root:root.fleet-mobile .fleet-input-status>span:last-of-type{display:none}
-html:root:root.fleet-mobile .fleet-account-jump{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-left:auto;padding:3px 0 3px 6px;color:#72dec0;background:none;border:0;font-size:12px;white-space:normal;text-align:right}
-html:root:root.fleet-mobile #fleetAccounts{display:block!important;margin-top:20px;min-width:0}
-html:root:root.fleet-mobile .fleet-accounts-intro{margin:0 0 14px}
-html:root:root.fleet-mobile .fleet-accounts-intro h2{font-size:21px;line-height:1.3}
-html:root:root.fleet-mobile .fleet-eyebrow{font-size:10px}
-html:root:root.fleet-mobile .fleet-current-accounts{display:grid;grid-template-columns:1fr;gap:10px;margin:0 0 20px;scroll-margin-top:12px}
-.fleet-current-heading{font-size:16px;font-weight:600;margin:0 0 1px}
-.fleet-current-tile{padding:13px 14px;border:1px solid var(--fleet-line);border-radius:10px;background:var(--card);min-width:0}
-.fleet-current-tile[data-provider="claude"]{border-left:3px solid var(--fleet-claude)}.fleet-current-tile[data-provider="codex"]{border-left:3px solid var(--fleet-accent)}
-.fleet-current-title{display:flex;flex-wrap:wrap;gap:7px;align-items:center;line-height:1.4;font-size:14px}.fleet-current-provider{font-size:12px;color:var(--fleet-muted)}.fleet-current-name{font-weight:650;overflow-wrap:anywhere}
-.fleet-current-email{font-size:13px;line-height:1.45;color:var(--fleet-muted);margin-top:3px;overflow-wrap:anywhere}.fleet-current-model{font-size:13px;line-height:1.5;color:var(--txt);margin-top:7px;overflow-wrap:anywhere}.fleet-current-quota{font-size:13px;line-height:1.5;color:var(--fleet-muted);margin-top:5px;white-space:normal}.fleet-current-warning{font-size:12px;color:var(--warn);line-height:1.5;margin-top:6px}
-.fleet-current-link{display:flex;align-items:center;min-height:40px;padding:5px 0 0;font-size:12px;color:var(--fleet-accent);background:none;border:0;text-align:left}
-html:root:root.fleet-mobile .toolrow{display:flex!important;flex-wrap:wrap;margin:0 0 20px;padding:12px;background:var(--card);border:1px solid var(--fleet-line);border-radius:9px;gap:9px}
-html:root:root.fleet-mobile .fleet-model-label{font-size:12px;flex-basis:100%;margin:0;line-height:1.4}
-html:root:root.fleet-mobile #mrow{display:flex;flex-wrap:wrap;gap:7px}
-html:root:root.fleet-mobile #mrow button{font-size:13px;min-height:40px;padding:7px 12px}
-html:root:root.fleet-mobile #efrow{width:100%;flex-basis:100%;font-size:13px}
-html:root:root.fleet-mobile .fleet-section-head{gap:9px;margin:0 0 12px;align-items:center}
-html:root:root.fleet-mobile .fleet-section-head h2{font-size:16px;gap:9px;line-height:1.4}
-html:root:root.fleet-mobile .fleet-count{font-size:12px}
-html:root:root.fleet-mobile .fleet-section-head #addAcct,html:root:root.fleet-mobile .fleet-add-codex{font-size:12px;height:auto;min-height:40px;padding:8px 9px}
-html:root:root.fleet-mobile #cards,html:root:root.fleet-mobile #cxcards{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:14px!important;margin:0!important;max-height:none!important;overflow:visible!important}
-html:root:root.fleet-mobile .fleet-section .card{height:auto!important;min-height:0!important;padding:16px!important;min-width:0;scroll-margin-top:12px}
-html:root:root.fleet-mobile .card.active,html:root:root.fleet-mobile .card.fleet-active{order:-1}
-html:root:root.fleet-mobile .fleet-section .card .top{min-height:0;margin:0 0 10px;padding-right:0}
-html:root:root.fleet-mobile .fleet-titleline{flex-wrap:wrap;gap:7px;row-gap:5px}
-html:root:root.fleet-mobile .fleet-account-name{font-size:16px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
-html:root:root.fleet-mobile .fleet-section .card .email{font-size:14px;line-height:1.5;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;margin-top:4px}
-html:root:root.fleet-mobile .fleet-section .tag.plan,html:root:root.fleet-mobile .fleet-section .tag.free{font-size:11px;padding:2px 6px}
-html:root:root.fleet-mobile .fleet-card-state{font-size:12px;line-height:1.5;padding:3px 7px;margin:0 0 14px}
-html:root:root.fleet-mobile .fleet-section .card>.row{margin:0 0 15px!important}
-html:root:root.fleet-mobile .fleet-section .card>.row .lbl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:13px;line-height:1.45;margin:0 0 6px}
-html:root:root.fleet-mobile .fleet-section .card>.row .lbl b{font-size:14px}
-html:root:root.fleet-mobile .fleet-section .card>.row .lbl>span:last-child{grid-column:1/-1;font-size:12px;white-space:normal;overflow:visible;text-overflow:clip;text-align:left;line-height:1.45;overflow-wrap:anywhere}
-html:root:root.fleet-mobile .fleet-section .card>.row .bar{height:5px!important}
-html:root:root.fleet-mobile .fleet-card-footer{flex-wrap:wrap;gap:7px;min-height:44px;margin:0;padding-top:9px}
-html:root:root.fleet-mobile .fleet-card-caption{font-size:12px;white-space:normal;overflow:visible;line-height:1.45}
-html:root:root.fleet-mobile .fleet-card-footer .btn-sw{font-size:13px!important;min-height:44px;white-space:normal;text-align:right;padding:6px 0 6px 8px!important}
-html:root:root.fleet-mobile .fleet-card-details{position:static;display:block;top:auto;right:auto;margin-top:10px;border-top:1px solid var(--fleet-line)}
-html:root:root.fleet-mobile .fleet-card-details>summary{display:none}
-html:root:root.fleet-mobile .fleet-card-panel,html:root:root.fleet-mobile .fleet-card-panel.fleet-menu-above{position:static;top:auto;bottom:auto;right:auto;width:100%;max-width:none;min-width:0;margin:0;padding:14px 0 0;border:0;border-radius:0;background:transparent;box-shadow:none}
-html:root:root.fleet-mobile .fleet-card-panel-title{font-size:13px;line-height:1.5;margin-bottom:10px;font-weight:550;color:var(--fleet-muted)}
-html:root:root.fleet-mobile .fleet-card-panel .hdrright{gap:12px;margin-bottom:12px;flex-wrap:wrap}
-html:root:root.fleet-mobile .fleet-card-panel .iconbtn{height:44px;width:44px}
-html:root:root.fleet-mobile .fleet-card-panel .cxsel{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-html:root:root.fleet-mobile .fleet-card-panel .cxsel select{font-size:16px;height:auto;min-height:44px;padding:10px 9px;white-space:normal;width:100%;max-width:100%;box-sizing:border-box}
-html:root:root.fleet-mobile .fleet-card-panel .cxfast{font-size:14px;min-height:40px;gap:8px}
-html:root:root.fleet-mobile .fleet-card-panel .cxfast input{width:20px;height:20px}
-html:root:root.fleet-mobile .fleet-card-panel .acts{display:flex;gap:8px;flex-wrap:wrap}
-html:root:root.fleet-mobile .fleet-card-panel .acts button{font-size:13px;line-height:1.5;min-height:44px;padding:9px 10px;max-width:100%;white-space:normal;overflow-wrap:anywhere}
-html:root:root.fleet-mobile .fleet-card-panel .acts .btn-del .dl{display:inline!important}
-html:root:root.fleet-mobile .fleet-group-footer{font-size:12px;line-height:1.5;gap:8px;margin:8px 0 0;align-items:center;flex-wrap:wrap}
-html:root:root.fleet-mobile .fleet-group-note,html:root:root.fleet-mobile .fleet-rotation-state{font-size:12px;line-height:1.5;max-width:100%;flex-basis:100%;white-space:normal;overflow-wrap:anywhere}
-html:root:root.fleet-mobile .fleet-group-footer #optWrap,html:root:root.fleet-mobile .fleet-group-footer .switchrow{min-height:44px;font-size:0!important;gap:9px}
-html:root:root.fleet-mobile .fleet-group-footer .switchrow::after{font-size:13px}
-html:root:root.fleet-mobile .fleet-group-footer input[type="checkbox"]{width:36px;height:22px;border-radius:12px}
-html:root:root.fleet-mobile .fleet-group-footer input[type="checkbox"]::after{width:16px;height:16px;left:3px;top:3px}
-html:root:root.fleet-mobile .fleet-group-footer input[type="checkbox"]:checked::after{transform:translateX(14px)}
-html:root:root.fleet-mobile .fleet-section+.fleet-section{margin-top:26px}
-html:root:root.fleet-mobile .fleet-design-note{font-size:12px;line-height:1.6;margin-top:22px}
-html:root:root.fleet-mobile .dock{display:none!important}
-html:root:root.fleet-mobile #verTag{display:block!important;position:static;height:auto;margin-top:20px;font-size:11px}
-html:root:root.fleet-mobile #cxMenu:not([hidden]){top:max(8px,env(safe-area-inset-top))!important;bottom:max(8px,env(safe-area-inset-bottom))!important;left:8px!important;right:8px!important;width:auto!important;height:auto!important;max-height:calc(100dvh - 16px)!important;z-index:90;border-radius:12px;overflow:hidden}
-html:root:root.fleet-mobile #cxMenu .cxpbody{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain}
-html:root:root.fleet-mobile #cxMenuScrim:not([hidden]){display:block!important;z-index:89}
-html:root:root.fleet-mobile .cxmenu .cxprof{min-height:44px}
-html:root:root.fleet-mobile #cxQ .cxqm,html:root:root.fleet-mobile #cxQ .cxqe{min-height:44px;font-size:13px}
-html:root:root.fleet-mobile #cTabs .ctab{width:auto!important;min-width:66px;flex:0 0 auto;gap:7px;padding:0 4px;white-space:nowrap}
-html:root:root.fleet-mobile #cTabs .ctab::before{flex:none}
-html:root:root.fleet-mobile #cxBtn .cxbtnname{order:1;text-align:left}
-html:root:root.fleet-mobile #cxBtn .cxcar{order:2;flex:none}
-html:root:root.fleet-mobile #cxBtn #cxLim{order:3}
-html:root:root.fleet-mobile #fleetInput{min-height:72px}
-html:root:root.fleet-mobile .fleet-key{min-height:44px}
-html:root:root.fleet-mobile .fleet-card-panel .ring{display:none}
-html:root:root.fleet-mobile .fleet-card-panel .hdrright:not(:has(.iconrow)){display:none}
-html:root:root.fleet-mobile .fleet-card-panel .iconrow{display:flex;flex-wrap:wrap;gap:8px}
-html:root:root.fleet-mobile .fleet-card-panel .iconrow .iconbtn{display:inline-flex;align-items:center;gap:7px;width:auto;padding:8px 10px;min-height:44px}
-html:root:root.fleet-mobile .fleet-card-panel .iconrow .iconbtn::after{content:attr(title);font-size:12px;line-height:1.4;white-space:normal}
-
 '''
 
 JS = r'''
@@ -248,48 +130,6 @@ JS = r'''
  const codexFoot=el('div','fleet-group-footer');codexFoot.append(rotation,xh.querySelector('.switchrow'));codex.append(codexFoot);
  const noteFooter=el('div','fleet-design-note');noteFooter.innerHTML='<span aria-hidden="true">ⓘ</span><p>Проценты показывают использованный лимит. Плановая смена аккаунта — между ответами.</p>';accountArea.append(noteFooter);
  for(const head of [ch,xh]){const count=el('span','fleet-count');head.querySelector('h2').after(count)}
- // На телефоне обзор и карточки доступны в обычной прокрутке, включая сохранённый conly.
- const mobileLayout=matchMedia('(max-width:700px), (pointer:coarse) and (max-width:1000px)');
- const currentAccounts=el('section','fleet-current-accounts');currentAccounts.id='fleetCurrentAccounts';currentAccounts.setAttribute('aria-label','Активные аккаунты');intro.after(currentAccounts);
- const accountJump=el('button','fleet-account-jump','Активные аккаунты ↓');accountJump.type='button';accountJump.addEventListener('click',()=>currentAccounts.scrollIntoView({behavior:'smooth',block:'start'}));inputStatus.append(accountJump);
- let currentSignature='';
- function modelSummary(account,engine,snapshot){
-  if(engine==='codex')return (rotationData?.model||account.model||'По умолчанию')+((rotationData?.effort||account.effort)?' · '+(rotationData?.effort||account.effort):'');
-  const model=snapshot?.model;return model?.session_name||model?.session||model?.default_name||model?.default||'По умолчанию';
- }
- function refreshCurrentAccounts(snapshot){
-  const rows=Object.entries(snapshot?.accounts||{}),chosen=[];
-  const cl=rows.find(([,a])=>a.active);if(cl)chosen.push({engine:'claude',slot:cl[0],account:cl[1]});
-  const cx=((typeof cxData!=='undefined'&&cxData?.accounts)||[]).find(a=>a.slot===rotationData?.active);if(cx)chosen.push({engine:'codex',slot:cx.slot,account:cx});
-  const values=chosen.map(({engine,slot,account:a})=>{
-   const windows=engine==='codex'?a.windows||[]:[{mins:300,...a.five_hour},{mins:10080,...a.seven_day}];
-   const ses=windows.find(w=>w.mins===300)?.pct,week=windows.find(w=>w.mins===10080)?.pct;
-   return {engine,slot,name:a.label||a.name||slot,email:a.email||'',model:modelSummary(a,engine,snapshot),quota:'Использовано: 5 ч — '+(ses==null?'нет данных':ses+'%')+' · неделя — '+(week==null?'нет данных':week+'%'),warning:a.stale||a.error||a.login_required?'Проверь данные аккаунта в карточке ниже.':engine==='codex'&&rotationData?.pending_model?'Смена модели ожидает завершения ответа.':''};
-  });
-  const signature=JSON.stringify(values);if(signature===currentSignature)return;currentSignature=signature;
-  currentAccounts.replaceChildren(el('h3','fleet-current-heading','Активные аккаунты'));
-  if(!values.length){currentAccounts.append(el('p','fleet-current-email','Получаем данные выбранных аккаунтов…'));return;}
-  for(const a of values){
-   const tile=el('article','fleet-current-tile');tile.dataset.provider=a.engine;
-   const title=el('div','fleet-current-title');title.append(el('span','fleet-current-provider',a.engine==='codex'?'Codex / ChatGPT':'Claude'),el('strong','fleet-current-name',a.name));
-   tile.append(title,el('div','fleet-current-email',a.email),el('div','fleet-current-model','Модель: '+a.model),el('div','fleet-current-quota',a.quota));if(a.warning)tile.append(el('div','fleet-current-warning',a.warning));
-   const link=el('button','fleet-current-link','Открыть карточку ниже ↓');link.type='button';link.addEventListener('click',()=>{const card=[...document.querySelectorAll('.fleet-section .card')].find(n=>n.dataset.fleetReference===a.engine+':'+a.slot);if(card){card.scrollIntoView({behavior:'smooth',block:'start'});card.tabIndex=-1;card.focus({preventScroll:true})}});tile.append(link);currentAccounts.append(tile);
-  }
- }
- function updateMobileConsoleTitle(){if(!mobileLayout.matches)return;const button=document.getElementById('fsBtn'),text=document.documentElement.classList.contains('conly')?'Уменьшить консоль':'Увеличить консоль';button.title=text;button.setAttribute('aria-label',text)}
- function syncMobileLayout(){
-  const mobile=mobileLayout.matches;document.documentElement.classList.toggle('fleet-mobile',mobile);input.rows=mobile?2:1;
-  if(mobile){if(models.parentElement!==accountArea)currentAccounts.after(models)}else if(models.parentElement!==term.parentElement)term.after(models);
-  document.querySelectorAll('.fleet-card-details').forEach(menu=>{
-   if(mobile){if(!menu.dataset.mobileExpanded)menu.dataset.desktopOpen=menu.open?'1':'0';menu.dataset.mobileExpanded='1';menu.open=true;menu.querySelector('summary').tabIndex=-1;menu.querySelector('.fleet-card-panel').classList.remove('fleet-menu-above')}
-   else if(menu.dataset.mobileExpanded){menu.open=menu.dataset.desktopOpen==='1';delete menu.dataset.mobileExpanded;delete menu.dataset.desktopOpen;menu.querySelector('summary').removeAttribute('tabindex')}
-  });updateMobileConsoleTitle();
- }
- mobileLayout.addEventListener('change',syncMobileLayout);
- document.getElementById('fsBtn').addEventListener('click',()=>requestAnimationFrame(updateMobileConsoleTitle));document.addEventListener('fullscreenchange',updateMobileConsoleTitle);
- if(mobileLayout.matches&&document.documentElement.classList.contains('conly'))setConly(false,false);
- syncMobileLayout();
-
  function countText(n){const k=n%100,m=n%10;return n+' '+(k>=11&&k<=14?'аккаунтов':m===1?'аккаунт':m>=2&&m<=4?'аккаунта':'аккаунтов')}
  function putText(node,value){if(node.textContent!==value)node.textContent=value}
  function decorateCard(card,a,slot,engine){
@@ -309,7 +149,7 @@ JS = r'''
    const selection=card.querySelector(':scope > .cxsel');if(selection)panel.append(selection);
    const acts=card.querySelector(':scope > .acts'),primary=acts?.querySelector('.btn-sw');
    const bottom=el('div','fleet-card-footer');bottom.append(el('span','fleet-card-caption'));if(primary)bottom.append(primary);if(acts)panel.append(acts);
-   details.append(summary,panel);details.open=!!openAccountMenus.get(key);details.addEventListener('toggle',()=>{if(!mobileLayout.matches)openAccountMenus.set(key,details.open);if(details.open&&!mobileLayout.matches){panel.classList.remove('fleet-menu-above');const r=summary.getBoundingClientRect(),h=panel.getBoundingClientRect().height;panel.classList.toggle('fleet-menu-above',r.bottom+h>innerHeight-12&&r.top>h+12)}});card.append(bottom,details);
+   details.append(summary,panel);details.open=!!openAccountMenus.get(key);details.addEventListener('toggle',()=>{openAccountMenus.set(key,details.open);if(details.open){panel.classList.remove('fleet-menu-above');const r=summary.getBoundingClientRect(),h=panel.getBoundingClientRect().height;panel.classList.toggle('fleet-menu-above',r.bottom+h>innerHeight-12&&r.top>h+12)}});card.append(bottom,details);
    card.querySelectorAll(':scope > .row').forEach(row=>{
     const label=row.querySelector('.lbl'),percent=label?.querySelector('b');if(!label||!percent)return;
     label.insertBefore(percent,label.lastElementChild);
@@ -340,12 +180,11 @@ JS = r'''
   document.querySelectorAll('#cxcards > .card').forEach((card,i)=>{if(accounts[i])decorateCard(card,accounts[i],accounts[i].slot,'codex')});
   putText(xh.querySelector('.fleet-count'),countText(accounts.length));
   const add=document.querySelector('#cx .cxhead .hdrgear');if(add){xh.querySelector('.fleet-add-codex')?.remove();add.classList.add('fleet-add-codex');xh.append(add)}
-  refreshCurrentAccounts(d);syncMobileLayout();
  }
  const originalCards=renderCards;renderCards=function(d){originalCards(d);refreshVisuals(d)};
  const previousCodexRender=cxRender;cxRender=function(){previousCodexRender();refreshVisuals()};
- document.addEventListener('click',event=>{if(mobileLayout.matches)return;document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
- document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!mobileLayout.matches)document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>menu.open=false)});
+ document.addEventListener('click',event=>{document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>menu.open=false)});
  refreshVisuals();
 
  loadRotation();setInterval(()=>{if(!document.hidden)loadRotation()},5000);
