@@ -17,7 +17,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.28"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.26.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -196,10 +196,11 @@ cc_notion.BASE = BASE
 cc_notion.LEVEL = lambda: pause_state()
 cc_notion.NOTIFY = tg_notify
 cc_notion.EMERGENCY = cc_codex_emergency
+cc_notion.SOLO_PROFILE = lambda: cc_codex_bridge.active_profile(cc_codex_bridge.load()) == "codex_solo_full"
 # инструменты Notion-агента у Codex — только пока резерв включён; при смене резерва консоль перезапускается (не посреди ответа)
 cc_codex_bridge.MCP_ARGS = cc_notion.codex_args
 cc_codex_bridge.RESERVE_NOTE = cc_notion.codex_note
-cc_codex_bridge.DELEGATE_CMD = cc_notion.delegate_cmd
+cc_codex_bridge.PROFILE_APPLIED = cc_codex_emergency._restart_console
 cc_codex_console.MCP = cc_notion.codex_args
 cc_notion.APPLY = cc_codex_emergency._restart_console
 cc_codex_bridge.EMERGENCY = cc_codex_emergency
@@ -4132,7 +4133,6 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxprof::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc,var(--acc))}
 .cxprof[data-id="orchestrator"]{--pc:linear-gradient(180deg,#19c3a0,#f0905f)}
 .cxprof[data-id="codex"]{--pc:#19c3a0}
-.cxprof[data-id="agent"]{--pc:linear-gradient(180deg,#f0905f,#9b8cff)}
 .cxprof[data-id="reserve"]{--pc:linear-gradient(180deg,#9b8cff,#19c3a0)}
 .cxprof.rsv:not(.act){opacity:.65;cursor:default}
 .cxprof.rsv:not(.act):hover{border-color:#2a3140}
@@ -4170,8 +4170,7 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxw.rd{color:var(--bad);background:rgba(224,91,91,.12);border-color:rgba(224,91,91,.5)}
 .cxemg{display:flex;align-items:flex-start;gap:10px;position:relative;overflow:hidden;margin:8px 0 0;padding:10px 12px 10px 15px;border:1px solid rgba(224,91,91,.5);border-radius:12px;background:rgba(224,91,91,.07)}
 .cxemg::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--bad),#f0905f)}
-.cxemg.on{border:2px solid var(--bad);padding:9px 11px 9px 14px;box-shadow:none;background:rgba(224,91,91,.24)}
-.cxemg.on::before{background:var(--bad)}
+.cxemg.on{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad);background:rgba(224,91,91,.15)}
 .cxemg .cxemm{flex:1;min-width:0;display:block}
 .cxemg .cxen{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
 .cxemg .cxen .cxpnm{color:var(--bad)}
@@ -4186,8 +4185,8 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxemg .cxembtn.off{background:var(--bad);color:#fff}
 .cxemg .cxemtime{margin-top:4px;font-size:13px;font-weight:700;color:var(--bad)}
 .cxemg .cxemj{margin-top:8px;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.18);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);white-space:pre-wrap;word-break:break-word}
-.cxdot.emg{background:var(--ok);animation:cxpulse 1.1s ease-in-out infinite}
-#cxBtn.emg{border-color:var(--ok)}
+.cxdot.emg{background:var(--bad);animation:cxpulse 1.1s ease-in-out infinite}
+#cxBtn.emg{border-color:var(--bad)}
 .cxeul{margin:0 0 12px;padding-left:18px;font-size:13px;line-height:1.5}
 .cxeul li{margin:2px 0}
 #cxeGo{background:var(--bad);color:#fff;border-color:var(--bad)}
@@ -4665,7 +4664,7 @@ const I18N={
   newSessionTitle:'Новая сессия (/clear)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
   cxTitle:'ChatGPT (Codex)',
-  cxHint:'Отдельная программа со своим входом — в ротацию Claude не входит',
+  cxHint:'Отдельные аккаунты, модели и оптимизация лимитов Codex',
   cxAddTitle:'Добавить аккаунт ChatGPT',
   cxAddSub:'Пароль и почту вводить не нужно — вход по коду устройства. Сначала включи его в ChatGPT → Настройки → Безопасность («вход по коду устройства для Codex»); в рабочем пространстве это делает администратор. Если страница входа не принимает код — причина почти всегда в этом.',
   cxLabelLbl:'Название (необязательно)',
@@ -4759,31 +4758,31 @@ const I18N={
   cxpHint:'Выбери — применится сразу.',
   cxpN_orchestrator:'Оркестратор',
   cxpN_codex:'Codex',
-  cxpN_agent:'Агент',
+  cxpN_codex_solo_full:'Codex Full · сам',
   cxpN_reserve:'Резерв',
   cxpS_reserve:'Включается само вместе с резервом Notion: Codex работает вместе с агентом, Claude на паузе. Вручную не выбирается.',
   cxpS_reserveOn:'Сейчас включён: Codex ведёт работу вместе с Notion-агентом. Прежний профиль вернётся, когда резерв закончится.',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Нативный ИИ'],
-  cxpRoute_agent:['Claude','Notion'],
+  cxpRoute_codex_solo_full:['Codex','Самостоятельно'],
   cxpS_orchestrator:'Codex — главный: ведёт цель к результату и принимает работу. Claude выполняет шаги, но каждый — только после твоего «да».',
-  cxpS_agent:'Claude и Codex только ставят задачи Notion-агенту: он делает всю черновую работу и присылает готовый результат, они проверяют и докладывают. Экономит лимиты.',
   cxpS_codex:'Работает сам, без Claude: отвечает на твои сообщения, читает и пишет в своей рабочей папке. Проект только читает.',
+  cxpS_codex_solo_full:'Работает один, без Claude и Notion-агента. Полная песочница Codex действует с правами настроенного пользователя ОС; root и SSH-доступ профиль не выдаёт.',
   cxpF_orchestrator:['Codex ведёт цель','Шаг — по твоему «да»','Claude исполняет','«Стоп» снимает всё'],
   cxpF_codex:['Работает сам','Пишет в своей папке','Проект — только чтение'],
-  cxpF_agent:['Ты даёшь задание','Агент делает работу','Claude проверяет'],
+  cxpF_codex_solo_full:['Без Claude и агента','Полная песочница Codex','Права пользователя ОС','Нужно подтверждение'],
   cxpFlowLbl:'Как это идёт',
   cxpFlow_orchestrator:['Ты','Codex: составляет шаг','Твоё «да»','Claude: выполняет','Codex: принимает'],
   cxpFlow_codex:['Ты','Codex','Ответ и файлы'],
-  cxpFlow_agent:['Ты','Claude: ставит задачу','Агент: делает','Claude: проверяет'],
+  cxpFlow_codex_solo_full:['Ты','Codex','Ответ и файлы'],
   cxpCanL:'Может:',
   cxpNotL:'Не может:',
   cxpCan_orchestrator:'Составлять шаги, вести цель, принимать результат от Claude и писать в общую папку обмена.',
   cxpNot_orchestrator:'Менять проект сам и отправлять шаг Claude без твоего «да». «Стоп» в Telegram снимает задание и ожидание.',
   cxpCan_codex:'Отвечать сам, читать проект, создавать и править файлы в своей рабочей папке.',
+  cxpCan_codex_solo_full:'Самостоятельно выполнять задачи с полным доступом Codex в пределах прав пользователя ОС, включая доступные ему файлы и команды.',
   cxpNot_codex:'Менять проект, видеть секреты и подключать Claude.',
-  cxpCan_agent:'Отправлять агенту задания, получать готовый результат, проверять его и внедрять.',
-  cxpNot_agent:'Присылать агенту ключи и пароли и принимать его ответ без проверки. Агент видит только присланный текст.',
+  cxpNot_codex_solo_full:'Самостоятельно получать root или SSH-ключи. Доступ к серверам и перезапуск служб возможны только если уже разрешены пользователю ОС и настройкам аварийного режима.',
   cxpManual:'Настройки изменены вручную — ни один профиль не выбран.',
   cxpManualShort:'Свои настройки',
   cxpDel:'Удалить профиль',
@@ -4794,8 +4793,8 @@ const I18N={
   cxpInfo:'Что делает этот профиль',
   cxpWhenLbl:'Когда выбрать:',
   cxpWhen_orchestrator:'Большая цель в несколько шагов: Codex планирует и проверяет, Claude делает.',
-  cxpWhen_agent:'Большая работа и мало лимитов: черновую часть делает агент, а Claude и Codex только ставят задачу, проверяют и внедряют.',
   cxpWhen_codex:'Нужен отдельный помощник: разобрать код, подготовить текст или скрипт, дать второе мнение — пока Claude занят своим.',
+  cxpWhen_codex_solo_full:'Нужно, чтобы Codex сам выполнял работу с полным доступом своей учётной записи ОС. Для серверных привилегий отдельно настрой аварийный режим.',
   cxeN:'Аварийный',
   cxeHdr:'🆘 Аварийный',
   cxeRoute:['Codex','Полный доступ к проекту'],
@@ -4890,7 +4889,7 @@ const I18N={
   cxbDelPick:'Сначала выбери аккаунт в поле «Аккаунт ChatGPT» выше',
   cxbNoSlot:'Нет аккаунта ChatGPT — сначала добавь его выше.',
   cxcOff:'Консоль Codex не запущена',
-  cxcSub:(sb,cwd)=>'Только просмотр: печатать в неё со страницы нельзя. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
+  cxcSub:(sb,cwd)=>'Ввод — под выбранной консолью. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
   cxcStart:'Запустить',
   cxcStarting:'Запускаю консоль Codex…',
   cxcStopTip:'Остановить консоль Codex',
@@ -5272,31 +5271,31 @@ const I18N={
   cxpHint:'Pick one — it applies right away.',
   cxpN_orchestrator:'Orchestrator',
   cxpN_codex:'Codex',
-  cxpN_agent:'Agent',
+  cxpN_codex_solo_full:'Codex Full · solo',
   cxpN_reserve:'Reserve',
   cxpS_reserve:'Turns on by itself with the Notion reserve: Codex works together with the agent, Claude is paused. Cannot be picked by hand.',
   cxpS_reserveOn:'On now: Codex works together with the Notion agent. The previous profile comes back when the reserve ends.',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Native AI'],
-  cxpRoute_agent:['Claude','Notion'],
+  cxpRoute_codex_solo_full:['Codex','Standalone'],
   cxpS_orchestrator:'Codex is in charge: it drives the goal and accepts the work. Claude runs the steps, but each one only after your "yes".',
-  cxpS_agent:'Claude and Codex only set tasks for the Notion agent: it does all the draft work and sends back a finished result, they check and report. Saves limits.',
   cxpS_codex:'Works on its own, without Claude: answers your messages, reads and writes in its own working folder. Only reads the project.',
+  cxpS_codex_solo_full:'Works alone, without Claude or the Notion agent. Codex gets its full sandbox under the configured OS user; this profile does not grant root or SSH access.',
   cxpF_orchestrator:['Codex drives the goal','Step — on your "yes"','Claude executes','"Stop" cancels all'],
   cxpF_codex:['Works on its own','Writes in its folder','Project — read only'],
-  cxpF_agent:['You give the task','Agent does the work','Claude checks'],
+  cxpF_codex_solo_full:['No Claude or agent','Full Codex sandbox','OS user permissions','Confirmation required'],
   cxpFlowLbl:'How it goes',
   cxpFlow_orchestrator:['You','Codex: drafts a step','Your "yes"','Claude: executes','Codex: accepts'],
   cxpFlow_codex:['You','Codex','Answer and files'],
-  cxpFlow_agent:['You','Claude: sets the task','Agent: does it','Claude: checks'],
+  cxpFlow_codex_solo_full:['You','Codex','Answer and files'],
   cxpCanL:'Can:',
   cxpNotL:'Cannot:',
   cxpCan_orchestrator:'Draft steps, drive the goal, accept Claude\'s result and write to the shared exchange folder.',
   cxpNot_orchestrator:'Change the project itself or send a step to Claude without your "yes". "Stop" in Telegram cancels the task and the wait.',
   cxpCan_codex:'Answer on its own, read the project, create and edit files in its own working folder.',
+  cxpCan_codex_solo_full:'Complete tasks independently with Codex full access, within the configured OS user permissions, including files and commands available to that user.',
   cxpNot_codex:'Change the project, see secrets or involve Claude.',
-  cxpCan_agent:'Send tasks to the agent, get a finished result, check it and apply it.',
-  cxpNot_agent:'Send the agent keys or passwords, or accept its answer unchecked. The agent sees only the text it is sent.',
+  cxpNot_codex_solo_full:'Grant itself root or SSH keys. Server access and service restarts work only if already allowed for the OS user and configured in emergency mode.',
   cxpManual:'Settings were changed by hand — no profile is selected.',
   cxpManualShort:'Custom settings',
   cxpDel:'Delete profile',
@@ -5307,8 +5306,8 @@ const I18N={
   cxpInfo:'What this profile does',
   cxpWhenLbl:'When to pick it:',
   cxpWhen_orchestrator:'A big goal in several steps: Codex plans and checks, Claude does.',
-  cxpWhen_agent:'Big job, few limits left: the agent does the draft work, while Claude and Codex only set the task, check and apply.',
   cxpWhen_codex:'You need a separate helper: go through code, prepare a text or script, give a second opinion — while Claude is busy.',
+  cxpWhen_codex_solo_full:'You want Codex to do the work itself with full access for its OS account. Configure emergency mode separately for server privileges.',
   cxeN:'Emergency',
   cxeHdr:'🆘 Emergency',
   cxeRoute:['Codex','Full access to the project'],
@@ -5403,7 +5402,7 @@ const I18N={
   cxbDelPick:'First pick an account in the “ChatGPT account” field above',
   cxbNoSlot:'No ChatGPT account — add one above first.',
   cxcOff:'The Codex console is not running',
-  cxcSub:(sb,cwd)=>'View only: you cannot type into it from this page. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
+  cxcSub:(sb,cwd)=>'Use the input below the selected console. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
   cxcStart:'Start',
   cxcStarting:'Starting the Codex console…',
   cxcStopTip:'Stop the Codex console',
@@ -5461,7 +5460,7 @@ function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
 let CONS='claude',consShown='claude',cxConsRun=null;
 try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
-function consCur(){return CONS==='codex'&&cxConsOn()?'codex':'claude';}
+function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}
 async function ccConsoleHistory(){
  const s=consCur();
  try{
@@ -5600,7 +5599,7 @@ document.addEventListener('keydown',e=>{
 });
 buildSkinGrid();applySkin(SKIN,false);
 function consTabs(){
- const av=cxConsOn(),cur=consCur();
+ const av=cxAvail(),cur=consCur();
  $('#cTabs').hidden=!av;$('.termwrap').classList.toggle('hastabs',av);
  [['claude','#ctClaude'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
@@ -6202,8 +6201,6 @@ let cxpBusy=false;
 const CXP_SEC={acc:false,br:false};
 try{Object.assign(CXP_SEC,JSON.parse(localStorage.getItem('cxpSec')||'{}'));}catch(e){}
 function cxAvail(){return!!((cxData&&cxData.available)||(cxbData&&cxbData.available));}
-// вкладка консоли Codex: Codex установлен И есть вход ChatGPT (после «Удалить Codex целиком» бинарь остаётся, входов нет)
-function cxConsOn(){return cxAvail()&&!!(((cxData&&cxData.accounts)||[]).length);}
 function cxpName(p){return p.builtin?tr('cxpN_'+p.id):p.name;}
 const CXO_MK={mediator:'cxbModeMed',orchestrator:'cxbModeOrch',self:'cxbModeSelf'},CXO_AK={read:'cxbAccRead',write:'cxbAccWrite',full:'cxbAccFull'},CXO_RK={read:'cxbRRead',dev:'cxbRDev',full:'cxbRFull'};
 function cxoMode(m){return tr(CXO_MK[m]||'cxbModeMed').replace(/\s*\(.*$/,'');}
@@ -6218,7 +6215,7 @@ function cxpSub(p){
 const CXP_META={
  orchestrator:{caps:true,rc:['cx','cl'],fc:['g','b','o','r'],fi:['🧭','✋','🔨','⏹'],fl:['me','cx','ok','cl','cx']},
  codex:{caps:false,rc:['nat'],fc:['g','b','o'],fi:['⚡','✏️','👁'],fl:['me','cx','nat']},
- agent:{caps:false,rc:['cl','nat'],fc:['g','b','o'],fi:['📝','🤖','✔'],fl:['me','cl','nat','cl']}
+ codex_solo_full:{caps:false,rc:['nat','r'],fc:['g','r','o','b'],fi:['⚡','🔓','👤','✋'],fl:['me','cx','nat']}
 };
 const CXP_ARR='<svg class="cxarr" viewBox="0 0 26 10" aria-hidden="true"><path d="M1 5h21M17.5 1.2 22.5 5l-5 3.8" fill="none" stroke="url(#cxpg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function cxpChip(c,t){return`<span class="cxw ${c}">${acctEsc(t)}</span>`;}
@@ -7535,6 +7532,9 @@ ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
 try{if(sessionStorage.getItem('cc_upd_reopen')){sessionStorage.removeItem('cc_upd_reopen');$('#gear').click();}}catch(e){}
 </script></body></html>"""
 
+
+import cc_fleet
+cc_fleet.install(globals())
 
 if __name__ == "__main__":
     try:

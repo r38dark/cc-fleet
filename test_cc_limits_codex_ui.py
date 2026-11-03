@@ -254,14 +254,14 @@ class Page(unittest.TestCase):
         self.assertIn('stroke="url(#cxpg)"', L.PAGE)
         self.assertEqual(L.PAGE.count('id="cxpg"'), 1)
         meta = re.search(r"const CXP_META=\{(.*?)\n\};", L.PAGE, re.S).group(1)
-        self.assertEqual(re.findall(r"^ (\w+):\{", meta, re.M), ["orchestrator", "codex", "agent"])
+        self.assertEqual(re.findall(r"^ (\w+):\{", meta, re.M), ["orchestrator", "codex", "codex_solo_full"])
         for lang in ("ru", "en"):
             blk = i18n_block(lang)
             self.assertEqual(len(re.search(r"cxpF_orchestrator:\[(.*?)\],\n", blk).group(1).split("','")), 4)
             self.assertEqual(len(re.search(r"cxpF_codex:\[(.*?)\],\n", blk).group(1).split("','")), 3)
-            self.assertEqual(len(re.search(r"cxpF_agent:\[(.*?)\],\n", blk).group(1).split("','")), 3)
-            self.assertEqual(len(re.search(r"cxpFlow_agent:\[(.*?)\],\n", blk).group(1).split("','")), 4)
-            self.assertEqual(len(re.search(r"cxpRoute_agent:\[(.*?)\],\n", blk).group(1).split("','")), 2)
+            self.assertEqual(len(re.search(r"cxpF_codex_solo_full:\[(.*?)\],\n", blk).group(1).split("','")), 4)
+            self.assertEqual(len(re.search(r"cxpFlow_codex_solo_full:\[(.*?)\],\n", blk).group(1).split("','")), 3)
+            self.assertEqual(len(re.search(r"cxpRoute_codex_solo_full:\[(.*?)\],\n", blk).group(1).split("','")), 2)
             self.assertEqual(len(re.search(r"cxpFlow_orchestrator:\[(.*?)\],\n", blk).group(1).split("','")), 5)
             self.assertEqual(len(re.search(r"cxpRoute_orchestrator:\[(.*?)\],\n", blk).group(1).split("','")), 2)
         ru = i18n_block("ru")
@@ -291,23 +291,23 @@ class Page(unittest.TestCase):
             self.assertTrue(m, sel)
             self.assertIn("margin:0", m.group(1), sel)
 
-    def test_emergency_block_is_filled_red_and_dot_blinks_green(self):
+    def test_emergency_block_and_dot_keep_current_red_state(self):
         # аварийный блок закрашен красным целиком (настоящая рамка и сплошная полоса, не обрезаемая тень);
         # мигающая точка Codex в аварийном режиме — зелёная, не красная
         on = re.search(r"\.cxemg\.on\{([^}]*)\}", L.PAGE).group(1)
-        self.assertIn("border:2px solid var(--bad)", on)
-        self.assertNotIn("box-shadow:0 0 0 1px", on)
-        self.assertRegex(L.PAGE, r"\.cxemg\.on::before\{background:var\(--bad\)\}")
+        self.assertIn("border-color:var(--bad)", on)
+        self.assertIn("box-shadow:0 0 0 1px", on)
+        self.assertRegex(L.PAGE, r"\.cxemg::before\{[^}]*background:linear-gradient")
         dot = re.search(r"\.cxdot\.emg\{([^}]*)\}", L.PAGE).group(1)
-        self.assertIn("background:var(--ok)", dot)
+        self.assertIn("background:var(--bad)", dot)
         self.assertIn("animation:cxpulse", dot)
-        self.assertIn("#cxBtn.emg{border-color:var(--ok)}", L.PAGE)
+        self.assertIn("#cxBtn.emg{border-color:var(--bad)}", L.PAGE)
 
     def test_codex_console_tab_needs_an_account(self):
         # «Удалить Codex целиком» оставляет бинарь, но убирает входы: вкладка консоли Codex после этого не нужна
-        self.assertIn("function cxConsOn(){return cxAvail()&&!!(((cxData&&cxData.accounts)||[]).length);}", L.PAGE)
-        self.assertIn("function consCur(){return CONS==='codex'&&cxConsOn()?'codex':'claude';}", L.PAGE)
-        self.assertIn("const av=cxConsOn(),cur=consCur();", L.PAGE)
+        self.assertIn("function cxAvail()", L.PAGE)
+        self.assertIn("function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("const av=cxAvail(),cur=consCur();", L.PAGE)
 
     def test_texts_in_both_languages(self):
         keys = {lang: set(re.findall(r"^\s{2}(cx\w*):", i18n_block(lang), re.M)) for lang in ("ru", "en")}
@@ -317,7 +317,7 @@ class Page(unittest.TestCase):
         dyn = set(pfx) | {"cxoMode_", "cxoAcc_", "cxoRt_"}
         used = set(re.findall(r"tr\('(cx\w+)'", L.PAGE)) - dyn
         for p in pfx:
-            used |= {p + i for i in ("orchestrator", "codex", "agent")}
+            used |= {p + i for i in ("orchestrator", "codex", "codex_solo_full")}
         used |= {"cxoMode_" + i for i in ("mediator", "orchestrator", "self")}
         used |= {"cxoAcc_" + i for i in ("read", "write", "full")}
         used |= {"cxoRt_" + i for i in ("read", "dev", "full")}

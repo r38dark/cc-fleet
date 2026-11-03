@@ -1,6 +1,26 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {
+      "v": "1.26.0",
+      "date": "2026-11-03",
+      "ru": {
+        "t": "Обзор: консоли, аккаунты Claude и Codex",
+        "p": [
+          "Консоль первой, аккаунты Claude и Codex ниже; прежние кнопки и настройки сохранены, добавлен ввод в выбранную консоль",
+          "Отдельная оптимизация лимитов Codex: свежие данные, ожидание конца ответа, сохранение модели, усилия и беседы, откат при неудаче",
+          "Профили с поиском; выбор модели применяется сразу или после текущего ответа, без незаметного сброса"
+        ]
+      },
+      "en": {
+        "t": "Overview: consoles, Claude and Codex accounts",
+        "p": [
+          "Console first, followed by Claude and Codex accounts; existing controls retained, input targets the selected console",
+          "Separate Codex quota optimization with fresh data, idle switching, model/effort/thread preservation and rollback",
+          "Searchable profiles; model selection applies immediately or after the current response"
+        ]
+      }
+    },
     {"v": "1.25.28", "date": "2026-11-02",
      "ru": {"t": "Профиль «Агент», аварийный блок и скриншоты Codex", "p": ["Профиль «Агент»: Claude и Codex ставят задачи агенту командой из delegate_cmd; без неё профиль скрыт", "Аварийный блок: красная рамка целиком, кнопка и точка зелёные; консоль Codex прячется после удаления", "Мост шлёт скриншоты PNG и JPEG из Codex в Telegram оригинальными файлами"]},
      "en": {"t": "Agent profile, emergency block and Codex screenshots", "p": ["Agent profile: Claude and Codex hand tasks to the agent via delegate_cmd; hidden without it", "Emergency block: full red frame, green button and dot; the Codex console hides after removal", "The bridge sends PNG and JPEG screenshots from Codex to Telegram as original files"]}},

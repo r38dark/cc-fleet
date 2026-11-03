@@ -139,6 +139,10 @@ chmod 644 "$BASE/cc_codex_bridge.py"
 # консоль Codex на странице (вкладка рядом с консолью Claude) — импортирует cc_limits.py
 cp "$SCRIPT_DIR/cc_codex_console.py" "$BASE/cc_codex_console.py"
 chmod 644 "$BASE/cc_codex_console.py"
+for fleet_module in cc_session.py cc_codex_rotation.py cc_overview.py cc_fleet.py; do
+  cp "$SCRIPT_DIR/$fleet_module" "$BASE/$fleet_module"
+  chmod 644 "$BASE/$fleet_module"
+done
 # аварийный режим Codex (полный доступ к проекту на время, включается только кнопкой) — импортирует cc_limits.py
 cp "$SCRIPT_DIR/cc_codex_emergency.py" "$BASE/cc_codex_emergency.py"
 chmod 644 "$BASE/cc_codex_emergency.py"

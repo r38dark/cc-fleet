@@ -156,19 +156,22 @@ class Start(unittest.TestCase):
             ok, msg = C.start()
         self.assertTrue(ok, msg)
         argv, kw = calls[0]
-        self.assertEqual(argv[0], "screen")
-        self.assertIn("-dmS", argv)
-        self.assertEqual(argv[argv.index("-dmS") + 1], "cc-codex")
-        for want in ("--no-alt-screen", "-s", "read-only", "-C", self.work, "/x/codex"):
+        self.assertEqual(argv[0], "/usr/bin/systemd-run")
+        self.assertIn("--unit=cc-codex-console.service", argv)
+        self.assertIn("--working-directory=" + C.CLI_CWD, argv)
+        self.assertIn("screen", argv)
+        self.assertIn("-mS", argv)
+        self.assertEqual(argv[argv.index("-mS") + 1], "cc-codex")
+        for want in ("--sandbox", "read-only", "--cd", self.work, "/x/codex"):
             self.assertIn(want, argv)
-        self.assertEqual(argv[argv.index("-s") + 1], "read-only")
-        self.assertEqual(kw["cwd"], self.work)
-        self.assertEqual(kw["env"]["CODEX_HOME"], cc_codex.profile_dir("gpt1"))
-        self.assertEqual(kw["env"]["TERM"], "xterm-256color")
+        self.assertEqual(argv[argv.index("--sandbox") + 1], "read-only")
+        self.assertEqual(kw["cwd"], C.CLI_CWD)
+        self.assertEqual(kw["env"], {"PATH": "/usr/bin:/bin"})
+        self.assertIn("--property=KillMode=control-group", argv)
         # лог сбрасывается раз в секунду с самого старта — через свой rc
         rc = argv[argv.index("-c") + 1]
         with open(rc) as f:
-            self.assertEqual(f.read(), "logfile flush 1\n")
+            self.assertEqual(f.read(), 'logfile flush 1\ntermcapinfo * "Km=\\E[M"\n')
         meta = cc_codex.jload(C._meta_path(), {})
         self.assertEqual((meta["pid"], meta["sandbox"], meta["cwd"], meta["slot"]), ("77", "read-only", self.work, "gpt1"))
 
@@ -186,7 +189,7 @@ class Start(unittest.TestCase):
         self.assertTrue(ok, msg)
         argv = calls[0]
         self.assertEqual(argv[-4:], keys)  # ключи в самом конце: не сбивают -s/-a/-C
-        self.assertLess(argv.index("-C"), argv.index("mcp_servers.notion.enabled_tools=[\"a\"]"))
+        self.assertLess(argv.index("--cd"), argv.index("mcp_servers.notion.enabled_tools=[\"a\"]"))
         self.assertEqual(cc_codex.jload(C._meta_path(), {})["mcp"], keys)
 
     def test_no_mcp_keys_outside_reserve(self):
@@ -347,7 +350,7 @@ class Ask(Rollout):
                   mock.patch.object(C, "_ctl", self.fc.ctl),
                   mock.patch.object(C, "PASTE_DELAY", 0), mock.patch.object(C, "POLL", 0.01),
                   mock.patch.object(C, "CMD_DELAY", 0), mock.patch.object(C, "CMD_WAIT", 0.3),
-                  mock.patch.object(C, "START_WAIT", 0.6), mock.patch.object(C, "PROMPT_WAIT", 0.05)):
+                  mock.patch.object(C, "ENTER_RETRY", 0.1), mock.patch.object(C, "START_WAIT", 0.6), mock.patch.object(C, "PROMPT_WAIT", 0.05)):
             p.start()
             self.addCleanup(p.stop)
         cc_codex._jsave(C._meta_path(), {"pid": "77", "sandbox": "workspace-write", "cwd": self.work, "slot": "gpt1",
@@ -416,7 +419,7 @@ class Ask(Rollout):
         self.meta(tids={os.path.realpath(self.work): self.TID})
         with self.assertRaises(C.ConsoleError) as cm:
             C.ask("вопрос")
-        self.assertIn("не приняла", str(cm.exception))
+        self.assertIn("Не получил подтверждение", str(cm.exception))
         self.assertEqual(self.fc.enters, 2)  # первый Enter + один повторный
         self.assertTrue(path)
 
@@ -507,7 +510,7 @@ class Ask(Rollout):
                 self.assertEqual(C.ensure(), (True, "ok"), (was, now))
             sp.assert_called_once()
             st.assert_called_once()
-        self.meta(mcp=keys)
+        self.meta(mcp=keys, pending_settings={})
         with mock.patch.object(C, "MCP", lambda: keys), mock.patch.object(C, "start") as st, mock.patch.object(C, "stop") as sp:
             self.assertEqual(C.ensure(), (True, ""))
         st.assert_not_called()
@@ -543,20 +546,18 @@ class Ask(Rollout):
         argv = calls[0]
         i = argv.index("/x/codex")
         self.assertEqual(argv[i + 1:i + 3], ["resume", self.TID])
-        self.assertEqual(argv[argv.index("-a") + 1], "never")
-        self.assertEqual(argv[argv.index("-s") + 1], "workspace-write")
+        self.assertEqual(argv[argv.index("--ask-for-approval") + 1], "never")
+        self.assertEqual(argv[argv.index("--sandbox") + 1], "workspace-write")
         meta = cc_codex.jload(C._meta_path(), {})
         self.assertEqual((meta["pid"], meta["approval"], meta["tids"]), ("88", "never", {os.path.realpath(self.work): self.TID}))
 
-    def test_start_forgets_id_whose_file_is_gone(self):
+    def test_start_rejects_missing_conversation_without_silent_fallback(self):
         self.meta(tids={os.path.realpath(self.work): "01a191d3-ffff-7271-a135-a12554619a0a"})
-        calls = []
-        pids = iter([None, "89"])
-        with mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), \
-                mock.patch.object(C.subprocess, "run", lambda argv, **kw: (calls.append(argv), mock.Mock(returncode=0, stdout="", stderr=""))[1]):
-            self.assertTrue(C.start()[0])
-        self.assertNotIn("resume", calls[0])
-        self.assertEqual(cc_codex.jload(C._meta_path(), {})["tids"], {})
+        with mock.patch.object(C, "_pid", return_value=None), mock.patch.object(C.subprocess, "run") as run:
+            ok, message = C.start()
+        self.assertFalse(ok)
+        self.assertIn("другой разговор", message)
+        run.assert_not_called()
 
     def test_forget_clears_conversations_and_stops(self):
         self.meta(tids={os.path.realpath(self.work): self.TID})
@@ -754,7 +755,7 @@ class Page(unittest.TestCase):
     def test_tabs_are_hidden_until_codex_is_available(self):
         self.assertRegex(L.PAGE, r'<div class="ctabs" id="cTabs"[^>]*\bhidden\b')
         self.assertIn("$('#cTabs').hidden=!av", L.PAGE)  # av = cxConsOn(): Codex установлен и есть вход ChatGPT
-        self.assertIn("function consCur(){return CONS==='codex'&&cxConsOn()?'codex':'claude';}", L.PAGE)
+        self.assertIn("function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
 
     def test_tabs_sit_inside_console_block_before_it(self):
         wrap = L.PAGE.index('<div class="termwrap">')
@@ -786,9 +787,10 @@ class Page(unittest.TestCase):
         used = set(re.findall(r"tr\('(cxc\w+)'", L.PAGE)) | set(re.findall(r"'(cxcSb\w+)'", L.PAGE))
         self.assertEqual(sorted(used - ru), [])
 
-    def test_view_only_is_said_on_the_page(self):
+    def test_console_input_is_explained_on_the_page(self):
         m = re.search(r"cxcSub:\(sb,cwd\)=>'([^']*)", L.PAGE)
-        self.assertIn("Только просмотр", m.group(1))
+        self.assertIn("Ввод — под выбранной консолью", m.group(1))
+        self.assertIn('id="fleetInput"', L.PAGE)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 # cc_codex_console — консоль Codex в панели cc-limits: интерактивный `codex` в screen-сессии
 # и зеркало её экрана на странице (вкладка «Codex» рядом с консолью Claude).
 #
-# Из панели в консоль ничего не печатается (как и у консоли Claude). Печатать — в самой сессии
+# Ввод с панели, из самой сессии
 # (`screen -r`) или через мост Telegram: мост вводит сообщения прямо сюда (ask) и читает ответ из файла
 # сессии Codex (rollout), так что консоль и Telegram — один разговор. Права сессии — те же, что у моста
 # (cc_codex_bridge.plan): песочница и рабочая папка берутся из его настроек, полный доступ
@@ -11,6 +11,7 @@
 import glob, json, os, pwd, re, shutil, subprocess, threading, time
 
 import cc_codex
+import cc_session
 
 BASE = "/opt/cc-limits"  # cc_limits подставляет свой каталог данных
 BIN = lambda: None  # cc_limits подставляет codex_bin
@@ -20,6 +21,7 @@ pyte = None  # cc_limits передаёт модуль pyte
 
 NAME = "cc-codex"  # имя screen-сессии
 COLS, ROWS = 100, 32  # размер окна: детачнутая сессия иначе 80x24
+CLI_CWD = "/opt/codex-trial"  # каталог запуска команды из `cxw`
 HISTORY_LINES = 2000  # скроллбэк сверх экрана
 LOG_MAX = 16 * 1024 * 1024  # лог растёт, пока Codex что-то рисует; сверх лимита обнуляем
 _SANDBOXES = ("read-only", "workspace-write", "danger-full-access")
@@ -27,6 +29,7 @@ APPROVAL = "never"  # никаких запросов подтверждения
 MCP = lambda: []  # cc_limits: ключи `-c` с инструментами Notion-агента (пусто вне резерва); сменились — консоль перезапускается
 PROMPT_WAIT = 25  # после старта ждём, пока консоль нарисует поле ввода, секунд
 START_WAIT = 40  # консоль должна принять сообщение (начать ход), секунд
+ENTER_RETRY = 3.0  # если первый Enter не начал ход — одна ранняя повторная попытка
 PASTE_DELAY = 1.0  # пауза между вставкой и Enter: длинная вставка принимается не мгновенно
 POLL = 0.5
 CMD_DELAY = 1.5  # между набранной командой (/compact) и Enter
@@ -83,12 +86,99 @@ def status():
         return {"available": False}
     pid = _pid()
     sandbox, cwd, slot = PLAN()
-    st = {"available": True, "running": bool(pid), "plan_sandbox": sandbox, "plan_cwd": cwd}
+    st = {"available": True, "running": bool(pid), "plan_sandbox": sandbox, "plan_cwd": cwd, "plan_slot": slot}
     if pid:
         meta = _meta()
         if meta.get("pid") == pid:
             st.update(sandbox=meta.get("sandbox"), cwd=meta.get("cwd"), started=meta.get("started"))
     return st
+
+
+def active_settings():
+    """Модель/effort и ID берутся из индекса действующей беседы, без токенов."""
+    meta = _meta()
+    return cc_session.capture(meta, cc_codex.profile_dir)
+
+
+def current_turn_open():
+    if not _pid():
+        return False
+    meta = _meta()
+    settings = active_settings()
+    path = settings.get('rollout_path')
+    if not path and settings.get('thread_id'):
+        path = find_rollout(meta.get('slot') or '', settings['thread_id'])
+    return bool(path and _turn_open(path, meta.get('started') or 0))
+
+
+def busy():
+    return _ask_lock.locked() or current_turn_open()
+
+
+def apply_plan():
+    """Применить сохранённый профиль в паузе, не прерывая принятый ввод."""
+    if not _pid() or not _ask_lock.acquire(blocking=False):
+        return False, 'Изменения ожидают свободной консоли.'
+    try:
+        if current_turn_open():
+            return False, 'Изменения применятся после ответа.'
+        before = _meta().get('started')
+        ok, message = ensure()
+        if ok and _meta().get('started') != before:
+            ok, message = verify_ready()
+        return ok, message
+    finally:
+        _ask_lock.release()
+
+
+def request_settings(values, lang='ru'):
+    """Отложить применение модели, если идёт ответ; явный выбор никогда не теряется."""
+    meta = _meta()
+    desired = active_settings()
+    desired.update(meta.get('pending_settings') or {})
+    desired.update({key: values[key] for key in ('model', 'effort', 'service_tier') if key in values})
+    meta['pending_settings'] = desired
+    cc_codex._jsave(_meta_path(), meta)
+    cc_codex.own(_meta_path())
+    if not _ask_lock.acquire(blocking=False):
+        return True, 'Модель сохранена; будет применена после текущего ответа.', True
+    try:
+        if current_turn_open():
+            return True, 'Модель сохранена; будет применена после текущего ответа.', True
+        ok, message = ensure(lang)
+        if ok:
+            ok, message = verify_ready()
+        return ok, ('Модель и уровень рассуждений применены к консоли.' if ok else message), False
+    finally:
+        _ask_lock.release()
+
+
+def send_input(text, lang='ru'):
+    """Явный ввод человека: slash-команды не превращаются в обычный текст."""
+    if not isinstance(text, str) or not text.strip() or len(text.encode('utf-8')) > 48000:
+        return False, 'Нужно непустое сообщение размером до 48 КБ.'
+    text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text.replace('\r\n', '\n').replace('\r', '\n')).strip()
+    if busy() or not _ask_lock.acquire(blocking=False):
+        return False, 'В консоли Codex идёт ответ. Дождись завершения или нажми Esc.'
+    try:
+        ok, message = ensure(lang)
+        if not ok:
+            return False, message
+        meta = _meta()
+        if time.time() - (meta.get('started') or 0) < PROMPT_WAIT + 10:
+            _wait_ready()
+        command = re.fullmatch(r'(/[A-Za-z][A-Za-z0-9_-]{0,79})(?:[ \t]+(.*))?', text)
+        if command:
+            prefix, args = command.groups()
+            ok = _ctl(['-S', NAME, '-p', '0', '-X', 'stuff', prefix+(' ' if args else '')]).returncode == 0
+            if ok:
+                time.sleep(CMD_DELAY)
+                ok = _paste(args) if args else _ctl(['-S', NAME, '-p', '0', '-X', 'stuff', '\r']).returncode == 0
+        else:
+            ok = _paste(text)
+        return ok, 'Ввод передан в консоль Codex.' if ok else 'Консоль не приняла ввод.'
+    finally:
+        _ask_lock.release()
 
 
 def start(lang="ru"):
@@ -111,11 +201,18 @@ def start(lang="ru"):
         if not cwd or not os.path.isdir(cwd):
             return False, t("Рабочая папка не найдена.", "Working folder not found.")
         prev = _meta()
+        settings = cc_session.capture(prev, cc_codex.profile_dir, cwd, prev.get("slot") or slot)
+        settings.update(prev.get("pending_settings") or {})
         tids = dict(prev.get("tids") or {})
-        tid = tids.get(os.path.realpath(cwd))
-        if tid and not find_rollout(slot, tid):
-            tids.pop(os.path.realpath(cwd), None)
+        tid = settings.get('thread_id') or tids.get(os.path.realpath(cwd))
+        if settings.get('new_session'):
             tid = None
+            settings.pop('rollout_path', None)
+        if tid and not (settings.get('rollout_path') and os.path.isfile(settings['rollout_path'])) and not find_rollout(slot, tid):
+            return False, t('Файл выбранной беседы не найден. Перезапуск отменён, чтобы не открыть другой разговор.',
+                            'The selected conversation file is missing. Restart cancelled to avoid opening a different conversation.')
+        if tid:
+            tids[os.path.realpath(cwd)] = tid
         d, log = _dir(), _log()
         os.makedirs(d, exist_ok=True)
         cc_codex.own(d)
@@ -129,13 +226,30 @@ def start(lang="ru"):
         rc = os.path.join(d, "console.rc")
         with open(rc, "w") as f:
             f.write("logfile flush 1\n")
+            # Screen 4.9 maps the outer SGR mouse prefix ESC[< to its X10 prefix
+            # ESC[M without converting the payload; Codex then types coordinates.
+            # Keep the legacy key prefix so SGR reports pass through unchanged.
+            f.write('termcapinfo * "Km=\\E[M"\n')
         cc_codex.own(rc)
         mcp = list(MCP())
         # прошлый разговор этой папки продолжается (`codex resume`): остановка и перезапуск его не теряют
-        argv = ["screen", "-c", rc, "-dmS", NAME, "-L", "-Logfile", log, "sh", "-c", script, "sh", str(COLS), str(ROWS),
-                b] + (["resume", tid] if tid else []) + ["--no-alt-screen", "-s", sandbox, "-a", APPROVAL, "-C", cwd] + mcp
+        # Экран работает как foreground-процесс отдельной transient-службы systemd.
+        # Поэтому KillMode=control-group у cc-limits не завершает консоль при рестарте моста.
+        # Один локальный TUI в screen принимает ввод и от cxw, и от Telegram-моста.
+        # Запускаем обычную команду пользователя; metadata ID нужен мосту для чтения rollout.
+        codex_bin = "./node_modules/.bin/codex" if os.path.abspath(b) == os.path.join(CLI_CWD, "node_modules/.bin/codex") else b
+        settings["thread_id"] = tid or settings.get("thread_id")
+        codex_args = cc_session.launch_args(codex_bin, settings, sandbox, APPROVAL, mcp)
+        argv = ["screen", "-c", rc, "-D", "-mS", NAME, "-L", "-Logfile", log, "sh", "-c", script, "sh", str(COLS), str(ROWS)] + codex_args
         argv, env = cc_codex.wrap(argv, cc_codex.profile_dir(slot), {"TERM": "xterm-256color", "LANG": "C.UTF-8"})
-        p = subprocess.run(argv, env=env, cwd=cwd, capture_output=True, text=True, timeout=20)
+        # systemd запускает ExecStart с ограниченным PATH; runuser должен быть абсолютным путём.
+        if argv and argv[0] == "runuser":
+            argv[0] = shutil.which("runuser") or "/usr/sbin/runuser"
+        unit_argv = ["/usr/bin/systemd-run", "--unit=cc-codex-console.service", "--collect", "--no-block",
+                     "--property=Type=exec", "--property=KillMode=control-group",
+                     "--working-directory=" + CLI_CWD, "--", *argv]
+        p = subprocess.run(unit_argv, env={"PATH": "/usr/bin:/bin"}, cwd=CLI_CWD,
+                           capture_output=True, text=True, timeout=20)
         if p.returncode != 0:
             return False, t("Не удалось запустить консоль: ", "Could not start the console: ") + (cc_codex._strip(p.stderr or p.stdout)[-200:] or "?")
         pid = None
@@ -147,7 +261,8 @@ def start(lang="ru"):
         if not pid:
             return False, t("Консоль Codex сразу закрылась — проверь вход в ChatGPT.", "The Codex console closed right away — check the ChatGPT sign-in.")
         cc_codex._jsave(_meta_path(), {"pid": pid, "sandbox": sandbox, "cwd": cwd, "slot": slot, "approval": APPROVAL,
-                                       "mcp": mcp, "started": int(time.time()), "tids": tids})
+                                       "mcp": mcp, "started": time.time(), "tids": tids,
+                                       "settings": settings, "history_home": settings.get("history_home")})
         cc_codex.own(_meta_path())
         return True, t("Консоль Codex запущена.", "The Codex console is running.")
 
@@ -189,6 +304,9 @@ def _tid_of(path):
 
 
 def find_rollout(slot, tid):
+    shared = cc_session.capture(_meta(), cc_codex.profile_dir)
+    if shared.get("thread_id") == tid and shared.get("rollout_path") and os.path.isfile(shared["rollout_path"]):
+        return shared["rollout_path"]
     """Файл сессии Codex по id разговора или None."""
     hits = glob.glob(os.path.join(_sessions(slot), "*", "*", "*", f"rollout-*-{tid}.jsonl"))
     return hits[0] if hits else None
@@ -244,28 +362,36 @@ def _utc(iso):
 
 
 def _turn_open(path, since=0):
-    """Идёт ли в сессии ход: последний task_started без task_complete/turn_aborted. Ход, начатый раньше since
-    (запуска консоли), остался от убитого процесса — он не считается."""
+    """Последнее управляющее событие: начало длинного хода может быть далеко за хвостом."""
     try:
-        size = os.path.getsize(path)
-        with open(path, "rb") as f:
-            f.seek(max(0, size - TAIL))
-            data = f.read()
+        with open(path, 'rb') as stream:
+            stream.seek(0, os.SEEK_END)
+            pos, carry = stream.tell(), b''
+            completed = set()
+            while pos:
+                count = min(TAIL, pos)
+                pos -= count
+                stream.seek(pos)
+                lines = (stream.read(count) + carry).split(b'\n')
+                carry = lines[0] if pos else b''
+                for line in reversed(lines[1:] if pos else lines):
+                    if not any(marker in line for marker in (b'task_started', b'task_complete', b'turn_aborted')):
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    payload = event.get('payload') or {}
+                    if event.get('type') != 'event_msg':
+                        continue
+                    kind = payload.get('type')
+                    if kind in ('task_complete', 'turn_aborted'):
+                        completed.add(payload.get('turn_id'))
+                    if kind == 'task_started':
+                        return payload.get('turn_id') not in completed and _utc(event.get('timestamp')) >= since
     except OSError:
         return False
-    cur, began = None, 0
-    for line in data.splitlines():
-        if b"task_started" in line or b"task_complete" in line or b"turn_aborted" in line:
-            try:
-                ev = json.loads(line)
-            except ValueError:
-                continue
-            p = ev.get("payload") or {}
-            if p.get("type") == "task_started":
-                cur, began = p.get("turn_id"), _utc(ev.get("timestamp"))
-            elif p.get("type") in ("task_complete", "turn_aborted") and p.get("turn_id") == cur:
-                cur = None
-    return cur is not None and began >= since
+    return False
 
 
 def _paste_text(text):
@@ -322,12 +448,37 @@ def _wait_ready():
         time.sleep(POLL)
 
 
+def verify_ready():
+    """PID недостаточно: не фиксируем смену аккаунта перед модальным отказом CLI."""
+    _wait_ready()
+    if not _pid():
+        return False, 'Консоль закрылась при запуске.'
+    try:
+        with open(_log(), 'rb') as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell()-128*1024))
+            visible = cc_codex._strip(stream.read().decode('utf-8', 'replace')).lower()
+    except OSError:
+        return False, 'Нет подтверждения готовности консоли.'
+    blockers = ('this conversation is open in another app', 'failed to load',
+                'error loading', 'sign in to', 'log in to', 'conversation not found',
+                'failed to resume', 'refresh token has already been used')
+    if any(text in visible for text in blockers):
+        return False, 'Консоль запросила вход или не смогла открыть выбранную беседу.'
+    if not any(marker in visible for marker in ('›', '❯', '? for shortcuts', 'context left')):
+        return False, 'Поле ввода Codex не подтвердило готовность.'
+    return True, ''
+
+
 def _remember(slot_cwd, tid):
     meta = _meta()
     tids = dict(meta.get("tids") or {})
     if tids.get(slot_cwd) != tid:
         tids[slot_cwd] = tid
         meta["tids"] = tids
+        if meta.get('settings'):
+            meta['settings']['thread_id'] = tid
+            meta['settings'].pop('new_session', None)
         cc_codex._jsave(_meta_path(), meta)
         cc_codex.own(_meta_path())
 
@@ -341,16 +492,28 @@ def ensure(lang="ru"):
         return False, t("Codex не установлен на сервере.", "Codex is not installed on this server.")
     if st.get("running"):
         meta = _meta()
-        same = (st.get("sandbox") == st.get("plan_sandbox") and meta.get("approval") == APPROVAL
+        same = (not meta.get("pending_settings") and (not st.get("plan_slot") or meta.get("slot") == st.get("plan_slot"))
+                and st.get("sandbox") == st.get("plan_sandbox") and meta.get("approval") == APPROVAL
                 and list(meta.get("mcp") or []) == list(MCP())
                 and os.path.realpath(str(st.get("cwd") or "")) == os.path.realpath(str(st.get("plan_cwd") or "")))
         if same:
             return True, ""
         tid = (meta.get("tids") or {}).get(os.path.realpath(str(st.get("cwd") or "")))
-        path = find_rollout(meta.get("slot") or "", tid) if tid else None
+        path = active_settings().get("rollout_path") or (find_rollout(meta.get("slot") or "", tid) if tid else None)
         if path and _turn_open(path, meta.get("started") or 0):
             return False, t("Права или папка Codex сменились, но в консоли идёт запрос: дождись ответа или /stop.",
                             "Codex access or folder changed, but a request is running in the console: wait for the reply or /stop.")
+        saved = active_settings()
+        saved.update(meta.get("pending_settings") or {})
+        new_cwd = os.path.realpath(str(st.get("plan_cwd") or ""))
+        if new_cwd != os.path.realpath(str(st.get("cwd") or "")):
+            saved["cwd"] = new_cwd
+            saved["thread_id"] = (meta.get("tids") or {}).get(new_cwd)
+            saved.pop("rollout_path", None)
+            saved["new_session"] = not bool(saved["thread_id"])
+        meta["pending_settings"] = saved
+        cc_codex._jsave(_meta_path(), meta)
+        cc_codex.own(_meta_path())
         ok, msg = stop(lang)
         if not ok:
             return ok, msg
@@ -361,10 +524,16 @@ def forget(lang="ru"):
     """Начать разговор заново (/new): консоль останавливается, забыв прошлые разговоры; следующий запуск — чистый."""
     with _lock:
         meta = _meta()
-        if meta.get("tids"):
-            meta["tids"] = {}
-            cc_codex._jsave(_meta_path(), meta)
-            cc_codex.own(_meta_path())
+        saved = active_settings()
+        saved.update(meta.get('pending_settings') or {})
+        saved.update(new_session=True, thread_id=None)
+        if meta.get('slot'):
+            saved['history_home'] = cc_codex.profile_dir(meta['slot'])
+        saved.pop('rollout_path', None)
+        meta['pending_settings'] = saved
+        meta["tids"] = {}
+        cc_codex._jsave(_meta_path(), meta)
+        cc_codex.own(_meta_path())
     if _pid():
         stop(lang)
 
@@ -404,7 +573,7 @@ def compact(lang="ru"):
         _ask_lock.release()
 
 
-def ask(prompt, abort=None, timeout=1200, lang="ru"):
+def ask(prompt, abort=None, timeout=None, lang="ru"):  # timeout: None — ход без ограничения, число — секунды на ход
     """Напечатать prompt в консоль и дождаться ответа Codex из файла сессии. → (ответ, id разговора).
     ConsoleError — консоль не приняла запрос / закрылась / не ответила; Aborted — abort (Event) взведён."""
     text = _paste_text(prompt)
@@ -432,7 +601,7 @@ def ask(prompt, abort=None, timeout=1200, lang="ru"):
             raise ConsoleError("Не удалось напечатать в консоль Codex.")
         # --- ждём начала хода
         turn, answer, last_say = None, "", ""
-        enter_again = sent + START_WAIT / 3
+        enter_again = sent + ENTER_RETRY
         deadline = sent + START_WAIT
         while True:
             if aborted():
@@ -454,7 +623,10 @@ def ask(prompt, abort=None, timeout=1200, lang="ru"):
                 if not turn:
                     if ev.get("type") == "event_msg" and kind == "task_started":
                         turn = p.get("turn_id")
-                        deadline = time.time() + timeout
+                        tid = _tid_of(path) or tid
+                        if tid:
+                            _remember(key, tid)
+                        deadline = None if timeout is None else time.time() + timeout
                     continue
                 if ev.get("type") == "response_item" and kind == "message" and p.get("role") == "assistant":
                     for c in p.get("content") or []:
@@ -479,11 +651,11 @@ def ask(prompt, abort=None, timeout=1200, lang="ru"):
             if not turn and now > enter_again:
                 enter_again = deadline + 1  # один раз: Enter мог уйти раньше, чем консоль приняла вставку
                 _ctl(["-S", NAME, "-p", "0", "-X", "stuff", "\r"])
-            if now > deadline:
+            if deadline is not None and now > deadline:
                 if turn:
                     interrupt()
                     raise ConsoleError("Codex не ответил за отведённое время, запрос прерван.")
-                raise ConsoleError("Консоль Codex не приняла сообщение: посмотри её экран на вкладке Codex.")
+                raise ConsoleError("Не получил подтверждение, что Codex начал обработку за 40 секунд. Сообщение могло попасть в консоль; проверь вкладку Codex, прежде чем повторять.")
             time.sleep(POLL)
 
 

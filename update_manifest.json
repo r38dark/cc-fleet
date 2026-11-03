@@ -1,5 +1,5 @@
 {
-  "version": "1.25.28",
+  "version": "1.26.0",
   "needs_install": false,
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
@@ -20,6 +20,10 @@
     {"src": "hooks/queue_on_limits.py", "mode": "755"},
     {"src": "hooks/pause_tool_gate.py", "mode": "755"},
     {"src": "cc-cmd", "mode": "755"},
-    {"src": "cc-switch", "dst": "/usr/local/bin/cc-switch", "mode": "755"}
+    {"src": "cc-switch", "dst": "/usr/local/bin/cc-switch", "mode": "755"},
+    {"src": "cc_session.py", "mode": "644"},
+    {"src": "cc_codex_rotation.py", "mode": "644"},
+    {"src": "cc_overview.py", "mode": "644"},
+    {"src": "cc_fleet.py", "mode": "644"}
   ]
 }

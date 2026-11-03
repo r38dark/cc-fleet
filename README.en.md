@@ -1535,3 +1535,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 ## License
 
 [MIT](LICENSE)
+
+### Overview and Codex accounts (1.26)
+
+The console comes first, followed by separate Claude and Codex account groups. Input targets the selected console: Enter sends, Shift+Enter inserts a newline, Esc goes to that console. Existing settings and controls are retained.
+
+Codex has independent optimization and session/weekly thresholds. Disable optimization for manual selection. Rotation requires fresh quota data and support for the current model, waits until idle, preserves model, effort, workspace and thread, and rolls back a failed start. One account does not rotate. Profiles are searchable; existing access confirmations remain. Model changes apply immediately while idle or after the current response.

@@ -2,7 +2,6 @@
 # Сетевых запросов здесь нет: состояние берётся из файла входа Claude Code (блок mcpOAuth) и config.json.
 # Токены наружу не отдаём — только факты (есть вход / нет, имя агента, срок токена).
 import json
-import re
 import os
 import threading
 import time
@@ -23,6 +22,7 @@ RESERVE_KEYS = ("manual", "auto", "auto_emergency")
 PAUSE = lambda on: None  # cc_limits: резерв включён вручную → Claude на паузу (True) / снять паузу (False)
 PROFILE = lambda active, flipped: None  # cc_limits: профиль Codex следует за резервом (cc_codex_bridge.reserve_profile)
 APPLY = lambda: None  # cc_limits: перезапуск консоли Codex, чтобы она подхватила (или потеряла) инструменты агента
+SOLO_PROFILE = lambda: False  # cc_limits: самостоятельный профиль Codex без Notion
 MCP_URL = "https://mcp.notion.com/mcp"  # тот же адрес, что в инструкции подключения для Claude Code
 # Codex видит ровно эти четыре инструмента Notion (остальные не показываются ему вовсе) и вызывает их без вопросов:
 # спросить некого, а без этого режим «никогда не спрашивать» отклоняет любой вызов MCP.
@@ -304,16 +304,10 @@ def _tick():
         NOTIFY(off_msg)
 
 
-def delegate_cmd():
-    """Команда, которой поручают работу агенту (notion_agent.delegate_cmd, например «agent-delegate»). Пусто — профиль «Агент» не показывается."""
-    v = str(((CONFIG() or {}).get("delegate_cmd")) or "").strip()
-    return v if re.fullmatch(r"[A-Za-z0-9_./-]{1,80}", v) else ""
-
-
 def codex_args():
     """Ключи `-c` для запуска Codex: подключить Notion с четырьмя инструментами агента — но ТОЛЬКО пока резерв включён.
     Вне резерва пусто: Codex Notion не видит. Те же ключи годятся и для консоли, и для `codex exec`."""
-    if not active():
+    if not active() or SOLO_PROFILE():
         return []
     tools = ",".join('"%s"' % t for t in CODEX_TOOLS)
     return ["-c", 'mcp_servers.notion.url="%s"' % MCP_URL,
@@ -324,21 +318,14 @@ def codex_args():
 def codex_note(conf=None):
     """Одна строка в начало каждого сообщения Codex, пока резерв включён: что случилось и как работать с агентом.
     Вне резерва пусто. Ссылку агента сюда не кладём — Codex находит его по имени через notion-search-agents."""
+    if SOLO_PROFILE():
+        return "[Профиль Codex Full: работаешь самостоятельно. Claude и Notion-агент не используются.]"
     if not active():
         return ""
     conf = CONFIG() if conf is None else conf
     name = str(((conf or {}).get("name")) or "").strip()[:80] or "Notion-агент"
     cause = ("Claude отключён человеком вручную" if _st().get("why") == "manual"
              else "Claude недоступен, лимиты кончились")
-    cmd = delegate_cmd()
-    if cmd:  # есть команда поручения: чат Notion AI не упирается в лимит агентских сессий → она главный путь
-        return ("[РЕЗЕРВ: " + cause + " — работаешь ты вместе с Notion-агентом «%s». ГЛАВНЫЙ путь к нему: команда `" + cmd + " \"текст\"` "
-                "(длинное задание — файлом: `" + cmd + " -f файл`); готовый ответ приходит текстом. Одно задание за раз, не чаще 8 в час. "
-                "Основную работу делает агент (код, тексты, поиск, анализ), ты ставишь задачу, независимо проверяешь и внедряешь. "
-                "Агент видит ТОЛЬКО присланный текст: ни сервера, ни файлов. Присылай нужные куски кода (50–150 строк), критерии приёмки и "
-                "формат результата (готовый текст или патч); секреты, ключи и пароли не присылай никогда. Ответ агента на веру не принимай: "
-                "тесты, запуск, чтение результата. Инструменты notion-spawn-session и др. — только запасной путь: сессии агента могут быть "
-                "закрыты лимитом AI-кредитов. Любое изменение — только после «да» человека; коротко говори человеку, что поручил и что получил.]") % name
     return ("[РЕЗЕРВ: " + cause + " — работаешь ты вместе с Notion-агентом «%s». "
             "Инструменты агента: notion-search-agents (найди его по имени, scope=workspace), notion-spawn-session (поставить задачу: "
             "agent_url + initial_message), notion-wait-session (ждать ответ, до 60 с, повторяй пока не готов), "
