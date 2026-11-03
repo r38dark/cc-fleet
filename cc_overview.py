@@ -408,6 +408,44 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
 }
 
 .fleet-profile-service-heading{grid-column:1/-1;font-size:11px;font-weight:550;color:var(--fleet-muted);margin-top:2px}
+
+/* У каждого исполнителя свой профиль и резерв; одна структура, два цвета. */
+.mirror-profile-footer{grid-column:1/-1;grid-row:2;display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--fleet-line);padding-top:8px;min-width:0}
+.mirror-profile-holder{flex:1;min-width:0;max-width:70%}.mirror-profile-holder #cxGrp{display:flex;width:100%;min-width:0;border:0;background:transparent}
+.mirror-profile-footer .mirror-profile-button{display:flex;align-items:center;width:100%;max-width:100%;min-width:0;height:30px;margin:0;padding:5px 8px;gap:6px;background:var(--bg);border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);font-size:12px;box-shadow:none;justify-content:flex-start}
+.mirror-profile-button .cxbtnname{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:none}.mirror-profile-button .cxcar{margin-left:auto;width:13px;height:13px;flex:none}.mirror-profile-button>svg:first-child{width:14px;height:14px;flex:none}
+.mirror-profile-footer .cxlim{display:none!important}
+.fleet-live-account[data-provider="claude"]{border-color:color-mix(in srgb,var(--fleet-claude) 38%,var(--fleet-line));background:linear-gradient(120deg,var(--fleet-claude-soft),var(--card) 60%)}
+.fleet-live-account[data-provider="codex"]{border-color:color-mix(in srgb,var(--fleet-accent) 38%,var(--fleet-line));background:linear-gradient(120deg,var(--fleet-accent-soft),var(--card) 60%)}
+.fleet-live-account[data-provider="claude"] .mirror-profile-button{border-color:color-mix(in srgb,var(--fleet-claude) 40%,var(--fleet-line))}.fleet-live-account[data-provider="codex"] .mirror-profile-button{border-color:color-mix(in srgb,var(--fleet-accent) 40%,var(--fleet-line))}
+.mirror-reserve-group{display:inline-flex;align-items:center;flex:none;max-width:148px;border:1px solid var(--fleet-line);border-radius:6px;overflow:hidden;margin:0;background:transparent;box-shadow:none}
+.mirror-reserve-group .hdrgear{height:28px;min-height:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--fleet-muted);padding:5px 6px;font-size:11px;gap:6px;display:flex;align-items:center}
+.mirror-reserve-group .ntind{width:26px;padding:5px}.mirror-reserve-group .ntgbtn{width:27px;padding:6px;border-left:1px solid var(--fleet-line)}.mirror-reserve-group svg{width:13px;height:13px}.mirror-reserve-group .cxdot{width:5px;height:5px}.mirror-reserve-group.res{border-color:var(--live-accent);background:color-mix(in srgb,var(--live-accent) 12%,var(--card))}
+.mirror-pair-summary{font-size:10px;color:var(--fleet-muted);margin-left:auto;line-height:1.4}
+html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);--fleet-accent-soft:var(--fleet-claude-soft);--acc:var(--fleet-claude)}
+#cxMenu[data-engine="claude"] .fleet-profile-card{border-color:color-mix(in srgb,var(--fleet-claude) 40%,var(--fleet-line));background:color-mix(in srgb,var(--fleet-claude-soft) 40%,var(--bg))}
+#cxMenu[data-engine="claude"] .fleet-profile-card.act{border-color:var(--fleet-claude);background:linear-gradient(140deg,var(--fleet-claude-soft),var(--bg) 85%)}
+.mirror-profile-tabs{display:flex;gap:6px;align-items:center}.mirror-profile-tabs button{margin:0;padding:3px 8px;border:1px solid var(--fleet-line);border-radius:5px;background:transparent;color:var(--fleet-muted);font-size:10px;font-weight:550;letter-spacing:.04em;box-shadow:none}
+.mirror-profile-tabs [data-mirror-tab="claude"][aria-selected="true"]{color:var(--fleet-claude);border-color:var(--fleet-claude);background:var(--fleet-claude-soft)}.mirror-profile-tabs [data-mirror-tab="codex"][aria-selected="true"]{color:#45d6ab;border-color:#45d6ab;background:#16352e}
+#cxMenu .mirror-service{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px;border:1px solid var(--fleet-line);border-radius:9px;background:color-mix(in srgb,var(--fleet-accent-soft) 30%,var(--card));margin:0}
+.mirror-service-copy{flex:1;min-width:0}.mirror-service-copy>strong{font-size:13px;font-weight:600;color:var(--txt)}#cxMenu .mirror-service .cxps{display:block;font-size:12px;line-height:1.55;color:var(--fleet-muted);margin:5px 0 0;-webkit-line-clamp:unset}
+.mirror-service-actions{display:flex;flex-direction:column;align-items:stretch;gap:7px;flex:none}.mirror-service-actions button,#cxMenu .mirror-service .cxpinfo button{font-size:11px;padding:7px 9px;background:transparent;border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);margin:0;box-shadow:none}
+#cxMenu .mirror-service .cxpinfo{font-size:12px;line-height:1.6;padding:12px 0 0;border-top:1px solid var(--fleet-line);margin-top:12px;background:transparent}
+.mirror-flow{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 10px}.mirror-flow span{padding:2px 6px;border:1px solid var(--fleet-line);border-radius:4px;font-size:10px;color:var(--fleet-accent)}.mirror-flow i{font-style:normal;color:var(--fleet-muted)}
+#cxMenu .cxpinfo p{margin:8px 0;font-size:12px;line-height:1.55}.mirror-service small{display:block;color:var(--fleet-muted);font-size:11px;margin-top:7px}
+#cxMenu[aria-busy="true"] .cxpbody{pointer-events:none;opacity:.7}
+.mirror-confirm[data-engine="claude"]{--mirror-color:var(--fleet-claude)}.mirror-confirm[data-engine="codex"]{--mirror-color:var(--fleet-accent)}.mirror-confirm h3{color:var(--mirror-color)}.mirror-confirm #mirrorConfirmApply{background:var(--mirror-color);color:var(--bg)}
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) body.fleet-mirror #termBox{height:clamp(320px,calc(100dvh - 470px),610px)!important;min-height:320px!important}}
+@media(max-width:640px){.mirror-profile-footer{grid-row:3;gap:7px;padding-top:7px}.mirror-profile-holder{max-width:none;flex:1}.mirror-profile-footer .mirror-profile-button{font-size:11px;padding:5px 6px;height:29px;gap:4px}.mirror-profile-button .cxbtnname{font-size:11px}.mirror-profile-button>svg:first-child{display:none}.mirror-reserve-group{max-width:134px}.mirror-reserve-group .hdrgear{font-size:10px;padding-left:5px;padding-right:5px}.mirror-reserve-group .ntind{width:23px}.mirror-reserve-group .ntgbtn{width:25px}.mirror-pair-summary{max-width:55%;font-size:9px;text-align:right}#cxMenu .mirror-service{padding:11px;gap:9px}.mirror-service-copy>strong{font-size:12px}.mirror-service-actions button{font-size:10px;padding:6px}}
+
+.mirror-profile-holder #cxGrp{border-radius:6px;overflow:visible}.mirror-profile-footer .mirror-profile-button{border-radius:6px!important}
+#cxMenu .mirror-service{opacity:1;cursor:default}#cxMenu .mirror-service *{pointer-events:auto}
+#cxMenu .mirror-service .mirror-service-copy{opacity:1}#cxMenu .mirror-service strong{color:var(--txt)}
+#cxMenu .mirror-service-state{display:inline-block;font-size:10px;color:var(--fleet-accent);margin-left:10px}
+.mirror-auto-settings{display:flex;flex-direction:column;align-items:flex-start;gap:9px;padding-top:8px}.mirror-auto-settings label{display:flex;align-items:flex-start;gap:8px;color:var(--txt);font-size:12px;line-height:1.5;cursor:pointer}.mirror-auto-settings input{width:15px;height:15px;flex:none;margin:2px 0 0;accent-color:var(--fleet-accent)}
+#cxMenu .mirror-auto-settings small{margin:0;font-size:11px;line-height:1.6}
+.fleet-live-account[data-provider="claude"] .mirror-profile-button .cxdot{background:var(--fleet-claude)}
+@media(max-width:640px){.mirror-profile-button .cxbtnname{max-width:none!important}.mirror-service-copy>strong{display:block}.mirror-service-state{margin:5px 0!important}}
 '''
 
 JS = r'''
@@ -754,6 +792,84 @@ JS = r'''
  cxMenuPlace=function(){placePanel(menu,document.getElementById('cxBtn'),940)};
  document.getElementById('cxBtn').addEventListener('click',()=>{if(!menu.hidden){scrim.hidden=true;closeClaudeQ();cxMenuPlace()}});
  cxpRender();
+
+ // Общий компонент профилей двух сторон включается только при наличии API профилей.
+ let mirrorState=null,mirrorMounted=false,mirrorEngine='codex',mirrorBusy=false;
+ const mirrorInfo={claude:new Set(),codex:new Set()},mirrorNames={claude:'Claude',codex:'Codex'},mirrorButtons={},mirrorReserves={};
+ function mirrorAccept(state){if(!state?.available||!state.engines?.claude||!state.engines?.codex)return;if(mirrorState&&state.revision<mirrorState.revision)return;mirrorState=state;if(!mirrorMounted)mountMirrorProfiles();paintMirrorWorkplace();if(!menu.hidden)cxpRender()}
+ async function mirrorLoad(){try{const response=await fetch(API+'profiles',{headers:{'X-CC-Token':TOKEN}});if(response.ok)mirrorAccept(await response.json())}catch(_){}}
+ function mirrorTheme(){menu.dataset.engine=mirrorEngine;putText(paletteHeading.querySelector('h2'),'Профили '+mirrorNames[mirrorEngine]);menu.setAttribute('aria-label','Выбор профиля '+mirrorNames[mirrorEngine]);for(const tab of paletteHeading.querySelectorAll('[data-mirror-tab]'))tab.setAttribute('aria-selected',String(tab.dataset.mirrorTab===mirrorEngine))}
+ function mirrorOpen(engine,info){
+  mirrorEngine=engine;compareProfiles=false;if(info)mirrorInfo[engine].add(info);resetProfileSearch();mirrorTheme();
+  if(menu.hidden)nativeMirrorOpen();else cxpRender();cxMenuPlace();
+  if(info)requestAnimationFrame(()=>profileRoot.querySelector('[data-profile-id="'+info+'"]')?.scrollIntoView({block:'nearest'}));
+ }
+ let nativeMirrorOpen=null;
+ function mountMirrorProfiles(){
+  mirrorMounted=true;nativeMirrorOpen=cxMenuOpen;document.body.classList.add('fleet-mirror');
+  const originalNtApply=ntApply;ntApply=function(data){originalNtApply(data);paintMirrorWorkplace()};
+  const originalNtRender=ntRender;ntRender=function(){originalNtRender();const body=document.getElementById('ntPopB');let node=body.querySelector('.ntsec');while(node){const next=node.nextElementSibling;node.remove();if(next?.classList.contains('ntsec'))break;node=next}const note=el('div','ntnote','Резерв и аварийный доступ настраиваются отдельно в профилях Claude и Codex.');body.querySelector('.cxbrow')?.after(note)};
+  new MutationObserver(()=>{paintMirrorWorkplace();if(menu.hidden)mirrorButtons[mirrorEngine]?.focus({preventScroll:true})}).observe(menu,{attributes:true,attributeFilter:['hidden']});
+  const profileTabs=el('div','mirror-profile-tabs');profileTabs.setAttribute('role','tablist');profileTabs.setAttribute('aria-label','Исполнитель');
+  for(const e of ['claude','codex']){const b=el('button','',mirrorNames[e]);b.type='button';b.dataset.mirrorTab=e;b.setAttribute('role','tab');b.addEventListener('click',()=>mirrorOpen(e));b.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const next=['ArrowLeft','Home'].includes(event.key)?'claude':'codex';mirrorOpen(next);profileTabs.querySelector('[data-mirror-tab="'+next+'"]').focus()}});profileTabs.append(b)}paletteHeading.querySelector('.fleet-eyebrow').replaceWith(profileTabs);
+  for(const e of ['claude','codex']){
+   const tile=liveNodes[e],footer=el('div','mirror-profile-footer'),holder=el('div','mirror-profile-holder');tile.dataset.provider=e;
+   let group,button,reserveGroup;
+   if(e==='codex'){group=document.getElementById('cxGrp');button=document.getElementById('cxBtn');reserveGroup=document.getElementById('ntGrp');holder.append(group)}
+   else{button=document.getElementById('cxBtn').cloneNode(true);for(const node of [button,...button.querySelectorAll('[id]')])if(node.id)node.id='mirrorClaude'+node.id;button.addEventListener('click',()=>{if(!menu.hidden&&mirrorEngine==='claude')cxMenuClose();else mirrorOpen('claude')});holder.append(button);reserveGroup=document.getElementById('ntGrp').cloneNode(true);for(const node of [reserveGroup,...reserveGroup.querySelectorAll('[id]')])if(node.id)node.id='mirrorClaude'+node.id;reserveGroup.hidden=false}
+   button.classList.add('mirror-profile-button');button.setAttribute('aria-label','Выбор профиля '+mirrorNames[e]);button.setAttribute('aria-controls','cxMenu');mirrorButtons[e]=button;reserveGroup.classList.add('mirror-reserve-group');reserveGroup.hidden=false;mirrorReserves[e]=reserveGroup;
+   reserveGroup.addEventListener('click',event=>{const toggle=event.target.closest('.ntbtn'),settings=event.target.closest('.ntgbtn');if(!toggle&&!settings)return;event.preventDefault();event.stopImmediatePropagation();if(settings)mirrorOpen(e,'reserve');else if(mirrorState.engines[e].role==='reserve')mirrorStop(e);else mirrorApply(e,'reserve')},true);
+   footer.append(holder,reserveGroup);tile.append(footer);
+  }
+  const summary=el('span','mirror-pair-summary');summary.id='mirrorPairSummary';liveHead.append(summary);
+  const savedCxbRender=cxbRender;cxbRender=function(force){savedCxbRender(force);if(cxbData?.profile_system)mirrorAccept(cxbData.profile_system)};
+  cxMenuOpen=function(){mirrorEngine='codex';mirrorTheme();nativeMirrorOpen()};
+  cxMenuPlace=function(){placePanel(menu,mirrorButtons[mirrorEngine],940)};
+  cxpRender=paintMirrorPalette;
+  profileRoot.addEventListener('click',mirrorProfileClick,true);
+  profileRoot.addEventListener('change',event=>{const setting=event.target.dataset.mirrorSetting;if(!setting)return;event.stopImmediatePropagation();const config=mirrorState.engines[mirrorEngine].auto;mirrorRequest(mirrorEngine,'config',{enabled:setting==='auto'?event.target.checked:config.enabled,emergency:setting==='auto'?(event.target.checked&&config.emergency):event.target.checked})},true);
+  profileRoot.addEventListener('keydown',event=>{const card=event.target.closest('.cxprof[data-profile-id]:not([data-auto])');if(!card||event.target!==card)return;if(['Enter',' '].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();mirrorApply(mirrorEngine,card.dataset.profileId)}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();const cards=[...profileRoot.querySelectorAll('.cxprof[data-profile-id]:not([data-auto]):not([hidden])')],i=cards.indexOf(card),j=event.key==='Home'?0:event.key==='End'?cards.length-1:(i+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1)+cards.length)%cards.length;cards[j]?.focus()}},true);
+  paintMirrorPalette();
+ }
+ function paintMirrorWorkplace(){
+  if(!mirrorState||!mirrorMounted)return;
+  for(const e of ['claude','codex']){const state=mirrorState.engines[e],button=mirrorButtons[e],group=mirrorReserves[e];putText(button.querySelector('.cxbtnname'),state.label);button.title='Профиль '+mirrorNames[e]+': '+state.label;button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(!menu.hidden&&mirrorEngine===e));button.dataset.role=state.role;group.classList.toggle('res',state.role==='reserve');const toggle=group.querySelector('.ntbtn');toggle.classList.toggle('res',state.role==='reserve');toggle.setAttribute('aria-checked',String(state.role==='reserve'));toggle.setAttribute('aria-label','Резерв '+mirrorNames[e]);toggle.title=state.role==='reserve'?'Выключить резерв '+mirrorNames[e]:'Включить резерв '+mirrorNames[e]+' · '+mirrorNames[e==='claude'?'codex':'claude']+' будет на паузе';putText(group.querySelector('.ntname'),'Резерв');group.querySelector('.ntgbtn').setAttribute('aria-label','Настройки резерва '+mirrorNames[e]);}
+  const route=mirrorState.leader?mirrorNames[mirrorState.leader]+' → '+mirrorNames[mirrorState.follower]+' · один ведущий':mirrorState.service?mirrorNames[mirrorState.service.engine]+' · '+(mirrorState.service.kind==='reserve'?'резерв':'аварийный режим'):'Самостоятельные профили';putText(document.getElementById('mirrorPairSummary'),route);
+ }
+ function mirrorDetails(p){
+  const state=mirrorState.engines[mirrorEngine],other=mirrorNames[mirrorEngine==='claude'?'codex':'claude'];
+  const reserve=p.kind==='reserve'?'<div class="mirror-auto-settings"><label><input type="checkbox" data-mirror-setting="auto" '+(state.auto.enabled?'checked':'')+'> Автоматически, когда '+other+' недоступен</label><label><input type="checkbox" data-mirror-setting="emergency" '+(state.auto.emergency?'checked':'')+' '+(!state.auto.enabled?'disabled':'')+'> С аварийным доступом · срок 2 часа</label><small>'+(state.auto_blocked?'Выключен вручную. Автоматическое включение возобновится после восстановления другой стороны.':'Возврат к прежнему сценарию — после восстановления другой стороны.')+'</small><button type="button" data-mirror-action="agent-settings">Общие настройки агента</button></div>':'';
+  return '<div class="cxpinfo"><div class="mirror-flow">'+p.flow.map(x=>'<span>'+acctEsc(x)+'</span>').join('<i>→</i>')+'</div><p><b>Может:</b> '+acctEsc(p.can)+'</p><p><b>Не может:</b> '+acctEsc(p.cannot)+'</p><p><b>Когда выбрать:</b> '+acctEsc(p.when)+'</p>'+reserve+'</div>';
+ }
+ function paintMirrorPalette(){
+  if(!mirrorState)return;mirrorTheme();const scroll=profileBody.scrollTop,state=mirrorState.engines[mirrorEngine],e=mirrorEngine,focus=document.activeElement,focusCard=focus?.closest('[data-profile-id]'),focusId=focusCard?.dataset.profileId,focusAction=focus?.dataset.mirrorAction,focusSetting=focus?.dataset.mirrorSetting;menu.dataset.compare=String(compareProfiles);
+  putText(paletteCurrent,'Сейчас: '+state.label);paletteCurrent.title=state.label;compareButton.setAttribute('aria-pressed',String(compareProfiles));putText(compareButton,compareProfiles?'Краткий вид':'Сравнить');
+  const normal=state.profiles.filter(p=>!['reserve','emergency'].includes(p.kind)).sort((a,b)=>Number(b.id===state.base_selected)-Number(a.id===state.base_selected));
+  const cards=normal.map(p=>{const selected=p.id===state.base_selected,expanded=compareProfiles||mirrorInfo[e].has(p.id),status=selected?(!['solo','leader'].includes(state.role)?'Базовый профиль':'Выбран'):(p.builtin?'Встроенный':'Свой профиль');return '<div class="cxprof fleet-profile-card'+(selected?' act':'')+'" role="radio" tabindex="0" aria-checked="'+selected+'" data-id="'+acctEsc(p.id)+'" data-profile-id="'+acctEsc(p.id)+'" data-kind="'+(p.kind==='orchestrator'?'team':'solo')+'" data-info-open="'+expanded+'"><div class="fleet-profile-card-head"><span class="cxpr" aria-hidden="true"></span><span class="fleet-profile-status">'+status+'</span>'+(p.builtin?'':'<button type="button" class="cxpx" data-mirror-action="delete" aria-label="Удалить профиль">×</button>')+'</div><span class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(p.title)+'</span></span><span class="cxps">'+acctEsc(p.description)+'</span><span class="fleet-profile-index" hidden>'+acctEsc(p.can+' '+p.cannot+' '+p.when+' '+(p.kind==='orchestrator'?'Оркестратор':''))+'</span><span class="fleet-profile-meta"><span>'+(p.kind==='orchestrator'?'Ведущий → исполнитель':'Самостоятельно')+'</span><span>'+({read:'С подтверждением шагов',write:'Рабочая папка',full:'Полный доступ'}[p.access]||'')+'</span></span>'+(expanded?mirrorDetails(p):'')+'</span><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected&&['solo','leader'].includes(state.role)?'Работает сейчас':'Выбрать →')+'</span><button type="button" class="cxpi fleet-profile-more" data-mirror-action="info" aria-expanded="'+expanded+'" '+(compareProfiles?'hidden':'')+'>Подробнее ⌄</button></div></div>'}).join('');
+  const services=state.profiles.filter(p=>['reserve','emergency'].includes(p.kind));
+  const serviceHtml=services.map(p=>{const active=state.role===p.kind,expanded=compareProfiles||mirrorInfo[e].has(p.id);return '<section class="mirror-service '+(p.kind==='emergency'?'cxemg':'cxprof rsv fleet-profile-service')+'" '+(p.kind==='reserve'?'data-auto="1"':'')+' data-profile-id="'+p.id+'"><div class="mirror-service-copy"><strong>'+acctEsc(p.title)+'</strong><div class="cxps">'+acctEsc(p.description)+'</div>'+(active?'<span class="mirror-service-state">Включён'+(mirrorState.service.source==='auto'?' автоматически':' вручную')+'</span>':'')+(active&&state.until?'<small>До отключения: '+new Date(state.until*1000).toLocaleTimeString('ru-RU')+'</small>':'')+(expanded?mirrorDetails(p):'')+'</div><div class="mirror-service-actions"><button type="button" data-mirror-action="'+(active?'stop':'apply')+'">'+(active?'Выключить':'Включить…')+'</button><button type="button" data-mirror-action="info" aria-expanded="'+expanded+'">Подробнее ⌄</button></div></section>'}).join('');
+  profileRoot.innerHTML='<div class="cxplist">'+cards+'</div><div class="fleet-profile-service-heading">Служебные режимы '+mirrorNames[e]+'</div>'+serviceHtml;
+  filterProfiles();repaintProfileResults();profileBody.scrollTop=scroll;paintMirrorWorkplace();if(!menu.hidden){cxMenuPlace();if(focusId){const card=profileRoot.querySelector('[data-profile-id="'+focusId+'"]'),target=focusAction?card?.querySelector('[data-mirror-action="'+focusAction+'"]'):focusSetting?card?.querySelector('[data-mirror-setting="'+focusSetting+'"]'):card;target?.focus({preventScroll:true})}}
+ }
+ function mirrorProfileClick(event){
+  const card=event.target.closest('[data-profile-id]');if(!card)return;event.stopImmediatePropagation();if(event.target.closest('.mirror-auto-settings label'))return;const action=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction,id=card.dataset.profileId;
+  if(action==='info'){mirrorInfo[mirrorEngine].has(id)?mirrorInfo[mirrorEngine].delete(id):mirrorInfo[mirrorEngine].add(id);cxpRender();return}
+  if(action==='agent-settings'){cxMenuClose();ntOpen();return}
+  if(action==='delete'){if(confirm('Удалить этот свой профиль?'))mirrorRequest(mirrorEngine,'delete',{id});return}
+  if(action==='stop'){mirrorStop(mirrorEngine);return}
+  if(action==='apply'||(!card.classList.contains('mirror-service')&&!event.target.closest('.cxpinfo')))mirrorApply(mirrorEngine,id);
+ }
+ async function mirrorRequest(engine,action,body,revision=mirrorState.revision){
+  if(mirrorBusy)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
+  try{const response=await fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...body,revision})}),result=await response.json();if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id||'reserve',result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Демо: выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
+ }
+ function mirrorApply(engine,id,confirmation=''){return mirrorRequest(engine,'apply',{id,confirm:confirmation})}
+ function mirrorStop(engine){if(mirrorState.service?.kind==='emergency'&&!confirm('Выключить аварийный режим '+mirrorNames[engine]+' и восстановить прежний сценарий?'))return;return mirrorRequest(engine,'stop',{})}
+ function mirrorConfirm(engine,id,word,action='apply',body={id},revision=mirrorState.revision){
+  const p=mirrorState.engines[engine].profiles.find(p=>p.id===id),impact=id==='reserve'?'Другая сторона будет на паузе. После выключения вернётся предыдущий сценарий.':id==='emergency'?'Другая сторона будет на паузе. Аварийный доступ действует не более двух часов.':'Самостоятельный профиль завершит текущую связку, если она включена.';acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(p.title)+(action==='config'?' · автоматически':'')+'</h3><p>'+impact+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы подтвердить изменение сценария для '+mirrorNames[engine]+'.</p><input id="mirrorConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="mirrorConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="mirrorConfirmApply" disabled>Применить</button></div></div>');
+  const input=document.getElementById('mirrorConfirmWord'),apply=document.getElementById('mirrorConfirmApply');input.addEventListener('input',()=>apply.disabled=input.value.trim().toLocaleLowerCase('ru')!==word);input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!apply.disabled)apply.click()});document.getElementById('mirrorConfirmCancel').onclick=()=>{acctClose();mirrorButtons[engine].focus()};apply.onclick=()=>{const text=input.value;acctClose();mirrorRequest(engine,action,{...body,confirm:text},revision)};setTimeout(()=>input.focus(),30);
+ }
+ mirrorLoad();
 
  loadRotation();setInterval(()=>{if(!document.hidden)loadRotation()},5000);
 })();
