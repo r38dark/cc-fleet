@@ -431,9 +431,10 @@ JS = r'''
  const form=el('form','fleet-composer');form.id='fleetConsoleForm';
  form.innerHTML='<textarea id="fleetInput" rows="1" aria-label="Сообщение или команда в выбранную консоль" placeholder="Сообщение или команда… Enter — отправить, Shift+Enter — новая строка"></textarea><button type="button" class="fleet-key" data-console-key="escape" title="Esc в консоль">Esc</button><button type="submit" id="fleetSend">Отправить ↑</button>';
  const inputStatus=el('div','fleet-input-status');inputStatus.innerHTML='<span id="fleetInputState">Ввод в выбранную консоль</span><span>Claude / Codex · действующая сессия</span>';term.append(form,inputStatus);
- const menu=document.getElementById('cxMenu');const search=el('input','fleet-profile-search');search.placeholder='Найти профиль…';search.setAttribute('aria-label','Поиск профилей');
+ const menu=document.getElementById('cxMenu');const search=el('input','fleet-profile-search');search.placeholder='Найти профиль…';search.setAttribute('aria-label','Поиск профилей');search.type='search';search.name='profile-filter';search.autocomplete='off';search.spellcheck=false;search.setAttribute('autocapitalize','none');search.setAttribute('autocorrect','off');search.enterKeyHint='search';
+ let profileQuery='';
  const note=el('p','fleet-profile-note','Профиль определяет права и способ работы. Аккаунт определяет подписку и лимиты. Активный профиль отмечен галочкой.');menu.prepend(search,note);
- function filterProfiles(){const q=search.value.trim().toLocaleLowerCase('ru');menu.querySelectorAll('.cxprof').forEach(n=>n.hidden=!!q&&!n.textContent.toLocaleLowerCase('ru').includes(q))}
+ function filterProfiles(){if(search.value!==profileQuery)search.value=profileQuery;const q=profileQuery.trim().toLocaleLowerCase('ru');menu.querySelectorAll('.cxprof').forEach(n=>n.hidden=!!q&&!n.textContent.toLocaleLowerCase('ru').includes(q))}
  search.addEventListener('input',filterProfiles);new MutationObserver(filterProfiles).observe(document.getElementById('cxp'),{childList:true});
  const cxOptions=el('div','fleet-cx-options');cxOptions.innerHTML='<div class="modalh">Codex · пороги оптимизации</div><label>Сессия, % <input id="fleetCxThreshold" type="number" min="50" max="100" value="90"></label><label>Неделя, % <input id="fleetCxCap" type="number" min="50" max="100" value="99"></label><button type="button" id="fleetCxSave">Сохранить пороги Codex</button>';
  document.getElementById('autoNote').after(cxOptions);
@@ -682,16 +683,16 @@ JS = r'''
  const paletteHeader=el('div','fleet-palette-header'),paletteHeading=el('div','fleet-palette-heading');paletteHeading.append(el('span','fleet-eyebrow','РЕЖИМ РАБОТЫ'),el('h2','','Выбор профиля'));
  const paletteCurrent=el('span','fleet-palette-current'),paletteClose=el('button','hdrgear fleet-palette-close');paletteClose.id='fleetProfileClose';paletteClose.type='button';paletteClose.title='Закрыть';paletteClose.setAttribute('aria-label','Закрыть профили');paletteClose.innerHTML=document.getElementById('cxPopX').innerHTML;paletteClose.addEventListener('click',()=>{cxMenuClose();document.getElementById('cxBtn').focus()});paletteHeader.append(paletteHeading,paletteCurrent,paletteClose);
  const paletteTools=el('div','fleet-palette-tools');search.placeholder='Найти по названию или возможностям…';
- const searchWrap=el('label','fleet-palette-search');searchWrap.append(search);const compareButton=el('button','fleet-profile-compare','Сравнить');compareButton.id='fleetProfileCompare';compareButton.type='button';compareButton.setAttribute('aria-pressed','false');compareButton.title='Показать состав и возможности всех профилей';paletteTools.append(searchWrap,compareButton);
+ const searchWrap=el('form','fleet-palette-search');searchWrap.setAttribute('role','search');searchWrap.autocomplete='off';searchWrap.append(search);searchWrap.addEventListener('submit',event=>{event.preventDefault();filterProfiles();repaintProfileResults()});const compareButton=el('button','fleet-profile-compare','Сравнить');compareButton.id='fleetProfileCompare';compareButton.type='button';compareButton.setAttribute('aria-pressed','false');compareButton.title='Показать состав и возможности всех профилей';paletteTools.append(searchWrap,compareButton);
  const paletteFooter=el('div','fleet-palette-footer'),paletteCount=el('span','fleet-palette-count');paletteCount.setAttribute('role','status');const paletteHelp=el('span','fleet-palette-help','Enter — выбрать · Esc — закрыть');paletteFooter.append(paletteCount,paletteHelp);
  note.remove();menu.replaceChildren(paletteHeader,paletteTools,profileBody,paletteFooter);
- const paletteEmpty=el('div','fleet-profile-empty');paletteEmpty.hidden=true;paletteEmpty.append(el('strong','','Профили не найдены'),el('span','','Попробуй другое название или возможность.'));const clearSearch=el('button','','Очистить поиск');clearSearch.type='button';clearSearch.addEventListener('click',()=>{search.value='';filterProfiles();repaintProfileResults();search.focus()});paletteEmpty.append(clearSearch);profileBody.append(paletteEmpty);
+ const paletteEmpty=el('div','fleet-profile-empty');paletteEmpty.hidden=true;paletteEmpty.append(el('strong','','Профили не найдены'),el('span','','Попробуй другое название или возможность.'));const clearSearch=el('button','','Очистить поиск');clearSearch.type='button';clearSearch.addEventListener('click',()=>{resetProfileSearch();search.focus()});paletteEmpty.append(clearSearch);profileBody.append(paletteEmpty);
  let compareProfiles=false,normalProfileInfo=new Set();
  const profileCopy={orchestrator:'Codex ведёт задачу. Claude выполняет шаги после твоего подтверждения.',codex:'Самостоятельная работа в своей папке. Проект доступен для чтения.',codex_solo_full:'Работает самостоятельно с полной песочницей Codex и правами пользователя ОС.'};
  function repaintProfileResults(){
   const nodes=Array.from(profileRoot.querySelectorAll('.cxprof:not([data-auto])')),visible=nodes.filter(node=>!node.hidden).length;
   const services=profileRoot.querySelectorAll('.cxprof[data-auto],.cxemg').length;
-  putText(paletteCount,(search.value.trim()?'Найдено: '+visible+' из '+nodes.length:nodes.length+' '+(nodes.length===1?'профиль':nodes.length>1&&nodes.length<5?'профиля':'профилей'))+(services?' · служебных режимов: '+services:''));
+  putText(paletteCount,(profileQuery.trim()?'Найдено: '+visible+' из '+nodes.length:nodes.length+' '+(nodes.length===1?'профиль':nodes.length>1&&nodes.length<5?'профиля':'профилей'))+(services?' · служебных режимов: '+services:''));
   paletteEmpty.hidden=visible>0||!!profileRoot.querySelector('.cxprof[data-auto]:not([hidden])');
  }
  function decorateProfilePalette(){
@@ -729,9 +730,22 @@ JS = r'''
   else for(const profile of cxbData?.bridge?.profiles||[])normalProfileInfo.has(profile.id)?CXP_INFO.add(profile.id):CXP_INFO.delete(profile.id);
   cxpRender();
  });
+ // Автозаполнение браузера не считается запросом пользователя.
+ let profileSearchEdited=false;
+ function profileSearchAutofilled(){try{return search.matches(':autofill')||search.matches(':-webkit-autofill')}catch(_){return false}}
+ search.addEventListener('keydown',event=>{if(event.isTrusted&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&(event.key.length===1||['Backspace','Delete'].includes(event.key)))profileSearchEdited=true});
+ for(const kind of ['paste','cut','drop','compositionstart'])search.addEventListener(kind,event=>{if(event.isTrusted)profileSearchEdited=true});
+ search.addEventListener('input',event=>{
+  const deliberate=profileSearchEdited||(event.isTrusted&&!profileSearchAutofilled()&&event.inputType!=='insertReplacementText');
+  if(!search.value||deliberate)profileQuery=search.value;
+  else search.value=profileQuery;
+  profileSearchEdited=false;
+ },true);
+ function resetProfileSearch(){profileQuery='';search.value='';profileSearchEdited=false;filterProfiles();repaintProfileResults()}
+
  search.addEventListener('input',repaintProfileResults);
  search.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();profileRoot.querySelector('.cxprof:not([data-auto]):not([hidden])')?.focus()}});
- new MutationObserver(()=>{if(!menu.hidden){if(!search.value.trim())profileBody.scrollTop=0;if(matchMedia('(pointer:fine)').matches)search.focus({preventScroll:true})}else if(document.activeElement?.closest('#cxMenu'))document.getElementById('cxBtn').focus()}).observe(menu,{attributes:true,attributeFilter:['hidden']});
+ new MutationObserver(()=>{if(!menu.hidden){resetProfileSearch();profileBody.scrollTop=0;if(matchMedia('(pointer:fine)').matches)profileRoot.querySelector('.cxprof.act:not([data-auto])')?.focus({preventScroll:true})}else if(document.activeElement?.closest('#cxMenu'))document.getElementById('cxBtn').focus()}).observe(menu,{attributes:true,attributeFilter:['hidden']});
  profileRoot.addEventListener('keydown',event=>{
   if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)||!event.target.matches('.cxprof:not([data-auto])'))return;
   const visible=Array.from(profileRoot.querySelectorAll('.cxprof:not([data-auto]):not([hidden])')),index=visible.indexOf(event.target);if(index<0)return;
