@@ -15,3 +15,7 @@ Deployment waits for the current bridge response and native turn to finish. It c
 ## Reference styling restoration (3 November 2026)
 
 Restored the approved first Overview palette, header, console tabs, account cards and quota bars. Additional account controls live in a native details menu; original DOM IDs and handlers are retained. Only cc_overview.py changes at runtime; account, model, profile and console backend modules are unchanged. Browser comparisons against the prior isolated UI confirmed the original controls, both optimization settings, selected-console input, profile/model controls, full-screen mode, menu state retention and 390–1920px layouts with no JavaScript errors or live API calls.
+
+## Mobile account visibility repair (3 November 2026)
+
+Reproduced the live saved-console-only failure: zero visible account cards on a 390×664 mobile viewport. The mobile overview now shows both selected accounts after the console, retains the full scrolling list when enlarged, and expands existing account controls inline. Original handlers and backend modules remain intact. Touch emulation covered iPhone, Pixel, 320px and landscape; scrolling, hit tests, model controls, active-account changes, retained input drafts, profiles, five skins and desktop mode were checked. A read-only browser check with live GET data retained gpt-6.1-sol/xhigh and exposed both real account cards; no real console input or account mutation was performed.
