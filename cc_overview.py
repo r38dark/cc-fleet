@@ -223,6 +223,101 @@ html.conly .fleet-active-strip{display:none!important}
 @media(max-width:1100px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 78px 78px;gap:12px}.fleet-live-name{font-size:13px}}
 @media(max-width:740px){.fleet-live-rows{grid-template-columns:minmax(0,1fr);gap:7px}.fleet-live-account{grid-template-columns:minmax(0,1fr) 78px 78px;min-height:54px;padding:8px 11px}.fleet-live-head{gap:7px}.fleet-live-label{font-size:10px}.fleet-tools>summary{font-size:11px;padding-right:3px}.fleet-pause-summary{padding:5px 9px;gap:7px}.fleet-pause-summary .ccp-timer .l{display:none}.fleet-pause-content{padding-left:24px}.fleet-tools-panel{max-height:calc(100dvh - 240px)}}
 @media(max-width:380px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 62px 62px;gap:9px}.fleet-live-name{font-size:12px}.fleet-live-email{font-size:10px}.fleet-live-meter-label{font-size:10px}.fleet-live-meter-label b{font-size:12px}.fleet-live-label{max-width:180px;line-height:1.4}}
+
+/* Резерв остаётся на главной; управление относится к своей плитке провайдера. */
+html:root:root:not(.conly) .hdr{gap:14px!important}
+html:root:root:not(.conly) .hdr>.hdrl{order:0;flex:1;min-width:0}
+html:root:root:not(.conly) .hdr>.hdrctl{order:1;flex:0 1 auto!important;flex-basis:auto!important;gap:12px!important;min-width:0}
+html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0;gap:7px!important}
+.hdr #fleetGeneralGear,.hdr #rfBtn{width:32px;height:32px;padding:7px;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--fleet-muted)}
+.hdr #fleetGeneralGear svg,.hdr #rfBtn svg{width:16px;height:16px}
+.hdr #ntGrp{flex:none;margin:0;border:1px solid var(--fleet-line);border-radius:7px;overflow:hidden;background:transparent;box-shadow:none}
+.hdr #ntGrp.res{border-color:var(--fleet-accent);background:var(--fleet-accent-soft)}
+.hdr #ntGrp .hdrgear{height:32px;min-height:0;border:0;border-radius:0;background:transparent;box-shadow:none;margin:0;font-size:12px}
+.hdr #ntInd{width:29px;padding:6px;gap:3px}.hdr #ntInd svg{width:15px;height:15px}.hdr #ntInd .cxdot{width:5px;height:5px}
+.hdr #ntBtn{padding:6px 7px;gap:7px}.hdr #ntGear{width:29px;padding:7px;border-left:1px solid var(--fleet-line)!important}.hdr #ntGear svg{width:15px;height:15px}
+.fleet-live-head{min-height:18px;margin-bottom:6px}
+.fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(175px,210px) 90px 90px;grid-template-areas:"identity controls session week";gap:14px;cursor:default}
+.fleet-live-identity{grid-area:identity;display:block;color:inherit;text-decoration:none;min-width:0;border-radius:4px}
+.fleet-live-identity:focus-visible{outline:2px solid var(--live-accent);outline-offset:3px}
+.fleet-live-identity:hover .fleet-live-name{color:var(--live-accent)}
+.fleet-live-meter[data-window="session"]{grid-area:session}.fleet-live-meter[data-window="week"]{grid-area:week}
+.fleet-provider-controls{grid-area:controls;display:flex;align-items:center;gap:6px;min-width:0}
+.fleet-provider-controls .hdrgear{height:34px;min-height:0;max-height:34px;margin:0;box-shadow:none;background:var(--bg);border:1px solid var(--fleet-line);border-radius:7px;color:var(--txt);font-size:12px;display:flex;align-items:center;gap:6px;padding:7px 9px;-webkit-tap-highlight-color:transparent}
+.fleet-provider-controls .hdrgear:hover{border-color:var(--fleet-muted)}
+.fleet-provider-controls .hdrgear:focus-visible{outline:2px solid var(--live-accent);outline-offset:2px}
+.fleet-provider-controls .hdrgear svg{width:14px;height:14px;flex:none}
+.fleet-provider-controls .fleet-model-tile{flex:1;min-width:0;width:auto;max-width:100%;font-weight:550}
+.fleet-provider-controls .fleet-model-tile::after{content:"⌄";color:var(--fleet-muted);margin-left:auto;font-size:12px;line-height:1;flex:none}
+.fleet-provider-controls .cxmodn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;min-width:0}
+.fleet-provider-controls .cxmode{font-size:11px;font-weight:500;color:var(--live-accent);flex:none}
+.fleet-provider-controls .fleet-provider-gear{width:34px;flex:none;padding:9px;justify-content:center}
+.fleet-native-controls[hidden]{display:none!important}
+/* Быстрый выбор и полные настройки используют общую геометрию и компоненты. */
+.fleet-quick-panel{box-sizing:border-box;border:1px solid var(--fleet-line);border-radius:11px;background:var(--card);color:var(--txt);box-shadow:0 18px 50px #0006;z-index:52;overflow:hidden}
+.fleet-quick-panel .cxpbody{padding:6px 14px 14px}
+.fleet-quick-panel .cxqh{font-size:12px;font-weight:500;color:var(--fleet-muted);margin:13px 0 9px}
+.fleet-quick-panel .cxqlist{display:grid;gap:6px}
+.fleet-quick-panel .cxqm{width:100%;display:flex;align-items:center;gap:9px;padding:10px 12px;font-size:13px;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--txt);text-align:left;margin:0;box-shadow:none}
+.fleet-quick-panel .cxqm.on{border-color:var(--fleet-accent);background:var(--fleet-accent-soft)}
+.fleet-quick-panel .cxqm .cxqr{width:13px;height:13px;border-radius:50%;border:1px solid var(--fleet-muted);flex:none}
+.fleet-quick-panel .cxqm.on .cxqr{border:4px solid var(--fleet-accent);background:var(--bg)}
+.fleet-quick-panel .cxqeff{display:flex;gap:6px;flex-wrap:wrap}
+.fleet-quick-panel .cxqe{margin:0;padding:7px 10px;font-size:12px;border:1px solid var(--fleet-line);border-radius:6px;color:var(--fleet-muted);background:transparent;box-shadow:none}
+.fleet-quick-panel .cxqe.on{border-color:var(--fleet-accent);background:var(--fleet-accent-soft);color:var(--txt)}
+.fleet-quick-panel button:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
+.fleet-settings-backdrop{position:fixed;inset:0;background:#06080c99;z-index:50}
+.fleet-settings-backdrop[hidden]{display:none}
+#scrim.fleet-settings-scrim{background:#06080c99;z-index:50}
+.fleet-settings-panel{box-sizing:border-box;position:fixed;display:flex;flex-direction:column;width:min(580px,calc(100vw - 24px));max-width:calc(100vw - 24px);margin:0;padding:0;border:1px solid var(--fleet-line);border-radius:12px;background:var(--card);color:var(--txt);box-shadow:0 20px 60px #0006;overflow:hidden;z-index:51}
+.fleet-settings-panel[hidden]{display:none}
+.fleet-settings-panel .cxphead{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--fleet-line);min-height:58px;flex:none}
+.fleet-settings-panel .cxphead h3,.fleet-settings-panel .cxphead b{font-size:15px;line-height:1.4;font-weight:600;margin:0;color:var(--txt)}
+.fleet-settings-panel .cxphead h3{flex:1}
+#cxPopTitle::before{content:"Настройки "}
+.fleet-settings-panel .cxphead .hdrgear{display:grid;place-items:center;width:30px;height:30px;padding:7px;margin:0;border:1px solid var(--fleet-line);border-radius:6px;background:transparent;color:var(--fleet-muted);box-shadow:none;flex:none}
+.fleet-settings-panel .cxphead .hdrgear svg{width:14px;height:14px}
+.fleet-settings-panel>.cxpbody{padding:16px;overflow:auto;min-height:0;overscroll-behavior:contain}
+.fleet-settings-group,.fleet-settings-panel .cxacc{border:1px solid var(--fleet-line);border-radius:9px;background:transparent;padding:14px;margin:0 0 12px}
+.fleet-settings-panel .modalh,.fleet-settings-group-title{display:block;margin:0 0 12px;font-size:12px;font-weight:550;color:var(--txt);line-height:1.5;text-transform:none;letter-spacing:0}
+.fleet-settings-panel .modalsub,.fleet-settings-panel .cxsub{font-size:12px;line-height:1.55;color:var(--fleet-muted)}
+.fleet-settings-panel .cxacch{padding:0;margin:0;min-height:28px;font-size:12px;font-weight:550;color:var(--txt);background:transparent;box-shadow:none;border:0;border-radius:0;width:100%}
+.fleet-settings-panel .cxsec:not([hidden]){margin-top:12px}
+.fleet-settings-panel button:not(.cxacch):not(.skopt){box-shadow:none;font-size:12px;font-weight:500;border-radius:6px;padding:8px 10px;border:1px solid var(--fleet-line);background:transparent;color:var(--txt);line-height:1.4}
+.fleet-settings-panel button.btn-del:not(.cxacch):not(.skopt){color:var(--bad);border-color:color-mix(in srgb,var(--bad),var(--fleet-line) 60%)}
+.fleet-settings-panel button:disabled{opacity:.5}
+.fleet-settings-panel input:not([type="checkbox"]),.fleet-settings-panel select{font-size:13px;border:1px solid var(--fleet-line);border-radius:6px;background:var(--bg);color:var(--txt);min-height:34px;padding:7px 9px}
+.fleet-settings-panel input[type="checkbox"]{accent-color:var(--fleet-accent)}
+.fleet-settings-panel .fleet-cx-options>.modalh{display:none}
+.fleet-settings-panel .fleet-cx-options{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.fleet-settings-panel .fleet-cx-options label{display:flex;align-items:center;gap:7px;font-size:12px;margin:0}
+.fleet-settings-panel .fleet-cx-options input{width:68px}
+.fleet-settings-panel .fleet-cx-options button{flex-basis:100%;margin:0}
+.fleet-settings-panel .modalfoot{gap:8px;margin-top:12px;display:flex;justify-content:flex-end}
+.fleet-settings-panel #modalDone{margin:0!important}
+.fleet-common-settings>summary{list-style:none;cursor:pointer;font-size:12px;font-weight:550;padding:12px 2px;margin:0;color:var(--fleet-muted)}
+.fleet-common-settings>summary::-webkit-details-marker{display:none}
+.fleet-common-settings>summary::after{content:"⌄";margin-left:8px}
+#scrim[data-view="general"] .fleet-claude-group,#scrim[data-view="general"] .fleet-common-settings>summary{display:none}
+#scrim[data-view="general"] .fleet-common-settings{display:contents}
+@media(max-width:1250px){.fleet-live-account{grid-template-columns:minmax(90px,1fr) minmax(145px,190px) 72px 72px;gap:10px;padding-left:11px;padding-right:11px}}
+@media(max-width:1000px){.fleet-live-rows{grid-template-columns:minmax(0,1fr)}.fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(175px,210px) 90px 90px}}
+@media(max-width:640px){
+ html:root:root:not(.conly) .hdr>.hdrctl{order:3;flex:1 1 100%!important;flex-basis:100%!important;width:100%;gap:6px!important;justify-content:space-between!important}
+ html:root:root:not(.conly) .hdr>.hdrbtns{order:2}
+ .hdr .cxgrp{flex:1;min-width:0;max-width:calc(100% - 160px)}.hdr .cxbtn{max-width:100%;min-width:0;padding-left:2px;padding-right:2px;gap:4px}
+ .hdr .cxbtnname{min-width:0;max-width:100%!important;font-size:12px!important;overflow:hidden;text-overflow:ellipsis}
+ .hdr #ntGrp{max-width:156px}.hdr #ntBtn{font-size:11px;gap:6px;padding:6px}
+ .hdr #ntInd{width:25px}.hdr #ntGear{width:27px}.hdr #fleetGeneralGear,.hdr #rfBtn{width:29px;height:29px;padding:6px}
+ .fleet-live-account{grid-template-columns:minmax(0,1fr) 72px 72px;grid-template-areas:"identity session week" "controls session week";gap:4px 12px;min-height:70px;padding:8px 11px}
+ .fleet-live-email{display:none}.fleet-live-name{font-size:13px;line-height:1.3}
+ .fleet-provider-controls{gap:5px;max-width:230px}
+ .fleet-provider-controls .hdrgear{height:27px;max-height:27px;padding:5px 7px;border-radius:5px;gap:4px}
+ .fleet-provider-controls .hdrgear svg{width:12px;height:12px}.fleet-provider-controls .fleet-provider-gear{width:27px;padding:7px}
+ .fleet-provider-controls .cxmodn{font-size:11px}.fleet-provider-controls .cxmode{font-size:10px}
+ .fleet-settings-panel .cxphead{padding:12px;min-height:52px}.fleet-settings-panel>.cxpbody{padding:12px}
+}
+@media(max-width:380px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 60px 60px;gap:4px 9px}.fleet-live-name{font-size:12px}.fleet-provider-controls .fleet-model-tile>svg{display:none}.fleet-provider-controls .hdrgear{padding-left:6px;padding-right:6px}.fleet-provider-controls .cxmode{font-size:10px}}
 '''
 
 JS = r'''
@@ -324,32 +419,95 @@ JS = r'''
   else if(session?.pct==null&&week?.pct==null){text='Нет данных';caption='Ожидаем данные лимитов'}
   const state=card.querySelector('.fleet-card-state');state.className='fleet-card-state'+(tone?' '+tone:'');putText(state,text);putText(card.querySelector('.fleet-card-caption'),caption);
  }
- // Короткая сводка использует уже загруженные лимиты; отдельного опроса нет.
+ // Сводка, модель и настройки каждого провайдера собраны в одну плитку.
  const liveStrip=el('section','fleet-active-strip');liveStrip.id='fleetActiveAccounts';liveStrip.setAttribute('aria-label','Активные аккаунты и использованные лимиты');
  const liveHead=el('div','fleet-live-head');liveHead.append(el('span','fleet-live-label','Активные аккаунты · использовано лимита'));
- const tools=el('details','fleet-tools');tools.id='fleetTools';
- const toolsSummary=el('summary','','Управление');toolsSummary.setAttribute('aria-controls','fleetToolsPanel');
- const toolsPanel=el('div','fleet-tools-panel');toolsPanel.id='fleetToolsPanel';
- const codexTools=el('div','fleet-tools-block');codexTools.append(el('span','fleet-tools-label','Codex · модель и настройки'));
- const codexToolsRow=el('div','fleet-tools-row');codexToolsRow.append(document.getElementById('cxMod'),document.getElementById('cxGear'));codexTools.append(codexToolsRow);
- const claudeTools=el('div','fleet-tools-block');claudeTools.append(el('span','fleet-tools-label','Claude · модель и рассуждения'),models);
- const pageTools=el('div','fleet-tools-block fleet-tools-row');pageTools.append(document.getElementById('rfBtn'),document.getElementById('gear'));
- const extraTools=el('div','fleet-tools-block fleet-tools-row');extraTools.append(document.getElementById('ntGrp'),document.getElementById('cxInst'));
- toolsPanel.append(codexTools,claudeTools,pageTools,extraTools);tools.append(toolsSummary,toolsPanel);liveHead.append(tools);
  const liveRows=el('div','fleet-live-rows');liveStrip.append(liveHead,liveRows);term.before(liveStrip);
+ const reserve=document.getElementById('ntGrp');hdr.querySelector('.hdrctl').append(reserve,document.getElementById('cxInst'));
+ const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
+ const generalGear=el('button','hdrgear fleet-header-icon');generalGear.id='fleetGeneralGear';generalGear.type='button';generalGear.innerHTML=gear.innerHTML;generalGear.title='Общие настройки';generalGear.setAttribute('aria-label','Общие настройки');
+ headerButtons.replaceChildren(document.getElementById('rfBtn'),generalGear);hdr.append(headerButtons);
+ const claudeModel=el('button','hdrgear cxmodbtn fleet-model-tile');claudeModel.id='fleetClaudeModel';claudeModel.type='button';claudeModel.setAttribute('aria-haspopup','dialog');claudeModel.setAttribute('aria-expanded','false');
+ claudeModel.append(codexModel.querySelector('svg').cloneNode(true),el('span','cxmodn','Модель Claude'),el('span','cxmode'));
+ const claudeQ=el('div','cxpop cxquick fleet-quick-panel');claudeQ.id='fleetClaudeQ';claudeQ.setAttribute('role','dialog');claudeQ.setAttribute('aria-label','Модель и рассуждения Claude');claudeQ.hidden=true;
+ const claudeQBody=el('div','cxpbody');claudeQBody.id='fleetClaudeQBody';const nativeModelControls=el('div','fleet-native-controls');nativeModelControls.hidden=true;nativeModelControls.append(models);claudeQ.append(claudeQBody,nativeModelControls);document.body.append(claudeQ);
  const liveNodes={},liveSnapshots=new Map();
  for(const engine of ['claude','codex']){
-  const link=el('a','fleet-live-account '+engine);link.href=engine==='claude'?'#fleetClaude':'#fleetCodex';link.dataset.engine=engine;
-  const identity=el('div','fleet-live-identity');identity.append(el('strong','fleet-live-name'),el('span','fleet-live-email'));
-  link.append(identity);
+  const tile=el('article','fleet-live-account '+engine);tile.dataset.engine=engine;
+  const identity=el('a','fleet-live-identity');identity.href=engine==='claude'?'#fleetClaude':'#fleetCodex';identity.append(el('strong','fleet-live-name'),el('span','fleet-live-email'));tile.append(identity);
+  const controls=el('div','fleet-provider-controls');controls.append(engine==='claude'?claudeModel:codexModel,engine==='claude'?gear:codexGear);
+  for(const button of controls.children)button.classList.add(button.classList.contains('cxmodbtn')?'fleet-model-tile':'fleet-provider-gear');tile.append(controls);
   for(const kind of ['session','week']){
    const meter=el('div','fleet-live-meter');meter.dataset.window=kind;
    const caption=el('div','fleet-live-meter-label');caption.append(el('span','',kind==='session'?'5 часов':'Неделя'),el('b','','—'));
-   const track=el('span','fleet-live-track');track.setAttribute('aria-hidden','true');track.append(el('span','fleet-live-fill'));meter.append(caption,track);link.append(meter);
+   const track=el('span','fleet-live-track');track.setAttribute('aria-hidden','true');track.append(el('span','fleet-live-fill'));meter.append(caption,track);tile.append(meter);
   }
-  link.addEventListener('click',event=>{event.preventDefault();const selected=engine==='claude'?document.querySelector('#cards .card.active'):document.querySelector('#cxcards .card.fleet-active');(selected||document.querySelector(link.getAttribute('href')))?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'})});
-  liveRows.append(link);liveNodes[engine]=link;
+  identity.addEventListener('click',event=>{event.preventDefault();const selected=engine==='claude'?document.querySelector('#cards .card.active'):document.querySelector('#cxcards .card.fleet-active');(selected||document.querySelector(identity.getAttribute('href')))?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'})});
+  liveRows.append(tile);liveNodes[engine]=tile;
  }
+ function placePanel(panel,anchor,width){
+  const r=anchor.getBoundingClientRect(),w=Math.min(width,innerWidth-24),top=Math.min(r.bottom+8,Math.max(12,innerHeight-240));
+  panel.style.width=w+'px';panel.style.top=Math.round(top)+'px';panel.style.left=Math.max(12,Math.min(Math.round(r.right-w),innerWidth-w-12))+'px';panel.style.right='auto';panel.style.bottom='auto';panel.style.maxHeight=Math.max(120,innerHeight-top-12)+'px';
+ }
+ function closeClaudeQ(){claudeQ.hidden=true;claudeModel.setAttribute('aria-expanded','false')}
+ function paintClaudeModel(m){
+  if(!m)return;
+  const name=m.session_name||m.default_name||m.session||m.default||'Модель Claude',effort=efPending||m.effort||m.effort_default||'';
+  putText(claudeModel.querySelector('.cxmodn'),name);putText(claudeModel.querySelector('.cxmode'),effort);claudeModel.title='Модель Claude: '+name+(effort?' · '+effort:'');claudeModel.setAttribute('aria-label',claudeModel.title);
+  gear.title='Настройки Claude';gear.setAttribute('aria-label','Настройки Claude');
+  if(claudeQ.hidden)return;
+  claudeQBody.replaceChildren(el('div','cxqh','Модель Claude'));
+  const list=el('div','cxqlist');list.setAttribute('role','radiogroup');list.setAttribute('aria-label','Модель Claude');
+  for(const model of (m.available||[]).filter(model=>model.enabled)){
+   const on=model.id===(m.default||m.session),button=el('button','cxqm'+(on?' on':''));button.type='button';button.setAttribute('role','radio');button.setAttribute('aria-checked',String(on));button.dataset.model=model.id;button.append(el('i','cxqr'),el('span','',model.name));
+   button.addEventListener('click',()=>{if(!on)pickModel(model.id)});list.append(button);
+  }
+  claudeQBody.append(list,el('div','cxqh','Уровень рассуждений'));
+  const choices=el('div','cxqeff'),supported=Array.isArray(m.effort_supported)?m.effort_supported:null;
+  for(const level of EF.filter(level=>!supported||supported.includes(level))){
+   const button=el('button','cxqe'+(level===effort?' on':''),level);button.type='button';button.dataset.effort=level;button.setAttribute('role','radio');button.setAttribute('aria-checked',String(level===effort));button.disabled=!!efPending;
+   button.addEventListener('click',()=>{if(level===effort){closeClaudeQ();return}if(!confirm(tr('confirmEffort',level)))return;setEffort(level);closeClaudeQ()});choices.append(button);
+  }
+  if(!choices.children.length)choices.append(el('span','cxsub','Недоступно для этой модели'));
+  choices.setAttribute('role','radiogroup');choices.setAttribute('aria-label','Уровень рассуждений Claude');claudeQBody.append(choices);
+ }
+ const nativeModelRender=renderModel;renderModel=function(m){nativeModelRender(m);paintClaudeModel(m)};
+ claudeModel.addEventListener('click',()=>{if(!claudeQ.hidden){closeClaudeQ();return}cxQClose();cxPopClose();cxMenuClose();ntClose();document.getElementById('scrim').hidden=true;claudeQ.hidden=false;claudeModel.setAttribute('aria-expanded','true');paintClaudeModel(lastModel);placePanel(claudeQ,claudeModel,330)});
+ codexModel.addEventListener('click',()=>{closeClaudeQ();document.getElementById('scrim').hidden=true});
+ cxQPlace=function(){placePanel(document.getElementById('cxQ'),codexModel,330)};
+ cxPopPlace=function(){placePanel(document.getElementById('cxPop'),codexGear,580)};
+ document.getElementById('cxQ').classList.add('fleet-quick-panel');document.getElementById('cxPop').classList.add('fleet-settings-panel');document.getElementById('ntPop').classList.add('fleet-settings-panel');for(const id of ['cxPop','ntPop'])document.getElementById(id).setAttribute('aria-modal','true');
+ // Нативные настройки Claude и общие разделы сохраняют все узлы и обработчики.
+ const scrim=document.getElementById('scrim'),modal=scrim.querySelector('.modal');scrim.classList.add('fleet-settings-scrim');modal.classList.add('fleet-settings-panel');modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-labelledby','modalTitle');
+ const claudeTitle=document.getElementById('modalTitle'),modalHeader=el('div','cxphead'),modalClose=el('button','hdrgear fleet-panel-close');modalClose.id='fleetClaudeSettingsClose';modalClose.type='button';modalClose.setAttribute('aria-label','Закрыть настройки');modalClose.innerHTML=document.getElementById('cxPopX').innerHTML;modalHeader.append(claudeTitle,modalClose);
+ const modalBody=el('div','cxpbody');while(modal.firstChild)modalBody.append(modal.firstChild);modal.replaceChildren(modalHeader,modalBody);
+ function group(label,nodes,cls){const section=el('section','fleet-settings-group '+(cls||''));if(label)section.append(el('div','fleet-settings-group-title',label));for(const node of nodes)if(node)section.append(node);return section}
+ const autoTitle=document.getElementById('autoHdr'),autoRow=document.getElementById('autoWrap').closest('.switchrow'),weekly=document.getElementById('wkPause').closest('label');
+ const autoGroup=group('',[autoTitle,autoRow,document.getElementById('autoNote'),weekly],'fleet-claude-group');
+ const modelGroup=group('',[document.getElementById('modelsHdr'),document.getElementById('modalSub'),document.getElementById('poolList'),document.getElementById('checkNew')],'fleet-claude-group');
+ const common=el('details','fleet-common-settings');common.append(el('summary','','Общие настройки'));
+ for(const [title,body] of [['skinTitle','skinGrid'],['updHdr','updBox'],['bkHdr','bkBox']])common.append(group('',[document.getElementById(title),document.getElementById(body)]));
+ modalBody.prepend(autoGroup,modelGroup,common);
+ const codexThresholds=group('Переключение и лимиты Codex',[cxOptions]);document.querySelector('#cxPop > .cxpbody').prepend(codexThresholds);
+ const backdrop=el('div','fleet-settings-backdrop');backdrop.id='fleetSettingsBackdrop';backdrop.hidden=true;document.body.append(backdrop);backdrop.addEventListener('click',()=>{cxPopClose();ntClose()});
+ function paintSettingsState(){
+  backdrop.hidden=document.getElementById('cxPop').hidden&&document.getElementById('ntPop').hidden;
+  gear.setAttribute('aria-expanded',String(!scrim.hidden&&scrim.dataset.view==='claude'));generalGear.setAttribute('aria-expanded',String(!scrim.hidden&&scrim.dataset.view==='general'));
+ }
+ new MutationObserver(paintSettingsState).observe(scrim,{attributes:true,attributeFilter:['hidden']});
+ for(const id of ['cxPop','ntPop'])new MutationObserver(paintSettingsState).observe(document.getElementById(id),{attributes:true,attributeFilter:['hidden']});
+ gear.setAttribute('aria-haspopup','dialog');
+ gear.addEventListener('click',()=>{cxPopClose();cxMenuClose();cxQClose();ntClose();closeClaudeQ();scrim.dataset.view='claude';putText(claudeTitle,'Настройки Claude');common.open=false;placePanel(modal,gear,580);paintSettingsState()});
+ generalGear.addEventListener('click',()=>{if(!scrim.hidden&&scrim.dataset.view==='general'){document.getElementById('modalDone').click();return}gear.click();scrim.dataset.view='general';putText(claudeTitle,'Общие настройки');common.open=true;placePanel(modal,generalGear,580);paintSettingsState()});
+ codexGear.addEventListener('click',()=>{scrim.hidden=true;closeClaudeQ()});
+ document.getElementById('ntGear').addEventListener('click',()=>{scrim.hidden=true;closeClaudeQ()});
+ modalClose.addEventListener('click',()=>{document.getElementById('modalDone').click();(scrim.dataset.view==='general'?generalGear:gear).focus()});
+ document.addEventListener('pointerdown',event=>{if(!event.target.closest('#fleetClaudeQ,#fleetClaudeModel'))closeClaudeQ()});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!claudeQ.hidden){closeClaudeQ();claudeModel.focus()}});
+ addEventListener('resize',()=>{if(!claudeQ.hidden)placePanel(claudeQ,claudeModel,330);if(!scrim.hidden)placePanel(modal,scrim.dataset.view==='general'?generalGear:gear,580)});
+ if(!scrim.hidden){scrim.dataset.view='general';putText(claudeTitle,'Общие настройки');common.open=true;placePanel(modal,generalGear,580);paintSettingsState()}
+ if(lastModel)paintClaudeModel(lastModel);
+
  function updateLiveAccount(engine,slot,account,pending){
   const node=liveNodes[engine],provider=engine==='claude'?'Claude':'Codex';
   const signature=JSON.stringify([slot,account,pending]);if(liveSnapshots.get(engine)===signature)return;liveSnapshots.set(engine,signature);
@@ -374,12 +532,8 @@ JS = r'''
   updateLiveAccount('claude',current?.[0]||d?.active,current?.[1],!d);
   const accounts=(typeof cxData!=='undefined'&&cxData?.accounts)||[],slot=rotationData?.active;
   updateLiveAccount('codex',slot,slot?accounts.find(a=>a.slot===slot):null,!rotationData||!!(typeof cxData!=='undefined'&&cxData?.loading));
-  codexTools.hidden=typeof cxAvail==='function'&&!cxAvail();
-  extraTools.hidden=!Array.from(extraTools.children).some(node=>!node.hidden);
+  codexGear.disabled=typeof cxAvail==='function'&&!cxAvail();
  }
- document.addEventListener('click',event=>{if(tools.open&&!tools.contains(event.target)&&!event.target.closest('.cxpop,#scrim,#acctScrim,#ntPop'))tools.open=false});
- document.addEventListener('keydown',event=>{if(event.key==='Escape'&&tools.open){tools.open=false;toolsSummary.focus()}});
- tools.addEventListener('toggle',()=>{if(!tools.open){cxQClose();cxPopClose()}});
 
  function refreshVisuals(snapshot){
   renderLiveAccounts(snapshot);
