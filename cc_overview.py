@@ -70,6 +70,61 @@ html:root:root .fleet-console-toolbar #cTabs .ctab.on{color:#ecf1f6!important}
 
 .fleet-console-toolbar .iconbtn{color:#8799ae!important;border-color:#2a3542!important;box-shadow:none!important}
 .fleet-card-panel.fleet-menu-above{top:auto;bottom:30px}
+
+/* Выбранный Обзор: полная ширина и более крупные элементы выбора аккаунтов. */
+html:root:root:not(.conly) body{width:100%;max-width:none;box-sizing:border-box;margin:0;padding-left:clamp(18px,1.5vw,32px);padding-right:clamp(18px,1.5vw,32px)}
+html:root:root .fleet-section .card{min-height:232px;padding:18px!important}
+.fleet-section .card .top{min-height:46px;margin-bottom:8px}
+.fleet-titleline{flex-wrap:wrap;gap:7px;row-gap:5px}
+.fleet-account-name{font-size:16px;font-weight:620}
+.fleet-section .card .email{font-size:14px;line-height:1.45;margin-top:4px}
+html:root:root .fleet-section .tag.plan,html:root:root .fleet-section .tag.free{font-size:11px;padding:2px 6px}
+.fleet-card-state{font-size:12px;line-height:1.4;padding:3px 6px;margin:5px 0 14px}
+.fleet-section .card>.row{margin-bottom:13px!important}
+.fleet-section .card>.row .lbl{font-size:13px;line-height:1.4;grid-template-columns:minmax(0,1fr) auto 138px;gap:9px;margin-bottom:5px}
+.fleet-section .card>.row .lbl b{font-size:14px}
+.fleet-section .card>.row .lbl>span:last-child{font-size:12px}
+.fleet-card-footer{gap:9px;min-height:34px;padding-top:10px;flex-wrap:wrap}
+.fleet-card-caption{font-size:12px;line-height:1.4;flex:1;min-width:0}
+.fleet-card-footer .btn-sw{font-size:13px!important;line-height:1.4;min-height:30px;padding:3px 0!important}
+.fleet-section-head{gap:12px;margin-bottom:13px}
+.fleet-section-head h2{font-size:17px}.fleet-count{font-size:12px}
+.fleet-section-head #addAcct,.fleet-section-head .fleet-add-codex{font-size:13px;min-height:34px;height:auto;padding:7px 10px}
+.fleet-group-footer,.fleet-group-note,.fleet-rotation-state{font-size:12px;line-height:1.5}
+.fleet-group-footer .switchrow::after{font-size:12px}
+.fleet-card-details{top:15px;right:15px}
+.fleet-card-details summary{width:30px;height:30px;font-size:23px}
+.fleet-card-panel{width:360px;min-width:270px;max-width:calc(100vw - 42px);padding:16px}
+.fleet-card-panel-title{font-size:14px;line-height:1.45;margin-bottom:12px}
+.fleet-card-panel .cxsel select{font-size:14px;min-height:40px;height:auto;padding:8px 10px}
+.fleet-card-panel .cxfast{font-size:14px;min-height:32px;gap:7px}
+.fleet-card-panel .acts button{font-size:13px;min-height:36px;padding:7px 9px;line-height:1.45}
+.fleet-card-panel .iconbtn{width:34px;height:34px}
+.fleet-card-panel.fleet-menu-above{bottom:36px}
+html:root:root .hdr .cxbtnname{font-size:14px;max-width:190px}
+html:root:root .hdr .cxmodn{font-size:14px;max-width:180px}
+html:root:root .hdr .cxmode{font-size:12px}
+.cxmenu .cxpnm{font-size:17px}.cxmenu .cxprof .cxps{font-size:14px;line-height:1.5;-webkit-line-clamp:4}
+.cxmenu .cxprof .cxpf{gap:5px}.cxmenu .cxpf>span{font-size:12px;line-height:1.45}
+.cxmenu .cxpinfo{font-size:14px;line-height:1.55}.cxmenu .cxw{font-size:12px}
+.fleet-profile-search{font-size:16px;min-height:42px}
+#cxbSlot{font-size:16px;min-height:42px}
+.fleet-demo-note{font-size:12px;line-height:1.55;background:var(--fleet-accent-soft);color:var(--txt);border:1px solid var(--fleet-line);border-radius:8px;padding:10px 12px;margin-bottom:16px}
+@media(max-width:1150px){.fleet-section .card>.row .lbl{grid-template-columns:minmax(0,1fr) auto 120px}.hdr .cxbtnname{max-width:155px!important}}
+@media(max-width:700px){
+ html:root:root:not(.conly) body{padding-left:12px;padding-right:12px}
+ .fleet-section-head{gap:8px}.fleet-section-head h2{font-size:16px}.fleet-count{font-size:11px}
+ html:root:root .fleet-section .card{padding:16px!important;min-height:250px}
+ .fleet-section .card .top{padding-right:25px}.fleet-section .card .email{font-size:14px}
+ .fleet-section .card>.row .lbl{grid-template-columns:minmax(0,1fr) auto;gap:3px 9px;font-size:13px}
+ .fleet-section .card>.row .lbl>span:last-child{grid-column:1/-1;white-space:normal;text-align:left;overflow:visible;text-overflow:clip;font-size:12px}
+ .fleet-card-panel{width:330px;max-width:calc(100vw - 48px);min-width:250px;padding:14px}
+ .fleet-card-panel .cxsel select{font-size:16px;min-height:44px}
+ .fleet-card-panel .acts button{font-size:13px;min-height:42px}
+ .fleet-card-footer .btn-sw{font-size:13px!important;min-height:36px;max-width:100%;white-space:normal;text-align:right}
+ .fleet-group-footer{gap:7px}.fleet-group-note{font-size:12px;max-width:100%}.fleet-rotation-state{font-size:12px;max-width:100%}
+ .fleet-card-details summary{width:34px;height:34px}.hdr .cxbtnname{font-size:13px!important;max-width:160px!important}.hdr .cxmodn{font-size:13px!important}
+}
 '''
 
 JS = r'''
@@ -116,7 +171,7 @@ JS = r'''
  const accLink=document.querySelector('#cxAccW>.cxacch');if(accLink)accLink.title='Аккаунты показаны на главной странице';
  document.getElementById('cxAccW').classList.add('open');
   // Только оформление: переносим существующие узлы, не заменяя обработчики действий.
- document.body.classList.add('fleet-reference');
+ document.body.classList.add('fleet-reference','fleet-wide');
  const openAccountMenus=new Map();
  const brand=document.getElementById('h1');
  brand.innerHTML='<span class="fleet-brand" aria-hidden="true">›_</span><span>cc<span class="fleet-brand-word">fleet</span><small class="fleet-brand-sub">БАЛАНСЕР АККАУНТОВ</small></span>';

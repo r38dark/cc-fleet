@@ -15,3 +15,7 @@ Deployment waits for the current bridge response and native turn to finish. It c
 ## Reference styling restoration (3 November 2026)
 
 Restored the approved first Overview palette, header, console tabs, account cards and quota bars. Additional account controls live in a native details menu; original DOM IDs and handlers are retained. Only cc_overview.py changes at runtime; account, model, profile and console backend modules are unchanged. Browser comparisons against the prior isolated UI confirmed the original controls, both optimization settings, selected-console input, profile/model controls, full-screen mode, menu state retention and 390–1920px layouts with no JavaScript errors or live API calls.
+
+## Selected preview: full width and readable account controls (3 November 2026)
+
+Preserved the selected reference layout, original action handlers and popup account menus. Removed the 1680px content cap; console and account groups use the browser width with small gutters. Account names are 16px, email 14px, and model/profile controls are larger. Browser verification compared original IDs and onclick handlers and exercised both provider switches, optimization, models, console input, settings, profiles, fullscreen and 320–2560px layouts. The isolated demo also supports test add/relogin/delete flows without OAuth or command execution and clearly identifies sample data. This presentation candidate is published to the protected preview only; production runtime files are unchanged.
