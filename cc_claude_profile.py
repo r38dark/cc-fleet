@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import time
 
@@ -115,7 +116,15 @@ class ClaudeProfile:
     def prepare(self, snapshot, policy, prompt):
         if not Path(snapshot['history']).is_file():raise ProfileError('claude_history_missing')
         if not Path(policy['cwd']).is_dir():Path(policy['cwd']).mkdir(parents=True, exist_ok=True)
-        return self.command(snapshot, policy, prompt)
+        argv=self.command(snapshot, policy, prompt);i=1
+        while i<len(argv) and (re.match(r'^[A-Za-z_][A-Za-z0-9_]*=',argv[i]) or argv[i] in ('env','/usr/bin/env')):i+=1
+        if i>=len(argv):raise ProfileError('claude_binary_missing')
+        program=argv[i]
+        if program=='claude' and self.ns.get('CLAUDE_BIN'):program=self.ns['CLAUDE_BIN']
+        resolved=program if os.path.isabs(program) and Path(program).is_file() else shutil.which(program)
+        if not resolved:raise ProfileError('claude_binary_missing')
+        argv[i]=resolved
+        return argv
 
     def apply(self, snapshot, policy, prompt):
         argv = self.prepare(snapshot, policy, prompt)
