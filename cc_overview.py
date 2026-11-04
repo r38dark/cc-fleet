@@ -493,6 +493,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 /* Mobile controls belong to the terminal surface, not to the provider tabs. */
 .fleet-console-viewport{display:contents}
 @media(max-width:640px),(max-width:1000px) and (pointer:coarse){
+ html:root:root #fleetActiveAccounts{display:none!important}
  html:root:root:not(.conly),html:root:root:not(.conly) body{height:auto!important;overflow-y:auto!important;overflow-x:clip}
  html:root:root .fleet-console-toolbar{min-height:40px;padding:0 10px;flex-wrap:nowrap;gap:0}
  html:root:root .fleet-console-toolbar #cTabs{min-height:40px;gap:16px;flex-wrap:nowrap}

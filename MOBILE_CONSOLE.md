@@ -7,6 +7,10 @@ transparent backgrounds and no frames. The controls reserve a small area above
 the terminal text, so they do not cover output or move with terminal history.
 The existing nodes and handlers are moved rather than replaced.
 
+The upper active-account summary is desktop only: its heading, percentages,
+expanded tiles and disclosure control are fully hidden in mobile layouts. The
+account list below the console remains accessible.
+
 Normal mobile navigation starts with the account page visible even if an old
 console-only preference was saved. The saved value is retained; desktop startup
 behavior is unchanged. The fullscreen button still enters and leaves console-only
