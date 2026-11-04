@@ -12,6 +12,7 @@ import glob, json, os, pwd, re, shutil, stat, subprocess, threading, time
 
 import cc_codex
 import cc_session
+import cc_codex_terminal
 
 BASE = "/opt/cc-limits"  # cc_limits подставляет свой каталог данных
 BIN = lambda: None  # cc_limits подставляет codex_bin
@@ -62,9 +63,11 @@ def _meta_path():
     return os.path.join(_dir(), "console.json")
 
 
-def _ctl(args, timeout=10):
+def _ctl(args, timeout=10, terminal=None):
     """screen от имени пользователя Codex (сокеты screen у каждого пользователя свои)."""
-    argv, env = cc_codex.wrap(["screen"] + list(args), cc_codex.PROFILES)
+    terminal = terminal or cc_codex_terminal.runtime(_meta(), BASE, _dir())
+    extra = {"SCREENDIR": terminal["screen_dir"]} if terminal["screen_dir"] else {}
+    argv, env = cc_codex.wrap([terminal["screen_bin"]] + list(args), cc_codex.PROFILES, extra)
     return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=timeout)
 
 
@@ -86,7 +89,8 @@ def _known_pid():
         with open(proc+'/cmdline', 'rb') as stream:
             if NAME.encode() not in stream.read().split(b'\0'):
                 return None
-        directory = os.environ.get('SCREENDIR') or '/run/screen/S-'+pw.pw_name
+        terminal = cc_codex_terminal.runtime(meta, BASE, _dir())
+        directory = terminal['screen_dir'] or '/run/screen/S-'+pw.pw_name
         socket = os.stat(os.path.join(directory, pid+'.'+NAME))
         if not stat.S_ISSOCK(socket.st_mode) or socket.st_uid != pw.pw_uid:
             return None
@@ -95,13 +99,13 @@ def _known_pid():
         return None
 
 
-def _pid():
+def _pid(terminal=None):
     """PID живой сессии cc-codex или None."""
-    known = _known_pid()
+    known = _known_pid() if terminal is None else None
     if known:
         return known
     try:
-        out = _ctl(["-ls"]).stdout
+        out = _ctl(["-ls"], terminal=terminal).stdout
     except Exception:
         return None
     for line in out.splitlines():
@@ -253,6 +257,11 @@ def start(lang="ru"):
         d, log = _dir(), _log()
         os.makedirs(d, exist_ok=True)
         cc_codex.own(d)
+        terminal = cc_codex_terminal.target(BASE, d)
+        if terminal["screen_dir"]:
+            os.makedirs(terminal["screen_dir"], mode=0o700, exist_ok=True)
+            os.chmod(terminal["screen_dir"], 0o700)
+            cc_codex.own(terminal["screen_dir"])
         if os.path.exists(log):
             os.replace(log, log + ".prev")
         open(log, "w").close()
@@ -264,6 +273,8 @@ def start(lang="ru"):
         with open(rc, "w") as f:
             f.write("logfile flush 1\n")
             f.write("term screen-256color\n")
+            if terminal["screen_rgb"]:
+                f.write("truecolor on\n")
             # Screen 4.9 maps the outer SGR mouse prefix ESC[< to its X10 prefix
             # ESC[M without converting the payload; Codex then types coordinates.
             # Keep the legacy key prefix so SGR reports pass through unchanged.
@@ -278,8 +289,11 @@ def start(lang="ru"):
         codex_bin = "./node_modules/.bin/codex" if os.path.abspath(b) == os.path.join(CLI_CWD, "node_modules/.bin/codex") else b
         settings["thread_id"] = tid or settings.get("thread_id")
         codex_args = cc_session.launch_args(codex_bin, settings, sandbox, APPROVAL, mcp)
-        argv = ["screen", "-c", rc, "-D", "-mS", NAME, "-L", "-Logfile", log, "sh", "-c", script, "sh", str(COLS), str(ROWS)] + codex_args
-        argv, env = cc_codex.wrap(argv, cc_codex.profile_dir(slot), {"TERM": "xterm-256color", "LANG": "C.UTF-8"})
+        argv = [terminal["screen_bin"], "-c", rc, "-D", "-mS", NAME, "-L", "-Logfile", log, "sh", "-c", script, "sh", str(COLS), str(ROWS)] + codex_args
+        extra = {"TERM": "xterm-256color", "LANG": "C.UTF-8"}
+        if terminal["screen_dir"]:
+            extra["SCREENDIR"] = terminal["screen_dir"]
+        argv, env = cc_codex.wrap(argv, cc_codex.profile_dir(slot), extra)
         # systemd запускает ExecStart с ограниченным PATH; runuser должен быть абсолютным путём.
         if argv and argv[0] == "runuser":
             argv[0] = shutil.which("runuser") or "/usr/sbin/runuser"
@@ -292,7 +306,7 @@ def start(lang="ru"):
             return False, t("Не удалось запустить консоль: ", "Could not start the console: ") + (cc_codex._strip(p.stderr or p.stdout)[-200:] or "?")
         pid = None
         for _ in range(20):
-            pid = _pid()
+            pid = _pid(terminal=terminal)
             if pid:
                 break
             time.sleep(0.2)
@@ -300,7 +314,7 @@ def start(lang="ru"):
             return False, t("Консоль Codex сразу закрылась — проверь вход в ChatGPT.", "The Codex console closed right away — check the ChatGPT sign-in.")
         cc_codex._jsave(_meta_path(), {"pid": pid, "sandbox": sandbox, "cwd": cwd, "slot": slot, "approval": APPROVAL,
                                        "mcp": mcp, "started": time.time(), "tids": tids,
-                                       "settings": settings, "history_home": settings.get("history_home")})
+                                       "settings": settings, "history_home": settings.get("history_home"), **terminal})
         cc_codex.own(_meta_path())
         return True, t("Консоль Codex запущена.", "The Codex console is running.")
 

@@ -4,7 +4,7 @@
 #   cla  — только подключиться к живой сессии Claude
 #   cln  — создать НОВУЮ сессию Claude (если есть живая — спросит, убивать ли)
 #   clw  — вернуться в рабочую сессию Claude (жива — подключиться, иначе пересоздать с --resume); clw -f — пересоздать
-#   cxw  — зайти в консоль Codex (screen cc-codex от пользователя codex_user); имя сессии — аргументом
+#   cxw  — подключиться к общей screen-сессии Codex, принимающей сообщения балансера и Telegram
 # Ссылки cl/cla/cln/clw/cxw в /usr/local/bin создаёт сам балансер при старте (cc_limits.ensure_cmd_links) и сам обновляет с релизом.
 # Настройки — из config.json балансера (рядом с этим файлом):
 #   screen_session — имя screen-сессии Claude (по умолчанию claude)
@@ -104,22 +104,38 @@ case "$name" in
         inside_screen && exit 1
         u=$(cfgget codex_user codextrial)
         sname="${1:-cc-codex}"
+        case "$sname" in *[!A-Za-z0-9_-]*|"") exit 2 ;; esac
         home=$(getent passwd "$u" | cut -d: -f6)
         if [ -z "$home" ]; then
             echo "Пользователь $u не найден (config.json → codex_user)."
             exit 1
         fi
-        need_screen
-        run=(env HOME="$home" TERM="${TERM:-xterm-256color}")
-        [ "$(id -u)" = 0 ] && run=(runuser -u "$u" -- "${run[@]}")
-        "${run[@]}" screen -wipe >/dev/null 2>&1
-        if ! "${run[@]}" screen -ls 2>/dev/null | grep -q "[0-9]\.$sname\b"; then
+        if [ -x /usr/local/sbin/cc-codex-console-localize ]; then
+            if [ "$(id -u)" = 0 ]; then
+                /usr/local/sbin/cc-codex-console-localize || exit $?
+            else
+                sudo -n /usr/local/sbin/cc-codex-console-localize || exit $?
+            fi
+        fi
+        base="$(dirname "$self")"
+        transport=$(python3 "$base/cc_codex_terminal.py" "$base" "$home/codex_console") || exit $?
+        mapfile -t terminal <<< "$transport"
+        screen_bin="${terminal[0]}"
+        screen_dir="${terminal[1]}"
+        if [ ! -x "$screen_bin" ]; then
+            echo "Не найден Screen для текущей консоли Codex."
+            exit 1
+        fi
+        run=(env -u SCREENDIR HOME="$home" TERM="${TERM:-xterm-256color}")
+        [ -n "$screen_dir" ] && run+=(SCREENDIR="$screen_dir")
+        [ "$(id -u)" = 0 ] && run=(/usr/sbin/runuser -u "$u" -- "${run[@]}")
+        if ! "${run[@]}" "$screen_bin" -ls 2>/dev/null | grep -qE "[0-9]+\.${sname}[[:space:]]"; then
             echo "Консоль Codex не запущена (screen $sname нет)."
             echo "Запусти её на странице балансера: вкладка Codex → «Запустить». Потом снова cxw."
             exit 1
         fi
         echo "Подключаюсь к $sname (пользователь $u). Выйти, не останавливая Codex: Ctrl+A, потом d."
-        exec "${run[@]}" screen -rd "$sname"
+        exec "${run[@]}" "$screen_bin" -rd "$sname"
         ;;
     *)
         echo "cc-cmd: команды cl, cla, cln, clw (Claude) и cxw (Codex). Запускай их по имени, например: cl"

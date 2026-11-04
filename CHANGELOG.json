@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.3",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "RGB-цвета Codex через cxw",
+        "p": [
+          "Отдельный Screen 5 сохраняет RGB-цвета консоли",
+          "cxw использует версию и сокет действующей сессии",
+          "Беседа, модель, усилие, права и остальные консоли сохранены"
+        ]
+      },
+      "en": {
+        "t": "Codex RGB colors through cxw",
+        "p": [
+          "Private Screen 5 preserves terminal RGB colors",
+          "cxw uses the running session’s client and socket",
+          "Conversation, model, effort, access and other consoles are retained"
+        ]
+      }
+    },
+    {
       "v": "1.28.2",
       "date": "2026-11-04",
       "ru": {

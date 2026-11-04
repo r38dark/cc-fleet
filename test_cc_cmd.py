@@ -113,6 +113,16 @@ class Script(unittest.TestCase):
         os.makedirs(self.base)
         os.makedirs(self.fb)
         shutil.copy(SCRIPT, os.path.join(self.base, "cc-cmd"))
+        # No privileged helper or real terminal access in shell unit tests.
+        helper = os.path.join(self.fb, "helper")
+        put(helper, "#!/bin/sh\nexit 0\n", 0o755)
+        path = os.path.join(self.base, "cc-cmd")
+        with open(path) as stream:
+            code = stream.read().replace("/usr/local/sbin/cc-codex-console-localize", helper)
+        put(path, code)
+        put(os.path.join(self.fb, "sudo"), '#!/bin/sh\nshift\nexec "$@"\n', 0o755)
+        put(os.path.join(self.base, "cc_codex_terminal.py"),
+            "print("+repr(os.path.join(self.fb, "screen"))+")\nprint('')\n")
         os.chmod(os.path.join(self.base, "cc-cmd"), 0o755)
         for n in ("cl", "cla", "cln", "clw", "cxw"):
             os.symlink(os.path.join(self.base, "cc-cmd"), os.path.join(self.fb, n))

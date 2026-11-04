@@ -152,14 +152,14 @@ class Start(unittest.TestCase):
             calls.append((argv, kw))
             return mock.Mock(returncode=0, stdout="", stderr="")
         pids = iter([None, "77"])
-        with mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), mock.patch.object(C.subprocess, "run", run):
+        with mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), mock.patch.object(C.subprocess, "run", run):
             ok, msg = C.start()
         self.assertTrue(ok, msg)
         argv, kw = calls[0]
         self.assertEqual(argv[0], "/usr/bin/systemd-run")
         self.assertIn("--unit=cc-codex-console.service", argv)
         self.assertIn("--working-directory=" + C.CLI_CWD, argv)
-        self.assertIn("screen", argv)
+        self.assertIn("/usr/bin/screen", argv)
         self.assertIn("-mS", argv)
         self.assertEqual(argv[argv.index("-mS") + 1], "cc-codex")
         for want in ("--sandbox", "read-only", "--cd", self.work, "/x/codex"):
@@ -183,7 +183,7 @@ class Start(unittest.TestCase):
             return mock.Mock(returncode=0, stdout="", stderr="")
         keys = ["-c", 'mcp_servers.notion.url="https://x/mcp"', "-c", "mcp_servers.notion.enabled_tools=[\"a\"]"]
         pids = iter([None, "77"])
-        with mock.patch.object(C, "MCP", lambda: keys), mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), \
+        with mock.patch.object(C, "MCP", lambda: keys), mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), \
                 mock.patch.object(C.subprocess, "run", run):
             ok, msg = C.start()
         self.assertTrue(ok, msg)
@@ -192,10 +192,29 @@ class Start(unittest.TestCase):
         self.assertLess(argv.index("--cd"), argv.index("mcp_servers.notion.enabled_tools=[\"a\"]"))
         self.assertEqual(cc_codex.jload(C._meta_path(), {})["mcp"], keys)
 
+    def test_private_transport_start_keeps_environment_rc_and_metadata_together(self):
+        terminal = dict(screen_bin='/opt/cc-limits/terminal/screen-5.0.2/screen',
+                        screen_dir=os.path.join(self.d, 'screen5'), screen_rgb=True)
+        pids = iter([None, '77'])
+        with mock.patch.object(C.cc_codex_terminal, 'target', return_value=terminal), \
+                mock.patch.object(C, '_pid', side_effect=lambda **kw: next(pids)), \
+                mock.patch.object(C.cc_codex, 'runas_user', return_value='codextrial'), \
+                mock.patch.object(C.subprocess, 'run', return_value=mock.Mock(returncode=0)) as run:
+            ok, msg = C.start()
+        self.assertTrue(ok, msg)
+        argv = run.call_args.args[0]
+        self.assertIn(terminal['screen_bin'], argv)
+        self.assertIn('SCREENDIR='+terminal['screen_dir'], argv)
+        with open(os.path.join(self.d, 'console.rc')) as stream:
+            self.assertIn('truecolor on\n', stream.read())
+        meta = cc_codex.jload(C._meta_path(), {})
+        self.assertEqual({k: meta[k] for k in terminal}, terminal)
+        self.assertEqual(os.stat(terminal['screen_dir']).st_mode & 0o777, 0o700)
+
     def test_no_mcp_keys_outside_reserve(self):
         calls = []
         pids = iter([None, "77"])
-        with mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), \
+        with mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), \
                 mock.patch.object(C.subprocess, "run", lambda argv, **kw: (calls.append(argv), mock.Mock(returncode=0, stdout="", stderr=""))[1]):
             C.start()
         self.assertFalse([x for x in calls[0] if "mcp_servers" in x])
@@ -216,7 +235,7 @@ class Start(unittest.TestCase):
         with mock.patch.object(C, "_pid", return_value=None):
             self.assertTrue(C.stop()[0])
         pids = iter(["9", "9", None])
-        with mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), mock.patch.object(C, "_ctl") as ctl, \
+        with mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), mock.patch.object(C, "_ctl") as ctl, \
                 mock.patch.object(C.time, "sleep"):
             ok, msg = C.stop()
         self.assertTrue(ok, msg)
@@ -540,7 +559,7 @@ class Ask(Rollout):
             calls.append(argv)
             return mock.Mock(returncode=0, stdout="", stderr="")
         pids = iter([None, "88"])
-        with mock.patch.object(C, "_pid", side_effect=lambda: next(pids)), mock.patch.object(C.subprocess, "run", run):
+        with mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), mock.patch.object(C.subprocess, "run", run):
             ok, msg = C.start()
         self.assertTrue(ok, msg)
         argv = calls[0]

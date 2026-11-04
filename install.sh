@@ -143,7 +143,7 @@ chmod 644 "$BASE/cc_codex_console.py"
 install -m 755 "$SCRIPT_DIR/cc-codex-console-localize" /usr/local/sbin/cc-codex-console-localize
 cp "$SCRIPT_DIR/cc-codex-console-localize" "$BASE/cc-codex-console-localize"
 chmod 755 "$BASE/cc-codex-console-localize"
-for fleet_module in cc_codex_models.py cc_session.py cc_codex_rotation.py cc_overview.py cc_fleet.py cc_profiles.py cc_profile_state.py cc_profile_tasks.py cc_profile_gate.py cc_claude_profile.py; do
+for fleet_module in cc_codex_terminal.py cc_codex_models.py cc_session.py cc_codex_rotation.py cc_overview.py cc_fleet.py cc_profiles.py cc_profile_state.py cc_profile_tasks.py cc_profile_gate.py cc_claude_profile.py; do
   cp "$SCRIPT_DIR/$fleet_module" "$BASE/$fleet_module"
   chmod 644 "$BASE/$fleet_module"
 done
