@@ -455,14 +455,11 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-live-summary{display:flex;align-items:center;gap:18px;list-style:none;padding:10px 13px;min-height:40px;cursor:pointer;min-width:0}
 .fleet-live-summary::-webkit-details-marker{display:none}
 .fleet-live-heading{color:var(--fleet-muted);font-size:10px;font-weight:500;letter-spacing:.025em;line-height:1.5}
-.fleet-live-toggle{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:28px;margin:0;padding:4px 8px;border:0;border-radius:5px;background:transparent;box-shadow:none;color:var(--fleet-muted);font-size:11px;line-height:1.4;cursor:pointer;white-space:nowrap}
-.fleet-live-toggle::after{content:"⌄";font-size:15px;line-height:1}
+.fleet-live-toggle{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:24px;margin:0;padding:2px 0;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--fleet-muted);font-size:11px;font-weight:400;line-height:1.4;cursor:pointer;white-space:nowrap}
 .fleet-live-expand{order:2;margin-left:auto}
-.fleet-live-summary:hover .fleet-live-expand{color:var(--txt);background:color-mix(in srgb,var(--fleet-muted) 9%,transparent)}
-.fleet-live-footer{display:flex;justify-content:flex-end;margin-top:-1px}
-.fleet-live-collapse{min-height:26px;padding:3px 10px;border:1px solid var(--fleet-line);border-top:0;border-radius:0 0 7px 7px;background:var(--card)}
-.fleet-live-collapse::after{transform:rotate(180deg)}
-.fleet-live-toggle:hover{color:var(--txt)}
+.fleet-live-summary:hover .fleet-live-expand{color:var(--txt)}
+.fleet-live-footer{display:flex;justify-content:flex-end;padding:2px 13px 0}
+.fleet-live-toggle:hover{color:var(--txt);text-decoration:underline;text-underline-offset:3px}
 .fleet-live-toggle:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
 .fleet-live-fold[open]{border:0;background:transparent}
 .fleet-live-fold[open]>.fleet-live-summary{display:none}
@@ -491,7 +488,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(min-width:641px) and (max-width:900px){.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(90px,1fr) minmax(145px,175px) 145px 245px;gap:10px}}
 @media(max-width:640px){.fleet-live-timezone{font-size:9px}.fleet-live-summary{padding:10px 30px 10px 10px}.fleet-compact-account{flex-wrap:wrap;gap:7px 10px}.fleet-compact-name{flex-basis:100%;max-width:100%}.fleet-compact-window{flex-basis:100%;gap:6px}.fleet-compact-range{font-size:11px;gap:4px}.fleet-compact-name{font-size:12px}.fleet-live-fold[open]>.fleet-live-rows{padding:0;gap:7px}.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(0,1fr) 82px 110px;gap:4px 10px}.fleet-live-meter-label{flex-wrap:wrap;gap:3px}.fleet-live-meter-label b{font-size:12px}.fleet-live-reset{flex-basis:100%;flex-wrap:wrap;gap:2px;font-size:10px;line-height:1.35}.fleet-live-reset time{white-space:normal}.fleet-live-reset-label{font-size:9px}}
 .fleet-live-fold:not([open])>.fleet-live-footer{display:none!important}
-@media(max-width:640px){.fleet-live-summary{grid-template-columns:minmax(0,1fr);padding:10px}.fleet-live-expand{grid-column:1;grid-row:auto;justify-self:end;min-height:28px;padding:3px 0 0}.fleet-live-collapse{min-height:30px}}
+@media(max-width:640px){.fleet-live-summary{grid-template-columns:minmax(0,1fr);padding:10px}.fleet-live-expand{grid-column:1;grid-row:auto;justify-self:end;min-height:28px;padding:3px 0 0}.fleet-live-collapse{min-height:30px}.fleet-live-footer{padding-right:10px}}
 '''
 
 JS = r'''

@@ -1,8 +1,9 @@
 # Active limits: disclosure and reset labels
 
-The compact row has one Expand affordance inside its right edge. The native
-summary handles pointer and keyboard activation. Expanded cards have one Collapse
-tab attached to their lower right edge; it returns keyboard focus to the summary.
+The compact row has one plain-text Expand action inside its right edge. The native
+summary handles pointer and keyboard activation. Expanded cards have one discreet
+plain-text Collapse action aligned at the lower right; it returns focus to the summary.
+Both controls have no arrows, borders, backgrounds, rounded corners or protruding tabs.
 The heading is plain text, and there is no extra summary arrow or header button.
 Exactly one disclosure action is visible in either state. Background updates
 preserve the state, and expanded cards replace the compact summary.
