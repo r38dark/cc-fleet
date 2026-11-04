@@ -174,11 +174,13 @@ def install(ns):
                     return self._send(200, models.start())
                 if path.startswith('/api/profiles/'):
                     parts = path.split('/')
-                    result = profiles.tasks.confirm(body) if path == '/api/profiles/task/confirm' else profiles.action(parts[3] if len(parts)>3 else '',parts[4] if len(parts)>4 else '',body)
+                    result = (profiles.apply_scenario(body) if path == '/api/profiles/scenario/apply' else
+                              profiles.tasks.confirm(body) if path == '/api/profiles/task/confirm' else
+                              profiles.action(parts[3] if len(parts)>3 else '',parts[4] if len(parts)>4 else '',body))
                     return self._send(200, result)
                 if path == '/api/console/input':
                     if body.get('session') in ('claude','codex') and not profiles.input_allowed(body['session']):
-                        return self._send(200, dict(ok=False, message='Консоль на паузе. Выключи служебный режим другой стороны.'))
+                        return self._send(200, dict(ok=False, message='Консоль не участвует в текущем сценарии. Измени общую схему в выборе профилей.'))
                     ok, message = inputs.send(body.get('session'), body.get('text'), body.get('request_id'))
                 elif path == '/api/console/key':
                     ok, message = inputs.key(body.get('session'), body.get('key'))

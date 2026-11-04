@@ -2,6 +2,7 @@
 import copy
 import threading
 import time
+from cc_manual_scenarios import ManualScenarioMixin, validate_choices
 
 ENGINES = ('claude', 'codex')
 
@@ -196,10 +197,10 @@ class ProfileScenarios:
         return dict(ok=False, message='Доступны только встроенные Full, Оркестратор и резерв.')
 
 
-class ProfileState(ProfileScenarios):
+class ProfileState(ManualScenarioMixin, ProfileScenarios):
     """Чтение не запускает эффекты консолей. Старые записи нормализуются без активации прав."""
     FIELDS = ('revision', 'leader', 'service', 'restore', 'selected', 'last_solo',
-              'custom', 'until', 'auto', 'availability', 'auto_blocked')
+              'custom', 'until', 'auto', 'availability', 'auto_blocked', 'manual_choices')
 
     def _reconcile(self):
         pass
@@ -221,7 +222,7 @@ class ProfileState(ProfileScenarios):
         state.auto_blocked = set(state.auto_blocked)
         def normalize(base):
             for engine in ENGINES:
-                allowed = ('orchestrator', engine+'_solo_full')
+                allowed = ('orchestrator', 'executor', engine+'_solo_full')
                 for key in ('selected', 'last_solo'):
                     if base[key][engine] not in allowed:
                         base[key][engine] = engine+'_solo_full'
@@ -237,6 +238,16 @@ class ProfileState(ProfileScenarios):
             # Удалённый аварийный авторезерв не превращаем в другой режим без нового выбора.
             state.auto[engine] = dict(enabled=bool(previous.get('enabled')) and not previous.get('emergency',False), emergency=False)
         state.until = 0
+        for base in [dict(manual_choices=state.manual_choices,selected=state.selected,leader=state.leader),state.restore or {}]:
+            choices=base.get('manual_choices')
+            if choices is not None:
+                leader=next((e for e in ENGINES if choices.get(e)=='orchestrator'),None) if isinstance(choices,dict) else None
+                if not validate_choices(choices)[0] or base.get('leader')!=leader:
+                    raise ValueError('invalid_manual_scenario')
+                for engine,role in choices.items():
+                    wanted=engine+'_solo_full' if role=='full' else role
+                    if role in ('full','orchestrator','executor') and base['selected'][engine]!=wanted:
+                        raise ValueError('invalid_manual_scenario_profile')
         return state
 
     def public(self):

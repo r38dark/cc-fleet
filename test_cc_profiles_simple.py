@@ -67,7 +67,7 @@ class SimpleProfiles(unittest.TestCase):
 
     def test_orchestrator_caps_requested_full_step_to_legacy_dev_ceiling(self):
         with tempfile.TemporaryDirectory() as tmp:
-            native=FakeNative();profiles=Profiles(tmp,native);profiles.action('claude','apply',dict(id='orchestrator'))
+            native=FakeNative();profiles=Profiles(tmp,native);profiles.apply_scenario(dict(choices=dict(claude='orchestrator',codex='executor'),revision=profiles.state.revision))
             sent=[];asked=[];tasks=ProfileTasks(profiles,lambda *args:sent.append(args),lambda *args:asked.append(args) or 'проверено');profiles.tasks=tasks
             draft=profiles.exchange('claude')/'outbox/task.md';draft.parent.mkdir(parents=True);draft.write_text('права: полные\nПроверяемый шаг')
             tasks.tick();task=tasks.public();self.assertEqual(task['rights'],'dev');self.assertEqual(task['requested_rights'],'full')
@@ -79,7 +79,7 @@ class SimpleProfiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             native=FakeNative();profiles=Profiles(tmp,native);before=copy.deepcopy((native.model,native.tid))
             result=profiles.action('claude','apply',dict(id='claude_solo_full'));self.assertTrue(result['confirmation_required']);self.assertEqual(native.applied,[])
-            self.assertTrue(profiles.action('claude','apply',dict(id='claude_solo_full',confirm='подтверждаю'))['ok'])
+            self.assertTrue(profiles.action('claude','apply',dict(id='claude_solo_full',confirm='подтверждаю',revision=profiles.state.revision))['ok'])
             self.assertEqual((native.model,native.tid),before)
 
     def test_no_expiry_watcher_is_started(self):

@@ -573,6 +573,116 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
  html:root:root.fleet-profile-locked{overflow:hidden!important;overscroll-behavior:none}
  html:root:root.fleet-profile-locked body{position:fixed!important;top:var(--fleet-profile-page-top,0px)!important;left:0;right:0;width:100%;overflow:hidden!important}
 }
+/* Один общий монолит вместо боковых меню. */
+#cxMenu.mono-profile-window{width:min(1040px,calc(100vw - 24px));border-radius:12px}
+#cxMenu.mono-profile-window .mirror-profile-tabs,#cxMenu.mono-profile-window .fleet-profile-compare,#cxMenu.mono-profile-window .fleet-profile-service-heading{display:none!important}
+#cxMenu.mono-profile-window .fleet-palette-header{padding:14px 18px;border-bottom:1px solid var(--fleet-line);background:var(--card)}
+#cxMenu.mono-profile-window .fleet-palette-tools{padding:12px 18px}
+#cxMenu.mono-profile-window .fleet-palette-tools[hidden]{display:none}
+#cxMenu.mono-profile-window>.cxpbody{padding:0;min-height:0}
+#cxMenu.mono-profile-window #cxp{display:block;gap:0}
+.mono-provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.mono-provider{min-width:0;--fleet-accent:#45d6ab;--fleet-accent-soft:#16352e}
+.mono-provider[data-engine="claude"]{--fleet-accent:var(--fleet-claude);--fleet-accent-soft:var(--fleet-claude-soft)}
+.mono-provider+.mono-provider{border-left:1px solid var(--fleet-line)}
+.mono-provider-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;background:color-mix(in srgb,var(--fleet-accent) 5%,var(--card));border-top:1px solid var(--fleet-line);border-bottom:1px solid var(--fleet-line)}
+.mono-provider-head strong{font-size:15px;color:var(--fleet-accent)}.mono-provider-head span{font-size:10px;color:var(--fleet-muted);text-align:right;line-height:1.5}
+#cxMenu.mono-profile-window .cxplist{display:block}
+#cxMenu.mono-profile-window .fleet-profile-card{border:0;border-bottom:1px solid var(--fleet-line);border-radius:0;min-height:0;padding:13px 18px;background:transparent}
+#cxMenu.mono-profile-window .fleet-profile-card.act{border:0;border-bottom:1px solid var(--fleet-line);box-shadow:inset 3px 0 var(--fleet-accent);background:color-mix(in srgb,var(--fleet-accent) 6%,var(--card))}
+.mono-mode-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.mono-mode-kind{color:var(--fleet-accent);font-size:9px;letter-spacing:.1em}.mono-mode-status{font-size:10px;color:var(--fleet-muted)}
+#cxMenu.mono-profile-window .fleet-profile-card .cxpn{margin:0 0 5px;padding:0}
+#cxMenu.mono-profile-window .fleet-profile-card .cxpnm{font-size:15px}
+#cxMenu.mono-profile-window .fleet-profile-card .cxps{font-size:12px;line-height:1.55}
+#cxMenu.mono-profile-window .fleet-profile-card-footer{border:0;padding:0;margin-top:8px;min-height:26px}
+#cxMenu.mono-profile-window .fleet-profile-more{min-height:26px;font-size:11px;padding:5px 8px}
+#cxMenu.mono-profile-window .mono-reserve{border:0;border-radius:0;display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:14px 18px;background:transparent;margin:0}
+.mono-reserve-copy strong{display:block;font-size:13px;font-weight:600;color:var(--txt)}
+#cxMenu.mono-profile-window .mono-reserve .cxps{margin-top:5px;font-size:11px;line-height:1.5}
+#cxMenu.mono-profile-window .mono-reserve .mirror-service-actions{flex-direction:row;justify-content:flex-end;gap:7px}
+.mono-reserve-config{padding:17px 18px;min-width:0}.mono-reserve-status{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--txt)}.mono-reserve-status span{font-size:10px;color:var(--fleet-muted)}
+.mono-auto{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.6;color:var(--txt);margin-top:17px;cursor:pointer}.mono-auto input{width:16px;height:16px;flex:none;margin:2px 0 0;accent-color:var(--fleet-accent)}
+.mono-note{font-size:11px;color:var(--fleet-muted);line-height:1.6;margin:10px 0 14px}.mono-reserve-actions{display:flex;justify-content:flex-end}.mono-reserve-actions button{font-size:11px;padding:7px 10px;background:transparent;border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);margin:0;box-shadow:none}
+.mono-window-note{border-top:1px solid var(--fleet-line);padding:10px 18px;font-size:10px;line-height:1.6;color:var(--fleet-muted)}
+.mono-agent{padding:14px 18px;border-top:1px solid var(--fleet-line)}.mono-agent>header{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:12px}.mono-agent>header strong{font-size:12px}.mono-agent>header span{font-size:11px;color:var(--fleet-muted)}
+.mono-agent #ntPopB{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px 12px;padding:0;overflow:visible}
+.mono-agent #ntPopB>.ntrow{grid-column:1/-1;margin:0;font-size:11px}.mono-agent #ntPopB>label{margin:0!important;font-size:11px}
+.mono-agent label[for="ntName"]{grid-column:1;grid-row:2}.mono-agent #ntName{grid-column:1;grid-row:3}.mono-agent label[for="ntUrl"]{grid-column:2;grid-row:2}.mono-agent #ntUrl{grid-column:2;grid-row:3}
+.mono-agent #ntPopB>.cxbrow{grid-column:3;grid-row:3;display:flex;align-items:center;margin:0;gap:7px}.mono-agent #ntPopB>.cxsub{grid-column:2;grid-row:4;font-size:10px;margin:0!important}
+.mono-agent .dlginp{height:34px;min-height:34px;font-size:12px;padding:7px 9px;margin:0}.mono-agent .cxbrow button{height:34px;min-height:34px;padding:7px 10px;font-size:11px;margin:0}
+.mono-notion-help{grid-column:1/-1;font-size:11px;color:var(--fleet-muted);margin-top:5px}.mono-notion-help>summary{cursor:pointer}.mono-notion-help .ntsteps{font-size:11px;line-height:1.6}.mono-notion-help .ntnote{font-size:11px}
+@media(max-width:700px){
+ .mono-provider-grid{grid-template-columns:minmax(0,1fr)}.mono-provider+.mono-provider{border-left:0;border-top:1px solid var(--fleet-line)}
+ #cxMenu.mono-profile-window .fleet-palette-current{font-size:10px;max-width:46%}#cxMenu.mono-profile-window .fleet-palette-heading h2{font-size:16px;white-space:normal}
+ .mono-provider-head{padding:11px 13px}#cxMenu.mono-profile-window .fleet-profile-card,#cxMenu.mono-profile-window .mono-reserve{padding:12px 13px}.mono-reserve-config,.mono-agent{padding:13px}
+ .mono-agent #ntPopB{grid-template-columns:minmax(0,1fr)}.mono-agent #ntPopB>*{grid-column:1!important;grid-row:auto!important}.mono-agent #ntPopB>.cxbrow{justify-content:flex-end;margin-top:4px}
+ .mono-agent>header,.mono-reserve-status{align-items:flex-start;flex-wrap:wrap}.mono-auto{font-size:13px}
+}
+
+#cxMenu.mono-profile-window .mono-reserve[hidden]{display:none!important}
+
+.mono-agent>header span{min-width:0;max-width:100%;overflow-wrap:anywhere}.mono-notion-help code{white-space:normal;overflow-wrap:anywhere}
+@media(max-width:700px){.mono-agent .dlginp{font-size:16px;min-height:38px;height:38px}}
+
+/* Ручная сборка одного сценария без автоматического назначения второй роли. */
+#cxMenu.mono-profile-window .manual-role{transition:background .15s ease}
+#cxMenu.mono-profile-window .manual-role[aria-disabled="true"]{background:color-mix(in srgb,var(--card) 90%,var(--fleet-line));cursor:not-allowed}
+#cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .mono-mode-head,
+#cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .cxpt,
+#cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .mono-reserve-copy,
+#cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .fleet-profile-choose{opacity:.55}
+#cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .fleet-profile-more{opacity:1}
+#cxMenu.mono-profile-window .manual-role.act{background:color-mix(in srgb,var(--fleet-accent) 7%,var(--card));box-shadow:inset 3px 0 var(--fleet-accent)}
+#cxMenu.mono-profile-window .manual-role:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:-3px}
+#cxMenu.mono-profile-window .manual-role.fleet-profile-card{padding:10px 16px}
+#cxMenu.mono-profile-window .manual-role .mono-mode-head{margin-bottom:4px;min-height:14px}
+#cxMenu.mono-profile-window .manual-role .cxpnm{font-size:14px}
+#cxMenu.mono-profile-window .manual-role .cxps{font-size:11px;line-height:1.5;min-height:33px}
+#cxMenu.mono-profile-window .manual-role .fleet-profile-card-footer{min-height:23px;margin-top:3px}
+#cxMenu.mono-profile-window .manual-role .fleet-profile-more{min-height:23px;font-size:10px;padding:3px 7px}
+#cxMenu.mono-profile-window .manual-role .fleet-profile-choose{font-size:10px}
+.manual-compatibility{margin:0;padding:8px 16px;font-size:11px;line-height:1.5;min-height:33px;color:var(--fleet-muted);border-bottom:1px solid var(--fleet-line)}
+.manual-compatibility[data-blocked="true"]{color:var(--fleet-accent)}
+#cxMenu.mono-profile-window .mono-reserve.manual-role{padding:10px 16px;gap:5px;cursor:pointer}
+#cxMenu.mono-profile-window .mono-reserve.manual-role .cxps{min-height:0;margin-top:4px}
+#cxMenu.mono-profile-window .mono-reserve.manual-role .mirror-service-actions{align-items:center;justify-content:space-between;min-height:26px}
+#cxMenu.mono-profile-window .mono-reserve.manual-role .mirror-service-actions button{font-size:10px;padding:5px 8px}
+.manual-apply-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:15px;padding:13px 16px;border-top:1px solid var(--fleet-line);background:var(--card)}
+.manual-selection-summary{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:11px;line-height:1.5;color:var(--fleet-muted)}
+.manual-selection-summary strong{font-size:12px;font-weight:600;color:var(--txt)}
+.manual-scenario-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.manual-scenario-actions button{font-size:11px;padding:8px 10px;border-radius:6px;min-height:33px;margin:0;box-shadow:none}
+.manual-scenario-actions .ghostbtn{color:var(--fleet-muted);background:transparent;border:1px solid var(--fleet-line)}
+.manual-scenario-actions .manual-apply{background:#45d6ab;color:#0c1816;border:1px solid #45d6ab}
+.manual-scenario-actions .manual-apply:disabled{background:transparent;color:var(--fleet-muted);border-color:var(--fleet-line);opacity:.65;cursor:default}
+@media(max-width:700px){
+ #cxMenu.mono-profile-window .manual-provider-grid .mono-provider-head{padding:10px 13px;flex-wrap:wrap}
+ #cxMenu.mono-profile-window .manual-provider-grid .mono-provider-head span{font-size:9px}
+ .manual-compatibility{padding:8px 13px;min-height:0}
+ #cxMenu.mono-profile-window .manual-role.fleet-profile-card,#cxMenu.mono-profile-window .mono-reserve.manual-role{padding:11px 13px}
+ #cxMenu.mono-profile-window .manual-role .fleet-profile-more{min-height:30px;padding:6px 9px}
+ #cxMenu.mono-profile-window .mono-reserve.manual-role .mirror-service-actions button{min-height:32px;padding:7px 9px}
+ .manual-apply-bar{grid-template-columns:minmax(0,1fr);padding:12px 13px;gap:10px}
+ .manual-scenario-actions{justify-content:stretch}.manual-scenario-actions button{flex:1;min-height:36px}
+ .manual-scenario-actions .manual-apply{flex-basis:100%}
+}
+
+/* One complete scenario fits a desktop viewport without shrinking mobile touch controls. */
+#cxMenu.mono-profile-window.fleet-profile-desktop .fleet-palette-header{padding:8px 14px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .mono-provider-head{padding:8px 14px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-compatibility{padding:6px 14px;min-height:0}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role.fleet-profile-card{padding:7px 14px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .mono-mode-head{margin-bottom:2px;min-height:12px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .cxpnm{font-size:14px;line-height:1.3}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .fleet-profile-card-footer{margin-top:2px;min-height:23px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .cxps{min-height:0}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .fleet-profile-more{height:23px;min-height:23px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .cxpn{margin-bottom:3px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .mono-reserve.manual-role{padding:8px 14px;gap:4px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-apply-bar{padding:10px 14px}
+#cxMenu.mono-profile-window .manual-apply-bar{position:sticky;bottom:0;z-index:2}
+#cxMenu.mono-profile-window .manual-selection-summary strong{line-height:1.4}
+
 '''
 
 JS = r'''
@@ -1006,7 +1116,7 @@ JS = r'''
  const profileRoot=document.getElementById('cxp'),profileBody=menu.querySelector(':scope > .cxpbody');
  menu.classList.add('fleet-profile-palette');menu.setAttribute('aria-label','Выбор профиля');menu.setAttribute('aria-modal','true');document.getElementById('cxMenuScrim').classList.add('fleet-profile-backdrop');
  const paletteHeader=el('div','fleet-palette-header'),paletteHeading=el('div','fleet-palette-heading');paletteHeading.append(el('span','fleet-eyebrow','РЕЖИМ РАБОТЫ'),el('h2','','Выбор профиля'));
- const paletteCurrent=el('span','fleet-palette-current'),paletteClose=el('button','hdrgear fleet-palette-close');paletteClose.id='fleetProfileClose';paletteClose.type='button';paletteClose.title='Закрыть';paletteClose.setAttribute('aria-label','Закрыть профили');paletteClose.innerHTML=document.getElementById('cxPopX').innerHTML;paletteClose.addEventListener('click',()=>{cxMenuClose();document.getElementById('cxBtn').focus()});paletteHeader.append(paletteHeading,paletteCurrent,paletteClose);
+ const paletteCurrent=el('span','fleet-palette-current'),paletteClose=el('button','hdrgear fleet-palette-close');paletteClose.id='fleetProfileClose';paletteClose.type='button';paletteClose.title='Закрыть';paletteClose.setAttribute('aria-label','Закрыть профили');paletteClose.innerHTML=document.getElementById('cxPopX').innerHTML;paletteClose.addEventListener('click',()=>{cxMenuClose();document.getElementById(menu.dataset.returnEngine==='claude'?'mirrorClaudecxBtn':'cxBtn').focus()});paletteHeader.append(paletteHeading,paletteCurrent,paletteClose);
  const paletteTools=el('div','fleet-palette-tools');search.placeholder='Найти по названию или возможностям…';
  const searchWrap=el('form','fleet-palette-search');searchWrap.setAttribute('role','search');searchWrap.autocomplete='off';searchWrap.append(search);searchWrap.addEventListener('submit',event=>{event.preventDefault();filterProfiles();repaintProfileResults()});const compareButton=el('button','fleet-profile-compare','Сравнить');compareButton.id='fleetProfileCompare';compareButton.type='button';compareButton.setAttribute('aria-pressed','false');compareButton.title='Показать состав и возможности всех профилей';paletteTools.append(searchWrap,compareButton);
  const paletteFooter=el('div','fleet-palette-footer'),paletteCount=el('span','fleet-palette-count');paletteCount.setAttribute('role','status');const paletteHelp=el('span','fleet-palette-help','Enter — выбрать · Esc — закрыть');paletteFooter.append(paletteCount,paletteHelp);
@@ -1023,7 +1133,7 @@ JS = r'''
    for(const [node,inert] of saved.inert)node.inert=inert;
    window.scrollTo(saved.x,saved.y);
    const anotherDialog=['acctScrim','scrim','cxPop','ntPop'].some(id=>{const node=document.getElementById(id);return node&&!node.hidden&&node.getClientRects().length});
-   if(menu.hidden&&!anotherDialog)document.getElementById(menu.dataset.engine==='claude'?'mirrorClaudecxBtn':'cxBtn')?.focus({preventScroll:true});
+   if(menu.hidden&&!anotherDialog)document.getElementById((menu.dataset.returnEngine||menu.dataset.engine)==='claude'?'mirrorClaudecxBtn':'cxBtn')?.focus({preventScroll:true});
   }
   if(!menu.hidden)cxMenuPlace();
  }
@@ -1094,7 +1204,7 @@ JS = r'''
 
  search.addEventListener('input',repaintProfileResults);
  search.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();profileRoot.querySelector('.cxprof:not([data-auto]):not([hidden])')?.focus()}});
- new MutationObserver(()=>{if(!menu.hidden){resetProfileSearch();profileBody.scrollTop=0;if(matchMedia('(pointer:fine)').matches)profileRoot.querySelector('.cxprof.act:not([data-auto])')?.focus({preventScroll:true})}else if(document.activeElement?.closest('#cxMenu'))document.getElementById('cxBtn').focus()}).observe(menu,{attributes:true,attributeFilter:['hidden']});
+ new MutationObserver(()=>{if(!menu.hidden){resetProfileSearch();profileBody.scrollTop=0;if(matchMedia('(pointer:fine)').matches)profileRoot.querySelector('.cxprof.act:not([data-auto])')?.focus({preventScroll:true})}else if(document.activeElement?.closest('#cxMenu'))document.getElementById(menu.dataset.returnEngine==='claude'?'mirrorClaudecxBtn':'cxBtn').focus()}).observe(menu,{attributes:true,attributeFilter:['hidden']});
  profileRoot.addEventListener('keydown',event=>{
   if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)||!event.target.matches('.cxprof:not([data-auto])'))return;
   const visible=Array.from(profileRoot.querySelectorAll('.cxprof:not([data-auto]):not([hidden])')),index=visible.indexOf(event.target);if(index<0)return;
@@ -1105,9 +1215,9 @@ JS = r'''
  cxpRender();
 
  // Общий компонент профилей двух сторон включается только при наличии API профилей.
- let mirrorState=null,mirrorMounted=false,mirrorEngine='codex',mirrorBusy=false,mirrorTaskTimer=null;
+ let mirrorState=null,mirrorMounted=false,mirrorEngine='codex',mirrorBusy=false,mirrorTaskTimer=null,mirrorUpdateTimer=null;
  const mirrorInfo={claude:new Set(),codex:new Set()},mirrorNames={claude:'Claude',codex:'Codex'},mirrorButtons={},mirrorReserves={};
- function mirrorAccept(state){if(!state?.available||!state.engines?.claude||!state.engines?.codex)return;if(mirrorState&&state.revision<mirrorState.revision)return;if(mirrorState&&state.revision===mirrorState.revision&&state.snapshot_ts&&mirrorState.snapshot_ts&&state.snapshot_ts<mirrorState.snapshot_ts)return;mirrorState=state;if(['approved','running'].includes(state.task?.status)){if(!mirrorTaskTimer)mirrorTaskTimer=setTimeout(()=>{mirrorTaskTimer=null;if(!document.hidden)mirrorLoad()},2500)}else{clearTimeout(mirrorTaskTimer);mirrorTaskTimer=null}if(!mirrorMounted)mountMirrorProfiles();paintMirrorWorkplace();if(!menu.hidden)cxpRender()}
+ function mirrorAccept(state){if(!state?.available||!state.engines?.claude||!state.engines?.codex)return;if(mirrorState&&state.revision<mirrorState.revision)return;if(mirrorState&&state.revision===mirrorState.revision&&state.snapshot_ts&&mirrorState.snapshot_ts&&state.snapshot_ts<mirrorState.snapshot_ts)return;mirrorState=state;clearTimeout(mirrorUpdateTimer);if(state.updating)mirrorUpdateTimer=setTimeout(mirrorLoad,1000);if(['approved','running'].includes(state.task?.status)){if(!mirrorTaskTimer)mirrorTaskTimer=setTimeout(()=>{mirrorTaskTimer=null;if(!document.hidden)mirrorLoad()},2500)}else{clearTimeout(mirrorTaskTimer);mirrorTaskTimer=null}if(!mirrorMounted)mountMirrorProfiles();paintMirrorWorkplace();if(!menu.hidden)cxpRender()}
  async function mirrorLoad(){try{const response=await fetch(API+'profiles',{headers:{'X-CC-Token':TOKEN}});if(response.ok)mirrorAccept(await response.json())}catch(_){}}
  function mirrorTheme(){menu.dataset.engine=mirrorEngine;putText(paletteHeading.querySelector('h2'),'Профили '+mirrorNames[mirrorEngine]);menu.setAttribute('aria-label','Выбор профиля '+mirrorNames[mirrorEngine]);for(const tab of paletteHeading.querySelectorAll('[data-mirror-tab]'))tab.setAttribute('aria-selected',String(tab.dataset.mirrorTab===mirrorEngine))}
  function mirrorOpen(engine,info){
@@ -1138,8 +1248,8 @@ JS = r'''
   cxMenuPlace=function(){placeProfilePalette(mirrorButtons[mirrorEngine])};
   cxpRender=paintMirrorPalette;
   profileRoot.addEventListener('click',mirrorProfileClick,true);
-  profileRoot.addEventListener('change',event=>{if(!event.target.matches('[data-mirror-setting=auto]'))return;event.stopImmediatePropagation();mirrorRequest(mirrorEngine,'config',{enabled:event.target.checked,emergency:false})},true);
-  profileRoot.addEventListener('keydown',event=>{const card=event.target.closest('.cxprof[data-profile-id]:not([data-auto])');if(!card||event.target!==card)return;if(['Enter',' '].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();mirrorApply(mirrorEngine,card.dataset.profileId)}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();const cards=[...profileRoot.querySelectorAll('.cxprof[data-profile-id]:not([data-auto]):not([hidden])')],i=cards.indexOf(card),j=event.key==='Home'?0:event.key==='End'?cards.length-1:(i+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1)+cards.length)%cards.length;cards[j]?.focus()}},true);
+  profileRoot.addEventListener('change',event=>{if(!event.target.matches('[data-mirror-setting=auto]'))return;event.stopImmediatePropagation();mirrorRequest(event.target.dataset.engine||mirrorEngine,'config',{enabled:event.target.checked,emergency:false})},true);
+  profileRoot.addEventListener('keydown',event=>{const card=event.target.closest('.cxprof[data-profile-id]:not([data-auto])');if(!card||event.target!==card)return;if(['Enter',' '].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();mirrorApply(card.dataset.engine||mirrorEngine,card.dataset.profileId)}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key)){event.preventDefault();event.stopImmediatePropagation();const cards=[...profileRoot.querySelectorAll('.cxprof[data-profile-id]:not([data-auto]):not([hidden])')],i=cards.indexOf(card),j=event.key==='Home'?0:event.key==='End'?cards.length-1:(i+(['ArrowLeft','ArrowUp'].includes(event.key)?-1:1)+cards.length)%cards.length;cards[j]?.focus()}},true);
   paintMirrorPalette();
  }
  function paintMirrorWorkplace(){
@@ -1172,7 +1282,7 @@ JS = r'''
  }
  async function mirrorRequest(engine,action,body,revision=mirrorState.revision){
   if(mirrorBusy)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
-  try{const response=await fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...body,revision})}),result=await response.json();if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id||'reserve',result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Демо: выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
+  try{const response=await fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...body,revision})}),result=await response.json();if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id||'reserve',result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Действие выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
  }
  function mirrorApply(engine,id,confirmation=''){return mirrorRequest(engine,'apply',{id,confirm:confirmation})}
  function mirrorStop(engine){if(mirrorState.service?.kind==='emergency'&&!confirm('Выключить аварийный режим '+mirrorNames[engine]+' и восстановить прежний сценарий?'))return;return mirrorRequest(engine,'stop',{})}
@@ -1181,6 +1291,219 @@ JS = r'''
   const p=mirrorState.engines[engine].profiles.find(p=>p.id===id),impact=id==='reserve'?'Другая модель будет на паузе. Без ограничения срока. После выключения вернётся прежний сценарий.':'Full работает самостоятельно со всеми доступными инструментами, командами и файлами.';acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(p.title)+(action==='config'?' · автоматически':'')+'</h3><p>'+impact+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы подтвердить изменение сценария для '+mirrorNames[engine]+'.</p><input id="mirrorConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="mirrorConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="mirrorConfirmApply" disabled>Применить</button></div></div>');
   const input=document.getElementById('mirrorConfirmWord'),apply=document.getElementById('mirrorConfirmApply');input.addEventListener('input',()=>apply.disabled=input.value.trim().toLocaleLowerCase('ru')!==word);input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!apply.disabled)apply.click()});document.getElementById('mirrorConfirmCancel').onclick=()=>{acctClose();mirrorButtons[engine].focus()};apply.onclick=()=>{const text=input.value;acctClose();mirrorRequest(engine,action,{...body,confirm:text},revision)};setTimeout(()=>input.focus(),30);
  }
+ // Единое центральное окно двух исполнителей и настроек резерва.
+ let monoView='profiles',monoSignature='',monoAgentReady=false;
+ const monoAgentBody=document.getElementById('ntPopB'),monoAgentHome=document.getElementById('ntPop');
+ const monoRawOpen=cxMenuOpen;let monoPendingOpen=null;
+ cxMenuOpen=function(){if(!mirrorMounted){monoPendingOpen=['codex'];mirrorLoad();return}mirrorOpen('codex')};
+ ntOpen=function(){if(!mirrorMounted){monoPendingOpen=['codex','reserve'];mirrorLoad();return}mirrorOpen(mirrorEngine,'reserve')};
+
+ const monoOriginalFilter=filterProfiles,monoOriginalResults=repaintProfileResults;
+ filterProfiles=function(){
+  if(!mirrorMounted)return monoOriginalFilter();if(search.value!==profileQuery)search.value=profileQuery;
+  if(monoView!=='profiles')return;
+  const query=profileQuery.trim().toLocaleLowerCase('ru');
+  profileRoot.querySelectorAll('.fleet-profile-card,.mono-reserve').forEach(node=>node.hidden=!!query&&!node.textContent.toLocaleLowerCase('ru').includes(query));
+  for(const section of profileRoot.querySelectorAll('.mono-provider'))section.hidden=![...section.querySelectorAll('.fleet-profile-card,.mono-reserve')].some(node=>!node.hidden);if(!menu.hidden)monoCenter();
+ }
+ repaintProfileResults=function(){
+  if(!mirrorMounted)return monoOriginalResults();
+  if(monoView!=='profiles'){paletteEmpty.hidden=true;putText(paletteCount,'Резерв Claude и Codex');return}
+  const cards=[...profileRoot.querySelectorAll('.fleet-profile-card')],reserves=[...profileRoot.querySelectorAll('.mono-reserve')],visible=cards.filter(node=>!node.hidden).length,services=reserves.filter(node=>!node.hidden).length;
+  paletteEmpty.hidden=visible+services>0;putText(paletteCount,(profileQuery.trim()?'Найдено: '+visible+' из '+cards.length:cards.length+' рабочих профиля')+' · резервов: '+services);
+ }
+
+ function monoParkAgent(){if(monoAgentBody.parentElement!==monoAgentHome)monoAgentHome.append(monoAgentBody)}
+ function monoCenter(){
+  menu.classList.toggle('fleet-profile-desktop',!mobileConsole.matches);
+  if(mobileConsole.matches){menu.style.top='var(--fleet-visual-top,0px)';menu.style.left='0';menu.style.right='0';menu.style.bottom='auto';menu.style.width='100%';menu.style.height=menu.style.maxHeight='var(--fleet-visual-height,100dvh)';return}
+  const w=innerWidth,h=innerHeight,width=Math.min(monoView==='reserve'?960:1100,w-24);
+  menu.style.height='';menu.style.width=width+'px';menu.style.maxHeight=(h-24)+'px';menu.style.left=Math.round((w-width)/2)+'px';menu.style.right='auto';menu.style.bottom='auto';menu.style.top=Math.max(12,Math.round((h-menu.getBoundingClientRect().height)/2))+'px';
+ }
+ cxMenuPlace=monoCenter;
+ mirrorTheme=function(){
+  menu.dataset.engine='both';menu.dataset.view=monoView;menu.classList.add('mono-profile-window');
+  putText(paletteHeading.querySelector('h2'),monoView==='reserve'?'Настройки резерва':'Профили работы');
+  menu.setAttribute('aria-label',monoView==='reserve'?'Настройки резерва Claude и Codex':'Профили Claude и Codex');
+  paletteHeading.querySelector('.mirror-profile-tabs')?.setAttribute('hidden','');
+  paletteTools.hidden=monoView!=='profiles';compareButton.hidden=true;
+ }
+ mirrorOpen=function(engine,info){
+  mirrorEngine=engine;menu.dataset.returnEngine=engine;monoView=info==='reserve'?'reserve':'profiles';compareProfiles=false;resetProfileSearch();monoSignature='';mirrorTheme();
+  if(menu.hidden)nativeMirrorOpen();else cxpRender();monoCenter();
+ }
+ function monoDetails(profile){
+  return '<div class="cxpinfo"><p><b>Может:</b> '+acctEsc(profile.can)+'</p><p><b>Ограничения:</b> '+acctEsc(profile.cannot)+'</p><p>'+acctEsc(profile.when)+'</p></div>';
+ }
+ function monoCard(engine,profile,state){
+  const selected=profile.id===state.base_selected,info=mirrorInfo[engine].has(profile.id);
+  const effective=selected&&['solo','leader'].includes(state.role)&&state.applied!==false;
+  const status=selected?(state.applied===false?'Текущие права':effective?'Работает сейчас':'Базовый профиль'):profile.kind==='full'?'Полный доступ':'Чтение + папка обмена';
+  return '<div class="cxprof fleet-profile-card'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+profile.id+'" data-id="'+profile.id+'" role="radio" aria-checked="'+selected+'" tabindex="0"><div class="mono-mode-head"><span class="mono-mode-kind">'+(profile.kind==='full'?'FULL':'ОРКЕСТРАТОР')+'</span><span class="mono-mode-status">'+status+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(profile.title)+'</span></span><span class="cxps">'+acctEsc(profile.description)+'</span><span class="fleet-profile-index" hidden>'+acctEsc(profile.can+' '+profile.cannot+' '+profile.when)+'</span>'+(info?monoDetails(profile):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(effective?'Выбран':'Выбрать →')+'</span><button type="button" class="fleet-profile-more" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
+ }
+ function monoReserve(engine,state,settings){
+  const profile=state.profiles.find(p=>p.id==='reserve'),active=state.role==='reserve';
+  if(settings)return '<section class="mono-reserve-config" data-engine="'+engine+'" data-profile-id="reserve"><div class="mono-reserve-status">'+(active?'Резерв включён':'Резерв выключен')+'<span>Без ограничения срока</span></div><label class="mono-auto"><input type="checkbox" data-mirror-setting="auto" data-engine="'+engine+'" '+(state.auto.enabled?'checked':'')+'> <span>Включать автоматически, когда '+mirrorNames[engine==='claude'?'codex':'claude']+' недоступен</span></label><p class="mono-note">После восстановления другой модели автоматический резерв вернёт прежний сценарий.</p><div class="mono-reserve-actions"><button type="button" data-mirror-action="'+(active?'stop':'apply')+'">'+(active?'Выключить резерв':'Включить вручную…')+'</button></div></section>';
+  return '<section class="mirror-service mono-reserve" data-engine="'+engine+'" data-profile-id="reserve"><div class="mono-reserve-copy"><strong>'+acctEsc(profile.title)+'</strong><div class="cxps">'+(active?'Включён · другая модель на паузе':'Без ограничения срока · другая модель на паузе при включении')+'</div></div><div class="mirror-service-actions"><button type="button" data-mirror-action="'+(active?'stop':'apply')+'">'+(active?'Выключить':'Включить…')+'</button><button type="button" data-mirror-action="reserve-settings" aria-label="Настройки резерва '+mirrorNames[engine]+'">Настройки</button></div></section>';
+ }
+ function monoAgentLayout(){
+  const note=[...monoAgentBody.querySelectorAll(':scope > .ntnote')].find(n=>n.textContent.includes('Резерв и аварийный'));note?.remove();
+  const first=monoAgentBody.querySelector(':scope > .ntsec');
+  if(first){const help=el('details','mono-notion-help');help.append(el('summary','','Как подключить Notion'));let node=first;while(node){const next=node.nextElementSibling;help.append(node);node=next}monoAgentBody.append(help)}
+ }
+ function monoNotionStatus(){
+  const node=document.getElementById('monoNotionStatus');if(node)putText(node,ntData?.connected?'Notion подключён'+(ntData.agent?.name?' · '+ntData.agent.name:''):'Notion не подключён');
+  const login=document.getElementById('ntLoginV');if(login&&ntData){login.className=ntData.connected?'ok':'bad';putText(login,tr(ntData.connected?'ntLoginOk':'ntLoginBad'))}
+ }
+ paintMirrorPalette=function(){
+  if(!mirrorState)return;mirrorTheme();
+  const signature=JSON.stringify([monoView,mirrorState.revision,mirrorState.service,mirrorState.engines]);
+  if(signature===monoSignature){monoNotionStatus();monoCenter();return}monoSignature=signature;
+  const focus=document.activeElement,focusId=focus?.id,focusCard=focus?.closest('[data-profile-id]'),focusEngine=focus?.dataset.engine||focusCard?.dataset.engine,focusProfile=focusCard?.dataset.profileId,action=focus?.dataset.mirrorAction,setting=focus?.dataset.mirrorSetting;
+  monoParkAgent();
+  let html='<div class="mono-provider-grid">';
+  for(const engine of ['claude','codex']){
+   const state=mirrorState.engines[engine];html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="Профили '+mirrorNames[engine]+'"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+acctEsc(state.label)+'</span></header>';
+   html+=monoView==='profiles'?'<div class="cxplist" role="radiogroup" aria-label="Рабочий профиль '+mirrorNames[engine]+'">'+state.profiles.filter(p=>p.kind!=='reserve').map(p=>monoCard(engine,p,state)).join('')+'</div>'+monoReserve(engine,state,false):monoReserve(engine,state,true);
+   html+='</section>';
+  }
+  html+='</div>';
+  if(monoView==='reserve')html+='<section class="mono-agent"><header><strong>Общий Notion-агент</strong><span id="monoNotionStatus"></span></header><div id="monoAgentSlot"></div></section>';
+  html+='<div class="mono-window-note">'+(monoView==='profiles'?'Ведущая указана первой. В оркестраторе каждый шаг подтверждает человек.':'Резерв работает без срока. Другая модель остаётся на паузе до возврата прежнего сценария.')+'</div>';
+  profileRoot.innerHTML=html;
+  if(monoView==='reserve'){
+   document.getElementById('monoAgentSlot').append(monoAgentBody);
+   if(!monoAgentReady&&ntData){ntRender();monoAgentReady=true}monoNotionStatus();
+  }
+  putText(paletteCurrent,monoView==='profiles'?'У каждой модели: 2 профиля + резерв':'Без таймеров');putText(paletteCount,monoView==='profiles'?'Claude + Codex · единый выбор':'Резерв Claude и Codex');putText(paletteHelp,'Esc — закрыть');
+  paletteEmpty.hidden=true;if(monoView==='profiles')filterProfiles();repaintProfileResults();
+  if(focusId&&document.getElementById(focusId))document.getElementById(focusId).focus({preventScroll:true});
+  else if(focusEngine&&focusProfile){const card=profileRoot.querySelector('[data-engine="'+focusEngine+'"][data-profile-id="'+focusProfile+'"]'),target=action?card?.querySelector('[data-mirror-action="'+action+'"]'):setting?card?.querySelector('[data-mirror-setting="'+setting+'"]'):card;target?.focus({preventScroll:true})}
+  paintMirrorWorkplace();monoCenter();
+ }
+ mirrorProfileClick=function(event){
+  const card=event.target.closest('[data-profile-id]');if(!card)return;event.stopImmediatePropagation();if(event.target.closest('.mono-auto'))return;
+  const engine=card.dataset.engine||mirrorEngine,action=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction,id=card.dataset.profileId;
+  if(action==='reserve-settings'){mirrorOpen(engine,'reserve');return}
+  if(action==='info'){mirrorInfo[engine].has(id)?mirrorInfo[engine].delete(id):mirrorInfo[engine].add(id);monoSignature='';cxpRender();return}
+  if(action==='stop'){mirrorStop(engine);return}
+  if(action==='apply'||card.matches('.fleet-profile-card')&&!event.target.closest('.cxpinfo'))mirrorApply(engine,id);
+ }
+ const monoMount=mountMirrorProfiles;mountMirrorProfiles=function(){
+  monoMount();nativeMirrorOpen=monoRawOpen;cxMenuPlace=monoCenter;cxMenuOpen=function(){mirrorOpen('codex')};
+  const originalWorkplace=paintMirrorWorkplace;paintMirrorWorkplace=function(){originalWorkplace();for(const engine of ['claude','codex']){mirrorButtons[engine].setAttribute('aria-expanded',String(!menu.hidden&&monoView==='profiles'));mirrorReserves[engine].querySelector('.ntgbtn').setAttribute('aria-expanded',String(!menu.hidden&&monoView==='reserve'))}};
+  for(const engine of ['claude','codex']){
+   mirrorButtons[engine].addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();if(!menu.hidden&&monoView==='profiles')cxMenuClose();else mirrorOpen(engine)},true);
+   mirrorReserves[engine].querySelector('.ntgbtn').addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();mirrorOpen(engine,'reserve')},true);
+  }
+  const renderAgent=ntRender;ntRender=function(){renderAgent();monoAgentLayout();monoNotionStatus()};
+  const applyAgent=ntApply;ntApply=function(data){applyAgent(data);if(monoView==='reserve'&&!menu.hidden&&!monoAgentReady&&ntData){ntRender();monoAgentReady=true;monoCenter()}monoNotionStatus()};
+  ntOpen=function(){mirrorOpen(mirrorEngine,'reserve')};
+  const close=cxMenuClose;cxMenuClose=function(...args){monoParkAgent();monoSignature='';close(...args)};
+  new MutationObserver(()=>{if(!menu.hidden&&monoView==='profiles'&&matchMedia('(pointer:fine)').matches)profileRoot.querySelector('.fleet-profile-card.act[data-engine="'+mirrorEngine+'"]')?.focus({preventScroll:true})}).observe(menu,{attributes:true,attributeFilter:['hidden']});
+  monoSignature='';paintMirrorPalette();if(monoPendingOpen){const pending=monoPendingOpen;monoPendingOpen=null;mirrorOpen(...pending)}
+ }
+ addEventListener('resize',()=>{if(!menu.hidden)monoCenter()});window.visualViewport?.addEventListener('resize',()=>{if(!menu.hidden)monoCenter()});
+
+ // Роли — черновик пользователя. До общей кнопки применения API не вызывается.
+ let manualDraft=null,manualRevision=-1,manualDirty=false;
+ const manualEngines=['claude','codex'];
+ const manualOther=engine=>engine==='claude'?'codex':'claude';
+ const manualSame=(a,b)=>manualEngines.every(engine=>a?.[engine]===b?.[engine]);
+ const manualCurrent=()=>mirrorState?.manual_scenario?.choices||{claude:null,codex:null};
+ paletteTools.remove();paletteFooter.remove();
+ const manualThemeBefore=mirrorTheme;
+ mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,monoView==='reserve'?'Без таймеров':'Роли выбираешь вручную')};
+ function manualSync(){
+  if(!manualDraft||!manualDirty){manualDraft={...manualCurrent()};manualRevision=mirrorState.revision;manualDirty=false}
+ }
+ function manualReason(engine,role){
+  const other=manualOther(engine),op=manualDraft[other],name=mirrorNames[other];
+  if(!op)return '';
+  if(op==='full')return name+' Full работает самостоятельно. Сними этот выбор, чтобы включить '+mirrorNames[engine]+'.';
+  if(op==='reserve')return name+' работает с Notion. Сними резерв в соседнем блоке, чтобы выбрать эту модель.';
+  if(op==='orchestrator'&&role!=='executor')return name+' уже выбрана ведущей. Здесь доступна роль «Исполнитель».';
+  if(op==='executor'&&role!=='orchestrator')return name+' уже выбрана исполнителем. Здесь доступна роль «Оркестратор».';
+  return '';
+ }
+ function manualStatus(){
+  if(mirrorState.updating)return {valid:false,text:'Завершается обновление панели. Сценарий можно применить после проверки.'};
+  const roles=manualEngines.map(engine=>manualDraft[engine]).filter(Boolean),lead=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),executor=manualEngines.find(engine=>manualDraft[engine]==='executor');
+  if(mirrorState.manual_scenario.legacy&&!manualDirty)return {valid:false,text:'Выбери общую схему работы. До применения текущие сессии продолжают работать.'};
+  if(manualRevision!==mirrorState.revision)return {valid:false,text:'Сценарий изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
+  if(lead&&executor)return {valid:true,text:mirrorNames[lead]+' → '+mirrorNames[executor]+' · ведущая и исполнитель'};
+  const single=manualEngines.find(engine=>['full','reserve'].includes(manualDraft[engine]));
+  if(single&&roles.length===1)return {valid:true,text:manualDraft[single]==='full'?mirrorNames[single]+' Full · самостоятельно; '+mirrorNames[manualOther(single)]+' не участвует':mirrorNames[single]+' + Notion · резерв; '+mirrorNames[manualOther(single)]+' на паузе'};
+  if(lead&&roles.length===1)return {valid:false,text:mirrorNames[lead]+' — ведущая. Теперь выбери '+mirrorNames[manualOther(lead)]+' · исполнитель.'};
+  if(executor&&roles.length===1)return {valid:false,text:mirrorNames[executor]+' — исполнитель. Теперь выбери '+mirrorNames[manualOther(executor)]+' · оркестратор.'};
+  return {valid:false,text:'Выбери Full для одной модели или вручную собери пару: оркестратор → исполнитель.'};
+ }
+ function manualSelect(engine,role){
+  if(mirrorBusy)return;manualSync();
+  if(manualDraft[engine]!==role){const reason=manualReason(engine,role);if(reason){toast(reason);return}}
+  manualDraft={...manualDraft,[engine]:manualDraft[engine]===role?null:role};manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
+ }
+ function manualCardTitle(engine,role){
+  const other=manualOther(engine);
+  if(role==='orchestrator'&&manualDraft[other]==='executor')return mirrorNames[engine]+' → '+mirrorNames[other]+' · ведущая';
+  if(role==='executor'&&manualDraft[other]==='orchestrator')return mirrorNames[other]+' → '+mirrorNames[engine]+' · исполнитель';
+  return mirrorNames[engine]+({full:' Full · самостоятельно',orchestrator:' · оркестратор',executor:' · исполнитель',reserve:' + Notion · резерв'}[role]);
+ }
+ function manualRoleCard(engine,role){
+  const state=mirrorState.engines[engine],id=role==='full'?engine+'_solo_full':role,p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]===role,reason=manualReason(engine,role),info=mirrorInfo[engine].has(id),current=manualCurrent()[engine]===role;
+  const kinds={full:'FULL',orchestrator:'ВЕДУЩАЯ',executor:'ИСПОЛНИТЕЛЬ'},copy={full:'Полные доступные права. Работает одна, вторая модель не участвует.',orchestrator:'Планирует и проверяет. Исполнителя выбираешь вручную напротив.',executor:'Выполняет подтверждённые шаги ведущей с пределом прав «дев».'};
+  return '<div class="cxprof fleet-profile-card manual-role'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="'+role+'" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="mono-mode-head"><span class="mono-mode-kind">'+kinds[role]+'</span><span class="mono-mode-status">'+(reason?'Недоступно':current&&!manualDirty?'Работает сейчас':selected?'В твоём выборе':'')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(manualCardTitle(engine,role))+'</span></span><span class="cxps">'+copy[role]+'</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected?'✓ Выбрано · нажми, чтобы снять':reason?'Несовместимая роль':'Выбрать →')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
+ }
+ function manualReserveCard(engine){
+  const selected=manualDraft[engine]==='reserve',reason=manualReason(engine,'reserve');
+  return '<section class="mono-reserve manual-role'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="reserve" data-manual-role="reserve" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="mono-reserve-copy"><strong>'+acctEsc(manualCardTitle(engine,'reserve'))+'</strong><div class="cxps">Без ограничения срока · другая модель на паузе</div></div><div class="mirror-service-actions"><span class="fleet-profile-choose">'+(selected?'✓ Выбрано · нажми, чтобы снять':reason?'Несовместимая роль':'Выбрать →')+'</span><button type="button" aria-disabled="false" data-mirror-action="reserve-settings">Настройки</button></div></section>';
+ }
+ const manualPaletteBefore=paintMirrorPalette;
+ paintMirrorPalette=function(){
+  if(!mirrorState)return;if(monoView==='reserve'){manualPaletteBefore();return}manualSync();mirrorTheme();monoParkAgent();
+  const scroll=profileBody.scrollTop,focused=document.activeElement,focusedCard=focused?.closest('[data-manual-role]'),focusEngine=focusedCard?.dataset.engine,focusRole=focusedCard?.dataset.manualRole,focusInfo=focused?.dataset.mirrorAction==='info',focusAction=focused?.dataset.manualAction;
+  const status=manualStatus(),dirty=manualDirty,signature=JSON.stringify([mirrorState.revision,mirrorState.updating,manualDraft,mirrorInfo.claude.size,mirrorInfo.codex.size,mirrorBusy]);
+  if(signature===monoSignature){monoCenter();return}monoSignature=signature;
+  let html='<div class="mono-provider-grid manual-provider-grid">';
+  for(const engine of manualEngines){
+   const other=manualOther(engine),op=manualDraft[other],own=manualDraft[engine],hint=own==='orchestrator'&&op==='executor'?'Ведущая для '+mirrorNames[other]+' · исполнитель выбран вручную.':own==='executor'&&op==='orchestrator'?'Исполнитель '+mirrorNames[other]+' · ведущая выбрана вручную.':op==='full'?mirrorNames[other]+' Full: эта модель не участвует.':op==='reserve'?mirrorNames[other]+' + Notion: эта модель на паузе.':op==='orchestrator'?'Выбери исполнителя для '+mirrorNames[other]+'.':op==='executor'?'Выбери ведущую для '+mirrorNames[other]+'.':own==='orchestrator'?'Ведущая выбрана. Выбери исполнителя напротив.':own==='executor'?'Исполнитель выбран. Выбери ведущую напротив.':'Выбери роль. Повторное нажатие снимает выбор.';
+   html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="Роли '+mirrorNames[engine]+'"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+acctEsc(manualDraft[engine]?manualCardTitle(engine,manualDraft[engine]):'Не участвует в выборе')+'</span></header><p class="manual-compatibility"'+(['full','reserve'].includes(op)?' data-blocked="true"':'')+'>'+acctEsc(hint)+'</p><div role="radiogroup" aria-label="Роль '+mirrorNames[engine]+'">'+['full','orchestrator','executor'].map(role=>manualRoleCard(engine,role)).join('')+manualReserveCard(engine)+'</div></section>';
+  }
+  html+='</div><div class="manual-apply-bar"><div class="manual-selection-summary" role="status"><strong>'+(!dirty?(mirrorState.manual_scenario.legacy?'Текущие сессии работают':'Действующий сценарий'):status.valid?'Готово к применению':'Выбор не завершён')+'</strong><span>'+acctEsc(status.text)+'</span></div><div class="manual-scenario-actions"><button type="button" class="ghostbtn" data-manual-action="clear">Очистить выбор</button>'+(dirty?'<button type="button" class="ghostbtn" data-manual-action="restore">Вернуть текущий</button>':'')+'<button type="button" class="manual-apply" data-manual-action="apply" '+(!status.valid||!dirty||mirrorBusy?'disabled':'')+'>'+(mirrorBusy?'Применение…':!dirty?(mirrorState.manual_scenario.legacy?'Выбери сценарий':'Сценарий применён'):'Применить сценарий')+'</button></div></div>';
+  profileRoot.innerHTML=html;paletteEmpty.hidden=true;profileBody.scrollTop=scroll;
+  if(focusEngine&&focusRole){const node=profileRoot.querySelector('[data-engine="'+focusEngine+'"][data-manual-role="'+focusRole+'"]');(focusInfo?node?.querySelector('[data-mirror-action="info"]'):node)?.focus({preventScroll:true})}
+  else if(focusAction)profileRoot.querySelector('[data-manual-action="'+focusAction+'"]')?.focus({preventScroll:true});
+  paintMirrorWorkplace();monoCenter();
+ }
+ const manualClickBefore=mirrorProfileClick;
+ mirrorProfileClick=function(event){
+  if(monoView!=='profiles')return manualClickBefore(event);
+  const action=event.target.closest('[data-manual-action]')?.dataset.manualAction;
+  if(action){event.stopImmediatePropagation();if(mirrorBusy)return;if(action==='apply'){manualApplyScenario();return}manualDraft=action==='restore'?{...manualCurrent()}:{claude:null,codex:null};manualRevision=mirrorState.revision;manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();return}
+  const card=event.target.closest('[data-manual-role]');if(!card)return;event.stopImmediatePropagation();const engine=card.dataset.engine,role=card.dataset.manualRole,sub=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction;
+  if(sub==='reserve-settings'){mirrorOpen(engine,'reserve');return}
+  if(sub==='info'){const id=card.dataset.profileId;mirrorInfo[engine].has(id)?mirrorInfo[engine].delete(id):mirrorInfo[engine].add(id);monoSignature='';cxpRender();return}
+  if(!event.target.closest('.cxpinfo'))manualSelect(engine,role);
+ }
+ const manualApplyBefore=mirrorApply;
+ mirrorApply=function(engine,id,confirmation=''){if(monoView==='profiles'&&!menu.hidden){manualSelect(engine,id.endsWith('_solo_full')?'full':id);return Promise.resolve()}return manualApplyBefore(engine,id,confirmation)};
+ profileRoot.addEventListener('keydown',event=>{const card=event.target.closest('.mono-reserve[data-manual-role]');if(monoView!=='profiles'||!card||event.target!==card||!['Enter',' '].includes(event.key))return;event.preventDefault();event.stopImmediatePropagation();manualSelect(card.dataset.engine,'reserve')},true);
+ async function manualApplyScenario(confirmation='',choices={...manualDraft},revision=manualRevision){
+  if(mirrorBusy||!manualStatus().valid)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
+  try{
+   const response=await fetch(API+'profiles/scenario/apply',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({choices,revision,confirm:confirmation})}),result=await response.json();
+   if(result.confirmation_required){manualConfirmScenario(choices,revision,result.word);return}
+   if(!result.ok){toast(result.message||'Не удалось применить сценарий');if(result.conflict)await mirrorLoad();return}
+   manualDirty=false;manualDraft=null;monoSignature='';mirrorAccept(result.state);toast(result.message);cxbLoad(true);
+  }catch(_){toast('Не удалось применить сценарий. Текущий сценарий продолжает работать.')}
+  finally{mirrorBusy=false;menu.removeAttribute('aria-busy');monoSignature='';if(!menu.hidden)cxpRender()}
+ }
+ function manualConfirmScenario(choices,revision,word){
+  const engine=manualEngines.find(e=>choices[e]),name=manualCardTitle(engine,choices[engine]),other=mirrorNames[manualOther(engine)];cxMenuClose();
+  acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(name)+'</h3><p>'+other+' не участвует в этом сценарии. '+(choices[engine]==='reserve'?'Резерв с Notion работает без ограничения срока.':'Работает только '+mirrorNames[engine]+' с полными доступными правами.')+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы применить весь сценарий.</p><input id="manualConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="manualConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="manualConfirmApply" disabled>Применить сценарий</button></div></div>');
+  const input=document.getElementById('manualConfirmWord'),button=document.getElementById('manualConfirmApply');input.oninput=()=>button.disabled=input.value.trim().toLocaleLowerCase('ru')!==word;input.onkeydown=event=>{if(event.key==='Enter'&&!button.disabled)button.click()};document.getElementById('manualConfirmCancel').onclick=()=>{acctClose();mirrorOpen(engine)};button.onclick=()=>{const value=input.value;acctClose();manualApplyScenario(value,choices,revision).then(()=>mirrorOpen(engine))};setTimeout(()=>input.focus(),30);
+ }
+
  mirrorLoad();
 
  loadRotation();setInterval(()=>{if(!document.hidden)loadRotation()},5000);

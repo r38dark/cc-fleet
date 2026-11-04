@@ -30,6 +30,7 @@ class ProfileTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.now=1000;self.native=FakeNative();self.p=Profiles(self.tmp.name,self.native,lambda:self.now)
     def action(self,e,pid,word=''):
+        if pid=='orchestrator':return self.p.apply_scenario(dict(choices={e:'orchestrator',self.p.state.other(e):'executor'},revision=self.p.state.revision))
         return self.p.action(e,'apply',dict(id=pid,confirm=word,revision=self.p.state.revision))
     def test_install_and_reads_do_not_change_console_or_model(self):
         for _ in range(3):self.p.public()
@@ -101,13 +102,13 @@ class ClaudeResultTests(unittest.TestCase):
 
 class TaskTests(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.native=FakeNative();self.p=Profiles(self.tmp.name,self.native);self.p.action('claude','apply',dict(id='orchestrator'));self.sent=[];self.asked=[]
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.native=FakeNative();self.p=Profiles(self.tmp.name,self.native);self.p.apply_scenario(dict(choices=dict(claude='orchestrator',codex='executor'),revision=self.p.state.revision));self.sent=[];self.asked=[]
         self.tasks=ProfileTasks(self.p,lambda e,t:self.sent.append((e,t)),lambda e,t:self.asked.append((e,t)) or 'checked result');self.p.tasks=self.tasks;self.draft=self.p.exchange('claude')/'outbox/task.md';self.draft.parent.mkdir(parents=True);self.draft.write_text('права: дев\nOriginal safe step');self.tasks.tick()
     def test_no_dispatch_before_human_confirmation_and_immutable_task(self):
         self.assertFalse(self.asked);task=self.tasks.public();self.draft.write_text('права: полные\nREPLACED TEXT');r=self.tasks.confirm(dict(id=task['id'],approve=True));self.assertTrue(r['ok']);self.tasks.tick();self.tasks.worker.join(2);self.assertEqual(self.asked[0][0],'codex');self.assertIn('Original safe step',self.asked[0][1]);self.assertNotIn('REPLACED TEXT',self.asked[0][1]);self.assertEqual(self.sent[0][0],'claude');self.assertEqual(self.tasks.public()['status'],'done')
     def test_stale_profile_cannot_approve_task(self):
-        self.p.action('codex','apply',dict(id='orchestrator'));r=self.tasks.confirm(dict(id=self.tasks.public()['id'],approve=True));self.assertFalse(r['ok']);self.assertFalse(self.asked)
+        self.p.apply_scenario(dict(choices=dict(codex='orchestrator',claude='executor'),revision=self.p.state.revision));r=self.tasks.confirm(dict(id=self.tasks.public()['id'],approve=True));self.assertFalse(r['ok']);self.assertFalse(self.asked)
     def test_running_step_blocks_profile_changes_and_restart_never_resends(self):
-        self.tasks.state['status']='approved';self.tasks.save();r=self.p.action('codex','apply',dict(id='orchestrator'));self.assertTrue(r['busy']);self.tasks.state['status']='running';self.tasks.save();restored=ProfileTasks(self.p,lambda *a:None,lambda *a:self.fail('must never resend'));self.assertEqual(restored.public()['status'],'uncertain');restored.tick();self.assertIsNone(restored.worker)
+        self.tasks.state['status']='approved';self.tasks.save();r=self.p.apply_scenario(dict(choices=dict(codex='orchestrator',claude='executor'),revision=self.p.state.revision));self.assertTrue(r['busy']);self.tasks.state['status']='running';self.tasks.save();restored=ProfileTasks(self.p,lambda *a:None,lambda *a:self.fail('must never resend'));self.assertEqual(restored.public()['status'],'uncertain');restored.tick();self.assertIsNone(restored.worker)
 
 if __name__=='__main__':unittest.main()

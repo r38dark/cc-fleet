@@ -195,7 +195,7 @@ class Profiles:
         if self.path.exists():
             raw=json.loads(self.path.read_text());self.state=ProfileState.from_data(raw['core'],clock);self.managed.update(raw.get('managed') or {})
             for engine in ENGINES:
-                if raw['core']['selected'][engine] not in ('orchestrator', engine+'_solo_full'):
+                if raw['core']['selected'][engine] not in ('orchestrator', 'executor', engine+'_solo_full'):
                     self.managed[engine] = False
             native.claude_cwd=raw.get('claude_cwd') or native.claude_cwd
         else:self.state=native.seed();self.save()
@@ -209,21 +209,31 @@ class Profiles:
         atomic(self.path,dict(schema=1,core=self.state.export(),managed=self.managed,claude_cwd=self.native.claude_cwd))
 
     def paused(self,e):
-        return bool(self.state.service and self.state.service['engine']!=e)
+        return self.state.public()['engines'][e]['role']=='paused'
 
     def input_allowed(self,e):
         return not self.transitioning and not self.paused(e) and not self.pending.exists()
 
     def public(self):
         with self.lock:
-            out=self.state.public();out.update(snapshot_ts=self.clock(),transitioning=self.transitioning,last_error=self.error,availability={e:v['status'] for e,v in self.avail.items()})
+            out=self.state.public();out.update(snapshot_ts=self.clock(),transitioning=self.transitioning,updating=self.update_active(),last_error=self.error,availability={e:v['status'] for e,v in self.avail.items()})
             if self.tasks:out['task']=self.tasks.public()
             for e in ENGINES:
                 out['engines'][e]['applied'] = self.managed[e]
                 out['engines'][e]['emergency_hours'] = 0
-                if not self.managed[e]:
+                if not self.managed[e] and out['engines'][e]['role']=='solo':
                     out['engines'][e]['label'] = ('Claude' if e == 'claude' else 'Codex')+' Full · текущая сессия'
             return out
+
+    def update_active(self):
+        # The installer checks process identity while publishing the new panel.
+        # Hold scenario switches until that check ends; never pause console input.
+        try:
+            marker=json.loads((self.base/'profile-update.json').read_text())
+            pid=int(marker['pid'])
+            start=Path('/proc/'+str(pid)+'/stat').read_text().rsplit(')',1)[1].split()[19]
+            return start==marker['start']
+        except (OSError,ValueError,TypeError,KeyError):return False
 
     def _changed(self,before,after):
         return [e for e in ENGINES if self.native.plan(before,e)!=self.native.plan(after,e)]
@@ -234,6 +244,7 @@ class Profiles:
             return self._transition(candidate,message,force)
 
     def _transition(self,candidate,message,force=None):
+        if self.update_active():return dict(ok=False,busy=True,message='Завершается обновление панели. Примени сценарий после проверки.')
         before=self.state;changed=self._changed(before,candidate)
         if force and force not in changed:changed.append(force)
         if not changed:
@@ -261,6 +272,17 @@ class Profiles:
                 except Exception:self.error+='; требуется восстановление прежней консоли.'
             return dict(ok=False,message=self.error,state=self.public())
         finally:self.transitioning=False
+
+    def apply_scenario(self, body):
+        if not self.lock.acquire(blocking=False):return dict(ok=False,message='Переключение уже выполняется. Дождись результата.')
+        try:
+            candidate=ProfileState.from_data(self.state.export(),self.clock)
+            result=candidate.apply_scenario(body.get('choices'),body.get('confirm',''),body.get('revision'))
+            if not result.get('ok'):return result
+            active=[e for e in ENGINES if candidate.manual_choices[e]]
+            force=next((e for e in active if not self.managed[e]),None)
+            return self.transition(candidate,'Сценарий применён к консолям.',force)
+        finally:self.lock.release()
 
     def action(self,e,action,body):
         if e not in ENGINES:return dict(ok=False,message='Неизвестный исполнитель.')
@@ -310,7 +332,7 @@ class Profiles:
             # Unknown/stale snapshots cannot activate or remove a reserve.
             if all(v['status']!='unknown' and now-v['since']>=120 for v in self.avail.values()):
                 candidate.availability={e:self.avail[e]['status']=='up' for e in ENGINES}
-                ProfileScenarios._reconcile(candidate)
+                candidate.reconcile_availability()
             if candidate.export()!=self.state.export():self.transition(candidate,'Автоматический сценарий обновлён.')
         finally:self.lock.release()
 

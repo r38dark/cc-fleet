@@ -262,14 +262,15 @@ class Routes(unittest.TestCase):
         ns={'H':H,'PAGE':'<html><head></head><body></body></html>','BASE':str(rotation_obj.path.parent),
             'cc_codex':codex,'cc_codex_console':con,'cc_codex_bridge':rotation_obj.bridge,'codex_bin':lambda:'/fake'}
         import cc_profiles
-        profile_stub=types.SimpleNamespace(transitioning=False,public=lambda:{'ok':True,'available':True},input_allowed=lambda e:True,action=lambda *a:{'ok':True},tasks=types.SimpleNamespace(confirm=lambda body:{'ok':True}))
+        profile_stub=types.SimpleNamespace(transitioning=False,public=lambda:{'ok':True,'available':True},input_allowed=lambda e:True,action=lambda *a:{'ok':True},apply_scenario=mock.Mock(return_value={'ok':True}),tasks=types.SimpleNamespace(confirm=lambda body:{'ok':True}))
+        ns['TEST_PROFILES']=profile_stub
         with mock.patch.object(cc_profiles,'bind',return_value=profile_stub):cc_fleet.install(ns)
         h=ns['H']();h.path=path;h.authorized=authed
         raw=json.dumps(body or {}).encode();h.rfile=io.BytesIO(raw);h.headers={'Content-Length':str(len(raw))}
         return h,ns
 
     def test_new_routes_require_authentication_before_body_read(self):
-        for path in ['/api/profiles/claude/apply','/api/profiles/task/confirm','/api/console/input','/api/console/key','/api/chatgpt/rotation/config','/api/chatgpt/rotation/switch','/api/chatgpt/models/check']:
+        for path in ['/api/profiles/scenario/apply','/api/profiles/claude/apply','/api/profiles/task/confirm','/api/console/input','/api/console/key','/api/chatgpt/rotation/config','/api/chatgpt/rotation/switch','/api/chatgpt/models/check']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_POST()[0],403);self.assertEqual(h.rfile.tell(),0)
         for path in ['/api/profiles','/api/chatgpt/bridge','/api/chatgpt','/api/chatgpt/rotation','/api/chatgpt/models']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_GET()[0],403)
@@ -277,6 +278,12 @@ class Routes(unittest.TestCase):
     def test_existing_routes_still_delegate(self):
         h,_=self.fixture('/api/config');self.assertEqual(h.do_POST(),'old-post');self.assertEqual(h.do_GET(),'old-get')
         self.assertEqual(h._chatgpt_post('bridge/save',{}),'old-bridge/save')
+
+    def test_shared_scenario_route_passes_both_choices_in_one_transaction(self):
+        body=dict(choices=dict(claude='orchestrator',codex='executor'),revision=9)
+        h,ns=self.fixture('/api/profiles/scenario/apply',body)
+        self.assertEqual(h.do_POST(),(200,{'ok':True}))
+        ns['TEST_PROFILES'].apply_scenario.assert_called_once_with(body)
 
     def test_payload_shape_and_size_are_checked(self):
         h,_=self.fixture('/api/console/input');h.headers['Content-Length']='65537';self.assertEqual(h.do_POST()[0],413)
