@@ -449,6 +449,31 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(max-width:640px){.mirror-profile-button .cxbtnname{max-width:none!important}.mirror-service-copy>strong{display:block}.mirror-service-state{margin:5px 0!important}}
 
 .mirror-task-button{margin:0;padding:3px 7px;min-height:23px;border:1px solid var(--fleet-line);border-radius:5px;font-size:10px;background:var(--card);color:var(--txt);box-shadow:none}.mirror-task-button[data-status="pending"]{border-color:var(--warn);color:var(--warn)}.mirror-task-button[hidden]{display:none}.mirror-task-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto;background:var(--bg);border:1px solid var(--fleet-line);border-radius:7px;padding:12px;font-size:12px;line-height:1.6}@media(max-width:640px){.fleet-live-head{flex-wrap:wrap}.mirror-task-button{font-size:10px;margin-left:auto}}
+/* Compact live limits: real dates are readable while the account tiles stay folded. */
+.fleet-live-timezone{margin-left:auto;color:var(--fleet-muted);font-size:10px;white-space:nowrap}
+.fleet-live-fold{border:1px solid var(--fleet-line);border-radius:9px;background:var(--card);min-width:0}
+.fleet-live-summary{display:flex;align-items:center;gap:18px;list-style:none;padding:10px 13px;min-height:40px;cursor:pointer;min-width:0}
+.fleet-live-summary::-webkit-details-marker{display:none}
+.fleet-live-summary::after{content:"⌄";font-size:17px;line-height:1;color:var(--fleet-muted);flex:none;transition:transform .15s}
+.fleet-live-fold[open]>.fleet-live-summary::after{transform:rotate(180deg)}
+.fleet-live-summary:hover{background:color-mix(in srgb,var(--fleet-muted) 5%,transparent)}
+.fleet-live-summary:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px;border-radius:8px}
+.fleet-live-fold:not([open])>.fleet-live-rows{display:none!important}
+.fleet-live-fold[open]>.fleet-live-rows{padding:10px;border-top:1px solid var(--fleet-line)}
+.fleet-compact-account{display:flex;align-items:center;gap:13px;flex:1;min-width:0;white-space:nowrap;font-size:12px;--live-accent:var(--fleet-claude)}
+.fleet-compact-account.codex{--live-accent:var(--fleet-accent);border-left:1px solid var(--fleet-line);padding-left:18px}
+.fleet-compact-name{color:var(--live-accent);font-weight:600;font-size:13px;min-width:60px;max-width:180px;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+.fleet-compact-warning{color:var(--warn);font-size:10px}.fleet-compact-warning:empty{display:none}
+.fleet-compact-window{display:inline-flex;align-items:center;gap:6px;flex:none}
+.fleet-compact-label{color:var(--fleet-muted);font-size:11px}
+.fleet-compact-used{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--txt);padding:2px 5px;border-radius:4px;background:color-mix(in srgb,var(--live-accent) 12%,transparent)}
+.fleet-compact-window[data-tone="bad"] .fleet-compact-used{color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent)}
+.fleet-compact-window[data-tone="warn"] .fleet-compact-used{color:var(--warn)}
+.fleet-compact-range{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--txt);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fleet-compact-arrow{font-style:normal;color:var(--fleet-muted)}
+@media(max-width:1500px){.fleet-live-summary{flex-wrap:wrap;position:relative;padding-right:34px;gap:8px}.fleet-live-summary::after{position:absolute;right:12px;top:12px}.fleet-compact-account{flex-basis:100%}.fleet-compact-account.codex{border-left:0;padding-left:0;padding-top:8px;border-top:1px solid var(--fleet-line)}}
+@media(max-width:640px){.fleet-live-timezone{font-size:9px}.fleet-live-summary{padding:10px 30px 10px 10px}.fleet-compact-account{flex-wrap:wrap;gap:7px 10px}.fleet-compact-name{flex-basis:100%;max-width:100%}.fleet-compact-window{flex-basis:100%;gap:6px}.fleet-compact-range{font-size:11px;gap:4px}.fleet-compact-name{font-size:12px}.fleet-live-fold[open]>.fleet-live-rows{padding:7px;gap:7px}}
+@media(prefers-reduced-motion:reduce){.fleet-live-summary::after{transition:none}}
 '''
 
 JS = r'''
@@ -553,8 +578,10 @@ JS = r'''
  }
  // Сводка, модель и настройки каждого провайдера собраны в одну плитку.
  const liveStrip=el('section','fleet-active-strip');liveStrip.id='fleetActiveAccounts';liveStrip.setAttribute('aria-label','Активные аккаунты и использованные лимиты');
- const liveHead=el('div','fleet-live-head');liveHead.append(el('span','fleet-live-label','Активные аккаунты · использовано лимита'));
- const liveRows=el('div','fleet-live-rows');liveStrip.append(liveHead,liveRows);term.before(liveStrip);
+ const liveHead=el('div','fleet-live-head');liveHead.append(el('span','fleet-live-label','Активные аккаунты · использовано лимита'),el('span','fleet-live-timezone','Окна: начало → сброс · Иркутск'));
+ const liveFold=el('details','fleet-live-fold');liveFold.id='fleetActiveFold';
+ const liveSummary=el('summary','fleet-live-summary');liveSummary.id='fleetActiveSummary';liveSummary.setAttribute('aria-controls','fleetLiveRows');
+ const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows);liveStrip.append(liveHead,liveFold);term.before(liveStrip);
  const reserve=document.getElementById('ntGrp');hdr.querySelector('.hdrctl').append(reserve,document.getElementById('cxInst'));
  const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
  const generalGear=el('button','hdrgear fleet-header-icon');generalGear.id='fleetGeneralGear';generalGear.type='button';generalGear.innerHTML=gear.innerHTML;generalGear.title='Общие настройки';generalGear.setAttribute('aria-label','Общие настройки');
@@ -563,8 +590,15 @@ JS = r'''
  claudeModel.append(codexModel.querySelector('svg').cloneNode(true),el('span','cxmodn','Модель Claude'),el('span','cxmode'));
  const claudeQ=el('div','cxpop cxquick fleet-quick-panel');claudeQ.id='fleetClaudeQ';claudeQ.setAttribute('role','dialog');claudeQ.setAttribute('aria-label','Модель и рассуждения Claude');claudeQ.hidden=true;
  const claudeQBody=el('div','cxpbody');claudeQBody.id='fleetClaudeQBody';const nativeModelControls=el('div','fleet-native-controls');nativeModelControls.hidden=true;nativeModelControls.append(models);claudeQ.append(claudeQBody,nativeModelControls);document.body.append(claudeQ);
- const liveNodes={},liveSnapshots=new Map();
+ const liveNodes={},liveSnapshots=new Map(),compactNodes={};
  for(const engine of ['claude','codex']){
+  const compact=el('span','fleet-compact-account '+engine);compact.dataset.engine=engine;
+  compact.append(el('strong','fleet-compact-name'),el('span','fleet-compact-warning'));
+  for(const kind of ['session','week']){
+   const window=el('span','fleet-compact-window');window.dataset.window=kind;
+   window.append(el('span','fleet-compact-label',kind==='session'?'5ч':'Нед'),el('b','fleet-compact-used','—'),el('span','fleet-compact-range','Даты не получены'));compact.append(window);
+  }
+  liveSummary.append(compact);compactNodes[engine]=compact;
   const tile=el('article','fleet-live-account '+engine);tile.dataset.engine=engine;
   const identity=el('a','fleet-live-identity');identity.href=engine==='claude'?'#fleetClaude':'#fleetCodex';identity.append(el('strong','fleet-live-name'),el('span','fleet-live-email'));tile.append(identity);
   const controls=el('div','fleet-provider-controls');controls.append(engine==='claude'?claudeModel:codexModel,engine==='claude'?gear:codexGear);
@@ -691,6 +725,28 @@ JS = r'''
  if(!scrim.hidden){scrim.dataset.view='general';putText(claudeTitle,'Общие настройки');common.open=true;placePanel(modal,generalGear,580);paintSettingsState()}
  if(lastModel)paintClaudeModel(lastModel);
 
+ const liveDateFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const liveYearFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',year:'numeric'});
+ function windowDates(win,index){
+  if(!win?.resets_at)return null;
+  const end=new Date(win.resets_at);if(Number.isNaN(end.getTime()))return null;
+  return {start:new Date(end.getTime()-(index?10080:300)*60000),end};
+ }
+ function compactDate(date,withYear){
+  return liveDateFormat.format(date).replaceAll(',','')+(withYear?' '+liveYearFormat.format(date):'');
+ }
+ function paintCompactWindow(root,win,index){
+  const pct=Number.isFinite(win?.pct)?win.pct:null,dates=windowDates(win,index);
+  putText(root.querySelector('.fleet-compact-used'),pct==null?'—':Math.round(pct)+'%');
+  root.dataset.tone=pct==null?'unknown':pct>=99?'bad':pct>=90?'warn':'normal';
+  const range=root.querySelector('.fleet-compact-range');
+  if(!dates){putText(range,'Даты не получены');range.removeAttribute('aria-label');return;}
+  const crossYear=liveYearFormat.format(dates.start)!==liveYearFormat.format(dates.end);
+  const start=el('time','',compactDate(dates.start,crossYear)),end=el('time','',compactDate(dates.end,crossYear));
+  start.dateTime=dates.start.toISOString();end.dateTime=dates.end.toISOString();
+  range.replaceChildren(start,el('i','fleet-compact-arrow','→'),end);
+  range.setAttribute('aria-label','Начало окна '+start.textContent+'; сброс '+end.textContent+'; время иркутское');
+ }
  function updateLiveAccount(engine,slot,account,pending){
   const node=liveNodes[engine],provider=engine==='claude'?'Claude':'Codex';
   const signature=JSON.stringify([slot,account,pending]);if(liveSnapshots.get(engine)===signature)return;liveSnapshots.set(engine,signature);
@@ -699,9 +755,14 @@ JS = r'''
   const issue=account&&(account.login_required||account.lapsed||account.error)?'Нужна проверка':account&&account.stale?'Данные устарели':'';
   putText(node.querySelector('.fleet-live-email'),account?((account.email||slot)+(issue?' · '+issue:'')):slot?'Лимиты пока недоступны':pending?'Получаем сохранённые данные':'Нет активного аккаунта');
   node.dataset.state=issue?'warning':account?'ready':'empty';node.dataset.slot=slot||'';
+  const compact=compactNodes[engine];compact.dataset.state=node.dataset.state;compact.dataset.slot=slot||'';
+  putText(compact.querySelector('.fleet-compact-name'),provider+' · '+name);
+  compact.querySelector('.fleet-compact-name').title=provider+' · '+name+(account?.email?' · '+account.email:'');
+  putText(compact.querySelector('.fleet-compact-warning'),issue?(account.stale?'устарело':'проверить'):'');
   node.title=provider+' · '+name+(account?.email?' · '+account.email:'')+' · открыть полную карточку'+(issue?' · '+issue:'');
   const windows=engine==='claude'?[account?.five_hour,account?.seven_day]:[account?.windows?.find(w=>w.mins===300),account?.windows?.find(w=>w.mins===10080)];
   windows.forEach((window,i)=>{
+   paintCompactWindow(compact.querySelectorAll('.fleet-compact-window')[i],window,i);
    const meter=node.querySelectorAll('.fleet-live-meter')[i],pct=Number.isFinite(window?.pct)?window.pct:null;
    putText(meter.querySelector('b'),pct==null?'—':Math.round(pct)+'%');meter.querySelector('.fleet-live-fill').style.width=(pct==null?0:Math.min(100,Math.max(0,pct)))+'%';
    meter.dataset.tone=pct==null?'unknown':pct>=99?'bad':pct>=90?'warn':'normal';

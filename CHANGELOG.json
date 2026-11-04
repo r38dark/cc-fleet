@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.6",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Компактная сводка активных лимитов",
+        "p": [
+          "Активные карточки скрыты в спойлер по умолчанию",
+          "В одной строке видны проценты, начало и сброс окон с датой и временем",
+          "Время указано по Иркутску; все настройки доступны при раскрытии"
+        ]
+      },
+      "en": {
+        "t": "Compact active limit summary",
+        "p": [
+          "Active account cards are collapsed by default",
+          "Percentages and window start/reset dates are visible inline",
+          "Irkutsk time; existing controls remain available when expanded"
+        ]
+      }
+    },
+    {
       "v": "1.28.5",
       "date": "2026-11-04",
       "ru": {
