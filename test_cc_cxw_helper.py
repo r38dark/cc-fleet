@@ -17,4 +17,11 @@ class CxwHelper(unittest.TestCase):
   with mock.patch.object(H,'screen_pid',return_value=None),mock.patch.object(H,'processes',return_value=[]),mock.patch.object(H,'start_console',return_value=False) as start:
    with self.assertRaises(SystemExit):H.main()
    start.assert_called_once()
+ def test_live_entry_does_not_open_lock_in_readonly_environment(self):
+  with mock.patch.object(H,'screen_pid',return_value=10),mock.patch('builtins.open',side_effect=OSError('read-only')) as opened,mock.patch.object(H,'start_console') as start:
+   H.entry();opened.assert_not_called();start.assert_not_called()
+ def test_check_mode_never_starts_missing_console(self):
+  with mock.patch.object(H,'screen_pid',return_value=None),mock.patch.object(H,'start_console') as start,mock.patch('builtins.open') as opened:
+   with self.assertRaises(SystemExit):H.check()
+   start.assert_not_called();opened.assert_not_called()
 if __name__=='__main__':unittest.main()

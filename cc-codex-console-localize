@@ -54,7 +54,24 @@ def main():
     print('Готово: cxw подключится к общей консоли Codex.')
 
 
-if __name__ == '__main__':
+def entry():
+    # A live attachment is read-only and must work without a writable /run/lock.
+    if screen_pid():
+        return
     with open('/run/lock/cc-codex-console-transition.lock', 'a') as transition_lock:
         fcntl.flock(transition_lock, fcntl.LOCK_EX)
         main()
+
+
+def check():
+    if not screen_pid():
+        fail('Общая консоль Codex не найдена.')
+
+
+if __name__ == '__main__':
+    if sys.argv[1:] == ['--check']:
+        check()
+    elif sys.argv[1:]:
+        fail('Неизвестный аргумент помощника cxw.')
+    else:
+        entry()
