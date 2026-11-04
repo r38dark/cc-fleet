@@ -171,7 +171,7 @@ class Start(unittest.TestCase):
         # лог сбрасывается раз в секунду с самого старта — через свой rc
         rc = argv[argv.index("-c") + 1]
         with open(rc) as f:
-            self.assertEqual(f.read(), 'logfile flush 1\ntermcapinfo * "Km=\\E[M"\n')
+            self.assertEqual(f.read(), 'logfile flush 1\nterm screen-256color\ntermcapinfo * "Km=\\E[M"\n')
         meta = cc_codex.jload(C._meta_path(), {})
         self.assertEqual((meta["pid"], meta["sandbox"], meta["cwd"], meta["slot"]), ("77", "read-only", self.work, "gpt1"))
 

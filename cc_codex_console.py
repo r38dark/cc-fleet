@@ -263,6 +263,7 @@ def start(lang="ru"):
         rc = os.path.join(d, "console.rc")
         with open(rc, "w") as f:
             f.write("logfile flush 1\n")
+            f.write("term screen-256color\n")
             # Screen 4.9 maps the outer SGR mouse prefix ESC[< to its X10 prefix
             # ESC[M without converting the payload; Codex then types coordinates.
             # Keep the legacy key prefix so SGR reports pass through unchanged.
