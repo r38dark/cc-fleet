@@ -449,7 +449,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(max-width:640px){.mirror-profile-button .cxbtnname{max-width:none!important}.mirror-service-copy>strong{display:block}.mirror-service-state{margin:5px 0!important}}
 
 .mirror-task-button{margin:0;padding:3px 7px;min-height:23px;border:1px solid var(--fleet-line);border-radius:5px;font-size:10px;background:var(--card);color:var(--txt);box-shadow:none}.mirror-task-button[data-status="pending"]{border-color:var(--warn);color:var(--warn)}.mirror-task-button[hidden]{display:none}.mirror-task-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto;background:var(--bg);border:1px solid var(--fleet-line);border-radius:7px;padding:12px;font-size:12px;line-height:1.6}@media(max-width:640px){.fleet-live-head{flex-wrap:wrap}.mirror-task-button{font-size:10px;margin-left:auto}}
-/* Compact live limits: real dates are readable while the account tiles stay folded. */
+/* Reset times stay visible, with an explicit control in both disclosure states. */
 .fleet-live-timezone{margin-left:auto;color:var(--fleet-muted);font-size:10px;white-space:nowrap}
 .fleet-live-fold{border:1px solid var(--fleet-line);border-radius:9px;background:var(--card);min-width:0}
 .fleet-live-summary{display:flex;align-items:center;gap:18px;list-style:none;padding:10px 13px;min-height:40px;cursor:pointer;min-width:0}
@@ -461,6 +461,11 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-live-heading[aria-expanded="true"]::after{opacity:1}
 .fleet-live-heading:hover{color:var(--txt)}
 .fleet-live-heading:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:3px}
+.fleet-live-toggle{order:10;flex:none;display:inline-flex;align-items:center;gap:7px;min-height:30px;margin:0;padding:4px 9px;border:1px solid var(--fleet-line);border-radius:6px;background:var(--card);box-shadow:none;color:var(--txt);font-size:11px;line-height:1.4;cursor:pointer}
+.fleet-live-toggle::after{content:"⌄";font-size:15px;line-height:1}
+.fleet-live-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
+.fleet-live-toggle:hover{border-color:var(--fleet-muted)}
+.fleet-live-toggle:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
 .fleet-live-fold[open]{border:0;background:transparent}
 .fleet-live-fold[open]>.fleet-live-summary{display:none}
 .fleet-live-summary:hover{background:color-mix(in srgb,var(--fleet-muted) 5%,transparent)}
@@ -581,6 +586,11 @@ JS = r'''
   const pick=card.querySelector('.fleet-pick')||card.querySelector('.acts .btn-sw');if(pick&&pick.parentElement!==footer)footer.append(pick);
   const windows=engine==='codex'?a.windows||[]:[{mins:300,...a.five_hour},{mins:10080,...a.seven_day}];
   const session=windows.find(w=>w.mins===300),week=windows.find(w=>w.mins===10080);
+  const ordered=engine==='codex'?[session,week,...windows.filter(w=>w!==session&&w!==week)].filter(Boolean):windows;
+  card.querySelectorAll(':scope > .row').forEach((row,i)=>{
+   const reset=row.querySelector('.lbl')?.lastElementChild;if(!reset)return;
+   paintWindowReset(reset,ordered[i],ordered[i]?.mins===10080?1:0);reset.title=reset.textContent;
+  });
   let text='В ожидании',tone='',caption='Запас лимита';
   if(a.loading){text='Проверка данных';caption='Обновляем лимиты'}
   else if(a.error||a.login_required||a.stale||a.lapsed){text='Нужна проверка';tone='problem';caption='Подробности в меню ⋯'}
@@ -593,12 +603,14 @@ JS = r'''
  // Сводка, модель и настройки каждого провайдера собраны в одну плитку.
  const liveStrip=el('section','fleet-active-strip');liveStrip.id='fleetActiveAccounts';liveStrip.setAttribute('aria-label','Активные аккаунты и использованные лимиты');
  const liveHead=el('div','fleet-live-head'),liveHeading=el('button','fleet-live-label fleet-live-heading','Активные аккаунты · использовано лимита');liveHeading.id='fleetActiveHeading';liveHeading.type='button';liveHeading.setAttribute('aria-controls','fleetActiveFold');liveHeading.setAttribute('aria-expanded','false');
- liveHead.append(liveHeading,el('span','fleet-live-timezone','Окна: начало → сброс · Иркутск'));
+ const liveToggle=el('button','fleet-live-toggle','Развернуть');liveToggle.id='fleetActiveToggle';liveToggle.type='button';liveToggle.setAttribute('aria-controls','fleetActiveFold');liveToggle.setAttribute('aria-expanded','false');
+ liveHead.append(liveHeading,el('span','fleet-live-timezone','Сброс лимитов · Иркутск'),liveToggle);
  const liveFold=el('details','fleet-live-fold');liveFold.id='fleetActiveFold';
  const liveSummary=el('summary','fleet-live-summary');liveSummary.id='fleetActiveSummary';liveSummary.setAttribute('aria-controls','fleetLiveRows');
  const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows);liveStrip.append(liveHead,liveFold);term.before(liveStrip);
  liveHeading.addEventListener('click',()=>{liveFold.open=!liveFold.open});
- liveFold.addEventListener('toggle',()=>{liveHeading.setAttribute('aria-expanded',String(liveFold.open));putText(liveHead.querySelector('.fleet-live-timezone'),liveFold.open?'Сброс лимитов · Иркутск':'Окна: начало → сброс · Иркутск');if(liveFold.open&&document.activeElement===liveSummary)liveHeading.focus({preventScroll:true})});
+ liveToggle.addEventListener('click',()=>{liveFold.open=!liveFold.open});
+ liveFold.addEventListener('toggle',()=>{for(const button of [liveHeading,liveToggle])button.setAttribute('aria-expanded',String(liveFold.open));putText(liveToggle,liveFold.open?'Свернуть':'Развернуть');if(liveFold.open&&document.activeElement===liveSummary)liveToggle.focus({preventScroll:true})});
  const reserve=document.getElementById('ntGrp');hdr.querySelector('.hdrctl').append(reserve,document.getElementById('cxInst'));
  const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
  const generalGear=el('button','hdrgear fleet-header-icon');generalGear.id='fleetGeneralGear';generalGear.type='button';generalGear.innerHTML=gear.innerHTML;generalGear.title='Общие настройки';generalGear.setAttribute('aria-label','Общие настройки');
@@ -613,7 +625,7 @@ JS = r'''
   compact.append(el('strong','fleet-compact-name'),el('span','fleet-compact-warning'));
   for(const kind of ['session','week']){
    const window=el('span','fleet-compact-window');window.dataset.window=kind;
-   window.append(el('span','fleet-compact-label',kind==='session'?'5ч':'Неделя'),el('b','fleet-compact-used','—'),el('span','fleet-compact-range','Даты не получены'));compact.append(window);
+   window.append(el('span','fleet-compact-label',kind==='session'?'5ч':'Неделя'),el('b','fleet-compact-used','—'),el('span','fleet-compact-range','Время не получено'));compact.append(window);
   }
   liveSummary.append(compact);compactNodes[engine]=compact;
   const tile=el('article','fleet-live-account '+engine);tile.dataset.engine=engine;
@@ -622,7 +634,7 @@ JS = r'''
   for(const button of controls.children)button.classList.add(button.classList.contains('cxmodbtn')?'fleet-model-tile':'fleet-provider-gear');tile.append(controls);
   for(const kind of ['session','week']){
    const meter=el('div','fleet-live-meter');meter.dataset.window=kind;
-   const caption=el('div','fleet-live-meter-label');caption.append(el('span','',kind==='session'?'5 часов':'Неделя'),el('b','','—'),el('span','fleet-live-reset','Дата не получена'));
+   const caption=el('div','fleet-live-meter-label');caption.append(el('span','',kind==='session'?'5 часов':'Неделя'),el('b','','—'),el('span','fleet-live-reset','Время не получено'));
    const track=el('span','fleet-live-track');track.setAttribute('aria-hidden','true');track.append(el('span','fleet-live-fill'));meter.append(caption,track);tile.append(meter);
   }
   identity.addEventListener('click',event=>{event.preventDefault();const selected=engine==='claude'?document.querySelector('#cards .card.active'):document.querySelector('#cxcards .card.fleet-active');(selected||document.querySelector(identity.getAttribute('href')))?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'})});
@@ -745,29 +757,38 @@ JS = r'''
  const liveDateOptions={timeZone:'Asia/Irkutsk',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'};
  const liveDateFormats=[new Intl.DateTimeFormat('ru-RU',liveDateOptions),new Intl.DateTimeFormat('ru-RU',{...liveDateOptions,weekday:'long'})];
  const liveYearFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',year:'numeric'});
- function windowDates(win,index){
+ function resetDate(win){
   if(!win?.resets_at)return null;
   const end=new Date(win.resets_at);if(Number.isNaN(end.getTime()))return null;
-  return {start:new Date(end.getTime()-(index?10080:300)*60000),end};
+  return end;
  }
  function compactDate(date,withYear,index){
   return liveDateFormats[index].format(date).replaceAll(',','')+(withYear?' '+liveYearFormat.format(date):'');
  }
+ function paintWindowReset(root,win,index){
+  const end=resetDate(win);if(!end){putText(root,'Время не получено');root.removeAttribute('aria-label');return;}
+  let text;
+  if(index){
+   const withYear=liveYearFormat.format(end)!==liveYearFormat.format(new Date());text=compactDate(end,withYear,1);
+  }else{
+   const minutes=Math.ceil((end.getTime()-Date.now())/60000),hours=Math.floor(minutes/60),rest=minutes%60;
+   text=minutes<=0?'сброс ожидается':'через '+(hours?hours+' ч'+(rest?' ':''):'')+(rest?rest+' мин':'');
+  }
+  if(root.firstElementChild?.tagName==='TIME'&&root.firstElementChild.dateTime===end.toISOString()&&root.textContent===text)return;
+  const time=el('time','',text);time.dateTime=end.toISOString();root.replaceChildren(time);
+  root.setAttribute('aria-label','Сброс '+text+(index?'; время иркутское':''));
+ }
  function paintCompactWindow(root,win,index){
-  const pct=Number.isFinite(win?.pct)?win.pct:null,dates=windowDates(win,index);
+  const pct=Number.isFinite(win?.pct)?win.pct:null;
   putText(root.querySelector('.fleet-compact-used'),pct==null?'—':Math.round(pct)+'%');
   root.dataset.tone=pct==null?'unknown':pct>=99?'bad':pct>=90?'warn':'normal';
-  const range=root.querySelector('.fleet-compact-range');
-  if(!dates){putText(range,'Даты не получены');range.removeAttribute('aria-label');return;}
-  const crossYear=liveYearFormat.format(dates.start)!==liveYearFormat.format(dates.end);
-  const start=el('time','',compactDate(dates.start,crossYear,index)),end=el('time','',compactDate(dates.end,crossYear,index));
-  start.dateTime=dates.start.toISOString();end.dateTime=dates.end.toISOString();
-  range.replaceChildren(start,el('i','fleet-compact-arrow','→'),end);
-  range.setAttribute('aria-label','Начало окна '+start.textContent+'; сброс '+end.textContent+'; время иркутское');
+  paintWindowReset(root.querySelector('.fleet-compact-range'),win,index);
  }
  function updateLiveAccount(engine,slot,account,pending){
   const node=liveNodes[engine],provider=engine==='claude'?'Claude':'Codex';
-  const signature=JSON.stringify([slot,account,pending]);if(liveSnapshots.get(engine)===signature)return;liveSnapshots.set(engine,signature);
+  const windows=engine==='claude'?[account?.five_hour,account?.seven_day]:[account?.windows?.find(w=>w.mins===300),account?.windows?.find(w=>w.mins===10080)];
+  const end=resetDate(windows[0]),remaining=end?Math.max(0,Math.ceil((end.getTime()-Date.now())/60000)):null;
+  const signature=JSON.stringify([slot,account,pending,remaining,liveYearFormat.format(new Date())]);if(liveSnapshots.get(engine)===signature)return;liveSnapshots.set(engine,signature);
   const name=account?(account.label||account.name||slot):slot?slot:pending?'Загрузка…':'Не выбран';
   putText(node.querySelector('.fleet-live-name'),provider+' · '+name);
   const issue=account&&(account.login_required||account.lapsed||account.error)?'Нужна проверка':account&&account.stale?'Данные устарели':'';
@@ -778,20 +799,13 @@ JS = r'''
   compact.querySelector('.fleet-compact-name').title=provider+' · '+name+(account?.email?' · '+account.email:'');
   putText(compact.querySelector('.fleet-compact-warning'),issue?(account.stale?'устарело':'проверить'):'');
   node.title=provider+' · '+name+(account?.email?' · '+account.email:'')+' · открыть полную карточку'+(issue?' · '+issue:'');
-  const windows=engine==='claude'?[account?.five_hour,account?.seven_day]:[account?.windows?.find(w=>w.mins===300),account?.windows?.find(w=>w.mins===10080)];
   windows.forEach((window,i)=>{
    paintCompactWindow(compact.querySelectorAll('.fleet-compact-window')[i],window,i);
    const meter=node.querySelectorAll('.fleet-live-meter')[i],pct=Number.isFinite(window?.pct)?window.pct:null;
    putText(meter.querySelector('b'),pct==null?'—':Math.round(pct)+'%');meter.querySelector('.fleet-live-fill').style.width=(pct==null?0:Math.min(100,Math.max(0,pct)))+'%';
    meter.dataset.tone=pct==null?'unknown':pct>=99?'bad':pct>=90?'warn':'normal';
-   const dates=windowDates(window,i),resetLabel=meter.querySelector('.fleet-live-reset');
-   if(dates){
-    const crossYear=liveYearFormat.format(dates.start)!==liveYearFormat.format(dates.end);
-    const time=el('time','',compactDate(dates.end,crossYear,i));time.dateTime=dates.end.toISOString();
-    resetLabel.replaceChildren(el('span','fleet-live-reset-label','сброс'),time);
-   }else putText(resetLabel,'Дата не получена');
-   const reset=window?.resets_at?new Date(window.resets_at):null;
-   meter.title=(i?'Неделя':'5 часов')+' · использовано '+(pct==null?'нет данных':Math.round(pct)+'%')+(reset&&!Number.isNaN(reset.getTime())?' · сброс '+compactDate(reset,false,i):'');
+   const resetLabel=meter.querySelector('.fleet-live-reset');paintWindowReset(resetLabel,window,i);
+   meter.title=(i?'Неделя':'5 часов')+' · использовано '+(pct==null?'нет данных':Math.round(pct)+'%')+' · '+resetLabel.textContent;
   });
  }
  function renderLiveAccounts(snapshot){
@@ -819,6 +833,8 @@ JS = r'''
  document.addEventListener('click',event=>{document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
  document.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>menu.open=false)});
  refreshVisuals();
+ setInterval(()=>{if(!document.hidden)refreshVisuals()},15000);
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshVisuals()});
 
  // Меняется только представление; исходные кнопки паузы и живой таймер сохраняются.
  let pauseFoldOpen=false;
