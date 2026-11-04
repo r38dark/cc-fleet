@@ -17,7 +17,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.28.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.28.1"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -5459,6 +5459,7 @@ function termCols(){
 function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
 let CONS='claude',consShown='claude',cxConsRun=null;
+let consoleRequestSeq=0,consoleAppliedSeq=0;
 try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
 function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}
 async function ccConsoleHistory(){
@@ -5474,7 +5475,8 @@ function cxConsSb(sb){return tr(sb==='workspace-write'?'cxcSbWrite':sb==='danger
 let cxAutoGo=true;  // вкладка Codex сама запускает консоль (как у Claude); после остановки или ошибки — только кнопкой
 let cxStarting=false;
 function cxConsUi(d){
- const on=consCur()==='codex'&&!!d&&d.available!==false;
+ if(!d||d.ok!==true||typeof d.running!=='boolean')return;
+ const on=consCur()==='codex'&&d.available!==false;
  $('#ctStop').hidden=!(on&&d.running);
  $('#ctCompact').hidden=$('#ctNew').hidden=$('#ctStop').hidden;
  $('#cTabs').classList.toggle('cacts',!$('#ctStop').hidden);$('.termwrap').classList.toggle('hascacts',!$('#ctStop').hidden);
@@ -5488,10 +5490,12 @@ function cxConsUi(d){
  }
 }
 async function ccConsole(){
- const box=$('#termBox'),dot=$('#termDot'),s=consCur();
+ const box=$('#termBox'),dot=$('#termDot'),s=consCur(),requestSeq=++consoleRequestSeq;
  try{
   const r=await fetch(API+'console?token='+TOKEN+(s==='codex'?'&s=codex':''));const d=await r.json();
-  if(s!==consCur())return;
+  if(s!==consCur()||requestSeq<consoleAppliedSeq)return;
+  if(s==='codex'&&(d.ok!==true||typeof d.running!=='boolean')){dot.className='termdot err';return;}
+  consoleAppliedSeq=requestSeq;
   if(s==='codex'){
    cxConsUi(d);
    if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная

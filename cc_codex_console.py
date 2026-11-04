@@ -8,7 +8,7 @@
 # (cc_codex_bridge.plan): песочница и рабочая папка берутся из его настроек, полный доступ
 # сюда сам не попадает. Экран берём из лога screen и собираем через pyte (hardcopy портит
 # не-ASCII — см. консоль Claude в cc_limits.py).
-import glob, json, os, pwd, re, shutil, subprocess, threading, time
+import glob, json, os, pwd, re, shutil, stat, subprocess, threading, time
 
 import cc_codex
 import cc_session
@@ -68,8 +68,38 @@ def _ctl(args, timeout=10):
     return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=timeout)
 
 
+def _known_pid():
+    """Проверяем живой screen и его сокет; сбой отдельного `screen -ls` не означает остановку."""
+    try:
+        meta = _meta()
+        pid = str(meta.get('pid') or '')
+        if not pid.isdigit():
+            return None
+        user = cc_codex.runas_user()
+        pw = pwd.getpwnam(user) if user else pwd.getpwuid(os.geteuid())
+        proc = '/proc/'+pid
+        if os.stat(proc).st_uid != pw.pw_uid:
+            return None
+        with open(proc+'/comm') as stream:
+            if stream.read().strip().lower() != 'screen':
+                return None
+        with open(proc+'/cmdline', 'rb') as stream:
+            if NAME.encode() not in stream.read().split(b'\0'):
+                return None
+        directory = os.environ.get('SCREENDIR') or '/run/screen/S-'+pw.pw_name
+        socket = os.stat(os.path.join(directory, pid+'.'+NAME))
+        if not stat.S_ISSOCK(socket.st_mode) or socket.st_uid != pw.pw_uid:
+            return None
+        return pid
+    except (OSError, KeyError, ValueError):
+        return None
+
+
 def _pid():
     """PID живой сессии cc-codex или None."""
+    known = _known_pid()
+    if known:
+        return known
     try:
         out = _ctl(["-ls"]).stdout
     except Exception:
@@ -416,6 +446,11 @@ def _paste_text(text):
     return t
 
 
+def _input_ack_key(text):
+    """TUI может убрать пустые строки во вставке. Содержимое строк и отступы сохраняем."""
+    return '\n'.join(line for line in str(text).replace('\r\n', '\n').replace('\r', '\n').strip().split('\n') if line.strip())
+
+
 def _paste(text):
     """Вставить текст как вставку из буфера (bracketed paste): так проходят кириллица, переводы строк и длинные тексты,
     а `stuff` пришлось бы чистить от $ \\ ^ кавычек, и длинное он гонит по символу."""
@@ -671,7 +706,7 @@ def _ask_live(prompt, abort=None, timeout=None, lang='ru', pull=None):
                             incoming = ''.join(c.get('text','') for c in payload.get('content') or []
                                                if c.get('type') in ('input_text','text'))
                             with _live_lock:
-                                if request['awaiting'] and incoming.strip() == request['awaiting'][0][0]:
+                                if request['awaiting'] and _input_ack_key(incoming) == _input_ack_key(request['awaiting'][0][0]):
                                     request['awaiting'].pop(0)
                                     # Ответ, записанный до принятия уточнения, ему не соответствует.
                                     last_say = ''

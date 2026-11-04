@@ -137,6 +137,27 @@ class LiveInput(unittest.TestCase):
         self.send('/stop');self.bridge.worker.join(2)
         self.assertEqual(self.answers,[]);self.assertTrue(any('Остановил' in s for s in self.notices));C.interrupt.assert_called_once()
 
+    def test_collapsed_blank_line_in_photo_prompt_is_acknowledged(self):
+        def transport(text):
+            self.inputs.append((text,time.monotonic()))
+            self.append(dict(type='task_started',turn_id=self.turn),
+                        dict(type='message',role='user',content=[dict(type='input_text',text=text.replace('\n\n','\n'))]))
+            return True
+        C._paste.side_effect=transport
+        self.send('Исправь отступ\n\n[Вложения из Telegram: изображения лежат на сервере.\n/tmp/demo.jpg]')
+        self.wait(lambda:len(self.inputs)==1);time.sleep(.5)
+        self.assertTrue(self.bridge.worker.is_alive());self.assertEqual(self.notices,[])
+        self.finish('исправлено');self.bridge.worker.join(2);self.assertEqual(self.answers,['исправлено'])
+
+    def test_different_indentation_does_not_ack_another_message(self):
+        def transport(text):
+            self.inputs.append((text,time.monotonic()))
+            self.append(dict(type='task_started',turn_id=self.turn),
+                        dict(type='message',role='user',content=[dict(type='input_text',text=text.replace('    return','return'))]))
+            return True
+        C._paste.side_effect=transport;self.send('def sample():\n    return 1');self.bridge.worker.join(2)
+        self.assertEqual(self.answers,[]);self.assertTrue(any('подтверждение' in value for value in self.notices))
+
     def test_missing_ack_does_not_type_or_send_enter_twice(self):
         C._paste.side_effect=lambda text:(self.inputs.append((text,time.monotonic())),True)[1]
         self.send('неподтверждённое');self.bridge.worker.join(2)
