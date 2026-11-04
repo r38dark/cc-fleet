@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.17",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Общая иконка Codex и Claude",
+        "p": [
+          "Выбранный робот на прозрачном фоне установлен в шапке",
+          "Сохранены тёмная тема, индикатор состояния и расположение кнопок"
+        ]
+      },
+      "en": {
+        "t": "Shared Codex and Claude icon",
+        "p": [
+          "Selected transparent robot icon displayed in the header",
+          "Dark theme, status dot and header action alignment preserved"
+        ]
+      }
+    },
+    {
       "v": "1.28.16",
       "date": "2026-11-04",
       "ru": {
