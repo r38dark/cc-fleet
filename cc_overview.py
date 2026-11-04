@@ -489,6 +489,38 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(max-width:640px){.fleet-live-timezone{font-size:9px}.fleet-live-summary{padding:10px 30px 10px 10px}.fleet-compact-account{flex-wrap:wrap;gap:7px 10px}.fleet-compact-name{flex-basis:100%;max-width:100%}.fleet-compact-window{flex-basis:100%;gap:6px}.fleet-compact-range{font-size:11px;gap:4px}.fleet-compact-name{font-size:12px}.fleet-live-fold[open]>.fleet-live-rows{padding:0;gap:7px}.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(0,1fr) 82px 110px;gap:4px 10px}.fleet-live-meter-label{flex-wrap:wrap;gap:3px}.fleet-live-meter-label b{font-size:12px}.fleet-live-reset{flex-basis:100%;flex-wrap:wrap;gap:2px;font-size:10px;line-height:1.35}.fleet-live-reset time{white-space:normal}.fleet-live-reset-label{font-size:9px}}
 .fleet-live-fold:not([open])>.fleet-live-footer{display:none!important}
 @media(max-width:640px){.fleet-live-summary{grid-template-columns:minmax(0,1fr);padding:10px}.fleet-live-expand{grid-column:1;grid-row:auto;justify-self:end;min-height:28px;padding:3px 0 0}.fleet-live-collapse{min-height:30px}.fleet-live-footer{padding-right:10px}}
+
+/* Mobile controls belong to the terminal surface, not to the provider tabs. */
+.fleet-console-viewport{display:contents}
+@media(max-width:640px),(max-width:1000px) and (pointer:coarse){
+ html:root:root:not(.conly),html:root:root:not(.conly) body{height:auto!important;overflow-y:auto!important;overflow-x:clip}
+ html:root:root .fleet-console-toolbar{min-height:40px;padding:0 10px;flex-wrap:nowrap;gap:0}
+ html:root:root .fleet-console-toolbar #cTabs{min-height:40px;gap:16px;flex-wrap:nowrap}
+ html:root:root .fleet-console-toolbar .ctab{font-size:12px!important;padding:0 4px!important;height:40px!important}
+ html:root:root .fleet-console-viewport{position:relative;display:flex;flex-direction:column;flex:none;width:100%;min-width:0;min-height:0;height:clamp(300px,56svh,440px);padding-top:38px;background:var(--fleet-terminal);overflow:hidden}
+ html:root:root .fleet-console-viewport>#termBox{flex:1!important;width:100%;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;padding:8px 10px 16px!important;border:0;border-radius:0;overflow:auto;overscroll-behavior-y:auto;touch-action:auto;-webkit-overflow-scrolling:touch;font-size:calc(11px * var(--tz,1));line-height:1.55}
+ html:root:root .fleet-console-viewport>.tzoom,html:root:root .fleet-console-viewport>.ctacts{position:absolute;top:3px;z-index:4;display:flex;align-items:center;gap:2px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+ html:root:root .fleet-console-viewport>.tzoom{left:auto;right:6px}
+ html:root:root .fleet-console-viewport>.ctacts{left:6px;right:auto}
+ html:root:root .fleet-console-viewport .iconbtn,html:root:root .fleet-console-viewport .tzval{display:inline-flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;min-height:30px;margin:0;padding:6px;border:0!important;border-radius:0;background:transparent!important;box-shadow:none;color:#91a2b7;font-size:10px;opacity:.7;-webkit-tap-highlight-color:transparent}
+ html:root:root .fleet-console-viewport .tzval{width:38px;padding:3px 0}
+ html:root:root .fleet-console-viewport .iconbtn svg{width:16px;height:16px}
+ html:root:root .fleet-console-viewport .iconbtn:hover,html:root:root .fleet-console-viewport .tzval:hover{opacity:1}
+ html:root:root .fleet-console-viewport .iconbtn:focus-visible,html:root:root .fleet-console-viewport .tzval:focus-visible{outline:1px solid var(--fleet-accent);outline-offset:-2px;opacity:1}
+ html:root:root .fleet-console-viewport .ctstop[hidden],html:root:root .termwrap:not(.hascacts) .fleet-console-viewport>.ctacts{display:none!important}
+ html:root:root .fleet-composer{padding:8px 10px;min-height:54px;gap:8px}
+ html:root:root .fleet-composer textarea{font-size:16px;line-height:1.4;min-height:32px;max-height:140px;resize:none}
+ html:root:root .fleet-composer #fleetSend{width:32px;height:32px}
+ html:root:root .fleet-input-status{min-height:24px;padding:4px 10px;font-size:10px}
+ html:root:root .fleet-input-status span:last-child{display:none}
+ html:root:root .dock{display:none!important;pointer-events:none!important}
+ html:root:root.conly{height:100%;overflow:hidden}
+ html:root:root.conly body{height:var(--fleet-visual-height,100dvh)!important;min-height:0!important;overflow:hidden!important;padding:0!important}
+ html:root:root.conly .termwrap{flex:1;min-height:0;min-width:0;margin:0!important;overflow:hidden}
+ html:root:root.conly .fleet-console-viewport{flex:1;min-height:0;height:auto}
+ html:root:root.conly .fleet-console-viewport>#termBox{overscroll-behavior-y:contain}
+ html:root:root.conly .fleet-input-status{padding-bottom:max(4px,env(safe-area-inset-bottom))}
+}
 '''
 
 JS = r'''
@@ -543,8 +575,40 @@ JS = r'''
  hdr.querySelector('.hdrctl').prepend(profilebar);
  const headerButtons=hdr.querySelector('.hdrbtns');if(headerButtons)hdr.querySelector('.hdrctl').append(headerButtons);
  const toolbar=el('div','fleet-console-toolbar');toolbar.append(document.getElementById('cTabs'),term.querySelector('.tzoom'));term.prepend(toolbar);
+ const consoleFrame=el('div','fleet-console-viewport'),consoleBox=document.getElementById('termBox'),consoleTabs=document.getElementById('cTabs'),consoleZoom=toolbar.querySelector('.tzoom'),consoleActions=consoleTabs.querySelector('.ctacts');
+ consoleBox.before(consoleFrame);consoleFrame.append(consoleBox,document.getElementById('cxCons'));
+ const mobileConsole=matchMedia('(max-width:640px), (max-width:1000px) and (pointer:coarse)'),legacyDock=document.querySelector('.dock');
+ function placeConsoleControls(){
+  if(mobileConsole.matches){consoleFrame.append(consoleActions,consoleZoom);input.placeholder='Сообщение в консоль…'}
+  else{consoleTabs.append(consoleActions);toolbar.append(consoleZoom);input.placeholder='Сообщение или команда в выбранную консоль…'}
+  legacyDock.inert=mobileConsole.matches;
+  if(mobileConsole.matches){legacyDock.setAttribute('aria-hidden','true');document.getElementById('dockZone').classList.remove('pin')}
+  else legacyDock.removeAttribute('aria-hidden');
+ }
+ function fitMobileViewport(){document.documentElement.style.setProperty('--fleet-visual-height',Math.round(window.visualViewport?.height||innerHeight)+'px')}
+ placeConsoleControls();fitMobileViewport();
+ mobileConsole.addEventListener('change',placeConsoleControls);
+ addEventListener('resize',fitMobileViewport);window.visualViewport?.addEventListener('resize',fitMobileViewport);
+ // Nested terminal scroll must not trap a page gesture at either history edge.
+ let consoleTouch=null;
+ consoleBox.addEventListener('touchstart',event=>{
+  const touch=event.touches.length===1&&event.touches[0];
+  consoleTouch=touch?{x:touch.clientX,y:touch.clientY,last:touch.clientY,top:consoleBox.scrollTop<=2,bottom:consoleBox.scrollTop+consoleBox.clientHeight>=consoleBox.scrollHeight-2}:null;
+ },{passive:true});
+ consoleBox.addEventListener('touchmove',event=>{
+  if(!consoleTouch||event.touches.length!==1||!mobileConsole.matches||document.documentElement.classList.contains('conly'))return;
+  const touch=event.touches[0],dy=consoleTouch.last-touch.clientY,total=consoleTouch.y-touch.clientY;
+  consoleTouch.last=touch.clientY;
+  if(Math.abs(total)<6||Math.abs(touch.clientX-consoleTouch.x)>Math.abs(total))return;
+  if((consoleTouch.bottom&&total>0)||(consoleTouch.top&&total<0)){
+   if(event.cancelable){event.preventDefault();window.scrollBy(0,dy)}
+  }
+ },{passive:false});
+ for(const name of ['touchend','touchcancel'])consoleBox.addEventListener(name,()=>{consoleTouch=null},{passive:true});
+ // A saved desktop focus mode must not hide the mobile account page on load.
+ if(mobileConsole.matches&&document.documentElement.classList.contains('conly')&&!document.fullscreenElement)setConly(false,false);
  send.textContent='↑';send.title='Отправить в выбранную консоль · Enter';send.setAttribute('aria-label','Отправить в выбранную консоль');
- input.placeholder='Сообщение или команда в выбранную консоль…';input.title='Enter — отправить · Shift+Enter — новая строка';
+ input.title='Enter — отправить · Shift+Enter — новая строка';
  const intro=el('div','fleet-accounts-intro');intro.innerHTML='<span class="fleet-eyebrow">УПРАВЛЕНИЕ АККАУНТАМИ</span><h2>Лимиты и переключения</h2>';accountArea.prepend(intro);
  const claudeFoot=el('div','fleet-group-footer'),claudeNote=el('span','fleet-group-note');claudeFoot.append(claudeNote,document.getElementById('optWrap'));claude.append(claudeFoot);
  const codexFoot=el('div','fleet-group-footer');codexFoot.append(rotation,xh.querySelector('.switchrow'));codex.append(codexFoot);

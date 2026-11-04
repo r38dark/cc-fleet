@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.11",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Мобильная консоль и прокрутка",
+        "p": [
+          "Масштаб и полный экран — в правом верхнем углу внутри консоли",
+          "Действия Codex перенесены внутрь консоли и сделаны прозрачными",
+          "Исправлены сохранённый мобильный режим, прокрутка и наложение старой панели аккаунтов"
+        ]
+      },
+      "en": {
+        "t": "Mobile console and scrolling",
+        "p": [
+          "Zoom and fullscreen controls sit inside the terminal at the upper right",
+          "Codex actions are transparent controls inside the terminal",
+          "Fixed restored mobile focus mode, scrolling and the legacy account dock overlap"
+        ]
+      }
+    },
+    {
       "v": "1.28.10",
       "date": "2026-11-04",
       "ru": {
