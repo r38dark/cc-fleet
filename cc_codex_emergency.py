@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-# cc_codex_emergency — «аварийный режим» Codex: полный доступ к проекту на ограниченное время, когда Claude недоступен.
+# cc_codex_emergency — «аварийный режим» Codex: полный доступ к проекту без ограничения срока, когда Claude недоступен.
 #
 # Включает человек, только в панели и только вводом слова «аварийный». Что происходит при включении:
 #  • проект подключается в домашнюю папку пользователя Codex (bind-mount) и ему выдаётся запись по ACL (setfacl);
 #  • узкое правило sudo: только `systemctl restart` для перечисленных юнитов (файл в /etc/sudoers.d, проверяется visudo);
 #  • в домашнюю папку Codex копируются перечисленные файлы с доступами и ключ SSH (после выключения затираются);
 #  • мост и консоль Codex переключаются на «самостоятельно + полный доступ» в этом проекте, прежние настройки запоминаются.
-# Выключается кнопкой или само через сутки: настройки возвращаются, процессы Codex в проекте останавливаются, sudo, ACL,
+# Выключается вручную: настройки возвращаются, процессы Codex в проекте останавливаются, sudo, ACL,
 # копии и mount снимаются, файлы, созданные Codex в проекте, возвращаются прежнему владельцу. Состояние лежит в файле,
-# поэтому перезапуск панели или сервера режим не продлевает и не забывает (reconcile при старте).
+# поэтому перезапуск панели или сервера режим не забывает (reconcile при старте).
 # Всё, что Codex читает в этом режиме, уходит на серверы OpenAI — на это человек соглашается, вводя слово.
 # Настраивается в config.json (ключ "codex_emergency"): project, services, files, ssh_key, hours. Не задано — режима нет.
 import json, os, pwd, re, shutil, signal, subprocess, threading, time
@@ -21,7 +21,7 @@ CONFIG = lambda: {}  # cc_limits: config.json "codex_emergency"
 NOTIFY = lambda text: None  # cc_limits: сообщение человеку в телеграм
 NOW = time.time  # в тестах подменяется
 WORDS = ("аварийный", "emergency")  # слово-подтверждение
-HOURS = 24  # сколько длится режим, если в настройках не задано иначе; "hours": 0 — без срока, только вручную
+HOURS = 0  # профили не ограничены по времени
 WARN_LEFT = 3600  # за сколько секунд до конца напомнить (при сроке)
 TICK = 20  # как часто сторож сверяет срок, секунд
 SUDOERS = "/etc/sudoers.d/cc-codex-emergency"
@@ -67,6 +67,18 @@ def _st_save(st):
     cc_codex._jsave(state_path(), st)
 
 
+def _without_deadline():
+    """Убирает и сохранённый старый срок, сохраняя состояние доступа."""
+    with _lock:
+        state = _st()
+        if state.get('active') and (state.get('until') is not None or (state.get('plan') or {}).get('hours')):
+            state['until'], state['warned'] = None, False
+            if state.get('plan'):
+                state['plan']['hours'] = 0
+            _st_save(state)
+        return state
+
+
 def journal(msg):
     """Строка в журнал режима (читается в панели и после перезапуска)."""
     line = time.strftime("%Y-%m-%d %H:%M:%S ", time.localtime(NOW())) + msg
@@ -103,7 +115,7 @@ def active():
 
 
 def until():
-    st = _st()
+    st = _without_deadline()
     return st.get("until") if st.get("active") else None
 
 
@@ -179,11 +191,7 @@ def _plan(lang="ru"):
         if not os.path.isfile(ksrc):
             return None, t("Ключ SSH не найден: ", "SSH key not found: ") + ksrc
         key = [ksrc, os.path.join(edir, "ssh", os.path.basename(ksrc))]
-    try:
-        hours = HOURS if c.get("hours") is None else float(c["hours"])
-    except (TypeError, ValueError):
-        hours = HOURS
-    hours = 0.0 if hours == 0 else min(max(hours, 0.1), 72.0)  # 0 — без срока; опечатка (минус) срок не снимает
+    hours = 0
     st = os.stat(real)
     return {"user": u, "uid": pw.pw_uid, "gid": pw.pw_gid, "home": pw.pw_dir, "edir": edir,
             "mnt": os.path.join(edir, "project"), "project": real, "owner": [st.st_uid, st.st_gid],
@@ -529,7 +537,7 @@ def on(word, lang="ru", auto=None):
                             "The project already has its own ACLs — the mode will not mix with them.")
         s = cc_codex_bridge.load()
         now = NOW()
-        st = {"active": True, "since": now, "until": (now + p["hours"] * 3600) if p["hours"] else None, "warned": False,
+        st = {"active": True, "since": now, "until": None, "warned": False,
               "prev": {k: s.get(k) for k in PREV_KEYS}, "plan": p}
         if auto:
             st["auto"] = str(auto)[:80]
@@ -588,30 +596,16 @@ def _restart_console():
 
 # ---------------------------------------------------------------- сторож срока
 def tick():
-    """Раз в TICK секунд: срок вышел — выключить; за час до конца — напомнить. Без срока (until=None) — ничего."""
-    st = _st()
-    if not st.get("active") or not st.get("until"):
-        return
-    left = st["until"] - NOW()
-    if left <= 0:
-        off("истёк срок")
-    elif left <= WARN_LEFT and not st.get("warned"):
-        with _lock:
-            st = _st()
-            if st.get("active"):
-                st["warned"] = True
-                _st_save(st)
-        NOTIFY(f"⏳ Аварийный режим Codex выключится в {_clock(st['until'])} (меньше часа). Продлить нельзя — включи заново.")
+    """Совместимость со старым вызовом: снимаем старый срок, не выключаем доступ."""
+    _without_deadline()
 
 
 def reconcile():
     """При старте панели: режим включён и срок не вышел — довести до рабочего состояния (после ребута mount пропал);
     срок вышел — выключить; режим не включён, а следы остались — убрать."""
     with _lock:
-        st = _st()
+        st = _without_deadline()
         if st.get("active"):
-            if st.get("until") and NOW() >= st["until"]:
-                return off("истёк срок")
             try:
                 _apply(st["plan"], st["until"])
                 journal("после перезапуска панели доступы восстановлены")
@@ -648,9 +642,6 @@ def start():
         reconcile()
     except Exception as e:
         journal(f"reconcile: {type(e).__name__} {e}")
-    if not (_watch["t"] and _watch["t"].is_alive()):
-        _watch["t"] = threading.Thread(target=_loop, daemon=True, name="codex-emergency")
-        _watch["t"].start()
 
 
 # ---------------------------------------------------------------- для панели и для запуска Codex
@@ -664,7 +655,7 @@ def env_extra():
 
 def public():
     """Состояние для панели. Пути и содержимое доступов наружу не отдаются, только имена сервисов и счётчики."""
-    st = _st()
+    st = _without_deadline()
     p, err = _plan()
     jr = _journal_tail(40)
     if st.get("active"):  # в карточке включённого режима — только строки текущего включения, не прошлых

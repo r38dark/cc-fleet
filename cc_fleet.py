@@ -134,7 +134,7 @@ def install(ns):
             if parsed.path == '/api/chatgpt/models':
                 return self._send(200, models.public())
             if parsed.path == '/api/chatgpt/bridge':
-                return self._send(200, dict(ok=True, available=True, bridge=bridge.public(), emergency=ns['cc_codex_emergency'].public(), profile_system=profiles.public()))
+                return self._send(200, dict(ok=True, available=True, bridge=bridge.public(), emergency=dict(available=False,configured=False,active=ns['cc_codex_emergency'].active(),hours=0,removed=True), profile_system=profiles.public()))
             if parsed.path == '/api/chatgpt':
                 force = bool(parse_qs(parsed.query).get('refresh'))
                 return self._send(200, rotation.snapshot(force))
@@ -146,7 +146,7 @@ def install(ns):
             if path in ('/api/model','/api/effort') and not profiles.input_allowed('claude'):
                 if not self._authed():return self._send(403, {'ok':False})
                 return self._send(200, {'ok':False,'message':'Claude на паузе или меняется профиль. Повтори выбор модели после завершения переключения.'})
-            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch', '/api/chatgpt/models/check'):
+            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch', '/api/chatgpt/models/check', '/api/notion/save'):
                 return original.do_POST(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
@@ -160,6 +160,16 @@ def install(ns):
             except (ValueError, UnicodeDecodeError):
                 return self._send(400, {'ok': False, 'message': 'Неверный JSON.'})
             try:
+                if path == '/api/notion/save':
+                    if 'reserve' in body:
+                        return self._send(200, dict(ok=False, message='Настройки резерва доступны в меню профилей. Аварийный сценарий удалён.'))
+                    config = ns['cfg']()
+                    ok, conf, error = ns['cc_notion'].save(config.get('notion_agent') or {}, body)
+                    if not ok:
+                        return self._send(400, dict(ok=False, message='Не принято поле настроек агента.', field=error))
+                    config['notion_agent'] = conf
+                    ns['jsave'](ns['CONFIG'], config)
+                    return self._send(200, dict(ok=True, notion=ns['cc_notion'].public()))
                 if path == '/api/chatgpt/models/check':
                     return self._send(200, models.start())
                 if path.startswith('/api/profiles/'):
@@ -181,6 +191,10 @@ def install(ns):
                 return self._send(500, {'ok': False, 'message': 'Действие не выполнено: '+type(exc).__name__})
 
         def _chatgpt_post(self, action, body):
+            if action=='bridge/save':
+                current=bridge.load()
+                if any(key in body and body[key]!=current.get(key) for key in ('mode','access','task_rights')):
+                    return self._send(200,dict(ok=False,message='Сценарий и права выбираются через Full или Оркестратор в меню профилей.'))
             if action=='bridge/save' and profiles.transitioning:
                 return self._send(200, {'ok':False,'message':'Сейчас применяется профиль. Сохрани настройки после завершения переключения.'})
             if action=='prefs' and not profiles.input_allowed('codex'):

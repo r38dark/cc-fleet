@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.0",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Три сценария работы без таймеров",
+        "p": [
+          "У Claude и Codex остались Full, Оркестратор и единственный резерв с Notion",
+          "Удалены сроки профилей и отдельный аварийный сценарий; сохранены подтверждённые шаги с прежним пределом «дев»",
+          "Включены поиск моделей Codex и передача текста Telegram во время ответа"
+        ]
+      },
+      "en": {
+        "t": "Three work scenarios without expiration",
+        "p": [
+          "Claude and Codex retain Full, Orchestrator and Notion reserve only",
+          "Removed profile deadlines and the standalone emergency scenario; human-confirmed steps retain the legacy dev ceiling",
+          "Includes Codex model discovery and Telegram text steering during active replies"
+        ]
+      }
+    },
+    {
       "v": "1.27.2",
       "date": "2026-11-03",
       "ru": {

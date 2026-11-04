@@ -16,8 +16,6 @@ def inside(path, roots):
     return any(path == os.path.realpath(r) or path.startswith(os.path.realpath(r).rstrip('/')+'/') for r in roots)
 
 def decide(policy, event):
-    if policy.get('expires') and time.time() >= policy['expires']:
-        return 'Срок аварийного доступа истёк. Полные инструменты отключены; балансер восстановит прежний профиль.'
     if policy.get('paused'):
         return 'Claude на паузе: активен служебный режим другой стороны.'
     if event.get('hook_event_name') == 'UserPromptSubmit':

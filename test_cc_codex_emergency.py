@@ -176,7 +176,7 @@ class Enable(Base):
         self.assertEqual(em._st()["prev"]["mode"], before["mode"])
         self.assertEqual(len(self.sent), 1)
         self.assertIn("ВКЛЮЧЁН", self.sent[0])
-        self.assertAlmostEqual(em.until(), 1000.0 + 24 * 3600)
+        self.assertIsNone(em.until())
 
     def test_second_on_refused(self):
         self.assertTrue(em.on("аварийный")[0])
@@ -228,7 +228,7 @@ class Enable(Base):
         self.assertTrue(pub["configured"])
         self.assertFalse(pub["active"])
         self.assertEqual(pub["services"], ["svc-web.service", "svc-hub.service"])
-        self.assertEqual((pub["files"], pub["ssh"], pub["hours"]), (1, True, 24.0))
+        self.assertEqual((pub["files"], pub["ssh"], pub["hours"]), (1, True, 0))
         self.assertTrue(em.on("аварийный")[0])
         self.assertIn("АВАРИЙНЫЙ", em.status_line())
         pub = em.public()
@@ -390,26 +390,9 @@ class Timer(Base):
         self.assertTrue(em.active())
         self.assertEqual(self.sent, [])
 
-    def test_tick_warns_once_under_an_hour(self):
-        self.now[0] += 24 * 3600 - 1800
-        em.tick()
-        em.tick()
-        self.assertTrue(em.active())
-        self.assertEqual(len(self.sent), 1)
-        self.assertIn("выключится", self.sent[0])
-
-    def test_tick_switches_off_after_deadline(self):
-        self.now[0] += 24 * 3600 + 1
-        em.tick()
-        self.assertFalse(em.active())
-        self.assertFalse(os.path.exists(em.SUDOERS))
-        self.assertEqual(em._st()["last"]["why"], "истёк срок")
-
-    def test_reconcile_expired_switches_off(self):
-        self.now[0] += 25 * 3600
-        em.reconcile()
-        self.assertFalse(em.active())
-        self.assertFalse(os.path.exists(em.SUDOERS))
+    def test_old_deadline_is_removed_without_warning_or_revocation(self):
+        state=em._st();state['until']=1;state['plan']['hours']=24;em._st_save(state)
+        self.now[0]+=25*3600;em.tick();em.reconcile();self.assertTrue(em.active());self.assertIsNone(em.until());self.assertEqual(self.sent,[])
 
     def test_reconcile_after_reboot_restores_access(self):
         # после перезагрузки mount пропал, а режим ещё не истёк — доступы возвращаются
@@ -440,12 +423,10 @@ class Timer(Base):
 class NoLimit(Base):
     """«hours»: 0 — режим без срока: сам не выключается и не напоминает, снимается только вручную."""
 
-    def test_hours_setting_is_read_strictly(self):
-        for raw, want in ((0, 0.0), ("0", 0.0), (0.0, 0.0), (None, 24.0), ("abc", 24.0), (-5, 0.1), (100, 72.0), (6, 6.0)):
-            self.cfg["hours"] = raw
-            self.assertEqual(em._plan()[0]["hours"], want, raw)
-        del self.cfg["hours"]
-        self.assertEqual(em._plan()[0]["hours"], 24.0)   # нет ключа — как раньше 24 ч, срок не пропадает сам
+    def test_legacy_hours_cannot_reintroduce_deadline(self):
+        for raw in (0,'0',None,'abc',-5,100,6,2):
+            self.cfg['hours']=raw;self.assertEqual(em._plan()[0]['hours'],0)
+        del self.cfg['hours'];self.assertEqual(em._plan()[0]['hours'],0)
 
     def test_on_without_deadline(self):
         self.cfg["hours"] = 0

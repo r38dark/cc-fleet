@@ -27,32 +27,15 @@ class NativeProfiles:
         self.exchange_root = self.base/'profile_exchange'
 
     def seed(self):
-        s = ProfileState();pid = self.bridge.active_profile(self.bridge.load())
-        for e in ENGINES:
-            for p in s.definitions(e):p.setdefault('task_rights', 'dev')
-        if pid in {p['id'] for p in s.definitions('codex')}:s.selected['codex']=pid
-        # Adopt existing rights; installation never silently downgrades a running console.
-        cmd = self.ns['cfg']().get('claude_cmd') or ''
-        try:bypass=self.claude.capture()['bypass']
-        except Exception:bypass='--dangerously-skip-permissions' in cmd or 'bypassPermissions' in cmd
-        s.selected['claude']='claude_solo_full' if bypass else 'claude'
-        s.last_solo=dict(s.selected)
-        if pid=='orchestrator':s.leader='codex';s.last_solo['codex']='codex'
-        for pid,d,name in self.bridge._profiles(self.bridge.load()):
-            if name is None:continue
-            if d.get('mode') not in ('self','orchestrator','mediator') or d.get('access') not in ('read','write','full'):continue
-            kind='orchestrator' if d['mode']!='self' else 'full' if d['access']=='full' else 'solo'
-            template=next(p for p in s.definitions('codex') if p['kind']==kind)
-            template.update(id=pid,title=('Codex → Claude' if kind=='orchestrator' else 'Codex Full · самостоятельно' if kind=='full' else 'Codex · самостоятельно')+' · '+str(name),builtin=False,**d)
-            s.custom['codex'].append(template)
-        if pid in {p['id'] for p in s.definitions('codex')}:
-            s.selected['codex']=pid
-            profile=next(p for p in s.definitions('codex') if p['id']==pid)
-            if profile['kind']=='orchestrator':s.leader='codex';s.last_solo['codex']='codex'
-            else:s.last_solo['codex']=pid
-        legacy=self.notion.reserve_conf(self.notion.CONFIG() or {})
-        s.auto['codex']=dict(enabled=legacy['auto'],emergency=legacy['auto_emergency'] and legacy['auto'])
-        return s
+        state = ProfileState()
+        pid = self.bridge.active_profile(self.bridge.load())
+        if pid == 'orchestrator':
+            state.selected['codex'] = 'orchestrator'
+            state.leader = 'codex'
+        # Только принимаем существующую сессию; права применяются по явному выбору.
+        legacy = self.notion.reserve_conf(self.notion.CONFIG() or {})
+        state.auto['codex'] = dict(enabled=legacy['auto'] and not legacy['auto_emergency'], emergency=False)
+        return state
 
     def busy(self):
         # A paused queue worker may be alive while waiting; it must not prevent unpausing.
@@ -85,7 +68,7 @@ class NativeProfiles:
         plan=self.plan(state,'claude');cwd=self.claude_cwd if plan['access']=='full' else str(self.manager.exchange('claude')) if plan['role']=='leader' else self.claude_work
         project=self.bridge.project_dir()
         workspace=cwd
-        return dict(expires=state.until if state.service and state.service['engine']=='claude' else 0,access=plan['access'],paused=plan['role']=='paused',reserve=plan['role']=='reserve',cwd=self.claude_cwd,workspace=workspace,
+        return dict(expires=0,access=plan['access'],paused=plan['role']=='paused',reserve=plan['role']=='reserve',cwd=self.claude_cwd,workspace=workspace,
                     write_roots=[workspace],read_roots=list(dict.fromkeys([workspace,str(self.manager.exchange('claude')),str(self.manager.exchange('codex'))]+([project] if project else []))))
 
     def capture(self, changed):
@@ -211,9 +194,13 @@ class Profiles:
         self.path=self.base/'work_profiles.json';self.pending=self.base/'profile-transition.json'
         if self.path.exists():
             raw=json.loads(self.path.read_text());self.state=ProfileState.from_data(raw['core'],clock);self.managed.update(raw.get('managed') or {})
+            for engine in ENGINES:
+                if raw['core']['selected'][engine] not in ('orchestrator', engine+'_solo_full'):
+                    self.managed[engine] = False
             native.claude_cwd=raw.get('claude_cwd') or native.claude_cwd
         else:self.state=native.seed();self.save()
         if self.pending.exists():self.error='Обнаружено незавершённое переключение. Восстанавливаю прежний профиль.'
+        else:self.save()
 
     def exchange(self,e):
         return getattr(self.native,'exchange_root',self.base/'profile_exchange')/e
@@ -231,16 +218,11 @@ class Profiles:
         with self.lock:
             out=self.state.public();out.update(snapshot_ts=self.clock(),transitioning=self.transitioning,last_error=self.error,availability={e:v['status'] for e,v in self.avail.items()})
             if self.tasks:out['task']=self.tasks.public()
-            emergency=self.native.emergency.public() if hasattr(self.native,'emergency') else {}
             for e in ENGINES:
-                out['engines'][e]['applied']=self.managed[e] or e=='codex'
-                if e=='claude' and not self.managed[e]:out['engines'][e]['label']='Claude Full · текущая сессия' if self.state.selected[e].endswith('_solo_full') else 'Claude · текущая сессия'
-                out['engines'][e]['emergency_hours']=emergency.get('hours',2) if e=='codex' else 2
-                for p in out['engines'][e]['profiles']:
-                    if p['kind']=='solo' and e=='claude':p.update(can='Читать проект, создавать и редактировать файлы в рабочей папке.',cannot='Менять файлы вне рабочей папки, запускать команды или других исполнителей.')
-                    if p['kind']=='emergency' and e=='codex':
-                        hours=emergency.get('hours',2);p['flow']=['Codex','Подтверждение',('Срок '+str(hours)+' ч') if hours else 'До ручного выключения']
-                    if p['kind']=='emergency' and e=='claude':p['description']='Временный полный доступ Claude в пределах прав его пользователя ОС. Срок 2 часа.'
+                out['engines'][e]['applied'] = self.managed[e]
+                out['engines'][e]['emergency_hours'] = 0
+                if not self.managed[e]:
+                    out['engines'][e]['label'] = ('Claude' if e == 'claude' else 'Codex')+' Full · текущая сессия'
             return out
 
     def _changed(self,before,after):
@@ -285,15 +267,17 @@ class Profiles:
         if not self.lock.acquire(blocking=False):return dict(ok=False,message='Переключение уже выполняется. Дождись результата.')
         try:
             candidate=ProfileState.from_data(self.state.export(),self.clock)
+            if action=='apply' and not self.managed[e] and body.get('id')==e+'_solo_full' and body.get('confirm')!='подтверждаю':
+                return dict(ok=False,confirmation_required=True,word='подтверждаю',message='Подтверди применение Full к текущей сессии.')
             if action=='apply':result=candidate.apply(e,body.get('id'),body.get('confirm',''),body.get('revision'))
             elif action=='stop':result=candidate.stop_service(e,body.get('revision'))
-            elif action=='config':result=candidate.configure(e,body.get('enabled'),body.get('emergency'),body.get('confirm',''),body.get('revision'))
+            elif action=='config':result=candidate.configure(e,body.get('enabled'),body.get('emergency',False),body.get('confirm',''),body.get('revision'))
             elif action=='delete':result=candidate.delete(e,body.get('id'),body.get('revision'))
             else:return dict(ok=False,message='Неизвестное действие.')
             if not result.get('ok'):return result
             message='Настройки резерва сохранены.' if action=='config' else 'Предыдущий сценарий восстановлен.' if action=='stop' else 'Профиль применён к консоли.'
             original=self.state
-            result=self.transition(candidate,message,e if action=='apply' and e=='claude' and not self.managed[e] else None)
+            result=self.transition(candidate,message,e if action=='apply' and not self.managed[e] else None)
             if result.get('ok') and action=='delete' and e=='codex':
                 try:ok,_=self.native.bridge.delete_profile(body.get('id'))
                 except Exception:ok=False
@@ -322,20 +306,11 @@ class Profiles:
             statuses=self.native.availability();now=self.clock()
             for e in ENGINES:
                 if self.avail[e]['status']!=statuses[e]:self.avail[e]=dict(status=statuses[e],since=now)
-            if self.state.service and self.state.until and now>=self.state.until:
-                if self.tasks:self.tasks.cancel.set()
-                if self.native.busy():
-                    if hasattr(self.native,'interrupt'):self.native.interrupt(self.state.service['engine'])
-            candidate=ProfileState.from_data(self.state.export(),self.clock);candidate._expire()
-            if candidate.service and candidate.service['engine']=='codex' and (candidate.service['kind']=='emergency' or candidate.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active():candidate._restore()
-            # Unknown/stale snapshots cannot activate or remove a reserve; expiry remains authoritative.
+            candidate=ProfileState.from_data(self.state.export(),self.clock)
+            # Unknown/stale snapshots cannot activate or remove a reserve.
             if all(v['status']!='unknown' and now-v['since']>=120 for v in self.avail.values()):
                 candidate.availability={e:self.avail[e]['status']=='up' for e in ENGINES}
-                auto=copy.deepcopy(candidate.auto)
-                for e in ENGINES:
-                    if not candidate.leader and not candidate.service and candidate.selected[e].endswith('_solo_full'):candidate.auto[e]['enabled']=False
                 ProfileScenarios._reconcile(candidate)
-                candidate.auto=auto
             if candidate.export()!=self.state.export():self.transition(candidate,'Автоматический сценарий обновлён.')
         finally:self.lock.release()
 

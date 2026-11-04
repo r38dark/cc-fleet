@@ -45,7 +45,6 @@ MODES = ("mediator", "orchestrator", "self")
 # Свои профили прежних версий остаются: применяются и удаляются, новые не собираются.
 BUILTIN_PROFILES = (
     ("orchestrator", {"mode": "orchestrator", "access": "read", "task_rights": "dev"}),
-    ("codex", {"mode": "self", "access": "write", "task_rights": "dev"}),
     ("codex_solo_full", {"mode": "self", "access": "full", "task_rights": "dev"}),
 )
 # «Резерв» — служебный профиль: его включает и снимает сам резерв Notion (cc_notion), вручную он не выбирается.
@@ -270,8 +269,6 @@ def save(body, lang="ru"):
 def _profiles(s):
     """Все профили → [(id, определение, имя)]; у встроенных имя None (его знает панель)."""
     out = [(pid, dict(d), None) for pid, d in BUILTIN_PROFILES]
-    for c in s.get("profiles") or []:
-        out.append((c["id"], {k: c[k] for k in ("mode", "access", "task_rights")}, c.get("name", "")))
     return out
 
 

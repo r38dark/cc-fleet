@@ -54,8 +54,13 @@ class ProfileTasks:
             except OSError:return
             digest=hashlib.sha256(raw).hexdigest()
             if self.state and self.state.get('digest')==digest and self.state.get('leader')==leader:return
-            text=raw.decode('utf-8','replace');first=text.splitlines()[0].lower();rights='full' if 'полны' in first or 'full' in first else 'read' if 'чтение' in first or 'read' in first else 'dev'
-            self.state=dict(id=uuid.uuid4().hex,leader=leader,follower='codex' if leader=='claude' else 'claude',revision=self.profiles.state.revision,status='pending',text=text,digest=digest,rights=rights,draft_path=str(draft));self.save()
+            text=raw.decode('utf-8','replace');first=text.splitlines()[0].lower();requested='full' if 'полны' in first or 'full' in first else 'read' if 'чтение' in first or 'read' in first else 'dev'
+            profile=next(p for p in self.profiles.state.definitions(leader) if p['id']==self.profiles.state.selected[leader])
+            ceiling=profile.get('task_rights','dev');rank={'read':0,'dev':1,'full':2}
+            rights=requested if rank[requested]<=rank[ceiling] else ceiling
+            if rights!=requested:
+                text='Права: '+{'read':'чтение','dev':'дев','full':'полные'}[rights]+'\n'+'\n'.join(text.splitlines()[1:])
+            self.state=dict(id=uuid.uuid4().hex,leader=leader,follower='codex' if leader=='claude' else 'claude',revision=self.profiles.state.revision,status='pending',text=text,digest=digest,rights=rights,requested_rights=requested,draft_path=str(draft));self.save()
 
     def confirm(self,body):
         with self.profiles.lock,self.lock:
