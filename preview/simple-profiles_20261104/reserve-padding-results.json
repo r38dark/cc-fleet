@@ -1,0 +1,135 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "width": 1920,
+      "controls": [
+        {
+          "engine": "claude",
+          "left": 7,
+          "right": 7.5,
+          "indicatorWidth": 38,
+          "contentFits": true,
+          "controlWidth": 145.109375,
+          "groupFits": true,
+          "buttonHeight": 30
+        },
+        {
+          "engine": "codex",
+          "left": 7,
+          "right": 7.5,
+          "indicatorWidth": 38,
+          "contentFits": true,
+          "controlWidth": 145.109375,
+          "groupFits": true,
+          "buttonHeight": 30
+        }
+      ],
+      "settingsOpenForBoth": true
+    },
+    {
+      "width": 1366,
+      "controls": [
+        {
+          "engine": "claude",
+          "left": 7,
+          "right": 7.5,
+          "indicatorWidth": 38,
+          "contentFits": true,
+          "controlWidth": 145.109375,
+          "groupFits": true,
+          "buttonHeight": 30
+        },
+        {
+          "engine": "codex",
+          "left": 7,
+          "right": 7.5,
+          "indicatorWidth": 38,
+          "contentFits": true,
+          "controlWidth": 145.109375,
+          "groupFits": true,
+          "buttonHeight": 30
+        }
+      ],
+      "settingsOpenForBoth": true
+    },
+    {
+      "width": 390,
+      "controls": [
+        {
+          "engine": "claude",
+          "left": 6,
+          "right": 6.5,
+          "indicatorWidth": 36,
+          "contentFits": true,
+          "controlWidth": 135.640625,
+          "groupFits": true,
+          "buttonHeight": 30
+        },
+        {
+          "engine": "codex",
+          "left": 6,
+          "right": 6.5,
+          "indicatorWidth": 36,
+          "contentFits": true,
+          "controlWidth": 135.640625,
+          "groupFits": true,
+          "buttonHeight": 30
+        }
+      ],
+      "settingsOpenForBoth": true
+    },
+    {
+      "width": 360,
+      "controls": [
+        {
+          "engine": "claude",
+          "left": 6,
+          "right": 6.5,
+          "indicatorWidth": 36,
+          "contentFits": true,
+          "controlWidth": 135.640625,
+          "groupFits": true,
+          "buttonHeight": 30
+        },
+        {
+          "engine": "codex",
+          "left": 6,
+          "right": 6.5,
+          "indicatorWidth": 36,
+          "contentFits": true,
+          "controlWidth": 135.640625,
+          "groupFits": true,
+          "buttonHeight": 30
+        }
+      ],
+      "settingsOpenForBoth": true
+    },
+    {
+      "width": 320,
+      "controls": [
+        {
+          "engine": "claude",
+          "left": 6,
+          "right": 6.5,
+          "indicatorWidth": 36,
+          "contentFits": true,
+          "controlWidth": 135.640625,
+          "groupFits": true,
+          "buttonHeight": 30
+        },
+        {
+          "engine": "codex",
+          "left": 6,
+          "right": 6.5,
+          "indicatorWidth": 36,
+          "contentFits": true,
+          "controlWidth": 135.640625,
+          "groupFits": true,
+          "buttonHeight": 30
+        }
+      ],
+      "settingsOpenForBoth": true
+    }
+  ]
+}
