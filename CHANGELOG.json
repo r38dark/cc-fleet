@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.7",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Переключение вида активных аккаунтов",
+        "p": [
+          "Раскрытие заменяет компактную строку прежними карточками",
+          "Конечная дата сброса видна и в строке, и в карточках",
+          "Пятичасовые окна без дня недели; недельные с полными названиями дней"
+        ]
+      },
+      "en": {
+        "t": "Active account view transformation",
+        "p": [
+          "Expanded cards replace the compact summary",
+          "Reset dates remain visible in both states",
+          "No weekdays for five-hour windows; full weekday names for weekly windows"
+        ]
+      }
+    },
+    {
       "v": "1.28.6",
       "date": "2026-11-04",
       "ru": {
