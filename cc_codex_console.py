@@ -474,7 +474,8 @@ def _paste(text):
         f.write("\x1b[200~" + text + "\x1b[201~")
     cc_codex.own(path)
     try:
-        for cmd in ("readbuf", path), ("paste", "."):
+        # Screen quiet prefix suppresses its buffer-read status on attached displays.
+        for cmd in ("@readbuf", path), ("paste", "."):
             p = _ctl(["-S", NAME, "-p", "0", "-X"] + list(cmd))
             if p.returncode != 0:
                 return False

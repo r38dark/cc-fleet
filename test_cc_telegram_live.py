@@ -147,7 +147,8 @@ class LiveInput(unittest.TestCase):
         self.send('Исправь отступ\n\n[Вложения из Telegram: изображения лежат на сервере.\n/tmp/demo.jpg]')
         self.wait(lambda:len(self.inputs)==1);time.sleep(.5)
         self.assertTrue(self.bridge.worker.is_alive());self.assertEqual(self.notices,[])
-        self.finish('исправлено');self.bridge.worker.join(2);self.assertEqual(self.answers,['исправлено'])
+        worker=self.bridge.worker
+        self.finish('исправлено');worker.join(2);self.assertEqual(self.answers,['исправлено'])
 
     def test_different_indentation_does_not_ack_another_message(self):
         def transport(text):

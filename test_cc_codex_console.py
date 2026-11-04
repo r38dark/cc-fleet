@@ -328,7 +328,7 @@ class FakeConsole:
 
     def ctl(self, args, timeout=10):
         self.calls.append(list(args))
-        if "readbuf" in args:
+        if "@readbuf" in args:
             with open(args[-1], encoding="utf-8") as f:
                 self.pasted.append(f.read())
         if args[-1] == "\r":
@@ -396,7 +396,7 @@ class Ask(Rollout):
         # вставкой (bracketed paste), как есть, с переводом строки, затем Enter
         self.assertEqual(self.fc.pasted, ["\x1b[200~Привет!\nСколько будет $2+2?\x1b[201~"])
         kinds = [c[-2:] if "stuff" not in c else ["stuff", c[-1]] for c in self.fc.calls]
-        self.assertEqual(kinds[0][0], "readbuf")
+        self.assertEqual(kinds[0][0], "@readbuf")
         self.assertEqual(self.fc.calls[1][-2:], ["paste", "."])
         self.assertEqual(self.fc.calls[-1][-2:], ["stuff", "\r"])
         self.assertFalse(os.path.exists(os.path.join(self.d, "paste.txt")), "файл вставки не оставляем")

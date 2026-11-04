@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.4",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Тихая передача сообщений в консоль",
+        "p": [
+          "Убрано уведомление Screen о загрузке текста в буфер",
+          "Сохранены вставка длинного текста и общая беседа Telegram/консоли"
+        ]
+      },
+      "en": {
+        "t": "Quiet console message delivery",
+        "p": [
+          "Hide the Screen buffer-read notification",
+          "Keep long-text paste and the shared Telegram/console conversation"
+        ]
+      }
+    },
+    {
       "v": "1.28.3",
       "date": "2026-11-04",
       "ru": {
