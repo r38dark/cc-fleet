@@ -45,6 +45,8 @@ def get_bytes(path):
 
 class Base(unittest.TestCase):
     def setUp(self):
+        self.saved_bridge = br.BRIDGE
+        br.BRIDGE = br.Bridge()
         # Старый поддельный Codex отвечает точным эхом. Протокол вложений отдельно
         # проверяется с настоящей подсказкой в test_cc_codex_output.
         self.image_note_patch = unittest.mock.patch.object(br, "image_output_note", return_value="")
@@ -97,17 +99,27 @@ class Base(unittest.TestCase):
     def restore(self):
         # потоки моста гасим ДО возврата настоящих BASE и tg_api: иначе они пишут состояние в боевую папку и ходят в настоящий Telegram
         br.BRIDGE.stop()
+        if br.BRIDGE.worker:
+            br.BRIDGE.cancel.set()
+            br.BRIDGE.worker.join(20)
+        for thread in getattr(getattr(br.BRIDGE, 'inputs', None), '_threads', ()):
+            thread.join(5)
+        if getattr(br.BRIDGE, 'notice_worker', None):
+            br.BRIDGE.notice_worker.join(5)
         for t in (br.BRIDGE.poll_t, br.BRIDGE.watch_t, br.BRIDGE.lim_t):
             if t:
                 t.join(5)
         (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
          br.RESERVED_TOKENS, br.ACK_TIMEOUT, br.CONSOLE) = self.saved
+        br.BRIDGE = self.saved_bridge
 
     def say(self, text, chat=100200300):
         br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": chat}, "text": text}})
         w = br.BRIDGE.worker
         if w:
             w.join(20)
+        if hasattr(br.BRIDGE, 'notice_queue'):
+            br.BRIDGE.notice_queue.join()
 
     def runs(self):
         return [json.loads(l) for l in get(self.log).splitlines()] if os.path.exists(self.log) else []
@@ -1306,7 +1318,7 @@ class ImagesBase(Base):
             return inner(token, method, payload, timeout)
         br.tg_api = api
 
-        def download(token, file_path, limit=br.IMG_MAX_BYTES):
+        def download(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
             self.downloads.append(file_path)
             for fid, (fp, data) in self.files.items():
                 if fp == file_path:
@@ -1333,6 +1345,8 @@ class ImagesBase(Base):
         w = br.BRIDGE.worker
         if w:
             w.join(20)
+        if hasattr(br.BRIDGE, 'notice_queue'):
+            br.BRIDGE.notice_queue.join()
 
     def imgs(self):
         return sorted(os.listdir(self.images)) if os.path.isdir(self.images) else []
@@ -1537,7 +1551,7 @@ class ChatActionIndicator(ImagesBase):
         os.environ["FAKE_SLEEP"] = "0.5"
         real = br.tg_download
 
-        def slow(token, file_path, limit=br.IMG_MAX_BYTES):
+        def slow(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
             time.sleep(0.45)  # «долгая» закачка
             return real(token, file_path, limit)
         br.tg_download = slow
@@ -1556,7 +1570,7 @@ class ChatActionIndicator(ImagesBase):
         br.ACTION_EVERY = 30
         real = br.tg_download
 
-        def slow(token, file_path, limit=br.IMG_MAX_BYTES):
+        def slow(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
             time.sleep(0.4)
             return real(token, file_path, limit)
         br.tg_download = slow
@@ -1572,9 +1586,10 @@ class ChatActionIndicator(ImagesBase):
         self.photo("что тут?")
         self.assertEqual(self.names(), ["upload_photo", "typing"], self.acts)
         self.assertLess(self.acts[1][0] - self.acts[0][0], 2, "«печатает» ждало тика")
-        self.assertEqual(len(seen), 1)
-        seen[0].t.join(2)
-        self.assertFalse(seen[0].t.is_alive(), "поток индикатора ждёт тик после конца хода")
+        self.assertGreaterEqual(len(seen), 1)
+        for indicator in seen:
+            indicator.t.join(2)
+            self.assertFalse(indicator.t.is_alive(), "поток индикатора ждёт тик после конца хода")
 
     def test_refused_image_stops_indicator(self):
         self.photo("текст", doc={"file_id": "fid-text", "mime_type": "image/png"})
@@ -1644,6 +1659,8 @@ class Albums(ImagesBase):
             w = br.BRIDGE.worker
             if w:
                 w.join(20)
+            if hasattr(br.BRIDGE, 'notice_queue'):
+                br.BRIDGE.notice_queue.join()
 
     def test_album_goes_to_codex_as_one_message(self):
         self.album(["fid-a", "fid-b", "fid-c"], ["подпись к альбому", None, None], wait=False)

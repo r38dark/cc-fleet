@@ -60,6 +60,7 @@ class LiveInput(unittest.TestCase):
     def stop_worker(self):
         self.bridge.cancel.set()
         if self.bridge.worker:self.bridge.worker.join(2)
+        self.bridge.inputs.close()
         self.assertFalse(self.bridge.worker and self.bridge.worker.is_alive())
         self.assertIsNone(C._live_request)
 
@@ -185,7 +186,8 @@ class LiveInput(unittest.TestCase):
         self.finish();self.bridge.worker.join(2);self.assertEqual(self.answers,['единый ответ'])
 
     def test_generation_and_pause_prevent_dispatch(self):
-        self.bridge.work_queue=[(999,('text','старое'),time.monotonic(),{}),(0,('text','новое'),time.monotonic(),{})]
+        old=self.bridge.inputs.reserve('text', text='старое');old.generation=999
+        self.bridge.inputs.reserve('text', text='новое')
         B.DISPATCH_ALLOWED.return_value=False;self.assertEqual(self.bridge.take_live_texts(),[])
         B.DISPATCH_ALLOWED.return_value=True;self.assertEqual(self.bridge.take_live_texts(),['новое'])
 

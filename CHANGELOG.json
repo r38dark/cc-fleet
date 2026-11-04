@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.5",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Текст и фото в текущей беседе",
+        "p": [
+          "Фото и альбомы загружаются во время ответа и поступают в общий ввод",
+          "Порядок сообщений сохраняется; ошибка загрузки не задерживает следующий текст",
+          "Отмена защищает от поздней доставки старых вложений"
+        ]
+      },
+      "en": {
+        "t": "Text and photos in the current conversation",
+        "p": [
+          "Photos and albums prepare during a reply and use the common input path",
+          "Keep receipt order and release later text after media failures",
+          "Cancellation prevents stale attachment delivery"
+        ]
+      }
+    },
+    {
       "v": "1.28.4",
       "date": "2026-11-04",
       "ru": {

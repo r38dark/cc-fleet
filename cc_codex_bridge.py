@@ -10,6 +10,8 @@
 # Инициативы у Codex нет: он отвечает только на сообщения человека и сам заданий не создаёт.
 import datetime, json, math, os, re, secrets, stat, subprocess, threading, time, urllib.error, urllib.parse, urllib.request
 import cc_codex
+import queue
+from cc_input_queue import InputQueue
 
 BASE = os.environ.get("CC_LIMITS_BASE", "/opt/cc-limits")  # cc_limits подставляет свой BASE
 
@@ -37,6 +39,7 @@ LIM_CLEAR = 80  # ниже этого порог взводится снова (
 LIM_EVERY = 300  # как часто мост сверяет лимиты, секунд
 SUB_STEPS = (7, 3, 1, 0)  # за сколько дней до конца подписки писать; 0 — закончилась
 WORK_QUEUE_MAX = 20  # сколько сообщений можно ждать за одним выполняющимся запросом
+MEDIA_PREP_TIMEOUT = 30  # предел подготовки вложения; не ограничивает работу модели
 
 MODES = ("mediator", "orchestrator", "self")
 # Профили — наборы настроек, которые применяются одним кликом; доступ (access) важен только в «self».
@@ -580,14 +583,14 @@ def image_from_message(m):
     return None
 
 
-def tg_download(token, file_path, limit=IMG_MAX_BYTES):
+def tg_download(token, file_path, limit=IMG_MAX_BYTES, timeout=60):
     """Скачать файл Bot API целиком (не больше limit байт). Адрес содержит токен — наружу (в ошибки и журнал) он не попадает."""
     fp = str(file_path or "")
     if not fp or fp.startswith("/") or ".." in fp.split("/"):
         raise ImageError("Telegram вернул странный путь к файлу.")
     url = f"{TG_API}/file/bot{token}/{urllib.parse.quote(fp)}"
     try:
-        with urllib.request.urlopen(url, timeout=60) as r:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
             data = r.read(limit + 1)
     except urllib.error.HTTPError as e:
         raise ImageError(f"Telegram не отдал файл (код {e.code}).") from None
@@ -620,17 +623,17 @@ def _prune_images(d):
             pass
 
 
-def fetch_image(s, file_id):
+def fetch_image(s, file_id, timeout=None):
     """Скачать картинку из Telegram в <обмен>/inbox/images под сгенерированным именем. → абсолютный путь; ошибка — ImageError."""
     try:
-        info = tg_api(s["token"], "getFile", {"file_id": file_id}, 20).get("result")
+        info = tg_api(s["token"], "getFile", {"file_id": file_id}, min(20, timeout) if timeout is not None else 20).get("result")
     except TgError as e:
         raise ImageError("Telegram не отдаёт этот файл: " + _mask(e)[:200]) from None
     if not isinstance(info, dict) or not info.get("file_path"):
         raise ImageError("Telegram не вернул файл.")
     if (info.get("file_size") or 0) > IMG_MAX_BYTES:
         raise ImageError(f"Картинка больше {IMG_MAX_BYTES // 1048576} МБ, не принимаю.")
-    data = tg_download(s["token"], info["file_path"])
+    data = tg_download(s["token"], info["file_path"], timeout=min(15, timeout)) if timeout is not None else tg_download(s["token"], info["file_path"])
     ext = _img_ext(data)
     if not ext:
         raise ImageError(f"Это не {IMG_TYPES_RU}.")
@@ -1143,8 +1146,13 @@ class Bridge:
         self.poll_t = None
         self.watch_t = None
         self.worker = None
-        self.work_queue = []  # FIFO ввода; живая консоль забирает текст и во время ответа
-        self.queue_generation = 0  # /stop инвалидирует уже вынутую, но ещё не запущенную работу
+        self.inputs = InputQueue(WORK_QUEUE_MAX, timeout=MEDIA_PREP_TIMEOUT, cleanup=self._drop_files)
+        self.work_queue = self.inputs.items  # общий порядок текста, фото и альбомов
+        self.notice_queue = queue.Queue()
+        self.notice_worker = None
+        self.media_action = None
+        self.media_action_lock = threading.Lock()
+        self.answer_active = False
         self.proc = None
         self.cancel = threading.Event()  # /stop и /new: прервать запрос, идущий в консоли
         self.in_console = False
@@ -1154,72 +1162,133 @@ class Bridge:
         self.start_lock = threading.Lock()  # очередь и единственный поток Codex меняются атомарно
 
     def busy(self):
-        return bool(self.worker and self.worker.is_alive())
+        return bool(self.worker and self.worker.is_alive()
+                    or self.notice_worker and self.notice_worker.is_alive())
+
+    def _ensure_worker(self):
+        if not self.worker or not self.worker.is_alive():
+            self.worker = threading.Thread(target=self._drain_work_queue, daemon=True, name="codex-queue")
+            self.worker.start()
+            return True
+        return False
+
+    def _reserve_input(self, kind, text=None, delivery=None):
+        with self.start_lock:
+            entry = self.inputs.reserve(kind, delivery, text)
+            if entry is None:
+                return None, 0
+            position = len(self.inputs)
+            if kind == 'image' and not self.answer_active:
+                self._show_media_action()
+            started = self._ensure_worker()
+            return entry, 0 if started else position
 
     def enqueue_work(self, item, delivery=None):
-        """Добавить текст/фото в FIFO и запустить один последовательный обработчик."""
+        """Reserve arrival order first; prepare media independently of the active model turn."""
+        if item[0] == 'image':
+            entry, position = self._reserve_input('image', delivery=delivery)
+            if entry is not None:
+                self._prepare_image(entry, list(item[1]), item[2])
+        else:
+            entry, position = self._reserve_input('text', text=item[1], delivery=delivery)
+        return entry is not None, position
+
+    def _notice_async(self, message):
+        # A Telegram API delay must not block the native input/result reader.
+        self.notice_queue.put(message)
         with self.start_lock:
-            if len(self.work_queue) >= WORK_QUEUE_MAX:
-                return False, 0
-            self.work_queue.append((self.queue_generation, item, time.monotonic(), delivery or {}))
-            position = len(self.work_queue)
-            if not self.worker or not self.worker.is_alive():
-                self.worker = threading.Thread(target=self._drain_work_queue, daemon=True, name="codex-queue")
-                self.worker.start()
-                return True, 0
-            return True, position
+            if not self.notice_worker or not self.notice_worker.is_alive():
+                self.notice_worker = threading.Thread(target=self._drain_notices, daemon=True, name='bridge-notices')
+                self.notice_worker.start()
+
+    def _show_media_action(self):
+        with self.media_action_lock:
+            if self.media_action is None:
+                self.media_action = ChatAction(load()).start('upload_photo')
+
+    def _end_media_action(self):
+        with self.media_action_lock:
+            if self.media_action is not None:
+                self.media_action.stop()
+                self.media_action = None
+
+    def _drain_notices(self):
+        while True:
+            try:
+                message = self.notice_queue.get_nowait()
+            except queue.Empty:
+                with self.start_lock:
+                    if not self.notice_queue.empty():
+                        continue
+                    self.notice_worker = None
+                    return
+            try:
+                self.send(message)
+            except Exception as exc:
+                log('delivery stage=notice outcome=error type='+type(exc).__name__)
+            finally:
+                self.notice_queue.task_done()
 
     def take_live_texts(self, limit=20):
-        """Читатель живой консоли забирает уточнения во время ответа, сохраняя порядок."""
+        """The same ready inputs feed an active turn; downloads never run inside this reader."""
+        if self.cancel.is_set() or not DISPATCH_ALLOWED():
+            return []
         texts = []
-        with self.start_lock:
-            if self.cancel.is_set() or not DISPATCH_ALLOWED():
-                return texts
-            while self.work_queue and len(texts) < limit:
-                generation, item, queued_at, delivery = self.work_queue[0]
-                if generation != self.queue_generation:
-                    self.work_queue.pop(0)
-                    continue
-                if item[0] != 'text':
-                    break
-                self.work_queue.pop(0)
-                texts.append(item[1])
-                log(f"delivery stage=live_input update={delivery.get('update_id')} queue_wait_ms={round((time.monotonic()-queued_at)*1000)}")
+        for entry in self.inputs.take_ready(limit):
+            if entry.generation != self.inputs.generation:
+                continue
+            if entry.error:
+                self._notice_async('⚠️ '+entry.error)
+                continue
+            texts.append(entry.text)
+            log(f"delivery stage=live_input update={entry.delivery.get('update_id')} kind={entry.kind} queue_wait_ms={round((time.monotonic()-entry.queued_at)*1000)}")
         return texts
 
     def _drain_work_queue(self):
         while True:
             with self.start_lock:
-                if not self.work_queue:
+                if not len(self.inputs):
+                    self._end_media_action()
+                    self.answer_active = False
                     self.worker = None
                     return
             if not DISPATCH_ALLOWED():
-                if self.stop_ev.wait(.5):
+                self._end_media_action()
+                if self.stop_ev.wait(.05):
                     with self.start_lock:self.worker = None
                     return
                 continue
+            ready = self.inputs.take_ready(1)
+            if not ready:
+                self._show_media_action()
+                self.inputs.wait(.05)
+                continue
+            self._end_media_action()
+            entry = ready[0]
             with self.start_lock:
-                if not self.work_queue:
-                    # Атомарно освобождаем worker: новый update либо добавится до этой проверки,
-                    # либо увидит свободный слот и запустит следующий обработчик.
-                    self.worker = None
-                    return
-                generation, item, queued_at, delivery = self.work_queue.pop(0)
-                if generation != self.queue_generation:
+                if entry.generation != self.inputs.generation:
                     continue
                 self.cancel.clear()
-            log(f"delivery stage=dispatch update={delivery.get('update_id')} kind={item[0]} queue_wait_ms={round((time.monotonic() - queued_at) * 1000)}")
-            if item[0] == "image":
-                self.ask_image(item[1], item[2])
+                if not entry.error:
+                    self.answer_active = True
+                    self._end_media_action()
+            if entry.error:
+                self._notice_async('⚠️ '+entry.error)
                 continue
-            text = item[1]
-            # «да/нет», полученные до показа задания, не должны случайно подтвердить его позже.
+            text = entry.text
+            log(f"delivery stage=dispatch update={entry.delivery.get('update_id')} kind={entry.kind} queue_wait_ms={round((time.monotonic()-entry.queued_at)*1000)}")
             with _lock:
                 pending = bool(_state()["pending"])
-            if pending and (_YES.match(text) or _NO.match(text)):
+            if entry.kind == 'text' and pending and (_YES.match(text) or _NO.match(text)):
                 self.send("Это сообщение пришло до показа задания и ничего не подтвердило. Проверь задание и ответь «да» или «нет» ещё раз.")
+                with self.start_lock:
+                    self.answer_active = False
                 continue
-            self.ask_codex(text)
+            try:
+                self.ask_codex(text)
+            finally:
+                with self.start_lock:
+                    self.answer_active = False
 
     def send(self, text, s=None):
         s = s or load()
@@ -1284,31 +1353,39 @@ class Bridge:
                 # подпись к картинке идёт мимо handle_text: «да», /stop и /new в подписи ничего не подтверждают и не останавливают
                 caption = (m.get("caption") or "").strip()
                 if m.get("media_group_id"):  # альбом: каждое фото приходит отдельным update, собираем их в одно сообщение
-                    return self.collect_album(str(m["media_group_id"]), img[0], caption)
+                    return self.collect_album(str(m["media_group_id"]), img[0], caption, delivery)
                 return self.handle_image([img[0]], caption, delivery)
             self.send(f"Пока понимаю текст и картинки ({IMG_TYPES_RU}).")
             return
         self.handle_text(text, delivery)
 
-    def collect_album(self, gid, file_id, caption):
-        """Фото альбома копятся, пока новые приходят чаще, чем раз в ALBUM_WAIT; потом уходят в Codex одним сообщением.
-        Подпись Telegram кладёт на одно из фото альбома — берём первую непустую."""
+    def collect_album(self, gid, file_id, caption, delivery=None):
+        """The first frame reserves the album's FIFO slot; debounce cannot move it behind later text."""
         with self.album_lock:
-            a = self.albums.setdefault(gid, {"ids": [], "caption": "", "timer": None})
-            if len(a["ids"]) < ALBUM_MAX:
-                a["ids"].append(file_id)
-            a["caption"] = a["caption"] or caption
-            if a["timer"]:
-                a["timer"].cancel()
-            a["timer"] = threading.Timer(ALBUM_WAIT, self.flush_album, (gid,))
-            a["timer"].daemon = True
-            a["timer"].start()
+            a = self.albums.get(gid)
+            if a is None:
+                entry, _ = self._reserve_input('image', delivery=delivery)
+                a = self.albums[gid] = dict(ids=[], caption='', timer=None, entry=entry)
+                if entry is None:
+                    self._notice_async(f"Очередь заполнена ({WORK_QUEUE_MAX} сообщений). Альбом не принят.")
+            if len(a['ids']) < ALBUM_MAX:
+                a['ids'].append(file_id)
+            a['caption'] = a['caption'] or caption
+            if a['timer']:
+                a['timer'].cancel()
+            token = a['timer_token'] = object()
+            a['timer'] = threading.Timer(ALBUM_WAIT, self.flush_album, (gid, token))
+            a['timer'].daemon = True
+            a['timer'].start()
 
-    def flush_album(self, gid):
+    def flush_album(self, gid, token=None):
         with self.album_lock:
-            a = self.albums.pop(gid, None)
-        if a:
-            self.handle_image(a["ids"], a["caption"])
+            a = self.albums.get(gid)
+            if a is None or token is not None and token is not a['timer_token']:
+                return
+            self.albums.pop(gid)
+        if a['entry'] is not None:
+            self._prepare_image(a['entry'], a['ids'], a['caption'])
 
     def handle_image(self, file_ids, caption, delivery=None):
         accepted, position = self.enqueue_work(("image", list(file_ids), caption), delivery)
@@ -1316,27 +1393,46 @@ class Bridge:
         if not accepted:
             return self.send(f"Очередь заполнена ({WORK_QUEUE_MAX} сообщений). Картинку не принял — пришли её позже или /stop.")
 
-    def ask_image(self, file_ids, caption):
+    def _prepare_image(self, entry, file_ids, caption):
         s = load()
-        act = ChatAction(s).start("upload_photo")  # «отправляет фото» на время закачки, дальше ask_codex переключит на «печатает»
-        try:
-            paths, n = [], len(file_ids)
+        def prepare(current):
+            paths = []
             try:
                 for i, fid in enumerate(file_ids, 1):
+                    if current.cancelled.is_set():
+                        raise ImageError('Загрузка картинки отменена.')
+                    left = current.deadline-time.monotonic()
+                    if left <= 0:
+                        raise ImageError('Загрузка картинки не завершилась вовремя. Пришли её ещё раз.')
                     try:
-                        paths.append(fetch_image(s, fid))
-                    except ImageError as e:
-                        raise ImageError((f"Фото {i} из {n}: " if n > 1 else "") + str(e)) from None
-            except ImageError as e:
-                self._drop_files(paths)  # альбом принимаем целиком или никак: Codex не должен ответить по части фото
-                return self.send(f"⚠️ {e}")
-            except Exception as e:
+                        paths.append(fetch_image(s, fid, timeout=max(.1, min(15, left))))
+                    except ImageError as exc:
+                        raise ImageError((f'Фото {i} из {len(file_ids)}: ' if len(file_ids)>1 else '')+str(exc)) from None
+                return image_prompt(caption, paths), paths
+            except Exception as exc:
                 self._drop_files(paths)
-                log(f"картинка: {type(e).__name__} {e}")
-                return self.send("⚠️ Не удалось принять картинку, подробности в журнале.")
-            self.ask_codex(image_prompt(caption, paths), act)
-        finally:
-            act.stop()
+                error = ImageError(str(exc) if isinstance(exc, ImageError) else 'Не удалось принять картинку: '+type(exc).__name__)
+                error.public_message = str(error)
+                raise error from None
+        self.inputs.prepare(entry, prepare)
+
+    def ask_image(self, file_ids, caption):
+        # Compatibility entry point uses the same queue, including when a turn is already active.
+        return self.handle_image(file_ids, caption)
+
+    def _cancel_inputs(self):
+        self._end_media_action()
+        with self.album_lock:
+            timers = [a['timer'] for a in self.albums.values() if a.get('timer')]
+            self.albums.clear()
+            with self.start_lock:
+                count = self.inputs.clear()
+                clear = getattr(CONSOLE, 'clear_live', None) if CONSOLE is not None else None
+                if clear:
+                    count += clear()
+        for timer in timers:
+            timer.cancel()
+        return count
 
     @staticmethod
     def _drop_files(paths):
@@ -1358,6 +1454,7 @@ class Bridge:
                              "/new — начать разговор заново, /stop — прервать текущий запрос и очистить очередь, "
                              "/status — режим, доступ и размер очереди. Задание Claude: «да» / «нет» после того, как я его покажу. «Стоп» — снять всё.")
         if low == "/new":
+            self._cancel_inputs()
             reset_thread()
             return self.send("Разговор начат заново.")
         if low in ("/stop", "стоп", "stop"):
@@ -1368,19 +1465,7 @@ class Bridge:
                 had = bool(st["pending"])
                 st["pending"] = None  # задание, ждущее «да», тоже снимается
                 _state_save(st)
-            with self.start_lock:
-                queued = len(self.work_queue)
-                self.queue_generation += 1
-                self.work_queue.clear()
-                clear = getattr(CONSOLE, 'clear_live', None) if CONSOLE is not None else None
-                if clear:
-                    queued += clear()
-            with self.album_lock:
-                album_timers = [a["timer"] for a in self.albums.values() if a.get("timer")]
-                queued += len(self.albums)
-                self.albums.clear()
-            for timer in album_timers:
-                timer.cancel()
+            queued = self._cancel_inputs()
             if p:
                 cc_codex._kill(p)
             if c:
@@ -1674,6 +1759,9 @@ class Bridge:
             return
         if running():
             return
+        if self.inputs.closed:
+            self.inputs = InputQueue(WORK_QUEUE_MAX, timeout=MEDIA_PREP_TIMEOUT, cleanup=self._drop_files)
+            self.work_queue = self.inputs.items
         ev = self.stop_ev = threading.Event()  # у каждого запуска своё событие: старые потоки гаснут сами, ждать их не нужно
         self.poll_t = threading.Thread(target=self.poll_loop, args=(ev,), daemon=True, name="codex-poll")
         self.watch_t = threading.Thread(target=self.watch_loop, args=(ev,), daemon=True, name="codex-watch")
@@ -1683,6 +1771,8 @@ class Bridge:
     def stop(self):
         self.stop_ev.set()
         self.lim_ev.set()
+        self._cancel_inputs()
+        self.inputs.close()
 
 
 BRIDGE = Bridge()
