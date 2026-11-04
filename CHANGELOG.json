@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.14",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Выбор профиля поверх мобильной страницы",
+        "p": [
+          "Окно профилей открывается от верхнего края и занимает доступную высоту экрана",
+          "Список профилей прокручивается отдельно, основная страница заблокирована",
+          "После закрытия восстанавливаются положение страницы и фокус"
+        ]
+      },
+      "en": {
+        "t": "Mobile profile picker overlay",
+        "p": [
+          "Profile picker opens at the top and fills the available viewport",
+          "The profile list scrolls independently while the underlying page stays fixed",
+          "Closing restores page position and focus"
+        ]
+      }
+    },
+    {
       "v": "1.28.13",
       "date": "2026-11-04",
       "ru": {

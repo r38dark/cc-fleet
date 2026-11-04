@@ -34,3 +34,9 @@ and new-session handler payloads are checked without sending them to the running
 server. Desktop placement and preferences, and the existing limit disclosures and
 reset formats, are checked separately. Native processes and conversations are not
 restarted by deployment.
+
+The mobile profile picker is a top-aligned modal covering the visual viewport.
+Its header and close action remain visible while the profile list scrolls inside.
+The underlying page is fixed and inert while the picker is open; closing by the
+close button, Escape or browser Back restores the page position and provider
+button focus. Desktop positioning remains anchored to its provider button.
