@@ -231,7 +231,7 @@ html.conly .fleet-active-strip{display:none!important}
 html:root:root:not(.conly) .hdr{gap:14px!important}
 html:root:root:not(.conly) .hdr>.hdrl{order:0;flex:1;min-width:0}
 html:root:root:not(.conly) .hdr>.hdrctl{order:1;flex:0 1 auto!important;flex-basis:auto!important;gap:12px!important;min-width:0}
-html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0;gap:7px!important}
+html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0 0 0 auto;gap:7px!important}
 .hdr #fleetGeneralGear,.hdr #rfBtn{width:32px;height:32px;padding:7px;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--fleet-muted)}
 .hdr #fleetGeneralGear svg,.hdr #rfBtn svg{width:16px;height:16px}
 .hdr #ntGrp{flex:none;margin:0;border:1px solid var(--fleet-line);border-radius:7px;overflow:hidden;background:transparent;box-shadow:none}
