@@ -105,8 +105,8 @@ case "$name" in
         u=$(cfgget codex_user codextrial)
         sname="${1:-cc-codex}"
         case "$sname" in *[!A-Za-z0-9_-]*|"") exit 2 ;; esac
-        home=$(getent passwd "$u" | cut -d: -f6)
-        if [ -z "$home" ]; then
+        codex_home=$(getent passwd "$u" | cut -d: -f6)
+        if [ -z "$codex_home" ]; then
             echo "Пользователь $u не найден (config.json → codex_user)."
             exit 1
         fi
@@ -118,24 +118,78 @@ case "$name" in
             fi
         fi
         base="$(dirname "$self")"
-        transport=$(python3 "$base/cc_codex_terminal.py" "$base" "$home/codex_console") || exit $?
-        mapfile -t terminal <<< "$transport"
-        screen_bin="${terminal[0]}"
-        screen_dir="${terminal[1]}"
-        if [ ! -x "$screen_bin" ]; then
+        cx_transport() {
+            transport=$(python3 "$base/cc_codex_terminal.py" "$base" "$codex_home/codex_console") || return $?
+            mapfile -t terminal <<< "$transport"
+            screen_bin="${terminal[0]}"
+            screen_dir="${terminal[1]}"
+            [ -x "$screen_bin" ] || return 1
+            run=(env -u SCREENDIR HOME="$codex_home" TERM="${TERM:-xterm-256color}")
+            [ -n "$screen_dir" ] && run+=(SCREENDIR="$screen_dir")
+            [ "$(id -u)" = 0 ] && run=(/usr/sbin/runuser -u "$u" -- "${run[@]}")
+            return 0
+        }
+        cx_pid() {
+            "${run[@]}" "$screen_bin" -ls 2>/dev/null |
+                sed '/Dead/d' | sed -nE "s/^[[:space:]]*([0-9]+)\.${sname}[[:space:]].*/\1/p" | head -n 1
+        }
+        cx_new_pending() {
+            [ "$sname" = cc-codex ] || return 1
+            # /new saves its intent before closing Screen. A completed restart
+            # has a new PID; this also covers its first message already being accepted.
+            # Other exits (detach, /stop, SSH disconnect) must leave the client.
+            python3 - "$codex_home/codex_console/console.json" "$connected_pid" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as stream:
+        meta = json.load(stream)
+    pending = (meta.get('pending_settings') or {}).get('new_session')
+    replacement_pid = str(meta.get('pid') or '')
+    replaced = replacement_pid.isdigit() and replacement_pid != sys.argv[2]
+except (OSError, ValueError, AttributeError):
+    sys.exit(1)
+sys.exit(0 if pending or replaced else 1)
+PY
+        }
+        if ! cx_transport; then
             echo "Не найден Screen для текущей консоли Codex."
             exit 1
         fi
-        run=(env -u SCREENDIR HOME="$home" TERM="${TERM:-xterm-256color}")
-        [ -n "$screen_dir" ] && run+=(SCREENDIR="$screen_dir")
-        [ "$(id -u)" = 0 ] && run=(/usr/sbin/runuser -u "$u" -- "${run[@]}")
-        if ! "${run[@]}" "$screen_bin" -ls 2>/dev/null | grep -qE "[0-9]+\.${sname}[[:space:]]"; then
+        connected_pid=$(cx_pid)
+        if [ -z "$connected_pid" ]; then
             echo "Консоль Codex не запущена (screen $sname нет)."
             echo "Запусти её на странице балансера: вкладка Codex → «Запустить». Потом снова cxw."
             exit 1
         fi
-        echo "Подключаюсь к $sname (пользователь $u). Выйти, не останавливая Codex: Ctrl+A, потом d."
-        exec "${run[@]}" "$screen_bin" -rd "$sname"
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        while :; do
+            echo "Подключаюсь к $sname (пользователь $u). Выйти, не останавливая Codex: Ctrl+A, потом d."
+            "${run[@]}" "$screen_bin" -rd "$connected_pid.$sname"
+            attach_status=$?
+            cx_transport || exit "$attach_status"
+            current_pid=$(cx_pid)
+            [ "$current_pid" = "$connected_pid" ] && exit "$attach_status"
+            cx_new_pending || exit "$attach_status"
+            echo "Новая сессия Codex — переподключаюсь…"
+            deadline=$((SECONDS + 15))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+                if cx_transport; then
+                    current_pid=$(cx_pid)
+                    if [ -n "$current_pid" ] && [ "$current_pid" != "$connected_pid" ]; then
+                        break
+                    fi
+                fi
+                current_pid=""
+                sleep 0.2
+            done
+            if [ -z "$current_pid" ]; then
+                echo "Новая консоль Codex не запустилась. Проверь её состояние в балансере."
+                exit 1
+            fi
+            connected_pid=$current_pid
+        done
         ;;
     *)
         echo "cc-cmd: команды cl, cla, cln, clw (Claude) и cxw (Codex). Запускай их по имени, например: cl"
