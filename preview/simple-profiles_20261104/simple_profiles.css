@@ -1,0 +1,50 @@
+/* Один общий монолит вместо боковых меню. */
+#cxMenu.mono-profile-window{width:min(1040px,calc(100vw - 24px));border-radius:12px}
+#cxMenu.mono-profile-window .mirror-profile-tabs,#cxMenu.mono-profile-window .fleet-profile-compare,#cxMenu.mono-profile-window .fleet-profile-service-heading{display:none!important}
+#cxMenu.mono-profile-window .fleet-palette-header{padding:14px 18px;border-bottom:1px solid var(--fleet-line);background:var(--card)}
+#cxMenu.mono-profile-window .fleet-palette-tools{padding:12px 18px}
+#cxMenu.mono-profile-window .fleet-palette-tools[hidden]{display:none}
+#cxMenu.mono-profile-window>.cxpbody{padding:0;min-height:0}
+#cxMenu.mono-profile-window #cxp{display:block;gap:0}
+.mono-provider-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.mono-provider{min-width:0;--fleet-accent:#45d6ab;--fleet-accent-soft:#16352e}
+.mono-provider[data-engine="claude"]{--fleet-accent:var(--fleet-claude);--fleet-accent-soft:var(--fleet-claude-soft)}
+.mono-provider+.mono-provider{border-left:1px solid var(--fleet-line)}
+.mono-provider-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;background:color-mix(in srgb,var(--fleet-accent) 5%,var(--card));border-top:1px solid var(--fleet-line);border-bottom:1px solid var(--fleet-line)}
+.mono-provider-head strong{font-size:15px;color:var(--fleet-accent)}.mono-provider-head span{font-size:10px;color:var(--fleet-muted);text-align:right;line-height:1.5}
+#cxMenu.mono-profile-window .cxplist{display:block}
+#cxMenu.mono-profile-window .fleet-profile-card{border:0;border-bottom:1px solid var(--fleet-line);border-radius:0;min-height:0;padding:13px 18px;background:transparent}
+#cxMenu.mono-profile-window .fleet-profile-card.act{border:0;border-bottom:1px solid var(--fleet-line);box-shadow:inset 3px 0 var(--fleet-accent);background:color-mix(in srgb,var(--fleet-accent) 6%,var(--card))}
+.mono-mode-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.mono-mode-kind{color:var(--fleet-accent);font-size:9px;letter-spacing:.1em}.mono-mode-status{font-size:10px;color:var(--fleet-muted)}
+#cxMenu.mono-profile-window .fleet-profile-card .cxpn{margin:0 0 5px;padding:0}
+#cxMenu.mono-profile-window .fleet-profile-card .cxpnm{font-size:15px}
+#cxMenu.mono-profile-window .fleet-profile-card .cxps{font-size:12px;line-height:1.55}
+#cxMenu.mono-profile-window .fleet-profile-card-footer{border:0;padding:0;margin-top:8px;min-height:26px}
+#cxMenu.mono-profile-window .fleet-profile-more{min-height:26px;font-size:11px;padding:5px 8px}
+#cxMenu.mono-profile-window .mono-reserve{border:0;border-radius:0;display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:14px 18px;background:transparent;margin:0}
+.mono-reserve-copy strong{display:block;font-size:13px;font-weight:600;color:var(--txt)}
+#cxMenu.mono-profile-window .mono-reserve .cxps{margin-top:5px;font-size:11px;line-height:1.5}
+#cxMenu.mono-profile-window .mono-reserve .mirror-service-actions{flex-direction:row;justify-content:flex-end;gap:7px}
+.mono-reserve-config{padding:17px 18px;min-width:0}.mono-reserve-status{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--txt)}.mono-reserve-status span{font-size:10px;color:var(--fleet-muted)}
+.mono-auto{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.6;color:var(--txt);margin-top:17px;cursor:pointer}.mono-auto input{width:16px;height:16px;flex:none;margin:2px 0 0;accent-color:var(--fleet-accent)}
+.mono-note{font-size:11px;color:var(--fleet-muted);line-height:1.6;margin:10px 0 14px}.mono-reserve-actions{display:flex;justify-content:flex-end}.mono-reserve-actions button{font-size:11px;padding:7px 10px;background:transparent;border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);margin:0;box-shadow:none}
+.mono-window-note{border-top:1px solid var(--fleet-line);padding:10px 18px;font-size:10px;line-height:1.6;color:var(--fleet-muted)}
+.mono-agent{padding:14px 18px;border-top:1px solid var(--fleet-line)}.mono-agent>header{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:12px}.mono-agent>header strong{font-size:12px}.mono-agent>header span{font-size:11px;color:var(--fleet-muted)}
+.mono-agent #ntPopB{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px 12px;padding:0;overflow:visible}
+.mono-agent #ntPopB>.ntrow{grid-column:1/-1;margin:0;font-size:11px}.mono-agent #ntPopB>label{margin:0!important;font-size:11px}
+.mono-agent label[for="ntName"]{grid-column:1;grid-row:2}.mono-agent #ntName{grid-column:1;grid-row:3}.mono-agent label[for="ntUrl"]{grid-column:2;grid-row:2}.mono-agent #ntUrl{grid-column:2;grid-row:3}
+.mono-agent #ntPopB>.cxbrow{grid-column:3;grid-row:3;display:flex;align-items:center;margin:0;gap:7px}.mono-agent #ntPopB>.cxsub{grid-column:2;grid-row:4;font-size:10px;margin:0!important}
+.mono-agent .dlginp{height:34px;min-height:34px;font-size:12px;padding:7px 9px;margin:0}.mono-agent .cxbrow button{height:34px;min-height:34px;padding:7px 10px;font-size:11px;margin:0}
+.mono-notion-help{grid-column:1/-1;font-size:11px;color:var(--fleet-muted);margin-top:5px}.mono-notion-help>summary{cursor:pointer}.mono-notion-help .ntsteps{font-size:11px;line-height:1.6}.mono-notion-help .ntnote{font-size:11px}
+@media(max-width:700px){
+ .mono-provider-grid{grid-template-columns:minmax(0,1fr)}.mono-provider+.mono-provider{border-left:0;border-top:1px solid var(--fleet-line)}
+ #cxMenu.mono-profile-window .fleet-palette-current{font-size:10px;max-width:46%}#cxMenu.mono-profile-window .fleet-palette-heading h2{font-size:16px;white-space:normal}
+ .mono-provider-head{padding:11px 13px}#cxMenu.mono-profile-window .fleet-profile-card,#cxMenu.mono-profile-window .mono-reserve{padding:12px 13px}.mono-reserve-config,.mono-agent{padding:13px}
+ .mono-agent #ntPopB{grid-template-columns:minmax(0,1fr)}.mono-agent #ntPopB>*{grid-column:1!important;grid-row:auto!important}.mono-agent #ntPopB>.cxbrow{justify-content:flex-end;margin-top:4px}
+ .mono-agent>header,.mono-reserve-status{align-items:flex-start;flex-wrap:wrap}.mono-auto{font-size:13px}
+}
+
+#cxMenu.mono-profile-window .mono-reserve[hidden]{display:none!important}
+
+.mono-agent>header span{min-width:0;max-width:100%;overflow-wrap:anywhere}.mono-notion-help code{white-space:normal;overflow-wrap:anywhere}
+@media(max-width:700px){.mono-agent .dlginp{font-size:16px;min-height:38px;height:38px}}

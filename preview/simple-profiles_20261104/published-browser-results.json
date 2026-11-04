@@ -1,0 +1,68 @@
+{
+  "errors": [],
+  "checks": [
+    "Both entry buttons open the same centered 4+2 monolith; exactly Full/Orchestrator/reserve per provider",
+    "Correct engine is used for both leading directions and Full confirmation; models are not selected by a popup action",
+    "Both gears open the centered compact reserve form, both auto controls and original shared Notion fields; no emergency or deadline setting",
+    "Form drafts survive polling; original Notion save works in the same form; auto reserve confirms and reopens settings",
+    "Committed search, late autofill protection and profile details work in both-column layout",
+    "Both reserve buttons activate only their own engine, have no deadline and restore the previous scenario",
+    "Touch 390×844: single-column monolith and last settings/save controls are reachable without horizontal overflow"
+  ],
+  "windows": [
+    {
+      "view": "profiles-codex",
+      "viewport": {
+        "width": 1920,
+        "height": 980
+      },
+      "box": {
+        "x": 440,
+        "y": 190,
+        "width": 1040,
+        "height": 600.28125
+      }
+    },
+    {
+      "view": "profiles-claude",
+      "viewport": {
+        "width": 1920,
+        "height": 980
+      },
+      "box": {
+        "x": 440,
+        "y": 190,
+        "width": 1040,
+        "height": 600.28125
+      }
+    },
+    {
+      "view": "reserve-codex",
+      "viewport": {
+        "width": 1920,
+        "height": 980
+      },
+      "box": {
+        "x": 480,
+        "y": 214,
+        "width": 960,
+        "height": 551.71875
+      }
+    },
+    {
+      "view": "reserve-claude",
+      "viewport": {
+        "width": 1920,
+        "height": 980
+      },
+      "box": {
+        "x": 480,
+        "y": 214,
+        "width": 960,
+        "height": 551.71875
+      }
+    }
+  ],
+  "ok": true,
+  "target": "published preview service http://127.0.0.1:8878"
+}

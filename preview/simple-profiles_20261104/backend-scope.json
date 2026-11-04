@@ -1,0 +1,6 @@
+{
+  "version": "1.28.0",
+  "production_authorized": true,
+  "scope": "Functional: Full/Orchestrator/reserve catalog, no profile deadlines, legacy dev ceiling, pending model/Telegram fixes. New centered monolithic UI is demo-only pending design approval.",
+  "source": "/home/codextrial/work/cc-profiles-simple_20261104/release_stage"
+}
