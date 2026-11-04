@@ -402,6 +402,34 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
  .fleet-palette-footer{padding:11px 12px;font-size:10px}.fleet-palette-help{max-width:52%;text-align:right;font-size:9px}
  #cxMenu .fleet-profile-service{padding:11px;grid-template-columns:minmax(0,1fr) auto;gap:8px}#cxMenu .fleet-profile-service .cxpt{grid-column:1}.fleet-profile-auto{grid-column:2;font-size:9px;padding:4px 5px}
 }
+/* На ПК весь обычный каталог виден сразу, без прокрутки внутри меню. */
+#cxMenu.fleet-profile-desktop .fleet-palette-header{padding:10px 14px;gap:12px;min-height:0}
+#cxMenu.fleet-profile-desktop .fleet-palette-heading{display:flex;align-items:center;gap:12px}
+#cxMenu.fleet-profile-desktop .fleet-palette-heading h2{font-size:16px;line-height:1.4;margin:0;white-space:nowrap}
+#cxMenu.fleet-profile-desktop .fleet-palette-current{font-size:11px;max-width:46%}
+#cxMenu.fleet-profile-desktop .fleet-palette-tools{padding:8px 14px;gap:8px}
+#cxMenu.fleet-profile-desktop .fleet-profile-search{height:34px;min-height:34px;font-size:13px;padding-top:7px;padding-bottom:7px}
+#cxMenu.fleet-profile-desktop .fleet-palette-search::before{top:6px}
+#cxMenu.fleet-profile-desktop .fleet-profile-compare{height:34px;min-height:34px;padding:7px 10px;font-size:11px}
+#cxMenu.fleet-profile-desktop>.cxpbody{padding:0 14px 12px}
+#cxMenu.fleet-profile-desktop #cxp{gap:8px}
+#cxMenu.fleet-profile-desktop .cxplist{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#cxMenu.fleet-profile-desktop .fleet-profile-card{min-height:0;padding:12px}
+#cxMenu.fleet-profile-desktop .fleet-profile-card-head{min-height:0;margin-bottom:7px}
+#cxMenu.fleet-profile-desktop .fleet-profile-card-head .cxpr{display:none}
+#cxMenu.fleet-profile-desktop .fleet-profile-card .cxpn{margin-bottom:6px}
+#cxMenu.fleet-profile-desktop .fleet-profile-card .cxpnm{font-size:15px;line-height:1.4}
+#cxMenu.fleet-profile-desktop .fleet-profile-card .cxps{font-size:12px;line-height:1.5}
+#cxMenu.fleet-profile-desktop .fleet-profile-meta{margin-top:8px;gap:5px}
+#cxMenu.fleet-profile-desktop .fleet-profile-meta>span{padding:3px 5px}
+#cxMenu.fleet-profile-desktop .fleet-profile-card-footer{margin-top:9px;padding-top:8px;min-height:26px}
+#cxMenu.fleet-profile-desktop .fleet-profile-card .fleet-profile-more{height:26px;min-height:26px;padding:5px 7px}
+#cxMenu.fleet-profile-desktop .fleet-profile-service-heading{font-size:10px;margin:2px 0 0}
+#cxMenu.fleet-profile-desktop .mirror-service{min-height:0;padding:10px 12px;gap:12px}
+#cxMenu.fleet-profile-desktop .mirror-service .cxps{font-size:12px;line-height:1.5;margin-top:4px}
+#cxMenu.fleet-profile-desktop .mirror-service-actions{gap:6px}
+#cxMenu.fleet-profile-desktop .mirror-service-actions>button{min-height:27px;padding:5px 8px}
+#cxMenu.fleet-profile-desktop .fleet-palette-footer{padding:8px 14px;font-size:10px}
 @media(prefers-reduced-motion:reduce){html:root:root #cxMenu.fleet-profile-palette{animation:none}}
 
 #cxMenu .fleet-profile-more[hidden],#cxMenu[data-compare="true"] .fleet-profile-card .cxpf,#cxMenu[data-compare="true"] .fleet-profile-original{display:none!important}
@@ -738,8 +766,15 @@ JS = r'''
   panel.style.width=w+'px';panel.style.top=Math.round(top)+'px';panel.style.left=Math.max(12,Math.min(Math.round(r.right-w),innerWidth-w-12))+'px';panel.style.right='auto';panel.style.bottom='auto';panel.style.maxHeight=Math.max(120,innerHeight-top-12)+'px';
  }
  function placeProfilePalette(anchor){
+  menu.classList.toggle('fleet-profile-desktop',!mobileConsole.matches);
   if(mobileConsole.matches){menu.style.top='var(--fleet-visual-top,0px)';menu.style.left='0';menu.style.right='0';menu.style.bottom='auto';menu.style.width='100%';menu.style.height=menu.style.maxHeight='var(--fleet-visual-height,100dvh)'}
-  else{menu.style.height='';placePanel(menu,anchor,940)}
+  else{
+   const gap=12,rect=anchor.getBoundingClientRect(),width=Math.min(880,innerWidth-gap*2),available=innerHeight-gap*2;
+   menu.style.height='';menu.style.width=width+'px';menu.style.maxHeight=available+'px';menu.style.right='auto';menu.style.bottom='auto';
+   const height=menu.getBoundingClientRect().height,below=rect.bottom+8,above=rect.top-height-8;
+   const top=below+height<=innerHeight-gap?below:above>=gap?above:Math.max(gap,Math.min(below,innerHeight-height-gap));
+   menu.style.top=Math.round(top)+'px';menu.style.left=Math.max(gap,Math.min(Math.round(rect.right-width),innerWidth-width-gap))+'px';
+  }
  }
  function closeClaudeQ(){claudeQ.hidden=true;claudeModel.setAttribute('aria-expanded','false')}
  function paintClaudeModel(m){
