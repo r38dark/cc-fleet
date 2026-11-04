@@ -1,9 +1,11 @@
 # Active limits: disclosure and reset labels
 
-An explicit Expand/Collapse button remains visible above the active accounts in
-both states. The compact row can still open the cards, and the heading can still
-toggle them. Keyboard, mouse and touch use the same disclosure state; background
-updates preserve it. Expanded cards replace the compact summary.
+The compact row has one Expand affordance inside its right edge. The native
+summary handles pointer and keyboard activation. Expanded cards have one Collapse
+tab attached to their lower right edge; it returns keyboard focus to the summary.
+The heading is plain text, and there is no extra summary arrow or header button.
+Exactly one disclosure action is visible in either state. Background updates
+preserve the state, and expanded cards replace the compact summary.
 
 All five-hour limit displays use time remaining (for example, «через 2 ч 30 мин»).
 Weekly limits use only the reset date and time in Asia/Irkutsk, retaining the full

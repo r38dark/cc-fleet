@@ -454,17 +454,15 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-live-fold{border:1px solid var(--fleet-line);border-radius:9px;background:var(--card);min-width:0}
 .fleet-live-summary{display:flex;align-items:center;gap:18px;list-style:none;padding:10px 13px;min-height:40px;cursor:pointer;min-width:0}
 .fleet-live-summary::-webkit-details-marker{display:none}
-.fleet-live-summary::after{content:"⌄";font-size:17px;line-height:1;color:var(--fleet-muted);flex:none;transition:transform .15s}
-.fleet-live-fold[open]>.fleet-live-summary::after{transform:rotate(180deg)}
-.fleet-live-heading{display:inline-flex;align-items:center;gap:6px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--fleet-muted);font-size:10px;font-weight:500;letter-spacing:.025em;line-height:1.5;cursor:pointer}
-.fleet-live-heading::after{content:"⌄";display:inline-block;width:12px;opacity:0;transform:rotate(180deg)}
-.fleet-live-heading[aria-expanded="true"]::after{opacity:1}
-.fleet-live-heading:hover{color:var(--txt)}
-.fleet-live-heading:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:3px}
-.fleet-live-toggle{order:10;flex:none;display:inline-flex;align-items:center;gap:7px;min-height:30px;margin:0;padding:4px 9px;border:1px solid var(--fleet-line);border-radius:6px;background:var(--card);box-shadow:none;color:var(--txt);font-size:11px;line-height:1.4;cursor:pointer}
+.fleet-live-heading{color:var(--fleet-muted);font-size:10px;font-weight:500;letter-spacing:.025em;line-height:1.5}
+.fleet-live-toggle{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:28px;margin:0;padding:4px 8px;border:0;border-radius:5px;background:transparent;box-shadow:none;color:var(--fleet-muted);font-size:11px;line-height:1.4;cursor:pointer;white-space:nowrap}
 .fleet-live-toggle::after{content:"⌄";font-size:15px;line-height:1}
-.fleet-live-toggle[aria-expanded="true"]::after{transform:rotate(180deg)}
-.fleet-live-toggle:hover{border-color:var(--fleet-muted)}
+.fleet-live-expand{order:2;margin-left:auto}
+.fleet-live-summary:hover .fleet-live-expand{color:var(--txt);background:color-mix(in srgb,var(--fleet-muted) 9%,transparent)}
+.fleet-live-footer{display:flex;justify-content:flex-end;margin-top:-1px}
+.fleet-live-collapse{min-height:26px;padding:3px 10px;border:1px solid var(--fleet-line);border-top:0;border-radius:0 0 7px 7px;background:var(--card)}
+.fleet-live-collapse::after{transform:rotate(180deg)}
+.fleet-live-toggle:hover{color:var(--txt)}
 .fleet-live-toggle:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
 .fleet-live-fold[open]{border:0;background:transparent}
 .fleet-live-fold[open]>.fleet-live-summary{display:none}
@@ -487,12 +485,13 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-compact-window[data-tone="warn"] .fleet-compact-used{color:var(--warn)}
 .fleet-compact-range{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--txt);font-variant-numeric:tabular-nums;white-space:nowrap}
 .fleet-compact-arrow{font-style:normal;color:var(--fleet-muted)}
-@media(max-width:1500px){.fleet-live-summary{flex-wrap:wrap;position:relative;padding-right:34px;gap:8px}.fleet-live-summary::after{position:absolute;right:12px;top:12px}.fleet-compact-account{flex-basis:100%}.fleet-compact-account.codex{border-left:0;padding-left:0;padding-top:8px;border-top:1px solid var(--fleet-line)}}
+@media(max-width:1500px){.fleet-live-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:10px 12px;gap:8px 12px}.fleet-live-expand{grid-column:2;grid-row:1/3;align-self:center}.fleet-compact-account{flex-basis:100%}.fleet-compact-account.codex{border-left:0;padding-left:0;padding-top:8px;border-top:1px solid var(--fleet-line)}}
 @media(min-width:1501px) and (max-width:1750px){.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(160px,190px) 145px 245px;gap:10px}}
 @media(max-width:1500px){.fleet-live-fold[open]>.fleet-live-rows{grid-template-columns:minmax(0,1fr)}}
 @media(min-width:641px) and (max-width:900px){.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(90px,1fr) minmax(145px,175px) 145px 245px;gap:10px}}
 @media(max-width:640px){.fleet-live-timezone{font-size:9px}.fleet-live-summary{padding:10px 30px 10px 10px}.fleet-compact-account{flex-wrap:wrap;gap:7px 10px}.fleet-compact-name{flex-basis:100%;max-width:100%}.fleet-compact-window{flex-basis:100%;gap:6px}.fleet-compact-range{font-size:11px;gap:4px}.fleet-compact-name{font-size:12px}.fleet-live-fold[open]>.fleet-live-rows{padding:0;gap:7px}.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(0,1fr) 82px 110px;gap:4px 10px}.fleet-live-meter-label{flex-wrap:wrap;gap:3px}.fleet-live-meter-label b{font-size:12px}.fleet-live-reset{flex-basis:100%;flex-wrap:wrap;gap:2px;font-size:10px;line-height:1.35}.fleet-live-reset time{white-space:normal}.fleet-live-reset-label{font-size:9px}}
-@media(prefers-reduced-motion:reduce){.fleet-live-summary::after{transition:none}}
+.fleet-live-fold:not([open])>.fleet-live-footer{display:none!important}
+@media(max-width:640px){.fleet-live-summary{grid-template-columns:minmax(0,1fr);padding:10px}.fleet-live-expand{grid-column:1;grid-row:auto;justify-self:end;min-height:28px;padding:3px 0 0}.fleet-live-collapse{min-height:30px}}
 '''
 
 JS = r'''
@@ -602,15 +601,16 @@ JS = r'''
  }
  // Сводка, модель и настройки каждого провайдера собраны в одну плитку.
  const liveStrip=el('section','fleet-active-strip');liveStrip.id='fleetActiveAccounts';liveStrip.setAttribute('aria-label','Активные аккаунты и использованные лимиты');
- const liveHead=el('div','fleet-live-head'),liveHeading=el('button','fleet-live-label fleet-live-heading','Активные аккаунты · использовано лимита');liveHeading.id='fleetActiveHeading';liveHeading.type='button';liveHeading.setAttribute('aria-controls','fleetActiveFold');liveHeading.setAttribute('aria-expanded','false');
- const liveToggle=el('button','fleet-live-toggle','Развернуть');liveToggle.id='fleetActiveToggle';liveToggle.type='button';liveToggle.setAttribute('aria-controls','fleetActiveFold');liveToggle.setAttribute('aria-expanded','false');
- liveHead.append(liveHeading,el('span','fleet-live-timezone','Сброс лимитов · Иркутск'),liveToggle);
+ const liveHead=el('div','fleet-live-head'),liveHeading=el('span','fleet-live-label fleet-live-heading','Активные аккаунты · использовано лимита');liveHeading.id='fleetActiveHeading';
+ liveHead.append(liveHeading,el('span','fleet-live-timezone','Сброс лимитов · Иркутск'));
  const liveFold=el('details','fleet-live-fold');liveFold.id='fleetActiveFold';
- const liveSummary=el('summary','fleet-live-summary');liveSummary.id='fleetActiveSummary';liveSummary.setAttribute('aria-controls','fleetLiveRows');
- const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows);liveStrip.append(liveHead,liveFold);term.before(liveStrip);
- liveHeading.addEventListener('click',()=>{liveFold.open=!liveFold.open});
- liveToggle.addEventListener('click',()=>{liveFold.open=!liveFold.open});
- liveFold.addEventListener('toggle',()=>{for(const button of [liveHeading,liveToggle])button.setAttribute('aria-expanded',String(liveFold.open));putText(liveToggle,liveFold.open?'Свернуть':'Развернуть');if(liveFold.open&&document.activeElement===liveSummary)liveToggle.focus({preventScroll:true})});
+ const liveSummary=el('summary','fleet-live-summary');liveSummary.id='fleetActiveSummary';liveSummary.setAttribute('aria-controls','fleetLiveRows');liveSummary.setAttribute('aria-label','Развернуть активные аккаунты');
+ const liveExpand=el('span','fleet-live-toggle fleet-live-expand','Развернуть');liveExpand.setAttribute('aria-hidden','true');liveSummary.append(liveExpand);
+ const liveCollapse=el('button','fleet-live-toggle fleet-live-collapse','Свернуть');liveCollapse.id='fleetActiveCollapse';liveCollapse.type='button';liveCollapse.setAttribute('aria-controls','fleetLiveRows');liveCollapse.setAttribute('aria-expanded','true');
+ const liveFooter=el('div','fleet-live-footer');liveFooter.append(liveCollapse);
+ const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows,liveFooter);liveStrip.append(liveHead,liveFold);term.before(liveStrip);
+ liveCollapse.addEventListener('click',()=>{liveFold.open=false;liveSummary.focus({preventScroll:true})});
+ liveFold.addEventListener('toggle',()=>{if(liveFold.open&&document.activeElement===liveSummary)liveCollapse.focus({preventScroll:true})});
  const reserve=document.getElementById('ntGrp');hdr.querySelector('.hdrctl').append(reserve,document.getElementById('cxInst'));
  const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
  const generalGear=el('button','hdrgear fleet-header-icon');generalGear.id='fleetGeneralGear';generalGear.type='button';generalGear.innerHTML=gear.innerHTML;generalGear.title='Общие настройки';generalGear.setAttribute('aria-label','Общие настройки');
