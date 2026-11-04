@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.15",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Индикатор состояния у логотипа",
+        "p": [
+          "Индикатор консоли перенесён к верхнему правому углу надписи ccfleet",
+          "Цвета и обновление состояния сохранены"
+        ]
+      },
+      "en": {
+        "t": "Status indicator by the wordmark",
+        "p": [
+          "Console status is positioned at the upper-right corner of the ccfleet wordmark",
+          "Status colors and updates are preserved"
+        ]
+      }
+    },
+    {
       "v": "1.28.14",
       "date": "2026-11-04",
       "ru": {

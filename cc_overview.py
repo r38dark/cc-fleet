@@ -16,6 +16,8 @@ html:not(.conly) .hdrl{flex:1;min-width:180px;display:flex;gap:13px;align-items:
 html:not(.conly) #h1{display:flex;align-items:center;gap:11px;font-size:24px;font-weight:750;letter-spacing:-1px;line-height:1.12;margin:0;color:var(--txt);white-space:nowrap}
 .fleet-brand{display:grid;place-items:center;width:40px;height:40px;border-radius:11px;background:var(--fleet-accent);color:#0c1017;font:600 22px/1 ui-monospace,Consolas,monospace;letter-spacing:-3px;padding-right:3px;flex:none}
 .fleet-brand-word{font-weight:400;color:var(--fleet-muted)}.fleet-brand-sub{display:block;font-size:8px;font-weight:650;letter-spacing:.17em;margin-top:5px;color:var(--fleet-faint)}
+.fleet-brand-name{position:relative;display:inline-block}
+html:root:root #h1 #termDot{position:absolute;top:2px;right:-9px;width:6px;height:6px;margin:0}
 html:not(.conly) .hdrctl{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:12px!important}
 .fleet-profilebar{display:contents}.fleet-profilelabel{display:none}.fleet-profilebar .cxgrp{margin:0}.hdr .cxgrp{border:0;background:transparent;box-shadow:none}.hdr .cxbtn{border:0;background:transparent;box-shadow:none;max-width:390px}.hdr .cxmodbtn{border:1px solid var(--fleet-line);border-radius:7px}.hdr .cxlim{opacity:.75}.hdr .hdrgear{color:var(--fleet-muted);border-color:var(--fleet-line);background:transparent;border-radius:8px}
 .hdr #gear{width:auto!important;display:flex;align-items:center;gap:7px;padding:8px 11px;height:36px}.hdr #gear::after{content:"Настройки";font-size:12px;font-weight:550}.hdr #rfBtn{border:0;width:32px;height:32px}.hdr .hdrbtns{gap:8px!important}.hdr #termDot{width:6px;height:6px;margin:0;flex:none}
@@ -590,7 +592,8 @@ JS = r'''
  document.body.classList.add('fleet-reference','fleet-wide');
  const openAccountMenus=new Map();
  const brand=document.getElementById('h1');
- brand.innerHTML='<span class="fleet-brand" aria-hidden="true">›_</span><span>cc<span class="fleet-brand-word">fleet</span><small class="fleet-brand-sub">БАЛАНСЕР АККАУНТОВ</small></span>';
+ brand.innerHTML='<span class="fleet-brand" aria-hidden="true">›_</span><span><span class="fleet-brand-name">cc<span class="fleet-brand-word">fleet</span></span><small class="fleet-brand-sub">БАЛАНСЕР АККАУНТОВ</small></span>';
+ brand.querySelector('.fleet-brand-name').append(document.getElementById('termDot'));
  hdr.querySelector('.hdrctl').prepend(profilebar);
  const headerButtons=hdr.querySelector('.hdrbtns');if(headerButtons)hdr.querySelector('.hdrctl').append(headerButtons);
  const toolbar=el('div','fleet-console-toolbar');toolbar.append(document.getElementById('cTabs'),term.querySelector('.tzoom'));term.prepend(toolbar);

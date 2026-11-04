@@ -17,7 +17,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.28.14"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "1.28.15"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -5425,7 +5425,7 @@ let WCAP=99;
 function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);$('#wkLbl').innerHTML=tr('wkLbl',WCAP);}
 function applyI18n(){
  document.title=tr('title');document.documentElement.lang=LANG;
- $('#h1').textContent=tr('h1');
+ if(!$('#h1').querySelector('.fleet-brand-name'))$('#h1').textContent=tr('h1');
  $('#optLbl').textContent=tr('optLbl');$('#rfBtn').title=tr('refresh');$('#rfBtn').setAttribute('aria-label',tr('refresh'));
  renderAutoLbl();
  $('#gear').title=tr('modelsBtnTitle');$('#addAcct').title=tr('addBtnTitle');$('#addAcct').setAttribute('aria-label',tr('addBtnTitle'));$('#modalTitle').textContent=tr('modelsTitle');
