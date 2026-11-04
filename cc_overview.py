@@ -493,7 +493,9 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 /* Mobile controls belong to the terminal surface, not to the provider tabs. */
 .fleet-console-viewport{display:contents}
 @media(max-width:640px),(max-width:1000px) and (pointer:coarse){
- html:root:root #fleetActiveAccounts{display:none!important}
+ html:root:root:not(.conly) #fleetActiveAccounts{display:block!important;margin:16px 0 22px}
+ html:root:root.conly #fleetActiveAccounts{display:none!important}
+ html:root:root #fleetActiveSummary,html:root:root #fleetActiveAccounts .fleet-live-footer{display:none!important}
  html:root:root:not(.conly),html:root:root:not(.conly) body{height:auto!important;overflow-y:auto!important;overflow-x:clip}
  html:root:root .fleet-console-toolbar{min-height:40px;padding:0 10px;flex-wrap:nowrap;gap:0}
  html:root:root .fleet-console-toolbar #cTabs{min-height:40px;gap:16px;flex-wrap:nowrap}
@@ -521,6 +523,13 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
  html:root:root.conly .fleet-console-viewport{flex:1;min-height:0;height:auto}
  html:root:root.conly .fleet-console-viewport>#termBox{overscroll-behavior-y:contain}
  html:root:root.conly .fleet-input-status{padding-bottom:max(4px,env(safe-area-inset-bottom))}
+}
+@media(max-width:640px){
+ html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"identity identity" "controls controls" "session week" "profile profile";gap:10px 12px;padding:12px}
+ html:root:root #fleetActiveAccounts .fleet-provider-controls{max-width:none;width:100%}
+ html:root:root #fleetActiveAccounts .fleet-provider-controls .fleet-model-tile{flex:1;min-width:0}
+ html:root:root #fleetActiveAccounts .fleet-provider-controls .cxmodn{display:block;flex:1;max-width:none;min-width:0}
+ html:root:root #fleetActiveAccounts .mirror-profile-footer{grid-area:profile;grid-column:1/-1}
 }
 '''
 
@@ -672,7 +681,14 @@ JS = r'''
  const liveFooter=el('div','fleet-live-footer');liveFooter.append(liveCollapse);
  const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows,liveFooter);liveStrip.append(liveHead,liveFold);term.before(liveStrip);
  liveCollapse.addEventListener('click',()=>{liveFold.open=false;liveSummary.focus({preventScroll:true})});
- liveFold.addEventListener('toggle',()=>{if(liveFold.open&&document.activeElement===liveSummary)liveCollapse.focus({preventScroll:true})});
+ liveFold.addEventListener('toggle',()=>{if(mobileConsole.matches){if(!liveFold.open)liveFold.open=true;return}if(liveFold.open&&document.activeElement===liveSummary)liveCollapse.focus({preventScroll:true})});
+ let activeCardsOnMobile=false,desktopActiveOpen=liveFold.open;
+ function placeActiveAccounts(){
+  if(mobileConsole.matches){if(!activeCardsOnMobile)desktopActiveOpen=liveFold.open;term.after(liveStrip);liveFold.open=true}
+  else{term.before(liveStrip);if(activeCardsOnMobile)liveFold.open=desktopActiveOpen}
+  activeCardsOnMobile=mobileConsole.matches;
+ }
+ placeActiveAccounts();mobileConsole.addEventListener('change',placeActiveAccounts);
  const reserve=document.getElementById('ntGrp');hdr.querySelector('.hdrctl').append(reserve,document.getElementById('cxInst'));
  const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
  const generalGear=el('button','hdrgear fleet-header-icon');generalGear.id='fleetGeneralGear';generalGear.type='button';generalGear.innerHTML=gear.innerHTML;generalGear.title='Общие настройки';generalGear.setAttribute('aria-label','Общие настройки');

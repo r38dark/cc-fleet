@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.13",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Активные аккаунты под мобильной консолью",
+        "p": [
+          "На телефоне раскрытые карточки активных аккаунтов расположены под консолью",
+          "Карточки открыты постоянно; компактная сводка и кнопки раскрытия скрыты",
+          "На компьютере сохраняются прежнее положение и сворачивание"
+        ]
+      },
+      "en": {
+        "t": "Active accounts below the mobile console",
+        "p": [
+          "Expanded active account tiles appear below the console on mobile",
+          "Tiles stay open; the compact summary and disclosure controls are hidden",
+          "Desktop placement and disclosure behavior are preserved"
+        ]
+      }
+    },
+    {
       "v": "1.28.12",
       "date": "2026-11-04",
       "ru": {
