@@ -1,0 +1,245 @@
+"""Два рабочих профиля и один резерв для каждого исполнителя, без срока действия."""
+import copy
+import threading
+import time
+
+ENGINES = ('claude', 'codex')
+
+
+class ProfileScenarios:
+    def __init__(self, clock=time.time):
+        self.clock, self.lock = clock, threading.RLock()
+        self.revision, self.leader, self.service, self.restore = 0, None, None, None
+        self.selected = {e: e+'_solo_full' for e in ENGINES}
+        self.last_solo = dict(self.selected)
+        self.custom = {e: [] for e in ENGINES}  # прежние записи хранятся, но не предлагаются
+        self.until = 0
+        self.auto = {e: dict(enabled=False, emergency=False) for e in ENGINES}
+        self.availability = {e: True for e in ENGINES}
+        self.auto_blocked = set()
+
+    def other(self, engine):
+        return 'codex' if engine == 'claude' else 'claude'
+
+    def actor(self, engine):
+        return {'claude': 'Claude', 'codex': 'Codex'}[engine]
+
+    def definitions(self, engine):
+        name, other = self.actor(engine), self.actor(self.other(engine))
+        return [
+            dict(id=engine+'_solo_full', title=name+' Full · самостоятельно', kind='full', mode='self',
+                 access='full', task_rights='dev', builtin=True,
+                 description='Все инструменты, команды и файлы в пределах прав пользователя ОС.',
+                 can='Работать самостоятельно со всеми доступными файлами и командами без ограничений песочницы модели.',
+                 cannot='Самостоятельно получать отсутствующие права ОС или подключать другого исполнителя.',
+                 when='Модель должна выполнить задачу самостоятельно с полными доступными правами.',
+                 flow=[name+' Full', 'Работа и проверенный результат']),
+            dict(id='orchestrator', title=name+' → '+other, kind='orchestrator', mode='orchestrator',
+                 access='read', task_rights='dev', builtin=True,
+                 description=name+' планирует и проверяет. '+other+' выполняет подтверждённые шаги.',
+                 can='Читать проект, писать задания в папку обмена и проверять результат. Ведомая выполняет шаги с правами «дев».',
+                 cannot='Менять проект силами ведущей, отправлять неподтверждённые шаги или создавать встречную связку.',
+                 when='Нужна ведущая модель и отдельный исполнитель под контролем человека.',
+                 flow=[name+' · чтение', 'Подтверждение человека', other+' · дев', name+' проверяет']),
+            dict(id='reserve', title=name+' + Notion · резерв', kind='reserve', mode='self',
+                 access='write', task_rights='dev', builtin=True,
+                 description=name+' продолжает работу с Notion-агентом. '+other+' на паузе. Без ограничения срока.',
+                 can='Работать вместе с выбранным Notion-агентом и восстановить прежний сценарий после выключения резерва.',
+                 cannot='Запускать встречный резерв или применять результат агента без проверки.',
+                 when='Другой исполнитель недоступен или резерв включён вручную.',
+                 flow=[name, 'Notion', name+' проверяет'])]
+
+    def _stop_pair(self):
+        if self.leader:
+            self.selected[self.leader] = self.last_solo[self.leader]
+            self.leader = None
+
+    def _base(self):
+        return dict(selected=copy.deepcopy(self.selected), last_solo=copy.deepcopy(self.last_solo), leader=self.leader)
+
+    def _expire(self):
+        self.until = 0
+
+    def _restore(self):
+        if self.restore:
+            self.selected = self.restore['selected']
+            self.last_solo = self.restore['last_solo']
+            self.leader = self.restore['leader']
+        self.service, self.restore, self.until = None, None, 0
+        self.revision += 1
+
+    def _reconcile(self):
+        self.until = 0
+        for engine in ENGINES:
+            if self.availability[self.other(engine)]:
+                self.auto_blocked.discard(engine)
+        if self.service and self.service.get('source') == 'auto':
+            engine = self.service['engine']
+            if self.availability[self.other(engine)] or not self.availability[engine] or not self.auto[engine]['enabled']:
+                self._restore()
+        if not self.service:
+            for engine in ENGINES:
+                if self.auto[engine]['enabled'] and engine not in self.auto_blocked and self.availability[engine] and not self.availability[self.other(engine)]:
+                    self.restore = self._base()
+                    self._stop_pair()
+                    self.service = dict(engine=engine, kind='reserve', source='auto', emergency=False)
+                    self.revision += 1
+                    break
+
+    def _check_revision(self, revision):
+        if revision is not None and revision != self.revision:
+            return dict(ok=False, message='Сценарий уже изменился. Обнови выбор.', conflict=True)
+
+    def configure(self, engine, enabled, emergency=False, confirm='', revision=None):
+        with self.lock:
+            self._reconcile()
+            if engine not in ENGINES:
+                return dict(ok=False, message='Неизвестный исполнитель.')
+            stale = self._check_revision(revision)
+            if stale:
+                return stale
+            if type(enabled) is not bool or type(emergency) is not bool:
+                return dict(ok=False, message='Неверные настройки резерва.')
+            if emergency:
+                return dict(ok=False, message='Аварийный сценарий удалён. Доступен только резерв с Notion.')
+            if enabled and not self.auto[engine]['enabled'] and str(confirm).casefold().strip() != 'подтверждаю':
+                return dict(ok=False, confirmation_required=True, word='подтверждаю', message='Подтверди автоматический резерв.')
+            changed = dict(enabled=enabled, emergency=False)
+            if self.auto[engine] != changed:
+                self.auto[engine] = changed
+                self.revision += 1
+                if self.service and self.service['engine'] == engine and self.service.get('source') == 'auto':
+                    self._restore()
+            return dict(ok=True, message='Настройки резерва сохранены.', state=self.public())
+
+    def set_availability(self, engine, available):
+        with self.lock:
+            if engine not in ENGINES or type(available) is not bool:
+                return dict(ok=False)
+            self.availability[engine] = available
+            return dict(ok=True, state=self.public())
+
+    def public(self):
+        with self.lock:
+            self._reconcile()
+            engines = {}
+            for engine in ENGINES:
+                role = 'solo'
+                if self.service:
+                    role = 'reserve' if self.service['engine'] == engine else 'paused'
+                elif self.leader:
+                    role = 'leader' if self.leader == engine else 'executor'
+                selected = 'reserve' if self.service and self.service['engine'] == engine else self.selected[engine]
+                definitions = self.definitions(engine)
+                item = next((p for p in definitions if p['id'] == selected), {})
+                label = item.get('title', selected)
+                if role == 'executor':
+                    label = self.actor(engine)+' · исполнитель '+self.actor(self.leader)
+                elif role == 'paused':
+                    label = self.actor(engine)+' · на паузе'
+                engines[engine] = dict(id=engine, title=self.actor(engine), selected=selected,
+                    base_selected=self.selected[engine], role=role, label=label, profiles=definitions,
+                    auto=copy.deepcopy(self.auto[engine]), auto_blocked=engine in self.auto_blocked, until=0)
+            return dict(ok=True, available=True, demo=True, revision=self.revision, leader=self.leader,
+                follower=self.other(self.leader) if self.leader else None, service=copy.deepcopy(self.service), engines=engines)
+
+    def apply(self, engine, profile_id, confirm='', revision=None):
+        with self.lock:
+            self._reconcile()
+            if engine not in ENGINES:
+                return dict(ok=False, message='Неизвестный исполнитель.')
+            stale = self._check_revision(revision)
+            if stale:
+                return stale
+            profile = next((p for p in self.definitions(engine) if p['id'] == profile_id), None)
+            if not profile:
+                return dict(ok=False, message='Профиль удалён. Доступны Full, Оркестратор и резерв с Notion.')
+            already = self.public()['engines'][engine]
+            if already['selected'] == profile_id and already['role'] not in ('executor', 'paused'):
+                return dict(ok=True, message='Этот профиль уже выбран.', state=self.public())
+            word = 'подтверждаю' if profile['kind'] in ('full', 'reserve') else ''
+            if word and str(confirm).casefold().strip() != word:
+                return dict(ok=False, confirmation_required=True, word=word, message='Подтверди выбор профиля '+profile['title']+'.')
+            if self.service:
+                self._restore()
+            self.auto_blocked.update(e for e in ENGINES if not self.availability[self.other(e)])
+            if profile['kind'] == 'reserve':
+                self.restore = self._base()
+                self._stop_pair()
+                self.service = dict(engine=engine, kind='reserve', source='manual', emergency=False)
+            else:
+                self._stop_pair()
+                self.selected[engine] = profile_id
+                if profile['kind'] == 'orchestrator':
+                    self.leader = engine
+                else:
+                    self.last_solo[engine] = profile_id
+            self.until = 0
+            self.revision += 1
+            return dict(ok=True, message='Сценарий выбран.', state=self.public())
+
+    def stop_service(self, engine, revision=None):
+        with self.lock:
+            if engine not in ENGINES:
+                return dict(ok=False, message='Неизвестный исполнитель.')
+            stale = self._check_revision(revision)
+            if stale:
+                return stale
+            if self.service and self.service['engine'] != engine:
+                return dict(ok=False, message='Режим включён у другой стороны.')
+            self.auto_blocked.add(engine)
+            if self.service:
+                self._restore()
+            return dict(ok=True, message='Предыдущий сценарий восстановлен.', state=self.public())
+
+    def delete(self, engine, profile_id, revision=None):
+        return dict(ok=False, message='Доступны только встроенные Full, Оркестратор и резерв.')
+
+
+class ProfileState(ProfileScenarios):
+    """Чтение не запускает эффекты консолей. Старые записи нормализуются без активации прав."""
+    FIELDS = ('revision', 'leader', 'service', 'restore', 'selected', 'last_solo',
+              'custom', 'until', 'auto', 'availability', 'auto_blocked')
+
+    def _reconcile(self):
+        pass
+
+    def export(self):
+        out = {key: copy.deepcopy(getattr(self, key)) for key in self.FIELDS}
+        out['until'] = 0
+        out['auto_blocked'] = sorted(self.auto_blocked)
+        return out
+
+    @classmethod
+    def from_data(cls, data, clock=time.time):
+        state = cls(clock)
+        for key in cls.FIELDS:
+            if key in data:
+                setattr(state, key, copy.deepcopy(data[key]))
+        if set(state.selected) != set(ENGINES) or state.leader not in (None, *ENGINES):
+            raise ValueError('invalid_profile_state')
+        state.auto_blocked = set(state.auto_blocked)
+        def normalize(base):
+            for engine in ENGINES:
+                allowed = ('orchestrator', engine+'_solo_full')
+                for key in ('selected', 'last_solo'):
+                    if base[key][engine] not in allowed:
+                        base[key][engine] = engine+'_solo_full'
+        if state.service and state.service.get('kind') != 'reserve':
+            state._restore()
+        normalize(dict(selected=state.selected, last_solo=state.last_solo))
+        if state.restore:
+            normalize(state.restore)
+        if state.service:
+            state.service['emergency'] = False
+        for engine in ENGINES:
+            previous = state.auto[engine]
+            # Удалённый аварийный авторезерв не превращаем в другой режим без нового выбора.
+            state.auto[engine] = dict(enabled=bool(previous.get('enabled')) and not previous.get('emergency',False), emergency=False)
+        state.until = 0
+        return state
+
+    def public(self):
+        result = super().public()
+        result.pop('demo', None)
+        return result
