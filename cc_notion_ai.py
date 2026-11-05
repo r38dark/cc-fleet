@@ -51,6 +51,8 @@ EXEC_PROMPT = {
 }
 
 
+AG_TEXT = dict(run='работает', lead='ведущий', exec='исполнитель', reserve='резерв', pause='пауза', limit='лимит', off='выкл')
+ROLE_STATE = dict(solo='run', leader='lead', executor='exec', reserve='reserve', paused='pause')
 FOLLOWERS = ('codex',)   # исполнители Notion AI; «Notion AI → Claude» убран по просьбе Дениса
 
 
@@ -150,7 +152,38 @@ class NotionAI:
         return dict(ok=True, active=self.active(), kind=self.kind(), follower=self.follower(), title=self.title(),
                     full_title=TITLE, since=d.get('since', 0), claude_was_running=bool(d.get('claude_was_running')),
                     bridge=self.bridge_state(), chat_url=CHAT_URL, last_error=self.error, ready=self.readiness(),
-                    step=self.step_public())
+                    step=self.step_public(), agents=self.agents())
+
+    def agents(self):
+        """Состояние трёх агентов для блока в шапке панели: Claude · Codex · Notion AI."""
+        p, out = self.profiles, {}
+        try:
+            eng = p.state.public()['engines']
+        except Exception:
+            eng = {}
+        active, f = self.active(), self.follower()
+        for e in ('claude', 'codex'):
+            d = eng.get(e) or {}
+            label = d.get('label') or NAMES[e]
+            try:
+                down = p.avail[e]['status'] == 'down'
+            except Exception:
+                down = False
+            if active:
+                st = 'exec' if f == e else 'pause'
+                label = NAMES[e] + (' · исполнитель Notion AI' if f == e else ' · на паузе (работает Notion AI)')
+            else:
+                st = ROLE_STATE.get(d.get('role'), 'off')
+                if st == 'pause' and 'не участвует' in label:
+                    st = 'off'
+            if down and st in ('run', 'pause', 'off'):
+                st = 'limit'
+                label += ' · лимит исчерпан'
+            out[e] = dict(state=st, text=AG_TEXT[st], label=label)
+        nst = ('lead' if self.kind() == 'orchestrator' else 'run') if active else 'off'
+        out['notion'] = dict(state=nst, text=AG_TEXT[nst],
+                             label=(self.title() + ' · работает') if active else 'Notion AI · выключен')
+        return out
 
     # ── Telegram и чат Notion AI ───────────────────────────────────────────
     def _later(self, fn, *args):
@@ -877,12 +910,41 @@ PICKER_CSS = r'''<style id="naiPickerStyle">
 
 UI = r'''
 <style id="naiStyle">
-.nai-btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:10px;border:1px solid rgba(139,147,167,.35);background:transparent;color:var(--mut,#8b93a7);font:600 12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;white-space:nowrap}
-.nai-btn:hover{color:var(--txt,#e8eaf0);border-color:rgba(232,234,240,.55)}
-.nai-btn .nai-dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.55}
-.nai-btn.on{color:#120b24;background:#a78bfa;border-color:#a78bfa}
-.nai-btn.on .nai-dot{background:#120b24;opacity:1;animation:naiPulse 1.6s infinite}
-.nai-btn[disabled]{opacity:.6;cursor:progress}
+.nai-ag{display:inline-flex;align-items:stretch;flex:0 0 auto;height:34px;box-sizing:border-box;border:1px solid var(--fleet-line,#25303f);border-radius:10px;background:rgba(255,255,255,.02);overflow:hidden}
+.nai-seg{--c:139,147,167;display:inline-flex;align-items:center;gap:6px;margin:0;padding:0 11px;border:0;border-left:1px solid var(--fleet-line,#25303f);border-radius:0;background:transparent;color:var(--fleet-muted,#8c9bad);font:600 12px/1 system-ui,-apple-system,sans-serif;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s}
+.nai-seg:first-child{border-left:0}
+.nai-seg[data-ag="claude"]{--c:231,175,133}
+.nai-seg[data-ag="codex"]{--c:69,214,171}
+.nai-seg[data-ag="notion"]{--c:167,139,250}
+.nai-seg .nai-dot{width:7px;height:7px;flex:none;box-sizing:border-box;border-radius:50%;border:1.5px solid rgba(var(--c),.8);background:transparent}
+.nai-seg .nai-nm{color:rgba(var(--c),.72)}
+.nai-seg .nai-st{font-weight:500;font-size:11px;color:var(--fleet-faint,#647388)}
+.nai-seg .nai-short{display:none}
+.nai-seg.on{background:rgba(var(--c),.13)}
+.nai-seg.on .nai-nm{color:rgb(var(--c))}
+.nai-seg.on .nai-dot{background:rgb(var(--c));border-color:rgb(var(--c));box-shadow:0 0 0 3px rgba(var(--c),.2)}
+.nai-seg.on .nai-st{color:rgba(var(--c),.85)}
+.nai-seg.s-reserve .nai-dot{background:linear-gradient(90deg,rgb(var(--c)) 50%,transparent 50%)}
+.nai-seg.s-limit .nai-st{color:#ef8f8f}
+.nai-seg.s-limit .nai-dot{border-style:dashed}
+.nai-seg:hover{background:rgba(var(--c),.09)}
+.nai-seg.on:hover{background:rgba(var(--c),.2)}
+.nai-seg:focus-visible{outline:2px solid rgba(var(--c),.85);outline-offset:-2px}
+.nai-seg[disabled]{opacity:.6;cursor:progress}
+.nai-ag.nost .nai-st{display:none}
+.nai-ag.short .nai-full{display:none}
+.nai-ag.short .nai-short{display:inline}
+.nai-ag.sm .nai-seg{padding:0 6px;gap:4px;font-size:10.5px}
+.nai-ag.sm .nai-seg .nai-dot{width:6px;height:6px}
+.nai-ag.sm .nai-seg.on .nai-dot{box-shadow:0 0 0 2px rgba(var(--c),.22)}
+.nai-ag.xs .nai-seg{padding:0 4px;gap:3px;font-size:10px}
+.nai-ag.xs .nai-seg .nai-dot{width:5px;height:5px}
+.nai-ag.mini .nai-nm{display:none}
+.nai-ag.mini .nai-seg{padding:0 8px}
+html.nai-nosub .fleet-brand-sub{display:none!important}
+@media (max-width:640px){.nai-ag{height:30px;border-radius:9px}.nai-seg{padding:0 8px;gap:5px;font-size:11px}html:root:root:not(.conly) .hdr{column-gap:10px!important}.hdr .hdrbtns{gap:6px!important}}
+.nai-pop.ag-claude button.nai-yes{background:#e7af85;border-color:#e7af85;color:#1d130c}
+.nai-pop.ag-codex button.nai-yes{background:#45d6ab;border-color:#45d6ab;color:#06231a}
 @keyframes naiPulse{50%{opacity:.25}}
 .nai-pop{position:fixed;z-index:99999;width:min(320px,calc(100vw - 24px));background:var(--card,#181c24);color:var(--txt,#e8eaf0);border:1px solid rgba(139,147,167,.35);border-radius:12px;padding:14px;box-shadow:0 12px 32px rgba(0,0,0,.5);font:14px/1.4 system-ui,-apple-system,sans-serif}
 .nai-pop.wide{width:min(560px,calc(100vw - 24px))}
@@ -896,7 +958,7 @@ UI = r'''
 .nai-banner .nai-acts{display:flex;gap:8px;flex:none}
 .nai-banner button{flex:none;height:30px;padding:0 12px;border-radius:8px;border:1px solid rgba(167,139,250,.7);background:transparent;color:inherit;font:600 12px system-ui,-apple-system,sans-serif;cursor:pointer}
 .nai-banner button.nai-stepbtn{background:#a78bfa;color:#120b24}
-@media (max-width:640px){.nai-banner{flex-direction:column;align-items:stretch}.nai-banner .nai-acts{justify-content:flex-end}}
+@media (max-width:640px){.nai-banner{flex-wrap:wrap;gap:8px 10px;padding:10px 12px}.nai-banner .nai-msg{flex:1 1 180px;min-width:0}.nai-banner .nai-acts{margin-left:auto}}
 .nai-banner[hidden],.nai-toast[hidden],.nai-pop[hidden],.nai-banner button[hidden]{display:none!important}
 .nai-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:99999;max-width:calc(100vw - 24px);background:var(--card,#181c24);color:var(--txt,#e8eaf0);border:1px solid rgba(139,147,167,.35);border-radius:10px;padding:10px 14px;font:13px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.45)}
 </style>
@@ -905,16 +967,23 @@ UI = r'''
 var api=(typeof API!=='undefined'?API:location.origin+'/cc-hook/')+'notion-ai',tok=(typeof TOKEN!=='undefined'?TOKEN:''),st=null,busy=false,pop=null,toastT=0,timer=0;
 var names={claude:'Claude',codex:'Codex'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-var btn=document.createElement('button');btn.type='button';btn.id='naiBtn';btn.className='nai-btn';btn.title='Профили Notion AI';
-btn.innerHTML='<span class="nai-dot"></span><span class="nai-txt">Notion AI</span>';
+var AGS=[['claude','Claude','Claude'],['codex','Codex','Codex'],['notion','Notion AI','Notion']];
+var bar=document.createElement('div');bar.id='naiAgents';bar.className='nai-ag';bar.setAttribute('role','group');bar.setAttribute('aria-label','Агенты: Claude, Codex, Notion AI');
+bar.innerHTML=AGS.map(function(a){return '<button type="button" class="nai-seg s-off" data-ag="'+a[0]+'"'+(a[0]==='notion'?' id="naiBtn"':'')+'><span class="nai-dot"></span><span class="nai-nm"><span class="nai-full">'+a[1]+'</span><span class="nai-short">'+a[2]+'</span></span><span class="nai-st"></span></button>'}).join('');
+var btn=bar.querySelector('#naiBtn'),LEVELS=['','nost','nost short','nost short nosub','nost short nosub sm','nost short nosub sm xs','nost short nosub sm xs mini'];
 var banner=document.createElement('div');banner.className='nai-banner';banner.hidden=true;
 banner.innerHTML='<span class="nai-msg"></span><span class="nai-acts"><button type="button" class="nai-stepbtn" hidden>Шаг ждёт подтверждения</button><button type="button" class="nai-offbtn">Выключить</button></span>';
-function place(){var rf=document.getElementById('rfBtn');if(rf&&rf.parentNode){rf.parentNode.insertBefore(btn,rf)}else{btn.style.cssText='position:fixed;left:12px;bottom:12px;z-index:9999';document.body.appendChild(btn)}
+function place(){var rf=document.getElementById('rfBtn');if(rf&&rf.parentNode){rf.parentNode.insertBefore(bar,rf)}else{bar.style.cssText='position:fixed;left:12px;bottom:12px;z-index:9999';document.body.appendChild(bar)}
  var h=document.querySelector('.hdr');if(h&&h.parentNode){h.parentNode.insertBefore(banner,h.nextSibling)}else{document.body.insertBefore(banner,document.body.firstChild)}}
 function toast(t){var el=document.querySelector('.nai-toast');if(!el){el=document.createElement('div');el.className='nai-toast';document.body.appendChild(el)}el.textContent=t;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){el.hidden=true},5000)}
 function orch(){return !!(st&&st.active&&st.kind==='orchestrator'&&st.follower)}
 function pending(){return orch()&&st.step&&st.step.status==='pending'?st.step:null}
-function paint(){var on=!!(st&&st.active),f=orch()?names[st.follower]:'';btn.classList.toggle('on',on);btn.querySelector('.nai-txt').textContent=on?(f?'Notion AI → '+f:'Notion AI · работает'):'Notion AI';banner.hidden=!on;btn.disabled=busy;
+function agState(k){var a=st&&st.agents&&st.agents[k];if(a)return a;if(k==='notion'){var on=!!(st&&st.active);return {state:on?(orch()?'lead':'run'):'off',text:on?(orch()?'ведущий':'работает'):'выкл',label:on?(st.title||'Notion AI')+' · работает':'Notion AI · выключен'}}return {state:'off',text:'',label:names[k]}}
+function wrapped(){var h1=document.getElementById('h1'),hdr=document.querySelector('.hdr');if(!h1||!h1.offsetParent||!bar.offsetParent)return false;var a=h1.getBoundingClientRect(),b=bar.getBoundingClientRect(),btns=bar.parentNode,l=btns&&btns.lastElementChild,r=hdr?hdr.getBoundingClientRect():null;
+ return b.top>=a.bottom-2||(l&&r&&l.getBoundingClientRect().right>r.right+1)}
+function fit(){var cl=document.documentElement.classList;for(var i=0;i<LEVELS.length;i++){var lv=LEVELS[i];bar.className='nai-ag'+(lv?' '+lv:'');cl.toggle('nai-nosub',lv.indexOf('nosub')>=0);if(!wrapped())break}}
+function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});btn.disabled=busy;fit()}
+function paint(){var on=!!(st&&st.active),f=orch()?names[st.follower]:'';paintAgents();banner.hidden=!on;
  var msg=f?'🤖 <b>Работает Notion AI → '+f+'.</b> '+f+' выполняет шаги после твоего подтверждения. Пиши в общий чат Telegram.':'🤖 <b>Работает Notion AI.</b> Claude и Codex на паузе. Пиши в общий чат Telegram.';
  var s=orch()&&st.step;if(s&&(s.status==='approved'||s.status==='running'))msg+=' ⏳ '+esc(names[s.follower]||'')+' выполняет шаг.';
  banner.querySelector('.nai-msg').innerHTML=msg;banner.querySelector('.nai-stepbtn').hidden=!pending();
@@ -922,6 +991,8 @@ function paint(){var on=!!(st&&st.active),f=orch()?names[st.follower]:'';btn.cla
 function closePop(){if(pop){pop.remove();pop=null}}
 function openPop(html,wide,anchor){closePop();pop=document.createElement('div');pop.className='nai-pop'+(wide?' wide':'');pop.setAttribute('role','dialog');pop.innerHTML=html;document.body.appendChild(pop);
  var r=(anchor||btn).getBoundingClientRect(),w=pop.offsetWidth;pop.style.top=Math.max(12,Math.min(r.bottom+8,innerHeight-pop.offsetHeight-12))+'px';pop.style.left=Math.max(12,Math.min(r.right-w,innerWidth-w-12))+'px';return pop}
+function agentPop(k,anchor){var g=agState(k),nm=names[k];var p=openPop('<b>'+esc(nm)+(g.text?' · '+esc(g.text):'')+'</b><p>'+esc(g.label||nm)+'. Сменить профиль — в «Выборе профиля».</p><div class="nai-row"><button type="button" class="nai-no">Закрыть</button><button type="button" class="nai-yes">Выбор профиля</button></div>',false,anchor);p.classList.add('ag-'+k);
+ p.querySelector('.nai-no').onclick=closePop;p.querySelector('.nai-yes').onclick=function(){closePop();var c=document.getElementById('cxBtn');if(c)c.click()}}
 function ask(){var on=!!(st&&st.active),t=st&&st.title||'Notion AI';
  var p=openPop((on?'<b>Выключить «'+esc(t)+'»?</b><p>Мост Telegram остановится. '+(orch()?esc(names[st.follower])+' вернётся к своему профилю. ':'')+'Claude вернётся, если работал до включения. Codex снова примет сообщения.</p>':'<b>Включить «Notion AI · только он»?</b><p>Claude остановится, Codex встанет на паузу. Пиши в общий чат Telegram — ответит Notion AI текстом и голосом. Оркестраторы Notion AI → Claude / Codex — в выборе профиля.</p>')+'<div class="nai-row"><button type="button" class="nai-no">Нет</button><button type="button" class="nai-yes">Да</button></div>');
  p.querySelector('.nai-no').onclick=closePop;p.querySelector('.nai-yes').onclick=function(){closePop();send(on?'off':'on',{})}}
@@ -931,10 +1002,11 @@ function load(){clearTimeout(timer);timer=setTimeout(load,10000);fetch(api,{head
 function send(path,body){busy=true;paint();toast(path==='on'?'Включаю профиль Notion AI…':path==='off'?'Выключаю профиль Notion AI…':'Отправляю решение…');
  fetch(api+'/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify(body||{})}).then(function(r){return r.json()}).then(function(j){if(j.state)st=j.state;toast(j.message||(j.ok?'Готово':'Не получилось'))}).catch(function(){toast('Панель не ответила. Обнови страницу.')}).then(function(){busy=false;load()})}
 window.naiReload=load;
-btn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();if(!busy)ask()});
+bar.addEventListener('click',function(e){var s=e.target.closest('.nai-seg');if(!s)return;e.preventDefault();e.stopPropagation();if(s.dataset.ag==='notion'){if(!busy)ask()}else agentPop(s.dataset.ag,s)});
+var fitT=0;window.addEventListener('resize',function(){clearTimeout(fitT);fitT=setTimeout(fit,120)});try{document.fonts&&document.fonts.ready.then(fit)}catch(_){}
 banner.querySelector('.nai-offbtn').addEventListener('click',function(e){e.stopPropagation();if(!busy){st=st||{};st.active=true;ask()}});
 banner.querySelector('.nai-stepbtn').addEventListener('click',function(e){e.stopPropagation();if(!busy)showStep()});
-document.addEventListener('click',function(e){if(pop&&!pop.contains(e.target)&&e.target!==btn)closePop()});
+document.addEventListener('click',function(e){if(pop&&!pop.contains(e.target)&&!bar.contains(e.target))closePop()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closePop()});
 function boot(){place();paint();load()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
