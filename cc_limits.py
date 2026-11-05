@@ -2615,6 +2615,74 @@ def optimize_check(snap):
         tg_notify("⚠️ Claude (оптимизация): переключение на %s не удалось: %s" % (target, out))
 
 
+LIM_WARN, LIM_CLEAR = 90, 80  # [notion-ai] как у Codex (cc_codex_bridge): «подходит» с 90%, порог взводится снова ниже 80%
+
+
+def _lim_at(iso):
+    """ISO-время → «21:40» (сегодня) или «06.11 02:00» — как в сообщениях Codex; зона — cfg «tz»."""
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        tzname = cfg().get("tz")
+        if tzname:
+            from zoneinfo import ZoneInfo
+            dt, now = dt.astimezone(ZoneInfo(tzname)), datetime.now(ZoneInfo(tzname))
+        else:
+            dt, now = dt.astimezone(), datetime.now().astimezone()
+        return dt.strftime("%H:%M") if dt.date() == now.date() else dt.strftime("%d.%m %H:%M")
+    except Exception:
+        return ""
+
+
+def claude_limit_alerts(accs, prev):
+    """[notion-ai] Сообщения о лимитах Claude в том же виде, что у Codex: на каждом пороге одно —
+    «израсходовано на 90%», «исчерпан» (100%) и «снова доступен». По каждому аккаунту и окну
+    (5 ч, неделя); имя аккаунта — только если аккаунтов больше одного. Ошибка чтения или Free —
+    состояние аккаунта не меняется. → (сообщения, новое состояние)."""
+    prev = {n: dict(v) for n, v in (prev or {}).items() if n in accs}
+    out, multi = [], len(accs) > 1
+    for n, row in sorted(accs.items()):
+        if row.get("error") or row.get("plan") == "free":
+            continue
+        mem, who = prev.setdefault(n, {}), (f" ({n})" if multi else "")
+        for key, nm in (("five_hour", "5 ч"), ("seven_day", "неделя")):
+            w = row.get(key) or {}
+            pct = w.get("pct")
+            if pct is None:
+                continue
+            old = int(mem.get(key, 0))
+            lvl = 100 if pct >= 100 else LIM_WARN if pct >= LIM_WARN else 0
+            at = _lim_at(w["resets_at"]) if w.get("resets_at") else ""
+            tail = f" Сбросится в {at}." if at else ""
+            if lvl > old:
+                out.append(f"⚠ Лимит Claude{who} исчерпан: окно {nm}.{tail}" if lvl == 100 else
+                           f"⚠ Лимит Claude{who}: окно {nm} израсходовано на {round(pct)}%.{tail}")
+                mem[key] = lvl
+            elif old == 100 and lvl < 100:
+                out.append(f"✅ Лимит Claude{who} снова доступен: окно {nm}, занято {round(pct)}%.")
+                mem[key] = lvl
+            elif lvl < old and pct < LIM_CLEAR:
+                mem[key] = lvl  # спад ниже гистерезиса — порог взведён заново, сообщать не о чем
+    return out, prev
+
+
+def _claude_limit_tick(snap):
+    """Сверить лимиты Claude после опроса и написать в Telegram о новом пороге (config «limit_alerts»: false — выкл.)."""
+    if cfg().get("limit_alerts") is False:
+        return
+    accs = snap.get("accounts") or {}
+    if not accs:
+        return
+    st = jload(STATE, {})
+    first = "limit_alerts" not in st
+    msgs, st["limit_alerts"] = claude_limit_alerts(accs, st.get("limit_alerts"))
+    jsave(STATE, st)
+    if first:
+        return  # первый запуск: запоминаем текущие пороги молча — не пишем о том, что было до установки
+    for m in msgs:
+        tg_notify(m)
+
+
 def switch_policy_check(snap):
     # оптимизация — отдельный режим, при включении полностью заменяет простой
     # авто-порог (пороговые уходы с забитого аккаунта в неё встроены)
@@ -2626,6 +2694,10 @@ def switch_policy_check(snap):
         _week_cap_warn(snap)
     except Exception as e:
         print(f"week cap warn fail: {e}", flush=True)
+    try:
+        _claude_limit_tick(snap)
+    except Exception as e:
+        print(f"limit alerts fail: {e}", flush=True)
 
 
 def poll_loop():
@@ -3895,7 +3967,8 @@ html.conly #verTag{display:none}
 #fsBtn .fsx{display:none}
 html.conly #fsBtn .fsi{display:none}
 html.conly #fsBtn .fsx{display:block}
-html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause{display:none!important}
+html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause,html.conly #cxPause{display:none!important}
+#cxPause:not([hidden]){display:block;padding:0;overflow:visible;margin:0 0 8px}
 html:root:root.conly body{height:100vh;height:100dvh;display:flex;flex-direction:column;padding:0}
 html:root:root.conly .termwrap{flex:1 1 0;min-height:0;margin:0}
 html:root:root.conly .termbox{flex:1 1 0;height:auto;min-height:0;border:0;border-radius:0;box-shadow:none;padding-bottom:36px}
@@ -4332,6 +4405,7 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
 <div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="ntgrp" id="ntGrp" hidden><span id="ntInd" class="hdrgear ntind" role="img" aria-label="Notion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M9 16V8l6 8V8"/></svg><i class="cxdot" id="ntDot"></i></span><button id="ntBtn" class="hdrgear ntbtn" type="button" role="switch" aria-checked="false"><span class="ntname" id="ntBtnName">Резерв</span><i class="ntsw" aria-hidden="true"></i></button><button id="ntGear" class="hdrgear ntgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
+<div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
  <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude">Claude</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctStop" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
  <div class="cxcons" id="cxCons" hidden><div class="cxcmsg" id="cxConsMsg"></div><div class="cxcsub" id="cxConsSub"></div><button type="button" id="cxConsGo"></button></div>
@@ -4615,6 +4689,14 @@ const I18N={
   ccpHintOff:thr=>`Claude продолжит сразу, сверх порога ${thr}%`,
   ccpHintHardOff:'следующее сообщение не встанет в очередь',
   ccpHintLimitOut:'настоящий лимит аккаунта исчерпан — отключать паузу бесполезно, Claude продолжит сам после сброса',
+  cxlpBrief:at=>`Codex на паузе · сброс в ${at}`,
+  cxlpBriefNoAt:'Codex на паузе · ждём сброса лимита',
+  cxlpTitle:'⏸ Codex на <b>паузе по лимитам</b> — подъём автоматический',
+  cxlpSub:(n,why,at,nl)=>`Лимит Codex${n?` <b>${n}</b>`:''} исчерпан: ${why}. Переключаться некуда — сообщения из Telegram ждут в очереди и уйдут сами`+(at?` после сброса в <span class="num">${at}</span>`:' после сброса')+(nl?` (раньше всех освободится <b>${nl}</b>)`:'')+'.',
+  cxlpWin:m=>m===300?'окно 5 ч':m===10080?'окно неделя':`окно ${Math.round(m/60)} ч`,
+  cxlpWinAny:'сервис сообщил о лимите',
+  cxlpTill:'до сброса',
+  cxlpHint:'настоящий лимит исчерпан — отключать паузу бесполезно, Codex продолжит сам после сброса',
   ccpHintOnHard:'окно забито — пауза встанет сразу',
   ccpHintOnFree:'окно уже свободно — пауза просто снова начнёт работать',
   ccpErr:e=>'не получилось: '+e,
@@ -5129,6 +5211,14 @@ const I18N={
   ccpHintOff:thr=>`Claude continues right away, past the ${thr}% threshold`,
   ccpHintHardOff:'the next message will not be queued',
   ccpHintLimitOut:'the real account limit is used up — disabling the pause would not help; Claude resumes by itself after the reset',
+  cxlpBrief:at=>`Codex paused · resets at ${at}`,
+  cxlpBriefNoAt:'Codex paused · waiting for the limit reset',
+  cxlpTitle:'⏸ Codex is <b>paused on limits</b> — it resumes on its own',
+  cxlpSub:(n,why,at,nl)=>`Codex limit${n?` <b>${n}</b>`:''} is used up: ${why}. Nowhere to switch — Telegram messages wait in the queue and go out by themselves`+(at?` after the reset at <span class="num">${at}</span>`:' after the reset')+(nl?` (first to free up: <b>${nl}</b>)`:'')+'.',
+  cxlpWin:m=>m===300?'5 h window':m===10080?'weekly window':`${Math.round(m/60)} h window`,
+  cxlpWinAny:'the service reported the limit',
+  cxlpTill:'until reset',
+  cxlpHint:'the real limit is used up — disabling the pause would not help; Codex resumes by itself after the reset',
   ccpHintOnHard:'window is full — the pause starts right away',
   ccpHintOnFree:'window is already free — the pause simply works again',
   ccpErr:e=>'failed: '+e,
@@ -5441,7 +5531,8 @@ function applyI18n(){
  $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
- if(typeof ccpRender==='function')ccpRender();  // смена языка перерисовывает баннер без запроса
+ if(typeof ccpRender==='function')ccpRender();
+ if(typeof cxlpRender==='function')cxlpRender();  // смена языка перерисовывает баннер без запроса
  if(lastSnap){
   renderCards(lastSnap);
   setUpd(lastSnap.ts);
@@ -7282,6 +7373,40 @@ async function ccpLoad(){
  ccpRender();
 }
 
+// ---- [notion-ai] пауза Codex по лимитам: такая же плашка, как у Claude (данные — /api/chatgpt/rotation → limit_pause) ----
+let cxlpData=null,cxlpOpen=false,cxlpLoadedAt=0;
+function cxlpRender(){
+ const el=$('#cxPause');if(!el)return;
+ const p=cxlpData;
+ if(!p||!p.active){el.hidden=true;el.innerHTML='';return;}
+ const prev=el.querySelector(':scope > details');if(prev)cxlpOpen=prev.open;
+ const upMs=(p.resume_at||0)*1000,at=upMs?ccpAt(upMs):'';
+ const why=(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', ')||tr('cxlpWinAny');
+ const chips=(p.accounts||[]).map(a=>'<span class="ccp-chip hot">'+ccpEsc(a.label)+(a.active?tr('ccpActive'):'')
+  +' <b>'+(a.ses==null?'?':Math.round(a.ses)+'%')+'</b>'+(a.week!=null?tr('ccpWeek',Math.round(a.week)):'')+'</span>').join('');
+ const timer=upMs?'<div class="ccp-timer" data-until="'+upMs+'"><div class="t">'+ccpLeft(upMs)+'</div><div class="l">'+tr('cxlpTill')+'</div></div>':'';
+ el.className='ccpause lvl-pause';el.hidden=false;
+ el.innerHTML='<details class="fleet-pause-fold"'+(cxlpOpen?' open':'')+'><summary class="fleet-pause-summary"><span class="ccp-dot"></span>'
+  +'<span class="ccp-title">'+(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt'))+'</span>'+timer
+  +'<svg viewBox="0 0 24 24" class="fleet-pause-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>'
+  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr('cxlpTitle')+'</div>'
+  +'<div class="ccp-sub">'+tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):'')+'</div>'
+  +'<div class="ccp-meta">'+chips+'</div>'
+  +'<div class="ccp-actions"><span class="ccp-hint">'+ccpEsc(tr('cxlpHint'))+'</span></div></div></div></details>';
+ el.querySelector('details').addEventListener('toggle',e=>{cxlpOpen=e.target.open});
+}
+function cxlpTick(){
+ const t=$('#cxPause .ccp-timer');if(!t)return;
+ const until=+t.dataset.until;t.querySelector('.t').textContent=ccpLeft(until);
+ if(Date.now()>until+60000&&Date.now()-cxlpLoadedAt>30000)cxlpLoad();  // окно должно было отпустить — перечитаем
+}
+async function cxlpLoad(){
+ if(document.hidden&&cxlpData!==null)return;
+ cxlpLoadedAt=Date.now();
+ try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_pause||{active:false};}catch(e){return;}
+ cxlpRender();
+}
+
 // ---- автообновление: баннер «вышла версия», блок в настройках, ручной/авто режим ----
 let updData=null,updWait=null,updTimer=null,updDown=false,updHeld=false;
 const updBusy=()=>!!(updWait||(updData&&(updData.phase!=='idle'||updData.pending)));
@@ -7539,6 +7664,7 @@ $('#gear').addEventListener('click',()=>{bkMsg='';updSettingsRender();updLoad();
 applyI18n();load();setInterval(()=>load(),60000);setInterval(ntRefresh,15000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
 updLoad();
 ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
+cxlpLoad();setInterval(cxlpLoad,30000);setInterval(cxlpTick,1000);
 try{if(sessionStorage.getItem('cc_upd_reopen')){sessionStorage.removeItem('cc_upd_reopen');$('#gear').click();}}catch(e){}
 </script></body></html>"""
 
