@@ -27,7 +27,13 @@ class SimpleProfiles(unittest.TestCase):
             self.assertTrue(profiles[1]['title'].startswith('Claude → Codex' if engine=='claude' else 'Codex → Claude'))
 
     def test_legacy_bridge_catalog_cannot_offer_removed_or_custom_profiles(self):
-        self.assertEqual([p[0] for p in bridge._profiles({'profiles':[dict(id='old',name='old',mode='self',access='write',task_rights='full')]})],['codex_solo_full'])
+        self.assertEqual([p[0] for p in bridge._profiles({'profiles':[dict(id='old',name='old',mode='self',access='write',task_rights='full')]})],['orchestrator','codex_solo_full'])
+
+    def test_explicit_companion_is_reported_without_becoming_a_selectable_profile(self):
+        settings=dict(profile='executor',mode='self',access='write',task_rights='dev')
+        self.assertEqual(bridge.active_profile(settings),'executor')
+        self.assertNotIn('executor',[p[0] for p in bridge._profiles(settings)])
+        settings['access']='full';self.assertEqual(bridge.active_profile(settings),'')
 
     def test_removed_scenarios_are_rejected_without_changing_state(self):
         for engine in ['claude','codex']:

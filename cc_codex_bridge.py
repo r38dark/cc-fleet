@@ -271,7 +271,7 @@ def save(body, lang="ru"):
 
 def _profiles(s):
     """Все профили → [(id, определение, имя)]; у встроенных имя None (его знает панель)."""
-    out = [(pid, dict(d), None) for pid, d in BUILTIN_PROFILES if pid == 'codex_solo_full']
+    out = [(pid, dict(d), None) for pid, d in BUILTIN_PROFILES]
     return out
 
 
@@ -280,6 +280,8 @@ def active_profile(s):
     cur = s.get("profile") or ""
     if cur == RESERVE_ID:
         return cur if (s["mode"], s["access"]) == (RESERVE_DEF["mode"], RESERVE_DEF["access"]) else ""
+    if cur == 'executor':
+        return cur if (s['mode'],s['access'],s['task_rights']) == ('self','write','dev') else ''
     for pid, d in BUILTIN_PROFILES:
         if pid != cur:
             continue

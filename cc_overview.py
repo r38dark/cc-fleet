@@ -698,6 +698,20 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu.mono-profile-window .full-choice.act .fleet-profile-choose{font-weight:650;color:var(--fleet-accent)}
 @media(max-width:700px){#cxMenu.mono-profile-window .full-choice{width:calc(100% - 24px)!important;max-width:calc(100% - 24px);margin:12px!important;min-height:0;padding:15px!important}.full-choice-top{margin-bottom:10px}#cxMenu.mono-profile-window .full-choice .cxpnm{font-size:18px}}
 
+/* Full другой модели недоступен при выбранном оркестраторе. */
+#cxMenu.mono-profile-window .full-choice[aria-disabled="true"]{border-color:var(--fleet-line);background:var(--bg);cursor:not-allowed}
+#cxMenu.mono-profile-window .full-choice[aria-disabled="true"] .cxpt,#cxMenu.mono-profile-window .full-choice[aria-disabled="true"] .full-choice-top,#cxMenu.mono-profile-window .full-choice[aria-disabled="true"] .fleet-profile-choose{opacity:.48}
+.manual-companion{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:6px 14px 10px;padding:8px 10px;border:1px solid var(--fleet-accent);border-radius:7px;background:color-mix(in srgb,var(--fleet-accent) 7%,var(--bg));font-size:11px;line-height:1.4;color:var(--fleet-muted)}
+.manual-companion button{margin:0;padding:5px 8px;min-height:27px;background:transparent;border:1px solid var(--fleet-accent);border-radius:5px;color:var(--fleet-accent);font-size:11px;box-shadow:none}
+.manual-companion button[aria-pressed="true"]{background:var(--fleet-accent);color:#0b1714}
+#cxMenu.mono-profile-window.fleet-profile-desktop .full-choice{min-height:0;margin:8px 14px!important;padding:10px 14px!important}
+#cxMenu.mono-profile-window.fleet-profile-desktop .full-choice-top{margin-bottom:6px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .full-choice-check{width:22px;height:22px;font-size:15px}
+#cxMenu.mono-profile-window.fleet-profile-desktop .manual-role.full-choice .cxpnm{font-size:16px;line-height:1.3}
+#cxMenu.mono-profile-window.fleet-profile-desktop .full-choice .cxps{font-size:11.5px;line-height:1.5}
+#cxMenu.mono-profile-window.fleet-profile-desktop .full-choice .fleet-profile-card-footer{padding-top:6px}
+@media(max-width:700px){#cxMenu.mono-profile-window .full-choice{padding:13px!important}.full-choice-top{margin-bottom:7px}.manual-companion{margin:6px 12px 12px}.manual-companion button{min-height:34px}}
+
 '''
 
 JS = r'''
@@ -1354,7 +1368,7 @@ JS = r'''
   const selected=profile.id===state.base_selected,info=mirrorInfo[engine].has(profile.id);
   const effective=selected&&['solo','leader'].includes(state.role)&&state.applied!==false;
   const status=selected?(state.applied===false?'Текущие права':effective?'Работает сейчас':'Базовый профиль'):profile.kind==='full'?'Полный доступ':'Чтение + папка обмена';
-  return '<div class="cxprof fleet-profile-card'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+profile.id+'" data-id="'+profile.id+'" role="radio" aria-checked="'+selected+'" tabindex="0"><div class="mono-mode-head"><span class="mono-mode-kind">'+(profile.kind==='full'?'FULL':'ОРКЕСТРАТОР')+'</span><span class="mono-mode-status">'+status+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(profile.title)+'</span></span><span class="cxps">'+acctEsc(profile.description)+'</span><span class="fleet-profile-index" hidden>'+acctEsc(profile.can+' '+profile.cannot+' '+profile.when)+'</span>'+(info?monoDetails(profile):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(effective?'Выбран':'Выбрать →')+'</span><button type="button" class="fleet-profile-more" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
+  return '<div class="cxprof fleet-profile-card'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+profile.id+'" data-id="'+profile.id+'" role="radio" aria-checked="'+selected+'" tabindex="0"><div class="mono-mode-head"><span class="mono-mode-kind">'+(profile.kind==='full'?'FULL':'ОРКЕСТРАТОР')+'</span><span class="mono-mode-status">'+status+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(profile.title)+'</span></span><span class="cxps">'+acctEsc(profile.description)+'</span><span class="fleet-profile-index" hidden>'+acctEsc(profile.can+' '+profile.cannot+' '+profile.when)+'</span>'+(info?monoDetails(profile):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(effective?'Выбран':'Выбрать →')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
  }
  function monoReserve(engine,state,settings){
   const profile=state.profiles.find(p=>p.id==='reserve'),active=state.role==='reserve';
@@ -1428,27 +1442,45 @@ JS = r'''
  const manualCurrent=()=>mirrorState?.manual_scenario?.choices||{claude:null,codex:null};
  paletteTools.remove();paletteFooter.remove();
  const manualThemeBefore=mirrorTheme;
- mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,monoView==='reserve'?'Без таймеров':'Full · самостоятельно');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля Full')};
+ mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,monoView==='reserve'?'Без таймеров':'Full или Оркестратор');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля')};
  function manualSync(){
   if(!manualDraft||!manualDirty){manualDraft={...manualCurrent()};manualRevision=mirrorState.revision;manualDirty=false}
  }
- function manualReason(engine,role){return role==='full'?'':'Доступен только профиль Full.';}
-
+ function manualReason(engine,role){
+  const other=manualOther(engine);
+  if(manualDraft[other]==='orchestrator')return role==='full'?mirrorNames[other]+' выбрана оркестратором. Full '+mirrorNames[engine]+' заблокирован.':'Ведущая уже выбрана: '+mirrorNames[other]+'. Сними её выбор, чтобы сменить оркестратора.';
+  return '';
+ }
  function manualStatus(){
   if(mirrorState.updating)return {valid:false,text:'Завершается обновление панели. Профиль можно применить после проверки.'};
   if(manualRevision!==mirrorState.revision)return {valid:false,text:'Профиль изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
-  const full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
+  const leader=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
+  if(leader){const other=manualOther(leader);return manualDraft[other]==='executor'?{valid:true,text:mirrorNames[leader]+' → '+mirrorNames[other]+' · выполнение шагов подключено'}:{valid:false,text:mirrorNames[leader]+' — оркестратор. Подключи '+mirrorNames[other]+' для выполнения подтверждённых шагов.'}}
   if(full&&roles.length===1)return {valid:true,text:mirrorNames[full]+' Full · самостоятельно; '+mirrorNames[manualOther(full)]+' не участвует'};
-  return {valid:false,text:'Выбери Claude Full или Codex Full. До применения текущие сессии продолжают работать.'};
+  return {valid:false,text:'Выбери Full или Оркестратор. До применения текущая работа продолжается.'};
  }
  function manualSelect(engine,role){
-  if(mirrorBusy||role!=='full')return;manualSync();
-  manualDraft={claude:null,codex:null,[engine]:'full'};manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
+  if(mirrorBusy||!['full','orchestrator'].includes(role))return;manualSync();
+  const reason=manualReason(engine,role);if(reason){toast(reason);return}
+  if(role==='orchestrator'&&manualDraft[engine]===role)manualDraft={claude:null,codex:null};
+  else manualDraft={claude:null,codex:null,[engine]:role};
+  manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
  }
- function manualCardTitle(engine,role){return mirrorNames[engine]+(role==='reserve'?' + Notion · резерв':' Full · самостоятельно');}
+ function manualCompanion(engine){
+  if(mirrorBusy||manualDraft[manualOther(engine)]!=='orchestrator')return;
+  manualDraft={...manualDraft,[engine]:manualDraft[engine]==='executor'?null:'executor'};
+  manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
+ }
+ function manualCardTitle(engine,role){return mirrorNames[engine]+(role==='reserve'?' + Notion · резерв':role==='orchestrator'?' · оркестратор':' Full · самостоятельно');}
  function manualRoleCard(engine,role){
-  const state=mirrorState.engines[engine],id=engine+'_solo_full',p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]==='full',info=mirrorInfo[engine].has(id),current=state.role==='solo'&&state.selected===id;
-  return '<div class="cxprof fleet-profile-card manual-role full-choice'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="full" role="radio" aria-checked="'+selected+'" tabindex="0"><div class="full-choice-top"><span class="full-choice-check" aria-hidden="true">'+(selected?'✓':'')+'</span><span class="full-choice-badge">'+(selected?'Выбран':current?'Текущая сессия':'Full')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(mirrorNames[engine]+' Full')+'</span></span><span class="cxps">Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected?(manualDirty?'Выбран для применения':'Действующий профиль'):'Нажми, чтобы выбрать')+'</span><button type="button" class="fleet-profile-more" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
+  const state=mirrorState.engines[engine],id=role==='full'?engine+'_solo_full':'orchestrator',p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]===role,reason=manualReason(engine,role),info=mirrorInfo[engine].has(id),current=state.selected===id&&['solo','leader'].includes(state.role),label=role==='full'?mirrorNames[engine]+' Full':mirrorNames[engine]+' · оркестратор';
+  const copy=role==='full'?'Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.':'Планирует и проверяет работу. Вторая модель выполняет шаги после твоего подтверждения.';
+  return '<div class="cxprof fleet-profile-card manual-role full-choice'+(role==='orchestrator'?' orchestrator-choice':'')+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="'+role+'" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="full-choice-top"><span class="full-choice-check" aria-hidden="true">'+(selected?'✓':'')+'</span><span class="full-choice-badge">'+(reason?'Заблокирован':selected?'Выбран':current?'Текущая сессия':role==='full'?'Full':'Оркестратор')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(label)+'</span></span><span class="cxps">'+copy+'</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(reason?'Недоступен при выбранном оркестраторе':selected?(role==='orchestrator'?'Нажми повторно, чтобы снять':manualDirty?'Выбран для применения':'Действующий профиль'):'Нажми, чтобы выбрать')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
+ }
+ function manualCompanionPanel(engine){
+  const leader=manualOther(engine);if(manualDraft[leader]!=='orchestrator')return '';
+  const selected=manualDraft[engine]==='executor';
+  return '<section class="manual-companion" data-engine="'+engine+'"><span>'+acctEsc(mirrorNames[engine]+' выполняет подтверждённые шаги '+mirrorNames[leader]+'.')+'</span><button type="button" data-manual-action="companion" data-companion-engine="'+engine+'" aria-pressed="'+selected+'">'+(selected?'✓ Подключён · нажми, чтобы отключить':'Подключить '+mirrorNames[engine]+' для выполнения шагов')+'</button></section>';
  }
  const manualPaletteBefore=paintMirrorPalette;
  paintMirrorPalette=function(){
@@ -1456,12 +1488,12 @@ JS = r'''
   const scroll=profileBody.scrollTop,focused=document.activeElement,focusedCard=focused?.closest('[data-manual-role]'),focusEngine=focusedCard?.dataset.engine,focusRole=focusedCard?.dataset.manualRole,focusInfo=focused?.dataset.mirrorAction==='info',focusAction=focused?.dataset.manualAction;
   const status=manualStatus(),dirty=manualDirty,signature=JSON.stringify([mirrorState.revision,mirrorState.updating,manualDraft,mirrorInfo.claude.size,mirrorInfo.codex.size,mirrorBusy]);
   if(signature===monoSignature){monoCenter();return}monoSignature=signature;
-  let html='<div class="mono-provider-grid manual-provider-grid" role="radiogroup" aria-label="Модель с профилем Full">';
+  let html='<div class="mono-provider-grid manual-provider-grid" role="radiogroup" aria-label="Full или Оркестратор">';
   for(const engine of manualEngines){
-   const selected=manualDraft[engine]==='full';
-   html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="'+mirrorNames[engine]+' Full"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+(selected?'Выбран Full':acctEsc(mirrorState.engines[engine].label))+'</span></header>'+manualRoleCard(engine,'full')+'</section>';
+   const selected=manualDraft[engine];
+   html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="Профили '+mirrorNames[engine]+'"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+(selected?acctEsc(selected==='executor'?'Выполнение шагов подключено':manualCardTitle(engine,selected)):acctEsc(mirrorState.engines[engine].label))+'</span></header>'+manualRoleCard(engine,'full')+manualRoleCard(engine,'orchestrator')+manualCompanionPanel(engine)+'</section>';
   }
-  html+='</div><div class="manual-apply-bar"><div class="manual-selection-summary" role="status"><strong>'+(!dirty?(status.valid?'Действующий профиль':'Текущие сессии работают'):status.valid?'Готово к применению':'Выбери профиль')+'</strong><span>'+acctEsc(status.text)+'</span></div><div class="manual-scenario-actions">'+(dirty?'<button type="button" class="ghostbtn" data-manual-action="restore">Вернуть текущий</button>':'')+'<button type="button" class="manual-apply" data-manual-action="apply" '+(!status.valid||!dirty||mirrorBusy?'disabled':'')+'>'+(mirrorBusy?'Применение…':!dirty?(status.valid?'Профиль применён':'Выбери Full'):'Применить профиль')+'</button></div></div>';
+  html+='</div><div class="manual-apply-bar"><div class="manual-selection-summary" role="status"><strong>'+(!dirty?(status.valid?'Действующий профиль':'Текущие сессии работают'):status.valid?'Готово к применению':'Выбери профиль')+'</strong><span>'+acctEsc(status.text)+'</span></div><div class="manual-scenario-actions">'+(dirty?'<button type="button" class="ghostbtn" data-manual-action="restore">Вернуть текущий</button>':'')+'<button type="button" class="manual-apply" data-manual-action="apply" '+(!status.valid||!dirty||mirrorBusy?'disabled':'')+'>'+(mirrorBusy?'Применение…':!dirty?(status.valid?'Профиль применён':'Выбери профиль'):'Применить профиль')+'</button></div></div>';
   profileRoot.innerHTML=html;paletteEmpty.hidden=true;profileBody.scrollTop=scroll;
   if(focusEngine&&focusRole){const node=profileRoot.querySelector('[data-engine="'+focusEngine+'"][data-manual-role="'+focusRole+'"]');(focusInfo?node?.querySelector('[data-mirror-action="info"]'):node)?.focus({preventScroll:true})}
   else if(focusAction)profileRoot.querySelector('[data-manual-action="'+focusAction+'"]')?.focus({preventScroll:true});
@@ -1471,7 +1503,7 @@ JS = r'''
  mirrorProfileClick=function(event){
   if(monoView!=='profiles')return manualClickBefore(event);
   const action=event.target.closest('[data-manual-action]')?.dataset.manualAction;
-  if(action){event.stopImmediatePropagation();if(mirrorBusy)return;if(action==='apply'){manualApplyScenario();return}manualDraft=action==='restore'?{...manualCurrent()}:{claude:null,codex:null};manualRevision=mirrorState.revision;manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();return}
+  if(action){event.stopImmediatePropagation();if(mirrorBusy)return;if(action==='apply'){manualApplyScenario();return}if(action==='companion'){manualCompanion(event.target.closest('[data-companion-engine]').dataset.companionEngine);return}manualDraft=action==='restore'?{...manualCurrent()}:{claude:null,codex:null};manualRevision=mirrorState.revision;manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();return}
   const card=event.target.closest('[data-manual-role]');if(!card)return;event.stopImmediatePropagation();const engine=card.dataset.engine,role=card.dataset.manualRole,sub=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction;
   if(sub==='reserve-settings'){mirrorOpen(engine,'reserve');return}
   if(sub==='info'){const id=card.dataset.profileId;mirrorInfo[engine].has(id)?mirrorInfo[engine].delete(id):mirrorInfo[engine].add(id);monoSignature='';cxpRender();return}

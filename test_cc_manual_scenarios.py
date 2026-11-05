@@ -12,11 +12,20 @@ from test_cc_profiles import FakeNative,legacy_pair_state
 
 
 class ManualPolicy(unittest.TestCase):
-    def test_only_full_and_separate_reserve_are_accepted(self):
+    def test_orchestrator_blocks_other_full_and_requires_explicit_companion(self):
+        for leader in ('claude','codex'):
+            state=ProfileState();other=state.other(leader);before=state.export()
+            for companion in (None,'full','orchestrator'):
+                self.assertFalse(state.apply_scenario({leader:'orchestrator',other:companion},revision=0)['ok'])
+                self.assertEqual(state.export(),before)
+            self.assertTrue(state.apply_scenario({leader:'orchestrator',other:'executor'},revision=0)['ok'])
+            self.assertEqual(state.public()['engines'][other]['role'],'executor')
+
+    def test_full_reserve_and_explicit_orchestrator_pair_are_accepted(self):
         valid=[]
         for a,b in itertools.product((None,'full','reserve','orchestrator','executor'),repeat=2):
             if validate_choices(dict(claude=a,codex=b))[0]:valid.append((a,b))
-        self.assertCountEqual(valid,[(None,'full'),('full',None),(None,'reserve'),('reserve',None)])
+        self.assertCountEqual(valid,[(None,'full'),('full',None),(None,'reserve'),('reserve',None),('orchestrator','executor'),('executor','orchestrator')])
 
     def test_invalid_selections_and_revisions_do_not_modify_state(self):
         state=ProfileState();before=state.export()
@@ -43,11 +52,11 @@ class ManualPolicy(unittest.TestCase):
         self.assertEqual([view['engines'][e]['role'] for e in ('claude','codex')],['solo','solo'])
         self.assertEqual(restored.selected,raw['selected'])
 
-    def test_public_work_catalog_is_full_only(self):
+    def test_public_work_catalog_has_full_and_orchestrator_without_executor_entry(self):
         public=ProfileState().public()
-        self.assertTrue(public['capabilities']['full_only'])
+        self.assertTrue(public['capabilities']['orchestrator'])
         for engine,data in public['engines'].items():
-            self.assertEqual([p['id'] for p in data['profiles'] if p['kind']!='reserve'],[engine+'_solo_full'])
+            self.assertEqual([p['id'] for p in data['profiles'] if p['kind']!='reserve'],[engine+'_solo_full','orchestrator'])
 
     def test_each_pair_has_explicit_write_executor_and_one_read_leader(self):
         for leader in ('claude','codex'):
@@ -101,7 +110,7 @@ class ManualTransactions(unittest.TestCase):
 
     def test_invalid_or_unconfirmed_request_has_no_runtime_or_file_effect(self):
         before=self.manager.path.read_bytes()
-        for choices in [dict(claude='full',codex='full'),dict(claude=None,codex='orchestrator'),dict(claude='orchestrator',codex='executor'),dict(claude=None,codex='full')]:
+        for choices in [dict(claude='full',codex='full'),dict(claude=None,codex='orchestrator'),dict(claude='orchestrator',codex='full'),dict(claude=None,codex='full')]:
             self.assertFalse(self.apply(choices)['ok'])
         self.assertEqual(self.manager.path.read_bytes(),before);self.assertEqual(self.native.applied,[])
 

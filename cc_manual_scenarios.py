@@ -1,8 +1,8 @@
-"""Full-only work profiles with compatible reads of previously saved sessions."""
+"""Full and orchestrator choices with an explicitly selected companion."""
 import copy
 
 ENGINES = ('claude', 'codex')
-ROLES = (None, 'full', 'reserve')
+ROLES = (None, 'full', 'reserve', 'orchestrator', 'executor')
 
 
 def validate_choices(choices):
@@ -13,7 +13,9 @@ def validate_choices(choices):
     active = [value for value in choices.values() if value]
     if len(active) == 1 and active[0] in ('full', 'reserve'):
         return True, ''
-    return False, 'Выбери Full одной модели. Резерв включается отдельно в своих настройках.'
+    if len(active) == 2 and set(active) == {'orchestrator','executor'}:
+        return True, ''
+    return False, 'Для оркестратора подключи вторую модель для выполнения шагов. Full другой модели несовместим с оркестратором.'
 
 
 def validate_stored_choices(choices):
@@ -60,9 +62,9 @@ class ManualScenarioMixin:
         result = super().public()
         result['manual_scenario'] = dict(choices=copy.deepcopy(self.manual_choices) or dict.fromkeys(ENGINES),
                                          legacy=self.manual_choices is None)
-        result['capabilities'] = dict(manual_scenario=True,full_only=True)
+        result['capabilities'] = dict(manual_scenario=True,full_only=False,orchestrator=True)
         for data in result['engines'].values():
-            data['profiles']=[p for p in data['profiles'] if p['kind'] in ('full','reserve')]
+            data['profiles']=[p for p in data['profiles'] if p['kind'] in ('full','orchestrator','reserve')]
         if self.manual_choices is not None:
             for engine, choice in self.manual_choices.items():
                 data = result['engines'][engine]
@@ -112,6 +114,6 @@ class ManualScenarioMixin:
         if stale:
             return stale
         if engine not in ENGINES or profile_id not in (engine+'_solo_full', 'reserve'):
-            return dict(ok=False, message='В выборе профиля доступны только Claude Full и Codex Full.')
+            return dict(ok=False, message='Выбери оркестратора в общем окне и подключи вторую модель перед применением.')
         return self.apply_scenario({e: ('reserve' if profile_id == 'reserve' else 'full')
                                     if e == engine else None for e in ENGINES}, confirm, revision)
