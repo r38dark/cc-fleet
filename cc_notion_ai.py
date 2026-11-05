@@ -17,6 +17,7 @@ import re
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -961,6 +962,29 @@ html.nai-nosub .fleet-brand-sub{display:none!important}
 @media (max-width:640px){.nai-banner{flex-wrap:wrap;gap:8px 10px;padding:10px 12px}.nai-banner .nai-msg{flex:1 1 180px;min-width:0}.nai-banner .nai-acts{margin-left:auto}}
 .nai-banner[hidden],.nai-toast[hidden],.nai-pop[hidden],.nai-banner button[hidden]{display:none!important}
 .nai-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:99999;max-width:calc(100vw - 24px);background:var(--card,#181c24);color:var(--txt,#e8eaf0);border:1px solid rgba(139,147,167,.35);border-radius:10px;padding:10px 14px;font:13px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.45)}
+.nai-view{display:none;position:absolute;z-index:1;box-sizing:border-box;margin:0;white-space:normal;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;word-break:break-word;outline:0}
+.termwrap.nai-on #naiView{display:block}
+.termwrap.nai-on #termBox{visibility:hidden!important}
+.termwrap.nai-on #cxCons,.termwrap.nai-on .ctacts{display:none!important}
+.termwrap.nai-on .tzoom{z-index:3}
+.fleet-console-toolbar #ctNotion::before{background:#a78bfa}
+html:root:root .iconbtn.ctab[data-s="notion"]{--tc:167,139,250;--tt:#cbb8ff;--ton:#140c26}
+.nai-view .nv-u{margin:12px 0 10px;padding:8px 10px;border-left:2px solid rgba(232,234,240,.4);background:rgba(255,255,255,.035);border-radius:0 8px 8px 0}
+.nai-view .nv-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-weight:700;margin:0 0 3px}
+.nai-view .nv-who{color:var(--txt,#e8eaf0)}
+.nai-view .nv-meta{color:var(--fleet-faint,#647388);font-weight:500;font-size:.88em}
+.nai-view .nv-ai{color:#a78bfa;align-items:center;margin:12px 0 4px}
+.nai-view .nv-dot{width:7px;height:7px;border-radius:50%;background:#a78bfa;flex:none}
+.nai-view .nv-t,.nai-view .nv-a{white-space:pre-wrap;color:var(--txt,#e8eaf0)}
+.nai-view .nv-a{margin:0 0 6px;padding-left:15px}
+.nai-view .nv-pics{margin-top:4px;color:var(--fleet-muted,#8c9bad)}
+.nai-view .nv-w{color:var(--fleet-faint,#647388);margin:2px 0 4px;padding-left:15px}
+.nai-view .nv-s{color:#c4b5fd;margin:2px 0 4px;padding-left:15px;animation:naiPulse 1.6s infinite}
+.nai-view .nv-e{color:var(--fleet-faint,#647388);font-size:.82em;text-align:right;border-top:1px dashed rgba(139,147,167,.22);margin:6px 0 8px;padding-top:3px}
+.nai-view .nv-st{color:var(--fleet-muted,#8c9bad);margin:10px 0;padding-left:15px}
+.nai-view .nv-err{color:#ef8f8f}
+.nai-view .nv-pend{opacity:.78;border-left-style:dashed}
+.nai-view .nv-pend .nv-meta.nv-err{color:#ef8f8f}
 </style>
 <script id="naiScript">
 (function(){try{
@@ -1010,8 +1034,165 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closePop()})
 function boot(){place();paint();load()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }catch(e){console.warn('notion-ai',e)}})();
+// [notion-ai] Вкладка «Notion AI» в консоли: постоянный чат Notion AI (чтение — сервис notion-ai-view, ввод — notion-delegate /post).
+(function(){try{
+var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),api=base+'notion-ai/view',sendApi=base+'notion-ai/send',tok=(typeof TOKEN!=='undefined'?TOKEN:'');
+var on=false,timer=0,sig='',stick=true,tab=null,view=null,saved=null,tries=0,pend=[],sending=false,lastReq=null;
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function $i(id){return document.getElementById(id)}
+function fixTabs(){if(!tab)return;var tabs=$i('cTabs'),codex=$i('ctCodex');
+ if(on){['ctClaude','ctCodex'].forEach(function(id){var b=$i(id);if(b&&b.classList.contains('on')){b.classList.remove('on');b.setAttribute('aria-selected','false')}});if(!tab.classList.contains('on')){tab.classList.add('on');tab.setAttribute('aria-selected','true')}}
+ else if(tab.classList.contains('on')){tab.classList.remove('on');tab.setAttribute('aria-selected','false')}
+ if(typeof cxAvail==='function'&&tabs&&codex){var av=!!cxAvail();if(tabs.hidden)tabs.hidden=false;if(codex.hidden!==!av)codex.hidden=!av}}
+// [notion-ai] Окно чата лежит поверх #termBox (тот скрыт через visibility): тот же размер, отступы, фон и шрифт в любом режиме.
+var PROPS=['paddingTop','paddingRight','paddingBottom','paddingLeft','backgroundColor','backgroundImage','color','fontFamily','fontSize','lineHeight','letterSpacing','borderTopLeftRadius','borderTopRightRadius','borderBottomLeftRadius','borderBottomRightRadius','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','borderTopStyle','borderRightStyle','borderBottomStyle','borderLeftStyle','borderTopColor','borderRightColor','borderBottomColor','borderLeftColor','boxShadow'];
+var PH='Сообщение или команда в чат Notion AI…',PHS='Сообщение в Notion AI…';
+function ph(inp){return inp.clientWidth<420?PHS:PH}
+function place(){if(!on||!view)return;var b=$i('termBox');if(!b)return;if(view.previousElementSibling!==b)b.after(view);
+ var cs=getComputedStyle(b);PROPS.forEach(function(k){view.style[k]=cs[k]});
+ var op=view.offsetParent;if(op){var r=b.getBoundingClientRect(),o=op.getBoundingClientRect();
+  view.style.top=(r.top-o.top-op.clientTop+op.scrollTop)+'px';view.style.left=(r.left-o.left-op.clientLeft+op.scrollLeft)+'px';view.style.width=r.width+'px';view.style.height=r.height+'px'}
+ var inp=$i('fleetInput');if(inp)inp.placeholder=ph(inp);
+ if(stick)view.scrollTop=view.scrollHeight}
+function setInput(lock){var inp=$i('fleetInput'),st=$i('fleetInputState'),stR=st&&st.nextElementSibling,send=$i('fleetSend'),key=document.querySelector('#fleetConsoleForm [data-console-key]');if(!inp)return;
+ if(lock){saved={ph:inp.placeholder,dis:inp.disabled,st:st?st.textContent:'',stR:stR?stR.textContent:'',send:send?send.disabled:false,key:key?key.disabled:false};
+  inp.disabled=false;inp.placeholder=ph(inp);if(st)st.textContent='Ввод в чат Notion AI';if(stR)stR.textContent='Notion AI · постоянный чат';if(send)send.disabled=sending;if(key)key.disabled=true}
+ else if(saved){inp.disabled=saved.dis;inp.placeholder=saved.ph;if(st)st.textContent=saved.st;if(stR)stR.textContent=saved.stR;if(send)send.disabled=saved.send;if(key)key.disabled=saved.key;saved=null}}
+// [notion-ai] Отправка из поля ввода консоли → POST notion-ai/send → notion-delegate кладёт сообщение в постоянный чат.
+function sendMsg(){var inp=$i('fleetInput'),st=$i('fleetInputState'),send=$i('fleetSend');if(sending||!inp)return;var text=inp.value;if(!text.trim())return;
+ sending=true;if(send)send.disabled=true;if(st)st.textContent='Отправляю в чат Notion AI…';
+ var rid=(lastReq&&lastReq.text===text)?lastReq.id:(lastReq={text:text,id:(window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random())}).id;
+ fetch(sendApi,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify({text:text,request_id:rid})}).then(function(r){return r.json()}).then(function(d){
+  if(!d||!d.ok)throw Error(d&&d.message||'Не отправлено');
+  if(inp.value===text)inp.value='';lastReq=null;
+  if(!pend.some(function(p){return p.id===d.id}))pend.push({id:d.id,text:text.trim(),t:Date.now(),status:'queued',error:''});
+  if(on&&st)st.textContent=d.message||'Отправлено в чат Notion AI';stick=true;if(on)load()
+ }).catch(function(err){if(on&&st)st.textContent=err.message||'Не отправлено'}).then(function(){sending=false;if(on&&send)send.disabled=false})}
+function norm(t){return String(t||'').replace(/\s+/g,' ').trim().slice(0,300)}
+function checkPend(rows){var now=Date.now(),seen={};rows.forEach(function(r){if(r.kind==='user'&&r.src==='Панель')seen[norm(r.text)]=1});
+ pend=pend.filter(function(p){if(seen[norm(p.text)])return false;if(p.status==='done'&&now-p.t>300000)return false;return now-p.t<900000});
+ pend.forEach(function(p){if(p.status==='queued'||p.status==='running'){fetch(sendApi+'/'+p.id,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(j&&j.status&&j.status!=='unknown'){p.status=j.status;p.error=j.error||''}}).catch(function(){})}})}
+function open(){on=true;try{localStorage.setItem('nai_contab','1')}catch(_){}
+ var w=document.querySelector('.termwrap');if(w)w.classList.add('nai-on');fixTabs();setInput(true);stick=true;sig='';place();
+ if(!view.innerHTML)view.innerHTML='<div class="nv-st">Подключаюсь к чату Notion AI…</div>';load()}
+function close(){on=false;try{localStorage.setItem('nai_contab','0')}catch(_){}clearTimeout(timer);
+ var w=document.querySelector('.termwrap');if(w)w.classList.remove('nai-on');setInput(false);fixTabs();
+ var cur=typeof consCur==='function'?consCur():'claude',b=$i(cur==='codex'?'ctCodex':'ctClaude');if(b){b.classList.add('on');b.setAttribute('aria-selected','true')}}
+function load(){clearTimeout(timer);if(!on)return;if(document.hidden){timer=setTimeout(load,4000);return}place();
+ fetch(api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&on)render(d)}).catch(function(){}).then(function(){if(on){clearTimeout(timer);timer=setTimeout(load,3000)}})}
+function render(d){var rows=d.rows||[],now=Date.now()/1000,stale=d.state==='ok'&&d.ts&&now-d.ts>30;checkPend(rows);
+ var s=JSON.stringify([rows.length,rows.slice(-4),d.state,d.running,d.message,stale,pend]);if(s===sig)return;sig=s;
+ var html='',prev=null,head='<div class="nv-h nv-ai"><span class="nv-dot"></span>Notion AI</div>';
+ rows.forEach(function(r){var need=prev===null||prev==='user'||prev==='end';
+  if(r.kind==='user')html+='<div class="nv-u"><div class="nv-h"><span class="nv-who">Денис</span><span class="nv-meta">'+esc(r.src||'Notion')+(r.time?' · '+esc(r.time):'')+'</span></div><div class="nv-t">'+esc(r.text)+'</div></div>';
+  else if(r.kind==='ai')html+=(need?head:'')+'<div class="nv-a">'+esc(r.text)+((r.pics||[]).length?'<div class="nv-pics">'+r.pics.map(function(p){return '🖼 '+esc(p)}).join('<br>')+'</div>':'')+'</div>';
+  else if(r.kind==='work')html+=(need?head:'')+'<div class="nv-w">✓ '+esc(r.text)+'</div>';
+  else if(r.kind==='step')html+=(need?head:'')+'<div class="nv-s">⏳ '+esc(r.text)+'</div>';
+  else if(r.kind==='end')html+='<div class="nv-e">'+esc(r.time||'')+'</div>';
+  prev=r.kind});
+ var last=rows[rows.length-1];
+ if(d.running&&!(last&&last.kind==='step'))html+='<div class="nv-s">⏳ Notion AI работает…</div>';
+ pend.forEach(function(p){var tm=new Date(p.t),hm=('0'+tm.getHours()).slice(-2)+':'+('0'+tm.getMinutes()).slice(-2),er=p.status==='error';
+  html+='<div class="nv-u nv-pend"><div class="nv-h"><span class="nv-who">Денис</span><span class="nv-meta'+(er?' nv-err':'')+'">Панель · '+hm+' · '+(er?'не доставлено: '+esc(p.error||'ошибка'):p.status==='done'?'доставлено':'отправляется…')+'</span></div><div class="nv-t">'+esc(p.text)+'</div></div>'});
+ if(d.state==='starting')html+='<div class="nv-st">Подключаюсь к чату Notion AI…</div>';
+ else if(d.state==='error')html+='<div class="nv-st nv-err">'+esc(d.message||'Не удалось прочитать чат.')+'</div>';
+ else if(stale)html+='<div class="nv-st">Нет свежих данных из чата. Проверяю…</div>';
+ if(!rows.length&&d.state==='ok')html+='<div class="nv-st">В чате пока нет сообщений.</div>';
+ view.innerHTML=html;if(stick)view.scrollTop=view.scrollHeight}
+function setup(){var tabs=$i('cTabs'),codex=$i('ctCodex'),box=$i('termBox');
+ if(!tabs||!codex||!box||!$i('fleetInput')){if(++tries<60)setTimeout(setup,250);return}
+ if($i('ctNotion'))return;
+ tab=document.createElement('button');tab.type='button';tab.className='iconbtn ctab';tab.id='ctNotion';tab.setAttribute('role','tab');tab.setAttribute('aria-selected','false');tab.dataset.s='notion';tab.textContent='Notion AI';tab.title='Постоянный чат Notion AI';
+ codex.after(tab);
+ view=document.createElement('div');view.id='naiView';view.className='termbox nai-view';view.setAttribute('role','log');view.setAttribute('aria-label','Чат Notion AI');view.tabIndex=0;box.after(view);
+ view.addEventListener('scroll',function(){stick=view.scrollHeight-view.scrollTop-view.clientHeight<40});
+ tabs.addEventListener('click',function(e){var b=e.target.closest('.ctab');if(!b)return;if(b===tab){e.preventDefault();e.stopPropagation();if(!on)open()}else if(on)close()},true);
+ new MutationObserver(fixTabs).observe(tabs,{subtree:true,attributes:true,attributeFilter:['class','hidden']});
+ var form=$i('fleetConsoleForm');if(form)form.addEventListener('submit',function(e){if(on){e.preventDefault();e.stopImmediatePropagation();sendMsg()}},true);
+ var z=document.querySelector('.tzoom');if(z)z.addEventListener('click',function(){setTimeout(place,60);setTimeout(place,400)});
+ if(window.ResizeObserver){var ro=new ResizeObserver(function(){place()});ro.observe(box);var tw=document.querySelector('.termwrap');if(tw)ro.observe(tw)}
+ window.addEventListener('resize',function(){setTimeout(place,80)});
+ document.addEventListener('visibilitychange',function(){if(on&&!document.hidden)load()});
+ fixTabs();try{if(localStorage.getItem('nai_contab')==='1')open()}catch(_){}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(setup,0)});else setTimeout(setup,0);
+}catch(e){console.warn('notion-ai console',e)}})();
 </script>
 '''
+
+
+VIEW_FILE = '/root/notion_web/notion_ai_view.json'
+VIEW_WANT = '/root/notion_web/notion_ai_view.want'
+
+
+DELEGATE = 'http://127.0.0.1:8893'
+DELEGATE_TOKEN = '/root/notion_web/api_token'
+PANEL_FOOT = '\n\n— из панели балансера (вкладка «Notion AI» в консоли). Ответ — здесь в чате: Денис видит его во вкладке.'
+_SENT, _SENT_LOCK = {}, threading.Lock()
+
+
+def _delegate(path, data=None, timeout=20):
+    req = urllib.request.Request(DELEGATE + path, data=json.dumps(data).encode() if data is not None else None,
+                                 headers={'X-Token': Path(DELEGATE_TOKEN).read_text().strip(), 'Content-Type': 'application/json'})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(req, timeout=timeout) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            return json.load(e)
+        except Exception:
+            return {'error': 'HTTP %s' % e.code}
+
+
+def chat_send(text, rid=''):
+    """Сообщение из консоли панели → постоянный чат Notion AI (через notion-delegate /post)."""
+    text = str(text or '').replace('\r\n', '\n').strip()
+    if not text:
+        return dict(ok=False, message='Пустое сообщение')
+    if len(text) > 4000:
+        return dict(ok=False, message='Сообщение длиннее 4000 знаков')
+    rid = str(rid or '')[:64]
+    with _SENT_LOCK:
+        if rid and rid in _SENT:
+            return dict(ok=True, id=_SENT[rid], message='Уже отправлено в чат Notion AI')
+        try:
+            j = _delegate('/post', {'text': '[Панель %s] %s%s' % (time.strftime('%H:%M'), text, PANEL_FOOT)})
+        except Exception as exc:
+            return dict(ok=False, message='Сервис отправки в чат (notion-delegate) не отвечает: ' + type(exc).__name__)
+        if not j.get('id'):
+            return dict(ok=False, message='Чат не принял сообщение: ' + str(j.get('error') or 'нет ответа')[:160])
+        if rid:
+            _SENT[rid] = j['id']
+            while len(_SENT) > 100:
+                _SENT.pop(next(iter(_SENT)))
+    return dict(ok=True, id=j['id'], message='Отправлено в чат Notion AI. Ответ появится здесь.')
+
+
+def chat_send_status(pid):
+    if not re.fullmatch(r'[0-9a-f]{8}', pid or ''):
+        return dict(ok=False, status='error', error='неверный id')
+    try:
+        j = _delegate('/post/' + pid, timeout=10)
+    except Exception as exc:
+        return dict(ok=False, status='unknown', error=type(exc).__name__)
+    return dict(ok=True, status=j.get('status') or 'unknown', error=str(j.get('error') or '')[:200])
+
+
+def view_public():
+    """Окно «Notion AI» в консоли: отмечает, что окно открыто, и отдаёт последние сообщения чата."""
+    try:
+        Path(VIEW_WANT).touch()
+    except OSError:
+        pass
+    try:
+        with open(VIEW_FILE) as f:
+            d = json.load(f)
+    except Exception:
+        return dict(ok=True, state='starting', message='Подключаюсь к чату Notion AI…', running=False, rows=[], ts=0)
+    d['rows'] = (d.get('rows') or [])[-120:]
+    if d.get('state') == 'idle':  # окно только что открыли — сервис уже просыпается
+        d.update(state='starting', message='Подключаюсь к чату Notion AI…')
+    return d
 
 
 def inject(page):
@@ -1029,14 +1210,19 @@ def install(ns, profiles):
     nai = NotionAI(ns, profiles)
     nai.wrap()
     base = ns['H']
-    posts = ('/api/notion-ai/on', '/api/notion-ai/off', '/api/notion-ai/step', '/api/notion-ai/step/confirm')
+    posts = ('/api/notion-ai/on', '/api/notion-ai/off', '/api/notion-ai/step', '/api/notion-ai/step/confirm', '/api/notion-ai/send')
 
     class NotionAIHandler(base):
         def do_GET(self):
-            if urlparse(self.path).path != '/api/notion-ai':
+            path = urlparse(self.path).path
+            if path not in ('/api/notion-ai', '/api/notion-ai/view') and not path.startswith('/api/notion-ai/send/'):
                 return base.do_GET(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
+            if path.startswith('/api/notion-ai/send/'):
+                return self._send(200, chat_send_status(path.rsplit('/', 1)[-1]))
+            if path.endswith('/view'):
+                return self._send(200, view_public())
             return self._send(200, nai.public())
 
         def do_POST(self):
@@ -1058,6 +1244,8 @@ def install(ns, profiles):
                                     by=str(body.get('by') or 'панель')[:40], force=body.get('force') is True)
                 elif path.endswith('/off'):
                     result = nai.off(str(body.get('reason') or 'выключен на панели')[:80])
+                elif path.endswith('/send'):
+                    result = chat_send(body.get('text'), body.get('request_id'))
                 elif path.endswith('/step'):
                     result = nai.step_new(body.get('text'), body.get('rights') or 'dev', body.get('by') or 'notion-ai')
                 else:
