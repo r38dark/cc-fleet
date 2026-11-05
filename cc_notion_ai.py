@@ -153,6 +153,7 @@ class NotionAI:
         return dict(ok=True, active=self.active(), kind=self.kind(), follower=self.follower(), title=self.title(),
                     full_title=TITLE, since=d.get('since', 0), claude_was_running=bool(d.get('claude_was_running')),
                     bridge=self.bridge_state(), chat_url=chat_url(), owner=owner(), console_tab=load_cfg()['console_tab'], last_error=self.error, ready=self.readiness(),
+                    email=load_cfg().get('notion_email') or '', model={k: model_cached().get(k) for k in ('model', 'effort', 'ts')},
                     step=self.step_public(), agents=self.agents())
 
     def agents(self):
@@ -967,6 +968,27 @@ html.nai-nosub .fleet-brand-sub{display:none!important}
 .termwrap.nai-on #cxCons,.termwrap.nai-on .ctacts{display:none!important}
 .termwrap.nai-on .tzoom{z-index:3}
 .fleet-console-toolbar #ctNotion::before{background:#a78bfa}
+.fleet-live-account.notion{--live-accent:#a78bfa;border-color:color-mix(in srgb,#a78bfa 38%,var(--fleet-line));background:linear-gradient(120deg,#2a2346,var(--card) 60%)}
+.fleet-live-account.notion .fleet-live-name::before{background:#a78bfa}
+html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{grid-column:3/5;grid-row:1;align-self:center;display:flex;flex-direction:column;gap:2px;min-width:0}
+.nai-live-note b{font-size:12px;font-weight:600;color:var(--txt)}.nai-live-note span{font-size:11px;color:var(--fleet-muted);line-height:1.35}
+.fleet-live-account.notion .mirror-profile-button{border-color:color-mix(in srgb,#a78bfa 40%,var(--fleet-line))}
+.fleet-live-account.notion .mirror-profile-button .cxbtnname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fleet-compact-account.notion{--live-accent:#a78bfa;border-left:1px solid var(--fleet-line);padding-left:18px}
+.fleet-compact-account.notion .nai-cs{color:var(--fleet-muted)}
+@media(max-width:1500px){.fleet-compact-account.notion{border-left:0;padding-left:0;padding-top:8px;border-top:1px solid var(--fleet-line)}}
+@media(max-width:640px){html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{grid-column:1/-1;grid-row:3}}
+#naiModelQ{--fleet-accent:#a78bfa;--fleet-accent-soft:#2a2346;overflow:auto}
+#naiModelQ .cxqm small{margin-left:auto;font-size:10px;color:var(--fleet-muted);white-space:nowrap}
+#naiModelQ .cxqm:disabled{opacity:.45;cursor:default}
+#naiModelQ .nai-more>summary{cursor:pointer;font-size:12px;color:var(--fleet-muted);margin:12px 0 7px;list-style:none}
+#naiModelQ .nai-more>summary::after{content:" ⌄"}
+#naiModelQ .nai-more .cxqlist{grid-template-columns:repeat(2,minmax(0,1fr))}
+#naiModelQ .nai-more .cxqm{padding:7px 9px;font-size:12px;gap:7px}#naiModelQ .nai-more .cxqm small{display:none}
+#naiModelQ .nai-more .cxqm>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fleet-live-account.notion .nai-chev{margin-left:auto;color:var(--fleet-muted);font-size:13px;line-height:1;padding-left:6px}
+#naiModelQ .nai-qnote{margin:12px 0 0;font-size:11px;color:var(--fleet-muted);line-height:1.45}
+#naiModelQ .nai-qnote.bad{color:var(--bad,#f87171)}
 html:root:root .iconbtn.ctab[data-s="notion"]{--tc:167,139,250;--tt:#cbb8ff;--ton:#140c26}
 .nai-view .nv-u{margin:12px 0 10px;padding:8px 10px;border-left:2px solid rgba(232,234,240,.4);background:rgba(255,255,255,.035);border-radius:0 8px 8px 0}
 .nai-view .nv-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-weight:700;margin:0 0 3px}
@@ -1023,7 +1045,7 @@ function ask(){var on=!!(st&&st.active),g=agState('notion'),t=st&&st.title||'Not
  p.querySelector('.nai-tog').onclick=function(){closePop();send(on?'off':'on',{})};p.querySelector('.nai-yes').onclick=function(){closePop();var c=document.getElementById('cxBtn');if(c)c.click()}}
 function showStep(){var s=pending();if(!s)return;var p=openPop('<b>🧩 Шаг Notion AI → '+esc(names[s.follower])+' · права «'+(s.rights==='read'?'чтение':'дев')+'»</b><pre>'+esc(s.text)+'</pre><div class="nai-row"><button type="button" class="nai-no">Отклонить</button><button type="button" class="nai-yes">Выполнить шаг</button></div>',true,banner.querySelector('.nai-stepbtn'));
  p.querySelector('.nai-no').onclick=function(){closePop();send('step/confirm',{id:s.id,approve:false,via:'панель'})};p.querySelector('.nai-yes').onclick=function(){closePop();send('step/confirm',{id:s.id,approve:true,via:'панель'})}}
-function load(){clearTimeout(timer);timer=setTimeout(load,10000);fetch(api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&!busy){st=j;paint();try{window.naiPickerRepaint&&window.naiPickerRepaint()}catch(_){}}}).catch(function(){})}
+function load(){clearTimeout(timer);timer=setTimeout(load,10000);fetch(api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&!busy){st=j;paint();try{window.dispatchEvent(new CustomEvent('nai-state',{detail:j}))}catch(_){}try{window.naiPickerRepaint&&window.naiPickerRepaint()}catch(_){}}}).catch(function(){})}
 function send(path,body){busy=true;paint();toast(path==='on'?'Включаю профиль Notion AI…':path==='off'?'Выключаю профиль Notion AI…':'Отправляю решение…');
  fetch(api+'/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify(body||{})}).then(function(r){return r.json()}).then(function(j){if(j.state)st=j.state;toast(j.message||(j.ok?'Готово':'Не получилось'))}).catch(function(){toast('Панель не ответила. Обнови страницу.')}).then(function(){busy=false;load()})}
 window.naiReload=load;
@@ -1035,6 +1057,74 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closePop()})
 function boot(){place();paint();load()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }catch(e){console.warn('notion-ai',e)}})();
+// [notion-ai] Карточка «Notion AI» в «Активных аккаунтах»: модель и effort постоянного чата. Лимитов и времени у Notion AI нет.
+(function(){try{
+var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),tok=(typeof TOKEN!=='undefined'?TOKEN:''),api=base+'notion-ai/model';
+var st=null,md=null,tile=null,compact=null,q=null,job='',jobT=0,msg='',bad=false,loading=false,asked=0;
+var ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>';
+function $i(id){return document.getElementById(id)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function svg(id){var s=document.querySelector('#'+id+' svg');return s?s.outerHTML:''}
+function name(){return md&&md.model||st&&st.model&&st.model.model||''}
+function effort(){return md&&md.effort||st&&st.model&&st.model.effort||''}
+function agent(){var a=st&&st.agents&&st.agents.notion;if(a)return a;var on=!!(st&&st.active);return {state:on?'run':'off',text:on?'работает':'выкл',label:on?(st.title||'Notion AI')+' · работает':'Notion AI · выключен'}}
+function build(){
+ if(tile)return true;var rows=$i('fleetLiveRows'),sum=$i('fleetActiveSummary');if(!rows||!sum)return false;
+ compact=document.createElement('span');compact.className='fleet-compact-account notion';compact.dataset.engine='notion';
+ compact.innerHTML='<strong class="fleet-compact-name">Notion AI</strong><span class="fleet-compact-window"><span class="fleet-compact-label">Модель</span><b class="fleet-compact-used nai-cm">—</b></span><span class="fleet-compact-window"><span class="fleet-compact-label">Effort</span><b class="fleet-compact-used nai-ce">—</b></span><span class="fleet-compact-range nai-cs"></span>';
+ sum.appendChild(compact);
+ tile=document.createElement('article');tile.className='fleet-live-account notion';tile.id='fleetNotion';tile.dataset.engine='notion';tile.dataset.provider='notion';
+ tile.innerHTML='<a class="fleet-live-identity" href="#fleetNotion"><strong class="fleet-live-name">Notion AI</strong><span class="fleet-live-email nai-mail"></span></a>'
+  +'<div class="fleet-provider-controls"><button type="button" class="hdrgear cxmodbtn fleet-model-tile" id="naiModelTile" aria-haspopup="dialog" aria-expanded="false">'+svg('fleetClaudeModel')+'<span class="cxmodn">Модель Notion AI</span><span class="cxmode"></span></button>'
+  +'<button type="button" class="hdrgear fleet-provider-gear" id="naiCardGear" title="Настройки Notion AI" aria-label="Настройки Notion AI">'+svg('fleetGeneralGear')+'</button></div>'
+  +'<div class="nai-live-note"><b>Без лимитов по времени</b><span>Модель и effort — для постоянного чата Notion AI (Telegram и консоль панели).</span></div>'
+  +'<div class="mirror-profile-footer"><div class="mirror-profile-holder"><button type="button" class="hdrgear cxbtn mirror-profile-button" id="naiProfileBtn" aria-haspopup="true" aria-controls="cxMenu">'+ICON+'<i class="cxdot"></i><span class="cxbtnname">Notion AI</span><span class="nai-chev" aria-hidden="true">⌄</span></button></div></div>';
+ rows.appendChild(tile);
+ q=document.createElement('div');q.className='cxpop cxquick fleet-quick-panel';q.id='naiModelQ';q.setAttribute('role','dialog');q.setAttribute('aria-label','Модель и effort Notion AI');q.hidden=true;q.innerHTML='<div class="cxpbody"></div>';document.body.appendChild(q);
+ tile.querySelector('.fleet-live-identity').addEventListener('click',function(e){e.preventDefault();var t=$i('ctNotion');if(t&&!t.hidden)t.click();var b=$i('termBox');if(b)b.scrollIntoView({block:'center',behavior:'smooth'})});
+ $i('naiModelTile').addEventListener('click',function(e){e.stopPropagation();if(!q.hidden){close();return}openQ()});
+ $i('naiCardGear').addEventListener('click',function(e){e.stopPropagation();close();var g=$i('fleetGeneralGear')||$i('gear');if(g)g.click();setTimeout(function(){var s=$i('naiCfgGroup');if(s){var d=s.querySelector('details');if(d)d.open=true;s.scrollIntoView({block:'start'})}},350)});
+ $i('naiProfileBtn').addEventListener('click',function(e){e.stopPropagation();close();var c=$i('cxBtn');if(c)c.click()});
+ q.addEventListener('click',function(e){var m=e.target.closest('[data-model]'),f=e.target.closest('[data-effort]');if(m&&!m.disabled&&m.dataset.model!==name())pick({model:m.dataset.model},'Переключаю модель на «'+m.dataset.model+'»…');else if(f&&!f.disabled&&f.dataset.effort!==effort())pick({effort:f.dataset.effort},'Ставлю effort «'+f.dataset.effort+'»…')});
+ document.addEventListener('pointerdown',function(e){if(q&&!q.hidden&&!q.contains(e.target)&&!e.target.closest('#naiModelTile'))close()});
+ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&q&&!q.hidden){close();$i('naiModelTile').focus()}});
+ addEventListener('resize',function(){if(q&&!q.hidden)placeQ()});
+ return true}
+function paintTile(){
+ if(!build())return;var n=name()||'—',f=effort(),a=agent(),on=['run','lead','exec'].indexOf(a.state)>=0;
+ var t=$i('naiModelTile');t.querySelector('.cxmodn').textContent=n;t.querySelector('.cxmode').textContent=f;t.title='Модель Notion AI: '+n+(f?' · '+f:'');t.setAttribute('aria-label',t.title);
+ compact.querySelector('.nai-cm').textContent=n;compact.querySelector('.nai-ce').textContent=f||'—';compact.querySelector('.nai-cs').textContent=a.text||'';
+ tile.querySelector('.nai-mail').textContent=st&&st.email||'постоянный чат';
+ var pb=$i('naiProfileBtn');pb.querySelector('.cxbtnname').textContent=a.label||'Notion AI';pb.querySelector('.cxdot').className='cxdot'+(on?' on':'');pb.title='Профиль Notion AI: '+(a.label||'');pb.setAttribute('aria-label',pb.title)}
+function placeQ(){var t=$i('naiModelTile'),r=t.getBoundingClientRect(),w=Math.min(340,innerWidth-24),top=Math.min(r.bottom+8,Math.max(12,innerHeight-260));
+ q.style.width=w+'px';q.style.top=Math.round(top)+'px';q.style.left=Math.max(12,Math.min(Math.round(r.right-w),innerWidth-w-12))+'px';q.style.right='auto';q.style.bottom='auto';q.style.maxHeight=Math.max(160,innerHeight-top-12)+'px'}
+function item(m){var on=m.label===name(),dis=m.disabled||!!job;
+ return '<button type="button" class="cxqm'+(on?' on':'')+'" role="radio" aria-checked="'+on+'" data-model="'+esc(m.label)+'" title="'+esc(m.label+(m.disabled?' · недоступна (нужны кредиты Notion)':m.tags&&m.tags.length?' · '+m.tags.join(' · '):''))+'"'+(dis?' disabled':'')+'><i class="cxqr"></i><span>'+esc(m.label)+'</span>'+(m.disabled?'<small>недоступна</small>':(m.tags&&m.tags.length?'<small>'+esc(m.tags.join(' · '))+'</small>':''))+'</button>'}
+function paintQ(){
+ if(!q||q.hidden)return;var list=md&&md.models||[],main=list.filter(function(m){return !m.more}),more=list.filter(function(m){return m.more}),cur=name(),f=effort();
+ var effs=md&&md.efforts&&md.efforts.length?md.efforts:(f?[f]:[]);
+ var h='<div class="cxqh">Модель Notion AI</div><div class="cxqlist" role="radiogroup" aria-label="Модель Notion AI">';
+ if(!list.length)h+=cur?item({label:cur,tags:[]}):'';
+ h+=main.map(item).join('')+'</div>';
+ if(!list.length)h+='<p class="nai-qnote">'+(loading?'Читаю список моделей из Notion…':'Список моделей ещё не получен.')+'</p>';
+ if(more.length)h+='<details class="nai-more"'+(more.some(function(m){return m.label===cur})?' open':'')+'><summary>Другие модели ('+more.length+')</summary><div class="cxqlist">'+more.map(item).join('')+'</div></details>';
+ h+='<div class="cxqh">Уровень рассуждений (effort)</div><div class="cxqeff" role="radiogroup" aria-label="Effort Notion AI">';
+ h+=effs.length?effs.map(function(e){return '<button type="button" class="cxqe'+(e===f?' on':'')+'" role="radio" aria-checked="'+(e===f)+'" data-effort="'+esc(e)+'"'+(job?' disabled':'')+'>'+esc(e)+'</button>'}).join(''):'<span class="cxsub">Недоступно для этой модели</span>';
+ h+='</div><p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||'Меняется прямо в постоянном чате Notion AI и действует со следующего сообщения. Лимитов по времени у Notion AI нет.')+'</p>';
+ q.querySelector('.cxpbody').innerHTML=h}
+function fetchModel(){return fetch(api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.ok){md=j;if(j.pending&&!job){job=j.pending;loading=true;poll()}paintTile();paintQ()}}).catch(function(){})}
+function poll(){clearTimeout(jobT);if(!job)return;jobT=setTimeout(function(){fetch(base+'notion-ai/send/'+job,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
+ if(j.status==='done'||j.status==='error'||j.status==='unknown'){var was=msg;job='';loading=false;bad=j.status!=='done';msg=bad?'Не получилось: '+String(j.error||'нет ответа').replace(/^\w+Error: /,''):(was&&was.indexOf('…')>0?'Готово.':'');fetchModel()}else poll()}).catch(function(){poll()})},1500)}
+function pick(body,text){if(job)return;msg=text;bad=false;paintQ();
+ fetch(api,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(j){if(j.ok&&j.id){job=j.id;loading=!body.model&&!body.effort;paintQ();poll()}else{bad=true;msg=j.message||'Не получилось';paintQ()}}).catch(function(){bad=true;msg='Панель не ответила';paintQ()})}
+function openQ(){['cxQClose','cxPopClose','cxMenuClose'].forEach(function(f){try{typeof window[f]==='function'&&window[f]()}catch(_){}});var sc=$i('scrim');if(sc)sc.hidden=true;
+ q.hidden=false;$i('naiModelTile').setAttribute('aria-expanded','true');if(!job){msg='';bad=false}placeQ();paintQ();
+ var old=!md||!(md.models||[]).length||Date.now()/1000-(md.models_ts||0)>600;if(old&&!job&&Date.now()-asked>20000){asked=Date.now();loading=true;pick({},'Читаю список моделей из Notion…')}}
+function close(){if(q&&!q.hidden){q.hidden=true;$i('naiModelTile').setAttribute('aria-expanded','false')}}
+window.addEventListener('nai-state',function(e){st=e.detail;paintTile()});
+function boot(){var n=0;(function try_(){if(build()){paintTile();fetchModel()}else if(n++<40)setTimeout(try_,250)})()}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+}catch(e){console.warn('notion-ai card',e)}})();
 // [notion-ai] Вкладка «Notion AI» в консоли: постоянный чат Notion AI (чтение — сервис notion-ai-view, ввод — notion-delegate /post).
 (function(){try{
 var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),api=base+'notion-ai/view',sendApi=base+'notion-ai/send',tok=(typeof TOKEN!=='undefined'?TOKEN:''),who='Вы',tabOn=true;
@@ -1505,6 +1595,41 @@ def _delegate(path, data=None, timeout=20):
             return {'error': 'HTTP %s' % e.code}
 
 
+NAI_MODEL_FILE = '/root/notion_web/nai_model.json'  # пишет notion-delegate (тёплое окно чата), панель только читает
+
+
+def model_cached():
+    try:
+        d = json.loads(Path(NAI_MODEL_FILE).read_text())
+    except Exception:
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def model_public():
+    """[notion-ai] Модель и effort постоянного чата Notion AI + список из меню Notion; pending — идёт задание."""
+    d, pend = model_cached(), None
+    try:
+        j = _delegate('/nai/model', timeout=5)
+        d, pend = j.get('state') or d, j.get('pending')
+    except Exception:
+        pass
+    return dict(ok=True, model=d.get('model') or '', effort=d.get('effort') or '', models=d.get('models') or [],
+                efforts=d.get('efforts') or [], ts=d.get('ts') or 0, models_ts=d.get('models_ts') or 0, pending=pend)
+
+
+def model_set(body):
+    """[notion-ai] Выбрать модель/effort в поле ввода постоянного чата ({} — перечитать список). Сообщений в чат не пишет."""
+    data = {k: str(body.get(k) or '').strip()[:60] for k in ('model', 'effort') if str(body.get(k) or '').strip()}
+    try:
+        j = _delegate('/nai/model', data, timeout=10)
+    except Exception as exc:
+        return dict(ok=False, message='Сервис Notion (notion-delegate) не отвечает: ' + type(exc).__name__)
+    if not j.get('id'):
+        return dict(ok=False, message='Не принято: ' + str(j.get('error') or 'нет ответа')[:160])
+    return dict(ok=True, id=j['id'], message='Меняю в чате Notion AI…' if data else 'Читаю список моделей из Notion…')
+
+
 def chat_send(text, rid=''):
     """Сообщение из консоли панели → постоянный чат Notion AI (через notion-delegate /post)."""
     text = str(text or '').replace('\r\n', '\n').strip()
@@ -1576,12 +1701,13 @@ def install(ns, profiles):
     nai.wrap()
     base = ns['H']
     posts = ('/api/notion-ai/on', '/api/notion-ai/off', '/api/notion-ai/step', '/api/notion-ai/step/confirm', '/api/notion-ai/send',
-             '/api/notion-ai/config', '/api/notion-ai/check', '/api/notion-ai/key', '/api/notion-ai/login', '/api/notion-ai/code')
+             '/api/notion-ai/config', '/api/notion-ai/check', '/api/notion-ai/key', '/api/notion-ai/login', '/api/notion-ai/code',
+             '/api/notion-ai/model')
 
     class NotionAIHandler(base):
         def do_GET(self):
             path = urlparse(self.path).path
-            if path not in ('/api/notion-ai', '/api/notion-ai/view', '/api/notion-ai/config') and not path.startswith('/api/notion-ai/send/'):
+            if path not in ('/api/notion-ai', '/api/notion-ai/view', '/api/notion-ai/config', '/api/notion-ai/model') and not path.startswith('/api/notion-ai/send/'):
                 return base.do_GET(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
@@ -1591,6 +1717,8 @@ def install(ns, profiles):
                 return self._send(200, view_public())
             if path.endswith('/config'):
                 return self._send(200, cfg_public())
+            if path.endswith('/model'):
+                return self._send(200, model_public())
             return self._send(200, nai.public())
 
         def do_POST(self):
@@ -1614,6 +1742,8 @@ def install(ns, profiles):
                     result = nai.off(str(body.get('reason') or 'выключен на панели')[:80])
                 elif path.endswith('/send'):
                     result = chat_send(body.get('text'), body.get('request_id'))
+                elif path.endswith('/model'):
+                    result = model_set(body)
                 elif path.endswith('/config'):
                     ok, message, _ = save_cfg(body)
                     result = dict(cfg_public(), ok=ok, message=message)

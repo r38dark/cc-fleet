@@ -569,6 +569,38 @@ NAI_NOANIM = """document.addEventListener('DOMContentLoaded',()=>{const s=docume
  s.textContent='*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}';document.documentElement.appendChild(s)})"""
 
 
+NAI_MODEL = f"{D}/nai_model.json"  # [notion-ai] модель и effort постоянного чата (читает панель, пишет только post_worker)
+NAI_EFFORT_ARIA = {"low": "Low", "medium": "Medium", "high": "High", "extra high": "xHigh", "xhigh": "xHigh", "max": "Max"}
+NAI_OTHER = ("Other models", "Другие модели", "Older models", "Старые модели")
+NAI_MENU_JS = """(i)=>{const m=[...document.querySelectorAll('[role=menu]')][i];if(!m)return null;
+ return [...m.querySelectorAll('[role=menuitem],[role=menuitemradio],[role=option]')].map(e=>({t:(e.innerText||'').split('\\n').map(s=>s.trim()).filter(Boolean),dis:e.getAttribute('aria-disabled')==='true'}))}"""
+
+
+def nai_model_load():
+    try:
+        with open(NAI_MODEL) as f: return json.load(f)
+    except Exception: return {}
+
+
+def nai_model_save(st):
+    old = nai_model_load()
+    if not st.get("models") and old.get("models"): st = dict(st, models=old["models"], models_ts=old.get("models_ts", 0))
+    if not st.get("efforts") and old.get("efforts") and st.get("model") == old.get("model"): st = dict(st, efforts=old["efforts"])
+    tmp = NAI_MODEL + ".tmp"
+    with open(tmp, "w") as f: json.dump(st, f, ensure_ascii=False, indent=1)
+    os.chmod(tmp, 0o600); os.replace(tmp, NAI_MODEL)
+
+
+def nai_parse(item):
+    """Пункт меню модели: «Opus / 5.5 / Beta» → подпись «Opus 5.5» (как на кнопке в поле ввода), описание, пометки."""
+    t = list(item.get("t") or []); name = t[0] if t else ""; ver = ""; rest = t[1:]
+    if rest and not (rest[0].endswith(".") or len(rest[0]) > 24 or rest[0] in ("Beta", "New", "Uses Notion credits")):
+        ver = rest.pop(0)
+    desc = next((x for x in rest if x.endswith(".")), "")
+    tags = [x for x in rest if x != desc][:3]
+    return {"label": (name + " " + ver).strip(), "name": name, "version": ver, "desc": desc[:120], "tags": tags, "disabled": bool(item.get("dis"))}
+
+
 def nai_profile_on():
     try:
         with open(NAI_MODE) as f: return bool(json.load(f).get("active"))
@@ -613,6 +645,8 @@ class NaiWarm:
             except Exception:
                 self.close(); raise
         self.opened = time.time()
+        try: nai_model_save(self.model_state(self.pg, False))  # [notion-ai] подпись модели для карточки панели
+        except Exception as e: print(f"[notion-ai] модель не прочитана: {type(e).__name__}", flush=True)
         print(f"[notion-ai] тёплое окно чата открыто за {self.opened - t0:.1f} с", flush=True)
 
     def close(self):
@@ -649,6 +683,89 @@ class NaiWarm:
             with BROWSER: self.ctx.storage_state(path=f"{D}/state.json")
         except Exception: pass
 
+    # ---------- [notion-ai] модель и effort ----------
+    def _menus_close(self, pg):
+        for _ in range(3):  # Escape — только пока открыто меню (лишний Escape полю ввода не нужен)
+            if pg.locator('[role=menu]').count() == 0: return
+            pg.keyboard.press("Escape"); pg.wait_for_timeout(300)
+
+    def _open_menu(self, pg, loc):
+        loc.click(timeout=5000); pg.locator('[role=menu]').first.wait_for(timeout=6000); pg.wait_for_timeout(400)
+
+    def _other(self, pg):
+        o = pg.locator('[role=menu] [role=menuitem]').filter(has_text=NAI_OTHER[0])
+        if not o.count(): o = pg.locator('[role=menu] [role=menuitem]').filter(has_text=NAI_OTHER[1])
+        if not o.count(): return False
+        o.first.hover(); pg.wait_for_timeout(1200); return pg.locator('[role=menu]').count() > 1
+
+    def model_state(self, pg, deep=True):
+        lab = pg.locator('[aria-label="Choose AI model"]').first; lab.wait_for(timeout=8000)
+        out = {"model": (lab.inner_text() or "").strip(), "effort": "", "ts": time.time()}
+        eb = pg.locator('[aria-label^="Change effort"]')
+        if eb.count():
+            cur = (eb.first.get_attribute("aria-label") or "").lower().split("currently", 1)[-1].strip(" ,.")
+            out["effort"] = NAI_EFFORT_ARIA.get(cur, cur)
+        if not deep: return out
+        try:
+            self._open_menu(pg, lab)
+            items = [x for x in (pg.evaluate(NAI_MENU_JS, 0) or []) if x.get("t")]
+            models = [nai_parse(x) for x in items if x["t"][0] not in NAI_OTHER]
+            if any(x["t"][0] in NAI_OTHER for x in items) and self._other(pg):
+                models += [dict(nai_parse(x), more=True) for x in (pg.evaluate(NAI_MENU_JS, 1) or []) if x.get("t") and x["t"][0] not in NAI_OTHER]
+            out["models"] = models; out["models_ts"] = time.time()
+        finally: self._menus_close(pg)
+        if eb.count():
+            try:
+                self._open_menu(pg, eb.first)
+                out["efforts"] = [x["t"][0] for x in (pg.evaluate(NAI_MENU_JS, 0) or []) if x.get("t") and not x.get("dis")]
+            finally: self._menus_close(pg)
+        else: out["efforts"] = []
+        return out
+
+    def _pick_model(self, pg, model):
+        self._open_menu(pg, pg.locator('[aria-label="Choose AI model"]').first)
+        try:
+            for i in (0, 1):
+                items = pg.evaluate(NAI_MENU_JS, i) or []
+                for k, x in enumerate(items):
+                    if x.get("t") and nai_parse(x)["label"] == model:
+                        if x.get("dis"): raise RuntimeError(f"модель «{model}» сейчас недоступна в Notion (нужны кредиты Notion)")
+                        pg.locator('[role=menu]').nth(i).locator('[role=menuitem],[role=menuitemradio],[role=option]').nth(k).click(timeout=5000)
+                        pg.wait_for_timeout(1500); return
+                if i == 0 and not self._other(pg): break
+            raise RuntimeError(f"модели «{model}» нет в списке Notion")
+        finally: self._menus_close(pg)
+
+    def _pick_effort(self, pg, effort):
+        eb = pg.locator('[aria-label^="Change effort"]')
+        if not eb.count(): raise RuntimeError("для этой модели Notion не даёт выбрать effort")
+        self._open_menu(pg, eb.first)
+        try:
+            items = pg.evaluate(NAI_MENU_JS, 0) or []
+            k = next((k for k, x in enumerate(items) if x.get("t") and x["t"][0] == effort and not x.get("dis")), None)
+            if k is None: raise RuntimeError(f"уровня «{effort}» нет для этой модели")
+            pg.locator('[role=menu]').first.locator('[role=menuitem],[role=menuitemradio],[role=option]').nth(k).click(timeout=5000)
+            pg.wait_for_timeout(1000)
+        finally: self._menus_close(pg)
+
+    def model_job(self, pj):
+        """Прочитать (или выставить) модель и effort в поле ввода постоянного чата. Сообщений не пишет."""
+        if AUTH["state"] != "ok": raise AuthLost(AUTH_MSG())
+        if disabled(): raise RuntimeError("выключено (DISABLED)")
+        if not self.alive() or self.url != nai_url(): self.open()
+        pg = self.pg; model, effort = pj.get("model") or "", pj.get("effort") or ""
+        try:
+            if model and model != self.model_state(pg, False)["model"]: self._pick_model(pg, model)
+            if effort and effort != self.model_state(pg, False)["effort"]: self._pick_effort(pg, effort)
+        finally:
+            st = self.model_state(pg, True); nai_model_save(st); pj["result"] = st
+        if model and st["model"] != model: raise RuntimeError(f"Notion оставил модель «{st['model']}»")
+        if effort and st["effort"] != effort: raise RuntimeError(f"Notion оставил effort «{st['effort']}»")
+        if model or effort:
+            try:
+                with BROWSER: self.ctx.storage_state(path=f"{D}/state.json")
+            except Exception: pass
+
     def idle(self):
         """Простой: держать окно открытым, пока включён профиль Notion AI; иначе закрыть через 20 минут."""
         now = time.time()
@@ -675,20 +792,23 @@ def post_worker():
             warm.idle(); continue
         pj = posts[pid]
         pj["status"] = "running"; pj["started"] = time.time()
+        run = warm.model_job if pj.get("kind") == "model" else warm.post  # [notion-ai] модель/effort — та же очередь и то же окно
         try:
             try:
-                warm.post(pj)
+                run(pj)
             except AuthLost:
                 raise
             except Exception as e:  # окно могло устареть — одна повторная попытка в свежем окне
-                if pj.get("posted"): raise
-                print(f"[notion-ai] повтор отправки в свежем окне: {type(e).__name__}: {str(e)[:200]}", flush=True)
-                warm.close(); warm.post(pj)
+                if pj.get("posted") or pj.get("result"): raise
+                print(f"[notion-ai] повтор в свежем окне: {type(e).__name__}: {str(e)[:200]}", flush=True)
+                warm.close(); run(pj)
             pj["status"] = "done"
         except AuthLost as e:
             warm.close(); pj["status"] = "error"; pj["error"] = f"AuthLost: {e}"; on_auth_lost()
         except Exception as e:
-            warm.close(); pj["status"] = "error"; pj["error"] = f"{type(e).__name__}: {str(e)[:300]}"; traceback.print_exc()
+            pj["status"] = "error"; pj["error"] = f"{type(e).__name__}: {str(e)[:300]}"
+            if pj.get("result"): print(f"[notion-ai] модель: {str(e)[:200]}", flush=True)  # окно исправно — Notion просто не дал выбрать
+            else: warm.close(); traceback.print_exc()
         pj["finished"] = time.time()
 
 
@@ -706,8 +826,28 @@ def submit_post(text):
     return pj
 
 
+def submit_model(d):
+    """[notion-ai] Задание «модель/effort»: пустое = только прочитать список. Повторное чтение не ставится в очередь дважды."""
+    model, effort = str(d.get("model") or "").strip(), str(d.get("effort") or "").strip()
+    if len(model) > 60 or len(effort) > 20 or not re.fullmatch(r"[\w .,+()-]*", model + effort): raise ValueError("неверная модель или effort")
+    if disabled(): raise RuntimeError("выключено (DISABLED)")
+    if not nai_url(): raise RuntimeError(NAI_NOCHAT)
+    with post_cv:
+        for pid in reversed(post_order):
+            x = posts.get(pid) or {}
+            if x.get("kind") == "model" and x.get("status") in ("queued", "running") and not (model or effort) and not (x.get("model") or x.get("effort")):
+                return x
+        pj = {"id": uuid.uuid4().hex[:8], "kind": "model", "model": model, "effort": effort, "status": "queued", "created": time.time()}
+        if len(post_q) >= 20: raise RuntimeError("очередь сообщений полна (20)")
+        posts[pj["id"]] = pj; post_order.append(pj["id"]); post_q.append(pj["id"]); post_cv.notify()
+        while len(post_order) > 200: posts.pop(post_order.pop(0), None)
+    return pj
+
+
 def post_public(pj):
-    return {k: pj.get(k) for k in ("id", "status", "error", "created", "started", "posted", "finished")}
+    out = {k: pj.get(k) for k in ("id", "status", "error", "created", "started", "posted", "finished")}
+    if pj.get("kind") == "model": out["kind"] = "model"; out["result"] = pj.get("result")
+    return out
 
 
 class H(BaseHTTPRequestHandler):
@@ -722,6 +862,9 @@ class H(BaseHTTPRequestHandler):
         if not self._auth(): return self._send(403, {"error": "token"})
         m = re.fullmatch(r"/job/([0-9a-f]{8})", self.path)
         if m and m.group(1) in jobs: return self._send(200, public(jobs[m.group(1)]))
+        if self.path == "/nai/model":  # [notion-ai] модель и effort постоянного чата (последнее прочитанное)
+            pend = next((pid for pid in reversed(post_order) if (posts.get(pid) or {}).get("kind") == "model" and posts[pid].get("status") in ("queued", "running")), None)
+            return self._send(200, {"ok": True, "state": nai_model_load(), "pending": pend})
         m = re.fullmatch(r"/post/([0-9a-f]{8})", self.path)  # [notion-ai]
         if m and m.group(1) in posts: return self._send(200, post_public(posts[m.group(1)]))
         self._send(404, {"error": "not found"})
@@ -736,6 +879,9 @@ class H(BaseHTTPRequestHandler):
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
         if self.path == "/post":  # [notion-ai] только отправить в постоянный чат Notion AI
             try: return self._send(200, post_public(submit_post(d.get("text"))))
+            except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
+        if self.path == "/nai/model":  # [notion-ai] выбрать модель/effort ({} — перечитать список)
+            try: return self._send(200, post_public(submit_model(d)))
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
         if self.path == "/relogin":  # [notion-ai] кнопка «Войти в Notion» в панели
             try: start_login(); return self._send(200, {"ok": True, "email": nai_email()})

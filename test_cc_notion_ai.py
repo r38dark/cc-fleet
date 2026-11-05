@@ -224,3 +224,38 @@ class TestCfg(unittest.TestCase):
         page = '<html><body><div id="scrim"><div class="modal">' + M.CFG_ANCHOR + '</div></div></body></html>'
         out = M.inject(page); self.assertIn('id="naiCfgBox"', out); self.assertIn('id="naiCfgScript"', out)
         self.assertEqual(M.inject(out).count('id="naiCfgBox"'), 1)
+
+
+class TestModelCard(unittest.TestCase):
+    """[notion-ai] Карточка «Notion AI» в «Активных аккаунтах»: модель и effort постоянного чата через notion-delegate /nai/model."""
+    def test_model_set_and_public(self):
+        import cc_notion_ai as M
+        calls = []
+        def fake(path, data=None, timeout=20):
+            calls.append((path, data))
+            if data is None: return {'ok': True, 'state': {'model': 'Opus 5.5', 'effort': 'xHigh', 'models': [{'label': 'Auto'}], 'efforts': ['Low', 'xHigh']}, 'pending': None}
+            return {'id': 'abcdef12', 'status': 'queued', 'kind': 'model'}
+        old = M._delegate; M._delegate = fake
+        try:
+            r = M.model_set({'model': ' GPT-6 Luna ', 'effort': '', 'junk': 1})
+            self.assertTrue(r['ok']); self.assertEqual(r['id'], 'abcdef12'); self.assertEqual(calls[-1], ('/nai/model', {'model': 'GPT-6 Luna'}))
+            self.assertTrue(M.model_set({})['ok']); self.assertEqual(calls[-1], ('/nai/model', {}))  # пусто — только перечитать список
+            p = M.model_public(); self.assertEqual((p['model'], p['effort'], p['efforts']), ('Opus 5.5', 'xHigh', ['Low', 'xHigh']))
+            M._delegate = lambda *a, **k: {'error': 'модели «X» нет в списке Notion'}
+            r = M.model_set({'model': 'X'}); self.assertFalse(r['ok']); self.assertIn('нет в списке', r['message'])
+            def boom(*a, **k): raise OSError('down')
+            M._delegate = boom
+            self.assertFalse(M.model_set({'effort': 'Max'})['ok'])
+            self.assertTrue(M.model_public()['ok'])  # делегат молчит — отдаём последнее прочитанное из файла
+        finally:
+            M._delegate = old
+
+    def test_page_has_card_without_time(self):
+        import re
+        ui = M.UI
+        for k in ('id="fleetNotion"', 'naiModelTile', 'naiModelQ', "notion-ai/model", 'fleet-compact-account notion', 'Без лимитов по времени'):
+            self.assertIn(k, ui.replace("tile.id='fleetNotion'", 'id="fleetNotion"'), k)
+        card = ui[ui.index('Карточка «Notion AI» в «Активных аккаунтах»'):ui.index('Вкладка «Notion AI» в консоли')]
+        self.assertNotIn('fleet-live-meter', card)  # ни 5 часов, ни недели
+        self.assertIn("CustomEvent('nai-state'", ui)
+        self.assertIn("'/api/notion-ai/model'", open(M.__file__, encoding='utf-8').read())
