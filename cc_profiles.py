@@ -47,7 +47,7 @@ class NativeProfiles:
         return self.notion._ready(self.notion.CONFIG() or {})
 
     def plan(self, state, e):
-        data=state.public()['engines'][e];profile=next(p for p in data['profiles'] if p['id']==data['base_selected'])
+        data=state.public()['engines'][e];profile=next(p for p in state.definitions(e) if p['id']==data['base_selected'])
         service=state.service if state.service and state.service['engine']==e else None
         access='full' if service and (service['kind']=='emergency' or service.get('emergency')) else 'write' if service else profile['access']
         mode='self' if service or data['role']=='executor' else profile['mode']

@@ -10,7 +10,7 @@ import cc_codex_emergency as emergency
 from cc_profile_state import ProfileScenarios, ProfileState
 from cc_profiles import Profiles
 from cc_profile_tasks import ProfileTasks
-from test_cc_profiles import FakeNative
+from test_cc_profiles import FakeNative,legacy_pair_state
 
 
 class SimpleProfiles(unittest.TestCase):
@@ -27,7 +27,7 @@ class SimpleProfiles(unittest.TestCase):
             self.assertTrue(profiles[1]['title'].startswith('Claude → Codex' if engine=='claude' else 'Codex → Claude'))
 
     def test_legacy_bridge_catalog_cannot_offer_removed_or_custom_profiles(self):
-        self.assertEqual([p[0] for p in bridge._profiles({'profiles':[dict(id='old',name='old',mode='self',access='write',task_rights='full')]})],['orchestrator','codex_solo_full'])
+        self.assertEqual([p[0] for p in bridge._profiles({'profiles':[dict(id='old',name='old',mode='self',access='write',task_rights='full')]})],['codex_solo_full'])
 
     def test_removed_scenarios_are_rejected_without_changing_state(self):
         for engine in ['claude','codex']:
@@ -67,7 +67,7 @@ class SimpleProfiles(unittest.TestCase):
 
     def test_orchestrator_caps_requested_full_step_to_legacy_dev_ceiling(self):
         with tempfile.TemporaryDirectory() as tmp:
-            native=FakeNative();profiles=Profiles(tmp,native);profiles.apply_scenario(dict(choices=dict(claude='orchestrator',codex='executor'),revision=profiles.state.revision))
+            native=FakeNative();profiles=Profiles(tmp,native);profiles.transition(legacy_pair_state('claude',profiles.state),'Исторический сценарий')
             sent=[];asked=[];tasks=ProfileTasks(profiles,lambda *args:sent.append(args),lambda *args:asked.append(args) or 'проверено');profiles.tasks=tasks
             draft=profiles.exchange('claude')/'outbox/task.md';draft.parent.mkdir(parents=True);draft.write_text('права: полные\nПроверяемый шаг')
             tasks.tick();task=tasks.public();self.assertEqual(task['rights'],'dev');self.assertEqual(task['requested_rights'],'full')

@@ -2,7 +2,7 @@
 import copy
 import threading
 import time
-from cc_manual_scenarios import ManualScenarioMixin, validate_choices
+from cc_manual_scenarios import ManualScenarioMixin, validate_stored_choices
 
 ENGINES = ('claude', 'codex')
 
@@ -242,7 +242,7 @@ class ProfileState(ManualScenarioMixin, ProfileScenarios):
             choices=base.get('manual_choices')
             if choices is not None:
                 leader=next((e for e in ENGINES if choices.get(e)=='orchestrator'),None) if isinstance(choices,dict) else None
-                if not validate_choices(choices)[0] or base.get('leader')!=leader:
+                if not validate_stored_choices(choices)[0] or base.get('leader')!=leader:
                     raise ValueError('invalid_manual_scenario')
                 for engine,role in choices.items():
                     wanted=engine+'_solo_full' if role=='full' else role

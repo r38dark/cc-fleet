@@ -8,16 +8,15 @@ from unittest.mock import patch
 from cc_manual_scenarios import validate_choices,ROLES
 from cc_profile_state import ProfileState
 from cc_profiles import Profiles
-from test_cc_profiles import FakeNative
+from test_cc_profiles import FakeNative,legacy_pair_state
 
 
 class ManualPolicy(unittest.TestCase):
-    def test_complete_compatibility_matrix_has_only_six_valid_scenarios(self):
+    def test_only_full_and_separate_reserve_are_accepted(self):
         valid=[]
-        for a,b in itertools.product(ROLES,repeat=2):
+        for a,b in itertools.product((None,'full','reserve','orchestrator','executor'),repeat=2):
             if validate_choices(dict(claude=a,codex=b))[0]:valid.append((a,b))
-        self.assertCountEqual(valid,[(None,'full'),('full',None),(None,'reserve'),('reserve',None),
-                                     ('orchestrator','executor'),('executor','orchestrator')])
+        self.assertCountEqual(valid,[(None,'full'),('full',None),(None,'reserve'),('reserve',None)])
 
     def test_invalid_selections_and_revisions_do_not_modify_state(self):
         state=ProfileState();before=state.export()
@@ -44,11 +43,16 @@ class ManualPolicy(unittest.TestCase):
         self.assertEqual([view['engines'][e]['role'] for e in ('claude','codex')],['solo','solo'])
         self.assertEqual(restored.selected,raw['selected'])
 
+    def test_public_work_catalog_is_full_only(self):
+        public=ProfileState().public()
+        self.assertTrue(public['capabilities']['full_only'])
+        for engine,data in public['engines'].items():
+            self.assertEqual([p['id'] for p in data['profiles'] if p['kind']!='reserve'],[engine+'_solo_full'])
+
     def test_each_pair_has_explicit_write_executor_and_one_read_leader(self):
         for leader in ('claude','codex'):
-            state=ProfileState();follower=state.other(leader)
+            state=legacy_pair_state(leader);follower=state.other(leader)
             choices={leader:'orchestrator',follower:'executor'}
-            self.assertTrue(state.apply_scenario(choices,revision=0)['ok'])
             self.assertEqual(state.public()['leader'],leader)
             native=FakeNative()
             self.assertEqual(native.plan(state,leader)['access'],'read')
@@ -58,8 +62,7 @@ class ManualPolicy(unittest.TestCase):
 
     def test_manual_and_automatic_reserve_restore_the_entire_pair(self):
         for automatic in (False,True):
-            state=ProfileState();pair=dict(claude='orchestrator',codex='executor')
-            state.apply_scenario(pair,revision=0)
+            state=legacy_pair_state('claude');pair=dict(claude='orchestrator',codex='executor')
             if automatic:
                 state.configure('codex',True,confirm='подтверждаю')
                 state.availability['claude']=False;state.reconcile_availability()
@@ -78,7 +81,7 @@ class ManualPolicy(unittest.TestCase):
         self.assertEqual(state.export(),before)
 
     def test_inconsistent_persisted_topology_is_rejected(self):
-        state=ProfileState();state.apply_scenario(dict(claude='orchestrator',codex='executor'),revision=0)
+        state=legacy_pair_state('claude')
         raw=state.export();raw['leader']='codex'
         with self.assertRaises(ValueError):ProfileState.from_data(raw)
 
@@ -98,20 +101,20 @@ class ManualTransactions(unittest.TestCase):
 
     def test_invalid_or_unconfirmed_request_has_no_runtime_or_file_effect(self):
         before=self.manager.path.read_bytes()
-        for choices in [dict(claude='full',codex='full'),dict(claude=None,codex='orchestrator'),dict(claude=None,codex='full')]:
+        for choices in [dict(claude='full',codex='full'),dict(claude=None,codex='orchestrator'),dict(claude='orchestrator',codex='executor'),dict(claude=None,codex='full')]:
             self.assertFalse(self.apply(choices)['ok'])
         self.assertEqual(self.manager.path.read_bytes(),before);self.assertEqual(self.native.applied,[])
 
     def test_both_engines_commit_once_and_survive_reload(self):
-        choices=dict(claude='executor',codex='orchestrator')
-        self.assertTrue(self.apply(choices)['ok']);self.assertEqual(len(self.native.applied),1)
+        choices=dict(claude='full',codex=None)
+        self.assertTrue(self.apply(choices,'подтверждаю')['ok']);self.assertEqual(len(self.native.applied),1)
         self.assertCountEqual(self.native.applied[0][2],['claude','codex'])
         other=Profiles(self.tmp.name,FakeNative());self.assertEqual(other.state.manual_choices,choices)
         self.assertEqual(other.native.applied,[])
 
     def test_failed_second_native_application_restores_both_state_and_models(self):
         before=self.manager.state.export();self.native.fail=True
-        self.assertFalse(self.apply(dict(claude='orchestrator',codex='executor'))['ok'])
+        self.assertFalse(self.apply(dict(claude='full',codex=None),'подтверждаю')['ok'])
         self.assertEqual(self.manager.state.export(),before)
         self.assertEqual(json.loads(self.manager.path.read_text())['core'],before)
         self.assertEqual(self.native.model,dict(claude='claude-test',codex='gpt-test'))
@@ -139,14 +142,14 @@ class ManualTransactions(unittest.TestCase):
         self.assertEqual(self.native.applied,[]);self.assertEqual(self.manager.state.export(),before)
         self.assertFalse(self.manager.pending.exists())
 
-    def test_full_blocks_opposite_input_until_a_complete_pair_is_applied(self):
+    def test_switching_full_moves_exclusivity_to_the_selected_model(self):
         self.assertTrue(self.apply(dict(claude=None,codex='full'),'подтверждаю')['ok'])
         self.assertFalse(self.manager.input_allowed('claude'));self.assertTrue(self.manager.input_allowed('codex'))
-        self.assertTrue(self.apply(dict(claude='executor',codex='orchestrator'))['ok'])
-        self.assertTrue(self.manager.input_allowed('claude'));self.assertTrue(self.manager.input_allowed('codex'))
+        self.assertTrue(self.apply(dict(claude='full',codex=None),'подтверждаю')['ok'])
+        self.assertTrue(self.manager.input_allowed('claude'));self.assertFalse(self.manager.input_allowed('codex'))
 
     def test_stale_request_never_reaches_native_adapter(self):
-        stale=self.manager.state.revision;self.apply(dict(claude='orchestrator',codex='executor'))
+        stale=self.manager.state.revision;self.apply(dict(claude=None,codex='full'),'подтверждаю')
         count=len(self.native.applied)
         result=self.manager.apply_scenario(dict(choices=dict(claude='full',codex=None),confirm='подтверждаю',revision=stale))
         self.assertTrue(result['conflict']);self.assertEqual(len(self.native.applied),count)

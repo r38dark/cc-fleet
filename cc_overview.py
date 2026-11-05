@@ -683,6 +683,21 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu.mono-profile-window .manual-apply-bar{position:sticky;bottom:0;z-index:2}
 #cxMenu.mono-profile-window .manual-selection-summary strong{line-height:1.4}
 
+/* Два профиля Full с однозначным выбранным состоянием. */
+#cxMenu.mono-profile-window .full-choice{position:relative;width:calc(100% - 28px)!important;max-width:calc(100% - 28px);min-height:190px;margin:14px!important;padding:18px!important;border:2px solid var(--fleet-line);border-radius:10px;background:var(--bg);box-shadow:none;cursor:pointer}
+#cxMenu.mono-profile-window .full-choice.act{border:2px solid var(--fleet-accent);background:color-mix(in srgb,var(--fleet-accent) 16%,var(--bg));box-shadow:inset 4px 0 var(--fleet-accent),0 0 0 1px color-mix(in srgb,var(--fleet-accent) 25%,transparent)}
+.full-choice-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.full-choice-check{display:grid;place-items:center;width:26px;height:26px;border:2px solid var(--fleet-muted);border-radius:50%;color:transparent;font-size:17px;font-weight:750;line-height:1;flex:none}
+.full-choice.act .full-choice-check{background:var(--fleet-accent);border-color:var(--fleet-accent);color:#0b1714}
+.full-choice-badge{font-size:11px;line-height:1.4;color:var(--fleet-muted);padding:4px 8px;border-radius:5px}
+.full-choice.act .full-choice-badge{background:var(--fleet-accent);color:#0b1714;font-weight:700}
+#cxMenu.mono-profile-window .manual-role.full-choice .cxpnm{font-size:19px;line-height:1.35;font-weight:650}
+#cxMenu.mono-profile-window .full-choice .cxps{font-size:12px;line-height:1.6;min-height:0}
+#cxMenu.mono-profile-window .full-choice .fleet-profile-card-footer{margin-top:16px;padding-top:10px;border-top:1px solid var(--fleet-line)}
+#cxMenu.mono-profile-window .full-choice.act .fleet-profile-card-footer{border-color:color-mix(in srgb,var(--fleet-accent) 40%,var(--fleet-line))}
+#cxMenu.mono-profile-window .full-choice.act .fleet-profile-choose{font-weight:650;color:var(--fleet-accent)}
+@media(max-width:700px){#cxMenu.mono-profile-window .full-choice{width:calc(100% - 24px)!important;max-width:calc(100% - 24px);margin:12px!important;min-height:0;padding:15px!important}.full-choice-top{margin-bottom:10px}#cxMenu.mono-profile-window .full-choice .cxpnm{font-size:18px}}
+
 '''
 
 JS = r'''
@@ -1317,7 +1332,7 @@ JS = r'''
  function monoCenter(){
   menu.classList.toggle('fleet-profile-desktop',!mobileConsole.matches);
   if(mobileConsole.matches){menu.style.top='var(--fleet-visual-top,0px)';menu.style.left='0';menu.style.right='0';menu.style.bottom='auto';menu.style.width='100%';menu.style.height=menu.style.maxHeight='var(--fleet-visual-height,100dvh)';return}
-  const w=innerWidth,h=innerHeight,width=Math.min(monoView==='reserve'?960:1100,w-24);
+  const w=innerWidth,h=innerHeight,width=Math.min(monoView==='reserve'?960:880,w-24);
   menu.style.height='';menu.style.width=width+'px';menu.style.maxHeight=(h-24)+'px';menu.style.left=Math.round((w-width)/2)+'px';menu.style.right='auto';menu.style.bottom='auto';menu.style.top=Math.max(12,Math.round((h-menu.getBoundingClientRect().height)/2))+'px';
  }
  cxMenuPlace=monoCenter;
@@ -1413,50 +1428,27 @@ JS = r'''
  const manualCurrent=()=>mirrorState?.manual_scenario?.choices||{claude:null,codex:null};
  paletteTools.remove();paletteFooter.remove();
  const manualThemeBefore=mirrorTheme;
- mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,monoView==='reserve'?'Без таймеров':'Роли выбираешь вручную')};
+ mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,monoView==='reserve'?'Без таймеров':'Full · самостоятельно');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля Full')};
  function manualSync(){
   if(!manualDraft||!manualDirty){manualDraft={...manualCurrent()};manualRevision=mirrorState.revision;manualDirty=false}
  }
- function manualReason(engine,role){
-  const other=manualOther(engine),op=manualDraft[other],name=mirrorNames[other];
-  if(!op)return '';
-  if(op==='full')return name+' Full работает самостоятельно. Сними этот выбор, чтобы включить '+mirrorNames[engine]+'.';
-  if(op==='reserve')return name+' работает с Notion. Сними резерв в соседнем блоке, чтобы выбрать эту модель.';
-  if(op==='orchestrator'&&role!=='executor')return name+' уже выбрана ведущей. Здесь доступна роль «Исполнитель».';
-  if(op==='executor'&&role!=='orchestrator')return name+' уже выбрана исполнителем. Здесь доступна роль «Оркестратор».';
-  return '';
- }
+ function manualReason(engine,role){return role==='full'?'':'Доступен только профиль Full.';}
+
  function manualStatus(){
-  if(mirrorState.updating)return {valid:false,text:'Завершается обновление панели. Сценарий можно применить после проверки.'};
-  const roles=manualEngines.map(engine=>manualDraft[engine]).filter(Boolean),lead=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),executor=manualEngines.find(engine=>manualDraft[engine]==='executor');
-  if(mirrorState.manual_scenario.legacy&&!manualDirty)return {valid:false,text:'Выбери общую схему работы. До применения текущие сессии продолжают работать.'};
-  if(manualRevision!==mirrorState.revision)return {valid:false,text:'Сценарий изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
-  if(lead&&executor)return {valid:true,text:mirrorNames[lead]+' → '+mirrorNames[executor]+' · ведущая и исполнитель'};
-  const single=manualEngines.find(engine=>['full','reserve'].includes(manualDraft[engine]));
-  if(single&&roles.length===1)return {valid:true,text:manualDraft[single]==='full'?mirrorNames[single]+' Full · самостоятельно; '+mirrorNames[manualOther(single)]+' не участвует':mirrorNames[single]+' + Notion · резерв; '+mirrorNames[manualOther(single)]+' на паузе'};
-  if(lead&&roles.length===1)return {valid:false,text:mirrorNames[lead]+' — ведущая. Теперь выбери '+mirrorNames[manualOther(lead)]+' · исполнитель.'};
-  if(executor&&roles.length===1)return {valid:false,text:mirrorNames[executor]+' — исполнитель. Теперь выбери '+mirrorNames[manualOther(executor)]+' · оркестратор.'};
-  return {valid:false,text:'Выбери Full для одной модели или вручную собери пару: оркестратор → исполнитель.'};
+  if(mirrorState.updating)return {valid:false,text:'Завершается обновление панели. Профиль можно применить после проверки.'};
+  if(manualRevision!==mirrorState.revision)return {valid:false,text:'Профиль изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
+  const full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
+  if(full&&roles.length===1)return {valid:true,text:mirrorNames[full]+' Full · самостоятельно; '+mirrorNames[manualOther(full)]+' не участвует'};
+  return {valid:false,text:'Выбери Claude Full или Codex Full. До применения текущие сессии продолжают работать.'};
  }
  function manualSelect(engine,role){
-  if(mirrorBusy)return;manualSync();
-  if(manualDraft[engine]!==role){const reason=manualReason(engine,role);if(reason){toast(reason);return}}
-  manualDraft={...manualDraft,[engine]:manualDraft[engine]===role?null:role};manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
+  if(mirrorBusy||role!=='full')return;manualSync();
+  manualDraft={claude:null,codex:null,[engine]:'full'};manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
  }
- function manualCardTitle(engine,role){
-  const other=manualOther(engine);
-  if(role==='orchestrator'&&manualDraft[other]==='executor')return mirrorNames[engine]+' → '+mirrorNames[other]+' · ведущая';
-  if(role==='executor'&&manualDraft[other]==='orchestrator')return mirrorNames[other]+' → '+mirrorNames[engine]+' · исполнитель';
-  return mirrorNames[engine]+({full:' Full · самостоятельно',orchestrator:' · оркестратор',executor:' · исполнитель',reserve:' + Notion · резерв'}[role]);
- }
+ function manualCardTitle(engine,role){return mirrorNames[engine]+(role==='reserve'?' + Notion · резерв':' Full · самостоятельно');}
  function manualRoleCard(engine,role){
-  const state=mirrorState.engines[engine],id=role==='full'?engine+'_solo_full':role,p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]===role,reason=manualReason(engine,role),info=mirrorInfo[engine].has(id),current=manualCurrent()[engine]===role;
-  const kinds={full:'FULL',orchestrator:'ВЕДУЩАЯ',executor:'ИСПОЛНИТЕЛЬ'},copy={full:'Полные доступные права. Работает одна, вторая модель не участвует.',orchestrator:'Планирует и проверяет. Исполнителя выбираешь вручную напротив.',executor:'Выполняет подтверждённые шаги ведущей с пределом прав «дев».'};
-  return '<div class="cxprof fleet-profile-card manual-role'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="'+role+'" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="mono-mode-head"><span class="mono-mode-kind">'+kinds[role]+'</span><span class="mono-mode-status">'+(reason?'Недоступно':current&&!manualDirty?'Работает сейчас':selected?'В твоём выборе':'')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(manualCardTitle(engine,role))+'</span></span><span class="cxps">'+copy[role]+'</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected?'✓ Выбрано · нажми, чтобы снять':reason?'Несовместимая роль':'Выбрать →')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
- }
- function manualReserveCard(engine){
-  const selected=manualDraft[engine]==='reserve',reason=manualReason(engine,'reserve');
-  return '<section class="mono-reserve manual-role'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="reserve" data-manual-role="reserve" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="mono-reserve-copy"><strong>'+acctEsc(manualCardTitle(engine,'reserve'))+'</strong><div class="cxps">Без ограничения срока · другая модель на паузе</div></div><div class="mirror-service-actions"><span class="fleet-profile-choose">'+(selected?'✓ Выбрано · нажми, чтобы снять':reason?'Несовместимая роль':'Выбрать →')+'</span><button type="button" aria-disabled="false" data-mirror-action="reserve-settings">Настройки</button></div></section>';
+  const state=mirrorState.engines[engine],id=engine+'_solo_full',p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]==='full',info=mirrorInfo[engine].has(id),current=state.role==='solo'&&state.selected===id;
+  return '<div class="cxprof fleet-profile-card manual-role full-choice'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="full" role="radio" aria-checked="'+selected+'" tabindex="0"><div class="full-choice-top"><span class="full-choice-check" aria-hidden="true">'+(selected?'✓':'')+'</span><span class="full-choice-badge">'+(selected?'Выбран':current?'Текущая сессия':'Full')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(mirrorNames[engine]+' Full')+'</span></span><span class="cxps">Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected?(manualDirty?'Выбран для применения':'Действующий профиль'):'Нажми, чтобы выбрать')+'</span><button type="button" class="fleet-profile-more" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
  }
  const manualPaletteBefore=paintMirrorPalette;
  paintMirrorPalette=function(){
@@ -1464,12 +1456,12 @@ JS = r'''
   const scroll=profileBody.scrollTop,focused=document.activeElement,focusedCard=focused?.closest('[data-manual-role]'),focusEngine=focusedCard?.dataset.engine,focusRole=focusedCard?.dataset.manualRole,focusInfo=focused?.dataset.mirrorAction==='info',focusAction=focused?.dataset.manualAction;
   const status=manualStatus(),dirty=manualDirty,signature=JSON.stringify([mirrorState.revision,mirrorState.updating,manualDraft,mirrorInfo.claude.size,mirrorInfo.codex.size,mirrorBusy]);
   if(signature===monoSignature){monoCenter();return}monoSignature=signature;
-  let html='<div class="mono-provider-grid manual-provider-grid">';
+  let html='<div class="mono-provider-grid manual-provider-grid" role="radiogroup" aria-label="Модель с профилем Full">';
   for(const engine of manualEngines){
-   const other=manualOther(engine),op=manualDraft[other],own=manualDraft[engine],hint=own==='orchestrator'&&op==='executor'?'Ведущая для '+mirrorNames[other]+' · исполнитель выбран вручную.':own==='executor'&&op==='orchestrator'?'Исполнитель '+mirrorNames[other]+' · ведущая выбрана вручную.':op==='full'?mirrorNames[other]+' Full: эта модель не участвует.':op==='reserve'?mirrorNames[other]+' + Notion: эта модель на паузе.':op==='orchestrator'?'Выбери исполнителя для '+mirrorNames[other]+'.':op==='executor'?'Выбери ведущую для '+mirrorNames[other]+'.':own==='orchestrator'?'Ведущая выбрана. Выбери исполнителя напротив.':own==='executor'?'Исполнитель выбран. Выбери ведущую напротив.':'Выбери роль. Повторное нажатие снимает выбор.';
-   html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="Роли '+mirrorNames[engine]+'"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+acctEsc(manualDraft[engine]?manualCardTitle(engine,manualDraft[engine]):'Не участвует в выборе')+'</span></header><p class="manual-compatibility"'+(['full','reserve'].includes(op)?' data-blocked="true"':'')+'>'+acctEsc(hint)+'</p><div role="radiogroup" aria-label="Роль '+mirrorNames[engine]+'">'+['full','orchestrator','executor'].map(role=>manualRoleCard(engine,role)).join('')+manualReserveCard(engine)+'</div></section>';
+   const selected=manualDraft[engine]==='full';
+   html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="'+mirrorNames[engine]+' Full"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+(selected?'Выбран Full':acctEsc(mirrorState.engines[engine].label))+'</span></header>'+manualRoleCard(engine,'full')+'</section>';
   }
-  html+='</div><div class="manual-apply-bar"><div class="manual-selection-summary" role="status"><strong>'+(!dirty?(mirrorState.manual_scenario.legacy?'Текущие сессии работают':'Действующий сценарий'):status.valid?'Готово к применению':'Выбор не завершён')+'</strong><span>'+acctEsc(status.text)+'</span></div><div class="manual-scenario-actions"><button type="button" class="ghostbtn" data-manual-action="clear">Очистить выбор</button>'+(dirty?'<button type="button" class="ghostbtn" data-manual-action="restore">Вернуть текущий</button>':'')+'<button type="button" class="manual-apply" data-manual-action="apply" '+(!status.valid||!dirty||mirrorBusy?'disabled':'')+'>'+(mirrorBusy?'Применение…':!dirty?(mirrorState.manual_scenario.legacy?'Выбери сценарий':'Сценарий применён'):'Применить сценарий')+'</button></div></div>';
+  html+='</div><div class="manual-apply-bar"><div class="manual-selection-summary" role="status"><strong>'+(!dirty?(status.valid?'Действующий профиль':'Текущие сессии работают'):status.valid?'Готово к применению':'Выбери профиль')+'</strong><span>'+acctEsc(status.text)+'</span></div><div class="manual-scenario-actions">'+(dirty?'<button type="button" class="ghostbtn" data-manual-action="restore">Вернуть текущий</button>':'')+'<button type="button" class="manual-apply" data-manual-action="apply" '+(!status.valid||!dirty||mirrorBusy?'disabled':'')+'>'+(mirrorBusy?'Применение…':!dirty?(status.valid?'Профиль применён':'Выбери Full'):'Применить профиль')+'</button></div></div>';
   profileRoot.innerHTML=html;paletteEmpty.hidden=true;profileBody.scrollTop=scroll;
   if(focusEngine&&focusRole){const node=profileRoot.querySelector('[data-engine="'+focusEngine+'"][data-manual-role="'+focusRole+'"]');(focusInfo?node?.querySelector('[data-mirror-action="info"]'):node)?.focus({preventScroll:true})}
   else if(focusAction)profileRoot.querySelector('[data-manual-action="'+focusAction+'"]')?.focus({preventScroll:true});
@@ -1495,12 +1487,12 @@ JS = r'''
    if(result.confirmation_required){manualConfirmScenario(choices,revision,result.word);return}
    if(!result.ok){toast(result.message||'Не удалось применить сценарий');if(result.conflict)await mirrorLoad();return}
    manualDirty=false;manualDraft=null;monoSignature='';mirrorAccept(result.state);toast(result.message);cxbLoad(true);
-  }catch(_){toast('Не удалось применить сценарий. Текущий сценарий продолжает работать.')}
+  }catch(_){toast('Не удалось применить профиль. Текущая работа продолжается.')}
   finally{mirrorBusy=false;menu.removeAttribute('aria-busy');monoSignature='';if(!menu.hidden)cxpRender()}
  }
  function manualConfirmScenario(choices,revision,word){
   const engine=manualEngines.find(e=>choices[e]),name=manualCardTitle(engine,choices[engine]),other=mirrorNames[manualOther(engine)];cxMenuClose();
-  acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(name)+'</h3><p>'+other+' не участвует в этом сценарии. '+(choices[engine]==='reserve'?'Резерв с Notion работает без ограничения срока.':'Работает только '+mirrorNames[engine]+' с полными доступными правами.')+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы применить весь сценарий.</p><input id="manualConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="manualConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="manualConfirmApply" disabled>Применить сценарий</button></div></div>');
+  acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(name)+'</h3><p>'+other+' не участвует в этом сценарии. '+(choices[engine]==='reserve'?'Резерв с Notion работает без ограничения срока.':'Работает только '+mirrorNames[engine]+' с полными доступными правами.')+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы применить профиль Full.</p><input id="manualConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="manualConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="manualConfirmApply" disabled>Применить профиль</button></div></div>');
   const input=document.getElementById('manualConfirmWord'),button=document.getElementById('manualConfirmApply');input.oninput=()=>button.disabled=input.value.trim().toLocaleLowerCase('ru')!==word;input.onkeydown=event=>{if(event.key==='Enter'&&!button.disabled)button.click()};document.getElementById('manualConfirmCancel').onclick=()=>{acctClose();mirrorOpen(engine)};button.onclick=()=>{const value=input.value;acctClose();manualApplyScenario(value,choices,revision).then(()=>mirrorOpen(engine))};setTimeout(()=>input.focus(),30);
  }
 

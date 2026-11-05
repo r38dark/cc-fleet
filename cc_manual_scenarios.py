@@ -1,8 +1,8 @@
-"""Explicit two-engine scenarios. No console effects; NativeProfiles owns transactions."""
+"""Full-only work profiles with compatible reads of previously saved sessions."""
 import copy
 
 ENGINES = ('claude', 'codex')
-ROLES = (None, 'full', 'orchestrator', 'executor', 'reserve')
+ROLES = (None, 'full', 'reserve')
 
 
 def validate_choices(choices):
@@ -13,9 +13,14 @@ def validate_choices(choices):
     active = [value for value in choices.values() if value]
     if len(active) == 1 and active[0] in ('full', 'reserve'):
         return True, ''
-    if len(active) == 2 and set(active) == {'orchestrator', 'executor'}:
+    return False, 'Выбери Full одной модели. Резерв включается отдельно в своих настройках.'
+
+
+def validate_stored_choices(choices):
+    """Read older sessions without promoting their rights or restarting consoles."""
+    if isinstance(choices,dict) and set(choices)==set(ENGINES) and all(isinstance(v,str) for v in choices.values()) and set(choices.values())=={'orchestrator','executor'}:
         return True, ''
-    return False, 'Для пары выбери оркестратора и исполнителя вручную. Full и резерв работают отдельно.'
+    return validate_choices(choices)
 
 
 class ManualScenarioMixin:
@@ -55,7 +60,9 @@ class ManualScenarioMixin:
         result = super().public()
         result['manual_scenario'] = dict(choices=copy.deepcopy(self.manual_choices) or dict.fromkeys(ENGINES),
                                          legacy=self.manual_choices is None)
-        result['capabilities'] = dict(manual_scenario=True)
+        result['capabilities'] = dict(manual_scenario=True,full_only=True)
+        for data in result['engines'].values():
+            data['profiles']=[p for p in data['profiles'] if p['kind'] in ('full','reserve')]
         if self.manual_choices is not None:
             for engine, choice in self.manual_choices.items():
                 data = result['engines'][engine]
@@ -105,6 +112,6 @@ class ManualScenarioMixin:
         if stale:
             return stale
         if engine not in ENGINES or profile_id not in (engine+'_solo_full', 'reserve'):
-            return dict(ok=False, message='Выбери обе роли в общем окне и нажми «Применить сценарий».')
+            return dict(ok=False, message='В выборе профиля доступны только Claude Full и Codex Full.')
         return self.apply_scenario({e: ('reserve' if profile_id == 'reserve' else 'full')
                                     if e == engine else None for e in ENGINES}, confirm, revision)
