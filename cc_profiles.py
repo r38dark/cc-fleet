@@ -82,7 +82,11 @@ class NativeProfiles:
             out['codex_settings']={k:settings.get(k) for k in ('mode','access','task_rights','profile','workdir','project')}
             out['codex_runtime']=self.codex.active_settings()
             out['codex_sandbox']=self.codex.status().get('sandbox')
-        if 'claude' in changed:out['claude']=self.claude.capture()
+        if 'claude' in changed:
+            try:out['claude']=self.claude.capture()
+            except ProfileError as exc:
+                if str(exc)!='claude_console_missing':raise
+                out['claude_absent']=True
         return out
 
     def preflight(self, before, after, changed, captured):
@@ -101,7 +105,10 @@ class NativeProfiles:
                          else captured.get('claude',{}).get('bypass',False))
             if not actual_full:raise ProfileError('full_access_not_active')
         if 'claude' in changed:Path(self.claude_work).mkdir(parents=True,exist_ok=True)
-        if 'claude' in changed:self.claude.prepare(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
+        if 'claude' in changed:
+            if captured.get('claude_absent'):
+                if not self.claude_policy(after)['paused']:raise ProfileError('claude_history_unknown')
+            else:self.claude.prepare(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
         if 'codex' in changed and not captured.get('codex_runtime',{}).get('thread_id'):raise ProfileError('codex_history_unknown')
         if after.service and after.service['engine']=='codex' and (after.service['kind']=='emergency' or after.service.get('emergency')):
             plan,error=self.emergency._plan()
@@ -160,12 +167,12 @@ class NativeProfiles:
                 after.until=self.emergency.until() or 0
             if plan['role']!='paused':
                 ok,_=self.ensure_codex()
-                if not ok:raise ProfileError('codex_apply_failed')
+                if not ok:raise ProfileError('codex_resume_locked' if 'занята другим подключением' in _ else 'codex_apply_failed')
                 saved=captured['codex_runtime'];current=self.codex.active_settings()
                 for key in ('model','effort','thread_id'):
                     if saved.get(key) and current.get(key)!=saved[key]:raise ProfileError('codex_'+key+'_changed')
             if plan['role']=='paused':self._codex_pause(True)
-        if 'claude' in changed:self.claude.apply(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
+        if 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
 
     def rollback(self, before, changed, captured):
         self._codex_pause(False)
@@ -182,7 +189,7 @@ class NativeProfiles:
                 ok,_=self.ensure_codex()
                 if not ok:raise ProfileError('rollback_codex_failed')
             if self.plan(before,'codex')['role']=='paused':self._codex_pause(True)
-        if 'claude' in changed:self.claude.apply(captured['claude'],self.claude_policy(before),self.prompt(before,'claude'))
+        if 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(before),self.prompt(before,'claude'))
 
     def interrupt(self,e):
         if e=='codex':self.codex.interrupt()
@@ -228,6 +235,9 @@ class Profiles:
         with self.lock:
             out=self.state.public();out.update(snapshot_ts=self.clock(),transitioning=self.transitioning,updating=self.update_active(),last_error=self.error,availability={e:v['status'] for e,v in self.avail.items()})
             if self.tasks:out['task']=self.tasks.public()
+            if self.pending.exists():
+                recovery=json.loads(self.pending.read_text())
+                out['recovery']=dict(blocked=bool(recovery.get('recovery_blocked')),attempts=recovery.get('recovery_attempts',0))
             for e in ENGINES:
                 out['engines'][e]['applied'] = self.managed[e]
                 out['engines'][e]['emergency_hours'] = 0
@@ -248,18 +258,23 @@ class Profiles:
     def _changed(self,before,after):
         return [e for e in ENGINES if self.native.plan(before,e)!=self.native.plan(after,e)]
 
-    def transition(self,candidate,message,force=None):
+    def transition(self,candidate,message,force=None,recover_blocked=False):
         rotation=getattr(self.native,'ns',{}).get('FLEET_ROTATION')
         with rotation.lock if rotation else nullcontext():
-            return self._transition(candidate,message,force)
+            return self._transition(candidate,message,force,recover_blocked)
 
-    def _transition(self,candidate,message,force=None):
+    def _transition(self,candidate,message,force=None,recover_blocked=False):
         if self.update_active():return dict(ok=False,busy=True,message='Завершается обновление панели. Примени сценарий после проверки.')
+        if self.pending.exists():
+            blocked=json.loads(self.pending.read_text()).get('recovery_blocked')
+            if recover_blocked and blocked:
+                if self.native.busy() or self.tasks and self.tasks.busy():return dict(ok=False,busy=True,message='Дождись завершения текущего ответа.')
+                if not self.recover(manual=True):return dict(ok=False,message=self.error,state=self.public())
+            else:return dict(ok=False,message='Идёт восстановление предыдущего переключения. Дождись завершения.')
         before=self.state;changed=self._changed(before,candidate)
         if force and force not in changed:changed.append(force)
         if not changed:
             self.state=candidate;self.save();return dict(ok=True,message=message,state=self.public())
-        if self.pending.exists():return dict(ok=False,message='Идёт восстановление предыдущего переключения. Дождись завершения.')
         if self.native.busy() or self.tasks and self.tasks.busy():return dict(ok=False,busy=True,message='Сейчас идёт ответ или подтверждённый шаг. Профили можно менять после его завершения.')
         self.transitioning=True;old_managed=dict(self.managed);captured=None
         try:
@@ -270,7 +285,7 @@ class Profiles:
             self.native.apply(before,candidate,changed,captured);self.save();self.pending.unlink();self.error=''
             return dict(ok=True,message=message,state=self.public())
         except Exception as exc:
-            reasons={'full_access_not_active':'Сначала примени Full к выбранной модели, затем включи резерв.','reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.'}
+            reasons={'codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели, затем включи резерв.','reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.'}
             self.error='Переключение отменено. '+reasons.get(str(exc),'Консоль не подтвердила применение профиля; проверь её экран перед повтором.')
             revoked=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active() and self.pending.exists())
             if revoked:
@@ -279,7 +294,8 @@ class Profiles:
             self.state=before;self.managed=old_managed
             if captured and self.pending.exists():
                 try:self.native.rollback(before,changed,captured);self.save();self.pending.unlink()
-                except Exception:self.error+='; требуется восстановление прежней консоли.'
+                except Exception:
+                    self._block_recovery()
             return dict(ok=False,message=self.error,state=self.public())
         finally:self.transitioning=False
 
@@ -291,7 +307,7 @@ class Profiles:
             if not result.get('ok'):return result
             active=[e for e in ENGINES if candidate.manual_choices[e]]
             force=next((e for e in active if not self.managed[e]),None)
-            return self.transition(candidate,'Сценарий применён к консолям.',force)
+            return self.transition(candidate,'Сценарий применён к консолям.',force,recover_blocked=True)
         finally:self.lock.release()
 
     def action(self,e,action,body):
@@ -309,7 +325,7 @@ class Profiles:
             if not result.get('ok'):return result
             message='Настройки резерва сохранены.' if action=='config' else 'Предыдущий сценарий восстановлен.' if action=='stop' else 'Профиль применён к консоли.'
             original=self.state
-            result=self.transition(candidate,message,e if action=='apply' and not self.managed[e] else None)
+            result=self.transition(candidate,message,e if action=='apply' and not self.managed[e] else None,recover_blocked=True)
             if result.get('ok') and action=='delete' and e=='codex':
                 try:ok,_=self.native.bridge.delete_profile(body.get('id'))
                 except Exception:ok=False
@@ -318,17 +334,31 @@ class Profiles:
             return result
         finally:self.lock.release()
 
-    def recover(self):
-        if not self.pending.exists():return
+    def _block_recovery(self):
+        raw=json.loads(self.pending.read_text());raw['recovery_blocked']=True;atomic(self.pending,raw)
+        self.error='Восстановление остановлено после ошибки, чтобы не перезапускать консоль по кругу. После освобождения беседы повтори выбор профиля.'
+
+    def recover(self,manual=False):
+        if not self.pending.exists():return True
         raw=json.loads(self.pending.read_text());before=ProfileState.from_data(raw['before'],self.clock)
+        if raw.get('recovery_blocked') and not manual:
+            self.error='Автоматические повторы восстановления остановлены. После освобождения беседы повтори выбор профиля.'
+            return False
         forward=raw.get('recover_to')=='after';self.state=ProfileState.from_data(raw['after'],self.clock) if forward else before
         self.managed.update({e:True for e in raw['changed']} if forward else raw.get('managed') or {})
-        if self.native.busy():return
+        if self.native.busy():return False
+        # Persist the attempt before touching a process; a crash cannot restart
+        # the same failed recovery indefinitely on the next panel boot.
+        if raw.get('recovery_attempts',0)>=1 and not manual:
+            self._block_recovery();return False
+        raw['recovery_attempts']=raw.get('recovery_attempts',0)+1;atomic(self.pending,raw)
         self.transitioning=True
         try:
             if forward:self.native.apply(before,self.state,raw['changed'],raw['captured'])
             else:self.native.rollback(before,raw['changed'],raw['captured'])
-            self.save();self.pending.unlink();self.error=''
+            self.save();self.pending.unlink();self.error='';return True
+        except Exception:
+            self._block_recovery();return False
         finally:self.transitioning=False
 
     def tick(self):

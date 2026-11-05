@@ -86,7 +86,9 @@ def launch_args(binary, settings, sandbox, approval, mcp=()):
         args.append('resume')
         args.append(tid)
         args.append('--all')
-    args.extend(['--sandbox', sandbox, '--ask-for-approval', approval])
+    # The managed TUI owns its runtime. A shared daemon can retain the thread
+    # after its screen exits and prevent the replacement TUI from resuming it.
+    args.extend(['--no-daemon', '--sandbox', sandbox, '--ask-for-approval', approval])
     if settings.get('cwd'):
         args.extend(['--cd', settings['cwd']])
     if settings.get('model'):

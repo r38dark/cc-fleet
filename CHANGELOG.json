@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.25",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Защита от циклического восстановления",
+        "p": [
+          "Управляемая консоль Codex получает собственный процесс без общего фонового сервера",
+          "Неудачный откат останавливается вместо бесконечных перезапусков; выбор профиля позволяет повторить восстановление",
+          "Готовность проверяется по текущему экрану; отсутствие остановленной Claude не блокирует Codex"
+        ]
+      },
+      "en": {
+        "t": "Bounded console recovery",
+        "p": [
+          "Managed Codex TUI owns its runtime without the shared daemon",
+          "Failed recovery stops automatic restarts and can be retried by an explicit profile choice",
+          "Readiness uses the visible terminal frame; an absent paused Claude does not block Codex"
+        ]
+      }
+    },
+    {
       "v": "1.28.24",
       "date": "2026-11-05",
       "ru": {

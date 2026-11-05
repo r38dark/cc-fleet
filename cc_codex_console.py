@@ -518,12 +518,20 @@ def verify_ready():
         return False, 'Консоль закрылась при запуске.'
     try:
         with open(_log(), 'rb') as stream:
-            stream.seek(0, os.SEEK_END)
-            stream.seek(max(0, stream.tell()-128*1024))
-            visible = cc_codex._strip(stream.read().decode('utf-8', 'replace')).lower()
+            raw = stream.read()
+        if pyte is not None:
+            cols, rows = _dims(_pid())
+            frame = pyte.Screen(cols, rows)
+            pyte.ByteStream(frame).feed(raw)
+            visible = '\n'.join(frame.display).lower()
+        else:
+            visible = cc_codex._strip(raw.decode('utf-8', 'replace')).lower()
     except OSError:
         return False, 'Нет подтверждения готовности консоли.'
-    blockers = ('this conversation is open in another app', 'failed to load',
+    visible = ' '.join(visible.split())
+    if 'this conversation is open in another app' in visible:
+        return False, 'Беседа занята другим подключением Codex. Повторное подключение требует освобождения беседы.'
+    blockers = ('failed to load',
                 'error loading', 'sign in to', 'log in to', 'conversation not found',
                 'failed to resume', 'refresh token has already been used')
     if any(text in visible for text in blockers):
