@@ -5,6 +5,13 @@ ENGINES = ('claude', 'codex')
 ROLES = (None, 'full', 'reserve', 'orchestrator', 'executor')
 
 
+def reserve_access(base, engine):
+    """Keep existing Full; entering reserve never grants it to a paired/paused role."""
+    choices = base.get('manual_choices')
+    full = choices is None or choices.get(engine) == 'full'
+    return 'full' if full and not base.get('leader') and base['selected'][engine] == engine+'_solo_full' else 'write'
+
+
 def validate_choices(choices):
     if not isinstance(choices, dict) or set(choices) != set(ENGINES):
         return False, 'Выбери роли Claude и Codex.'
@@ -56,6 +63,7 @@ class ManualScenarioMixin:
         super()._reconcile()
         if self.service and self.service != previous:
             engine = self.service['engine']
+            self.service['access'] = reserve_access(self.restore, engine)
             self.manual_choices = {e: 'reserve' if e == engine else None for e in ENGINES}
 
     def public(self):
@@ -92,15 +100,17 @@ class ManualScenarioMixin:
                 return dict(ok=False, confirmation_required=True, word='подтверждаю',
                             message='Подтверди весь сценарий: вторая модель не будет участвовать.')
             previous = copy.deepcopy(self.restore if self.service and self.restore else self._base())
+            reserve = next((e for e in ENGINES if choices[e] == 'reserve'), None)
+            access = (self.service.get('access', 'write') if self.service and self.service['engine'] == reserve
+                      else 'write' if self.service else reserve_access(previous, reserve)) if reserve else None
             self.manual_choices = copy.deepcopy(choices)
             self.leader = next((e for e in ENGINES if choices[e] == 'orchestrator'), None)
-            reserve = next((e for e in ENGINES if choices[e] == 'reserve'), None)
             self.selected = {e: choices[e] if choices[e] in ('orchestrator', 'executor')
                              else self.last_solo[e] for e in ENGINES}
             for e in ENGINES:
                 if choices[e] == 'full':
                     self.selected[e] = self.last_solo[e] = e+'_solo_full'
-            self.service = dict(engine=reserve, kind='reserve', source='manual', emergency=False) if reserve else None
+            self.service = dict(engine=reserve, kind='reserve', source='manual', emergency=False, access=access) if reserve else None
             self.restore = previous if reserve else None
             self.until = 0
             self.auto_blocked.update(e for e in ENGINES if not self.availability[self.other(e)])

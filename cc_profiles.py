@@ -49,7 +49,9 @@ class NativeProfiles:
     def plan(self, state, e):
         data=state.public()['engines'][e];profile=next(p for p in state.definitions(e) if p['id']==data['base_selected'])
         service=state.service if state.service and state.service['engine']==e else None
-        access='full' if service and (service['kind']=='emergency' or service.get('emergency')) else 'write' if service else profile['access']
+        access=profile['access']
+        if service:
+            access='full' if service['kind']=='emergency' or service.get('emergency') or service.get('access')=='full' else 'write'
         mode='self' if service or data['role']=='executor' else profile['mode']
         return dict(role=data['role'],profile=data['selected'],base=data['base_selected'],access=access,mode=mode,task_rights=profile.get('task_rights','dev'),leader=state.leader,service=copy.deepcopy(service))
 
@@ -61,7 +63,9 @@ class NativeProfiles:
             out=self.manager.exchange(e)/'outbox/task.md'
             return prefix+f'Ты ведущий, {op} исполнитель. Проект самостоятельно не изменяй. Один проверяемый шаг запиши в {out}; первая строка права: чтение / дев / полные. Шаг уходит исполнителю только после подтверждения человека в балансере. Не вызывай второго исполнителя самостоятельно и не создавай встречные связки. После получения результата проверь его относительно цели и подготовь следующий шаг либо сообщи итог.'
         if data['role']=='executor':return prefix+f'Ты исполнитель {op}. Выполняй только подтверждённый шаг и его ограничения. Не делегируй задачу ведущему или другим агентам. Верни проверенный результат и проверки.'
-        if data['role']=='reserve':return prefix+'Другая сторона на паузе. Работай вместе с Notion-агентом через его четыре инструмента. Передавай только нужные фрагменты без секретов; изменения после подтверждения человека, результат агента проверь сам.'
+        if data['role']=='reserve':
+            cause=op+(' отключён человеком вручную' if state.service.get('source')=='manual' else ' недоступен по подтверждённым данным лимитов')
+            return prefix+self.notion.reserve_note(self.notion.CONFIG() or {},cause)
         return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. Другой исполнитель и Notion-агент не используются. Согласование изменений с человеком сохраняется; секреты не выводи.'
 
     def claude_policy(self, state):
@@ -77,6 +81,7 @@ class NativeProfiles:
             settings=self.bridge.load()
             out['codex_settings']={k:settings.get(k) for k in ('mode','access','task_rights','profile','workdir','project')}
             out['codex_runtime']=self.codex.active_settings()
+            out['codex_sandbox']=self.codex.status().get('sandbox')
         if 'claude' in changed:out['claude']=self.claude.capture()
         return out
 
@@ -90,6 +95,11 @@ class NativeProfiles:
                 if directory.is_symlink():raise ProfileError('exchange_symlink_rejected')
             if e=='codex':self.ns['cc_codex'].own(str(out))
         if after.service and after.service['kind']=='reserve' and not self.reserve_ready():raise ProfileError('reserve_not_ready')
+        if after.service and after.service.get('access')=='full' and after.service!=before.service:
+            engine=after.service['engine']
+            actual_full=(captured.get('codex_settings',{}).get('access')=='full' and captured.get('codex_sandbox')=='danger-full-access' if engine=='codex'
+                         else captured.get('claude',{}).get('bypass',False))
+            if not actual_full:after.service['access']='write'
         if 'claude' in changed:Path(self.claude_work).mkdir(parents=True,exist_ok=True)
         if 'claude' in changed:self.claude.prepare(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
         if 'codex' in changed and not captured.get('codex_runtime',{}).get('thread_id'):raise ProfileError('codex_history_unknown')

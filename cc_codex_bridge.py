@@ -279,7 +279,7 @@ def active_profile(s):
     """Выбранный профиль, если настройки всё ещё ему соответствуют; иначе \"\" (набор правили вручную)."""
     cur = s.get("profile") or ""
     if cur == RESERVE_ID:
-        return cur if (s["mode"], s["access"]) == (RESERVE_DEF["mode"], RESERVE_DEF["access"]) else ""
+        return cur if s['mode']=='self' and s['access'] in ('write','full') else ''
     if cur == 'executor':
         return cur if (s['mode'],s['access'],s['task_rights']) == ('self','write','dev') else ''
     for pid, d in BUILTIN_PROFILES:
@@ -818,6 +818,8 @@ def ensure_workspace(s=None):
     path = os.path.join(ws, "AGENTS.md")
     current = s or load()
     template = AGENTS_SELF_FULL_TEXT if active_profile(current) == "codex_solo_full" else AGENTS_SELF_TEXT
+    if active_profile(current) == RESERVE_ID and current['access']=='full':
+        template = AGENTS_RESERVE_FULL_TEXT
     text = AGENTS_MARK + "\n" + template.format(project=project_dir(current) or "(не задан)")
     text += "\n" + RESERVE_NOTE() + "\n" + image_output_note(current) + "\n"
     try:
@@ -856,6 +858,16 @@ Claude и Notion-агент не используются. Выполняй ра
 Полный доступ Codex не выдаёт root, ключи или права сервера и не отменяет согласование изменений с человеком.
 Секреты не выводи в ответы, код и журналы; пароли и ключи в чате не запрашивай.
 Отвечай коротко и по делу; сделал — скажи что и как проверил.
+"""
+
+AGENTS_RESERVE_FULL_TEXT = """# Codex Full + Notion — резерв
+
+Ты общаешься с человеком через Telegram и консоль. Проект: {project}
+Сохраняются права Full: читай, изменяй файлы и запускай команды в пределах прав пользователя ОС и подтверждённой задачи.
+Claude на паузе. Работай с выбранным Notion-агентом по инструкции резерва ниже, проверяй его результат самостоятельно.
+Полный доступ не выдаёт дополнительных прав ОС и не отменяет согласование выхода за рамки задачи.
+Секреты не передавай агенту и не выводи в ответы, код и журналы; пароли и ключи в чате не запрашивай.
+Отвечай коротко и по делу; сообщай, что и как проверено.
 """
 
 

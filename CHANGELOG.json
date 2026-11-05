@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.22",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Full с резервом Notion",
+        "p": [
+          "Включение резерва сохраняет уже действующие права Full у Claude и Codex",
+          "Ограниченные и прежние профили резерва не получают дополнительные права",
+          "Единая инструкция с выбранным агентом, четырьмя инструментами и проверкой результата"
+        ]
+      },
+      "en": {
+        "t": "Full with Notion reserve",
+        "p": [
+          "Reserve preserves existing Full access for Claude and Codex",
+          "Restricted and legacy reserve sessions receive no implicit access upgrade",
+          "Shared prompt identifies the configured agent and verifies its results"
+        ]
+      }
+    },
+    {
       "v": "1.28.21",
       "date": "2026-11-05",
       "ru": {

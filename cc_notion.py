@@ -311,6 +311,7 @@ def codex_args():
         return []
     tools = ",".join('"%s"' % t for t in CODEX_TOOLS)
     return ["-c", 'mcp_servers.notion.url="%s"' % MCP_URL,
+            "-c", 'mcp_servers.notion.enabled=true',
             "-c", "mcp_servers.notion.enabled_tools=[%s]" % tools,
             "-c", 'mcp_servers.notion.default_tools_approval_mode="approve"']
 
@@ -323,16 +324,22 @@ def codex_note(conf=None):
     if not active():
         return ""
     conf = CONFIG() if conf is None else conf
-    name = str(((conf or {}).get("name")) or "").strip()[:80] or "Notion-агент"
     cause = ("Claude отключён человеком вручную" if _st().get("why") == "manual"
              else "Claude недоступен, лимиты кончились")
+    return reserve_note(conf, cause)
+
+
+def reserve_note(conf, cause):
+    """Shared native prompt: configured agent, four tools and the reserve contract."""
+    name = str(((conf or {}).get("name")) or "").strip()[:80] or "Notion-агент"
     return ("[РЕЗЕРВ: " + cause + " — работаешь ты вместе с Notion-агентом «%s». "
             "Инструменты агента: notion-search-agents (найди его по имени, scope=workspace), notion-spawn-session (поставить задачу: "
             "agent_url + initial_message), notion-wait-session (ждать ответ, до 60 с, повторяй пока не готов), "
             "notion-send-message-to-session (дослать). Других инструментов Notion у тебя нет, get_tool_access вызывать не нужно. "
             "Агент видит ТОЛЬКО присланный текст: ни сервера, ни файлов. Присылай ему нужные куски кода (50–150 строк) и чёткое задание, "
             "секреты, ключи и пароли не присылай никогда. Результат проси готовым текстом или патчем. Внедряй сам и обязательно проверяй "
-            "(тесты, запуск, чтение результата): ответ агента на веру не принимай. Любое изменение — только после «да» человека; "
+            "(тесты, запуск, чтение результата): ответ агента на веру не принимай. Изменения выполняй в пределах уже подтверждённой задачи; "
+            "для выхода за её рамки сначала получи «да» человека. Для передачи файлов используй архив в base64 с хэшами, проверяй целостность и синтаксис до применения. "
             "коротко говори человеку, что и зачем отправил агенту и что получил.]") % name
 
 

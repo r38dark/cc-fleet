@@ -464,12 +464,13 @@ class ReserveTick(unittest.TestCase):
         self.conf["reserve"] = {"manual": True}
         self.run_for(60)
         a = N.codex_args()
-        self.assertEqual(a[0::2], ["-c", "-c", "-c"])
+        self.assertEqual(a[0::2], ["-c", "-c", "-c", "-c"])
         self.assertEqual(a[1], 'mcp_servers.notion.url="%s"' % N.MCP_URL)
         # открыты ровно четыре инструмента агента, ничего лишнего, и без вопроса на каждый вызов
-        self.assertEqual(a[3], "mcp_servers.notion.enabled_tools=[%s]" % ",".join('"%s"' % t for t in N.CODEX_TOOLS))
+        self.assertEqual(a[3], 'mcp_servers.notion.enabled=true')
+        self.assertEqual(a[5], "mcp_servers.notion.enabled_tools=[%s]" % ",".join('"%s"' % t for t in N.CODEX_TOOLS))
         self.assertEqual(len(N.CODEX_TOOLS), 4)
-        self.assertEqual(a[5], 'mcp_servers.notion.default_tools_approval_mode="approve"')
+        self.assertEqual(a[7], 'mcp_servers.notion.default_tools_approval_mode="approve"')
         note = N.codex_note()
         self.assertIn("Helper", note)
         self.assertNotIn("agent://", note)  # ссылка агента в текст сообщения не попадает
