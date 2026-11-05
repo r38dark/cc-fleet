@@ -972,7 +972,7 @@ var bar=document.createElement('div');bar.id='naiAgents';bar.className='nai-ag';
 bar.innerHTML=AGS.map(function(a){return '<button type="button" class="nai-seg s-off" data-ag="'+a[0]+'"'+(a[0]==='notion'?' id="naiBtn"':'')+'><span class="nai-dot"></span><span class="nai-nm"><span class="nai-full">'+a[1]+'</span><span class="nai-short">'+a[2]+'</span></span><span class="nai-st"></span></button>'}).join('');
 var btn=bar.querySelector('#naiBtn'),LEVELS=['','nost','nost short','nost short nosub','nost short nosub sm','nost short nosub sm xs','nost short nosub sm xs mini'];
 var banner=document.createElement('div');banner.className='nai-banner';banner.hidden=true;
-banner.innerHTML='<span class="nai-msg"></span><span class="nai-acts"><button type="button" class="nai-stepbtn" hidden>Шаг ждёт подтверждения</button><button type="button" class="nai-offbtn">Выключить</button></span>';
+banner.innerHTML='<span class="nai-msg"></span><span class="nai-acts"><button type="button" class="nai-stepbtn" hidden>Посмотреть шаг</button></span>';
 function place(){var rf=document.getElementById('rfBtn');if(rf&&rf.parentNode){rf.parentNode.insertBefore(bar,rf)}else{bar.style.cssText='position:fixed;left:12px;bottom:12px;z-index:9999';document.body.appendChild(bar)}
  var h=document.querySelector('.hdr');if(h&&h.parentNode){h.parentNode.insertBefore(banner,h.nextSibling)}else{document.body.insertBefore(banner,document.body.firstChild)}}
 function toast(t){var el=document.querySelector('.nai-toast');if(!el){el=document.createElement('div');el.className='nai-toast';document.body.appendChild(el)}el.textContent=t;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){el.hidden=true},5000)}
@@ -983,10 +983,10 @@ function wrapped(){var h1=document.getElementById('h1'),hdr=document.querySelect
  return b.top>=a.bottom-2||(l&&r&&l.getBoundingClientRect().right>r.right+1)}
 function fit(){var cl=document.documentElement.classList;for(var i=0;i<LEVELS.length;i++){var lv=LEVELS[i];bar.className='nai-ag'+(lv?' '+lv:'');cl.toggle('nai-nosub',lv.indexOf('nosub')>=0);if(!wrapped())break}}
 function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});btn.disabled=busy;fit()}
-function paint(){var on=!!(st&&st.active),f=orch()?names[st.follower]:'';paintAgents();banner.hidden=!on;
- var msg=f?'🤖 <b>Работает Notion AI → '+f+'.</b> '+f+' выполняет шаги после твоего подтверждения. Пиши в общий чат Telegram.':'🤖 <b>Работает Notion AI.</b> Claude и Codex на паузе. Пиши в общий чат Telegram.';
- var s=orch()&&st.step;if(s&&(s.status==='approved'||s.status==='running'))msg+=' ⏳ '+esc(names[s.follower]||'')+' выполняет шаг.';
- banner.querySelector('.nai-msg').innerHTML=msg;banner.querySelector('.nai-stepbtn').hidden=!pending();
+// [notion-ai] Баннер только для шага: ждёт подтверждения или выполняется. Состояние агентов — в блоке шапки.
+function paint(){var f=orch()?names[st.follower]:'',s=orch()&&st.step,pend=pending(),run=!!(s&&(s.status==='approved'||s.status==='running'));paintAgents();banner.hidden=!(pend||run);
+ var msg=pend?'🧩 <b>Шаг Notion AI → '+esc(f)+' ждёт подтверждения.</b> Подтверди здесь или кнопкой в Telegram.':run?'⏳ <b>'+esc(names[s.follower]||f)+' выполняет шаг Notion AI.</b> Результат придёт в Telegram.':'';
+ banner.querySelector('.nai-msg').innerHTML=msg;banner.querySelector('.nai-stepbtn').hidden=!pend;
  clearTimeout(timer);timer=setTimeout(load,s&&['pending','approved','running'].indexOf(s.status)>=0?4000:10000)}
 function closePop(){if(pop){pop.remove();pop=null}}
 function openPop(html,wide,anchor){closePop();pop=document.createElement('div');pop.className='nai-pop'+(wide?' wide':'');pop.setAttribute('role','dialog');pop.innerHTML=html;document.body.appendChild(pop);
@@ -1004,7 +1004,6 @@ function send(path,body){busy=true;paint();toast(path==='on'?'Включаю п�
 window.naiReload=load;
 bar.addEventListener('click',function(e){var s=e.target.closest('.nai-seg');if(!s)return;e.preventDefault();e.stopPropagation();if(s.dataset.ag==='notion'){if(!busy)ask()}else agentPop(s.dataset.ag,s)});
 var fitT=0;window.addEventListener('resize',function(){clearTimeout(fitT);fitT=setTimeout(fit,120)});try{document.fonts&&document.fonts.ready.then(fit)}catch(_){}
-banner.querySelector('.nai-offbtn').addEventListener('click',function(e){e.stopPropagation();if(!busy){st=st||{};st.active=true;ask()}});
 banner.querySelector('.nai-stepbtn').addEventListener('click',function(e){e.stopPropagation();if(!busy)showStep()});
 document.addEventListener('click',function(e){if(pop&&!pop.contains(e.target)&&!bar.contains(e.target))closePop()});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closePop()});
