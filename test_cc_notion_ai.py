@@ -265,19 +265,85 @@ class TestGeneralSettings(unittest.TestCase):
     """«Общие настройки»: у каждого агента главный блок на виду, остальное под спойлером; инструкции полные."""
     def test_blocks_for_every_agent_and_full_instructions(self):
         ui = M.CFG_UI
-        for k in ('naiGenClaude', 'naiGenCodex', 'naiGenTg', 'naiTgForm', 'naiTgSave', 'naiCfgSave', 'naiCfgTg', 'naiCfgVoice', 'naiKeyAdd', 'naiInstr'):
+        for k in ('naiGenClaude', 'naiGenCodex', 'naiGenTg', 'naiPop', 'naiGenNaiGear', 'naiGenTgNai', 'naiCfgSave', 'naiCfgTg', 'naiCfgVoice', 'naiKeyAdd', 'naiInstr'):
             self.assertIn(k, ui)
         for k in ('/telegram:configure', '/telegram:access pair', '@BotFather', '@userinfobot', 'Получить ссылку для входа', 'по коду устройства'):
             self.assertIn(k, ui)
         self.assertEqual(ui.count('Подробно: что, где, как и почему'), 4)  # Claude, Codex, Notion AI, Telegram
 
-    def test_saves_are_split_between_notion_and_telegram_blocks(self):
+    def test_one_save_sends_only_changed_fields(self):
         ui = M.CFG_UI
-        main = ui[ui.index('sv.onclick'):ui.index('var ts=')]
-        self.assertNotIn('tg_chat_id', main); self.assertIn("'chat_url','naiCfgUrl'", main)
-        tg = ui[ui.index('ts.onclick'):ui.index('var ck=')]
-        self.assertIn("'tg_chat_id','naiCfgTg'", tg); self.assertIn("'voice','naiCfgVoice'", tg)
+        sv = ui[ui.index("var sv=$i('naiCfgSave')"):]
+        sv = sv[:sv.index('};')]
+        for k in ("'chat_url','naiCfgUrl'", "'tg_chat_id','naiCfgTg'", "'voice','naiCfgVoice'", "'console_tab','naiCfgTab'"):
+            self.assertIn(k, sv)
+        self.assertIn('v!==was', ui)            # уходят только изменённые поля
         self.assertIn('if(d.cfg)data=d', ui)  # ответ без cfg не стирает поля
 
     def test_agent_blocks_only_in_general_view(self):
         self.assertIn('#scrim:not([data-view="general"]) .nai-gen.claude', M.CFG_UI)
+
+
+
+class TestUnifiedMenus(unittest.TestCase):
+    """[notion-ai] ⚙ Claude, Codex и Notion AI: «Переключение и лимиты» → «Модели в быстром меню» → «Свои настройки …»; сроки в карточках; полоса строками."""
+    T = ('Переключение и лимиты', 'Модели в быстром меню')
+
+    def order(self, text, ids):
+        pos = [text.index(k) for k in ids]
+        self.assertEqual(pos, sorted(pos), ids)
+
+    def test_notion_ai_popup_three_sections_in_order(self):
+        ui = M.CFG_UI
+        self.order(ui, ('id="naiPopLim"', 'id="naiPopModels"', 'id="naiPopOwn"'))
+        self.order(ui, self.T + ('Свои настройки Notion AI',))
+        self.assertIn("$i('naiPopOwn').appendChild(box)", ui)  # форма настроек — в «Свои настройки»
+        self.assertIn('naiPopCheck', ui)
+        self.assertIn('hid.indexOf(m.label)<0||m.label===cur', M.UI)  # плитка: без галочки не показываем, кроме выбранной
+
+    def test_model_hidden_saved_and_validated(self):
+        d = tempfile.mkdtemp(); old = (M.CFG_FILE, M._run)
+        M.CFG_FILE = d + '/notion_ai.json'; M._run = lambda *a, **k: (0, '')
+        try:
+            ok, _, c = M.save_cfg({'model_hidden': [' GPT-6 ', 'Auto', 'Auto', '', 5]})
+            self.assertTrue(ok); self.assertEqual(c['model_hidden'], ['Auto', 'GPT-6'])
+            ok, m, _ = M.save_cfg({'model_hidden': 'Auto'}); self.assertFalse(ok); self.assertIn('список', m)
+            self.assertEqual(M.load_cfg()['model_hidden'], ['Auto', 'GPT-6'])
+            old_d = M._delegate
+            def boom(*a, **k): raise OSError('down')
+            M._delegate = boom
+            try:
+                self.assertEqual(M.model_public()['hidden'], ['Auto', 'GPT-6'])
+            finally:
+                M._delegate = old_d
+        finally:
+            M.CFG_FILE, M._run = old
+
+    def test_claude_and_codex_menus_same_scheme(self):
+        import cc_overview as O
+        js = O.JS
+        self.order(js, ("autoGroup.id='fleetClaudeLimits'", "modelGroup.id='fleetClaudeModels'", "claudeOwn.id='fleetClaudeOwn'"))
+        self.order(js, ("codexThresholds.id='fleetCxLimits'", "catalogGroup.id='fleetCxModels'", "codexOwn.id='fleetCodexOwn'"))
+        for k in self.T + ('Свои настройки Claude', 'Свои настройки Codex', "post('config',{threshold", 'weekly_cap', 'codex_hidden'):
+            self.assertIn(k, js, k)
+        self.assertIn('#scrim:not([data-view="general"]) .fleet-common-settings{display:none}', O.CSS)  # в ⚙ Claude нет дублей общих настроек
+
+    def test_cards_show_subscription_and_login_dates(self):
+        import cc_overview as O
+        js = O.JS
+        self.assertIn('function paintCardDates(card,a,engine)', js)
+        for k in ('Подписка до', 'Вход до', 'продлевается сам', 'renewal_next', 'login_expires'):
+            self.assertIn(k, js, k)
+
+    def test_live_strip_rows_on_subgrid(self):
+        import cc_overview as O
+        css = O.CSS
+        self.assertIn('grid-template-columns:subgrid', css)
+        self.assertNotIn('@media(max-width:1500px){.fleet-live-summary', css)
+
+    def test_limits_config_weekly_cap_and_codex_hidden(self):
+        import cc_limits as L
+        src = open(L.__file__, encoding='utf-8').read()
+        self.assertIn('if not 50 <= cap <= 100:', src)
+        self.assertIn('snap["config"]["codex_hidden"]', src)
+        self.assertIn('!hid.includes(m.id)', L.PAGE)

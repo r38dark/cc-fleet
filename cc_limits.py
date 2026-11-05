@@ -2815,6 +2815,7 @@ class H(BaseHTTPRequestHandler):
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
             snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
             snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
+            snap["config"]["codex_hidden"] = list(cfg().get("codex_hidden") or [])  # [notion-ai] модели Codex, убранные из быстрого меню
             snap["model"] = model_info()
             snap["notion"] = cc_notion.public()
             return self._send(200, snap)
@@ -3152,6 +3153,16 @@ class H(BaseHTTPRequestHandler):
                 c["weekly_pause"] = body["weekly_pause"]
             if isinstance(body.get("profile_backup"), bool):
                 c["profile_backup"] = body["profile_backup"]
+            if "weekly_cap" in body:  # [notion-ai] «Неделя, %» в «⚙ Настройки Claude» → «Переключение и лимиты»
+                try:
+                    cap = int(body["weekly_cap"])
+                except (TypeError, ValueError):
+                    cap = 0
+                if not 50 <= cap <= 100:
+                    return self._send(200, {"ok": False, "message": "Неделя: число от 50 до 100 %"})
+                c["weekly_cap"] = cap
+            if isinstance(body.get("codex_hidden"), list):  # [notion-ai] галочки «в быстром меню» в «⚙ Настройки Codex»
+                c["codex_hidden"] = sorted({m.strip()[:80] for m in body["codex_hidden"] if isinstance(m, str) and m.strip()})[:200]
             if "enabled_models" in body:
                 # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
                 # хотя бы одна модель должна остаться доступной для переключения
@@ -3180,6 +3191,7 @@ class H(BaseHTTPRequestHandler):
             UPDATER.kick()  # сменили режим обновлений — пусть петля пересмотрит сразу
             return self._send(200, {"ok": True, "autoswitch": c.get("autoswitch"),
                                     "threshold": c.get("threshold"), "optimize": c.get("optimize"),
+                                    "weekly_cap": c.get("weekly_cap", 99), "codex_hidden": list(c.get("codex_hidden") or []),
                                     "model": model_info()})
         if u.path == "/api/models/candidates":
             # add: {id: показываемое_имя} — принять кандидата в оборот;
@@ -3944,7 +3956,7 @@ const I18N={
   loading:'Загрузка…',
   autoLbl:thr=>'Авто-переключение при <span id="thrLbl">'+thr+'</span>% сессии',
   optLbl:'Оптимизация переключений лимитов',
-  optDisabledTitle:'Неактивно: включена оптимизация лимитов',
+  optDisabledTitle:'Не действует: включён «Автовыбор» в «Управление аккаунтами» — он сам выбирает аккаунт по этим порогам',
   refresh:'Обновить сейчас',
   updated:'Обновлено',
   active:'АКТИВНЫЙ',
@@ -4145,7 +4157,7 @@ const I18N={
   modelsBtnTitle:'Настройки',
   modelsTitle:'Настройки',
   modelsHdr:'Модели',
-  modelsSub:'Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»',
+  modelsSub:'Отмеченные модели показываются в быстром меню плитки Claude. Применяется сразу.',
   tzMinusTitle:'Шрифт консоли меньше',tzPlusTitle:'Шрифт консоли крупнее',tzResetTitle:'Размер шрифта консоли — клик вернёт 100%',
   fsTitle:'Только консоль, во весь экран',fsExitTitle:'Вернуться к обычному виду (Esc)',dockTab:'Аккаунты',dockSes:'Сессия 5ч',dockWeek:'Неделя',autoHdr:'Авто-переключение',optHint:'Рулит сервис, ручные кнопки блокируются',
   modelsDone:'Готово',
@@ -4413,7 +4425,7 @@ const I18N={
   loading:'Loading…',
   autoLbl:thr=>'Auto-switch at <span id="thrLbl">'+thr+'</span>% of session',
   optLbl:'Limit optimization',
-  optDisabledTitle:'Inactive: limit optimization is on',
+  optDisabledTitle:'Inactive: Auto-pick in Account management chooses the account by these thresholds',
   refresh:'Refresh now',
   updated:'Updated',
   active:'ACTIVE',
@@ -4614,7 +4626,7 @@ const I18N={
   modelsBtnTitle:'Settings',
   modelsTitle:'Settings',
   modelsHdr:'Models',
-  modelsSub:'Pick which ones show as quick-switch buttons — applies instantly, no Save button',
+  modelsSub:'Checked models show in the Claude tile quick menu. Applies instantly.',
   tzMinusTitle:'Smaller console font',tzPlusTitle:'Larger console font',tzResetTitle:'Console font size — click to reset to 100%',
   fsTitle:'Console only, full screen',fsExitTitle:'Back to the normal view (Esc)',dockTab:'Accounts',dockSes:'Session 5h',dockWeek:'Week',autoHdr:'Auto-switch',optHint:'The service decides, manual buttons are blocked',
   modelsDone:'Done',
@@ -6151,7 +6163,8 @@ function cxQRender(){
  const mrow=(id,name,on)=>`<button type="button" class="cxqm${on?' on':''}" role="radio" aria-checked="${on}" data-m="${acctEsc(id)}"><i class="cxqr"></i><span>${acctEsc(name)}</span></button>`;
  let ml=mrow('',tr('cxDefault')+' · '+c.def.name,!a.model);
  if(a.model&&!c.known)ml+=mrow(a.model,a.model,true);
- ml+=c.ms.map(m=>mrow(m.id,m.name,c.known&&m.id===a.model)).join('');
+ const hid=(typeof lastSnap!=='undefined'&&lastSnap&&lastSnap.config&&lastSnap.config.codex_hidden)||[];  // [notion-ai] без галочки «в быстром меню» — не показываем (кроме выбранной)
+ ml+=c.ms.filter(m=>!hid.includes(m.id)||(c.known&&m.id===a.model)).map(m=>mrow(m.id,m.name,c.known&&m.id===a.model)).join('');
  const erow=(e,label,on)=>`<button type="button" class="cxqe${on?' on':''}" role="radio" aria-checked="${on}" data-e="${acctEsc(e)}">${acctEsc(label)}</button>`;
  const el=c.efs.length?erow('',tr('cxDefault')+(c.mod.default_effort?' · '+c.mod.default_effort:''),!c.ef)+c.efs.map(e=>erow(e,e,e===c.ef)).join(''):'';
  q.innerHTML=`<div class="cxqh"><span>${tr('cxModelTip')}</span>${multi?`<span class="cxqa">${acctEsc(a.label||a.email||a.slot)}</span>`:''}</div>

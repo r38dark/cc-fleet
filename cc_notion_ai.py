@@ -974,9 +974,9 @@ html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{gr
 .nai-live-note b{font-size:12px;font-weight:600;color:var(--txt)}.nai-live-note span{font-size:11px;color:var(--fleet-muted);line-height:1.35}
 .fleet-live-account.notion .mirror-profile-button{border-color:color-mix(in srgb,#a78bfa 40%,var(--fleet-line))}
 .fleet-live-account.notion .mirror-profile-button .cxbtnname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.fleet-compact-account.notion{--live-accent:#a78bfa;border-left:1px solid var(--fleet-line);padding-left:18px}
-.fleet-compact-account.notion .nai-cs{color:var(--fleet-muted)}
-@media(max-width:1500px){.fleet-compact-account.notion{border-left:0;padding-left:0;padding-top:8px;border-top:1px solid var(--fleet-line)}}
+.fleet-compact-account.notion{--live-accent:#a78bfa}
+.fleet-compact-account.notion .fleet-compact-window[data-window="model"]{grid-column:2}.fleet-compact-account.notion .fleet-compact-window[data-window="effort"]{grid-column:3}
+.fleet-compact-account.notion .nai-cs{grid-column:4;color:var(--fleet-muted);overflow:hidden;text-overflow:ellipsis}
 @media(max-width:640px){html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{grid-column:1/-1;grid-row:3}}
 #naiModelQ{--fleet-accent:#a78bfa;--fleet-accent-soft:#2a2346;overflow:auto}
 #naiModelQ .cxqm small{margin-left:auto;font-size:10px;color:var(--fleet-muted);white-space:nowrap}
@@ -1060,7 +1060,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 // [notion-ai] Карточка «Notion AI» в «Активных аккаунтах»: модель и effort постоянного чата. Лимитов и времени у Notion AI нет.
 (function(){try{
 var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),tok=(typeof TOKEN!=='undefined'?TOKEN:''),api=base+'notion-ai/model';
-var st=null,md=null,tile=null,compact=null,q=null,job='',jobT=0,msg='',bad=false,loading=false,asked=0;
+var st=null,md=null,tile=null,compact=null,q=null,job='',jobT=0,msg='',bad=false,loading=false,asked=0,hid=[];
 var ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>';
 function $i(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -1071,7 +1071,7 @@ function agent(){var a=st&&st.agents&&st.agents.notion;if(a)return a;var on=!!(s
 function build(){
  if(tile)return true;var rows=$i('fleetLiveRows'),sum=$i('fleetActiveSummary');if(!rows||!sum)return false;
  compact=document.createElement('span');compact.className='fleet-compact-account notion';compact.dataset.engine='notion';
- compact.innerHTML='<strong class="fleet-compact-name">Notion AI</strong><span class="fleet-compact-window"><span class="fleet-compact-label">Модель</span><b class="fleet-compact-used nai-cm">—</b></span><span class="fleet-compact-window"><span class="fleet-compact-label">Effort</span><b class="fleet-compact-used nai-ce">—</b></span><span class="fleet-compact-range nai-cs"></span>';
+ compact.innerHTML='<strong class="fleet-compact-name">Notion AI</strong><span class="fleet-compact-window" data-window="model"><span class="fleet-compact-label">Модель</span><b class="fleet-compact-used nai-cm">—</b></span><span class="fleet-compact-window" data-window="effort"><span class="fleet-compact-label">Effort</span><b class="fleet-compact-used nai-ce">—</b></span><span class="fleet-compact-range nai-cs"></span>';
  sum.appendChild(compact);
  tile=document.createElement('article');tile.className='fleet-live-account notion';tile.id='fleetNotion';tile.dataset.engine='notion';tile.dataset.provider='notion';
  tile.innerHTML='<a class="fleet-live-identity" href="#fleetNotion"><strong class="fleet-live-name">Notion AI</strong><span class="fleet-live-email nai-mail"></span></a>'
@@ -1083,7 +1083,7 @@ function build(){
  q=document.createElement('div');q.className='cxpop cxquick fleet-quick-panel';q.id='naiModelQ';q.setAttribute('role','dialog');q.setAttribute('aria-label','Модель и effort Notion AI');q.hidden=true;q.innerHTML='<div class="cxpbody"></div>';document.body.appendChild(q);
  tile.querySelector('.fleet-live-identity').addEventListener('click',function(e){e.preventDefault();var t=$i('ctNotion');if(t&&!t.hidden)t.click();var b=$i('termBox');if(b)b.scrollIntoView({block:'center',behavior:'smooth'})});
  $i('naiModelTile').addEventListener('click',function(e){e.stopPropagation();if(!q.hidden){close();return}openQ()});
- $i('naiCardGear').addEventListener('click',function(e){e.stopPropagation();close();var g=$i('fleetGeneralGear')||$i('gear');if(g)g.click();setTimeout(function(){var s=$i('naiCfgGroup');if(s){var d=s.querySelector('details');if(d)d.open=true;s.scrollIntoView({block:'start'})}},350)});
+ $i('naiCardGear').addEventListener('click',function(e){e.stopPropagation();close();var p=$i('naiPop');if(p&&!p.hidden&&typeof window.naiPopClose==='function'){window.naiPopClose();return}if(typeof window.naiPopOpen==='function')window.naiPopOpen(this)});  // «⚙ Настройки Notion AI»: та же схема, что у Claude и Codex
  $i('naiProfileBtn').addEventListener('click',function(e){e.stopPropagation();close();var c=$i('cxBtn');if(c)c.click()});
  q.addEventListener('click',function(e){var m=e.target.closest('[data-model]'),f=e.target.closest('[data-effort]');if(m&&!m.disabled&&m.dataset.model!==name())pick({model:m.dataset.model},'Переключаю модель на «'+m.dataset.model+'»…');else if(f&&!f.disabled&&f.dataset.effort!==effort())pick({effort:f.dataset.effort},'Ставлю effort «'+f.dataset.effort+'»…')});
  document.addEventListener('pointerdown',function(e){if(q&&!q.hidden&&!q.contains(e.target)&&!e.target.closest('#naiModelTile'))close()});
@@ -1101,7 +1101,7 @@ function placeQ(){var t=$i('naiModelTile'),r=t.getBoundingClientRect(),w=Math.mi
 function item(m){var on=m.label===name(),dis=m.disabled||!!job;
  return '<button type="button" class="cxqm'+(on?' on':'')+'" role="radio" aria-checked="'+on+'" data-model="'+esc(m.label)+'" title="'+esc(m.label+(m.disabled?' · недоступна (нужны кредиты Notion)':m.tags&&m.tags.length?' · '+m.tags.join(' · '):''))+'"'+(dis?' disabled':'')+'><i class="cxqr"></i><span>'+esc(m.label)+'</span>'+(m.disabled?'<small>недоступна</small>':(m.tags&&m.tags.length?'<small>'+esc(m.tags.join(' · '))+'</small>':''))+'</button>'}
 function paintQ(){
- if(!q||q.hidden)return;var list=md&&md.models||[],main=list.filter(function(m){return !m.more}),more=list.filter(function(m){return m.more}),cur=name(),f=effort();
+ if(!q||q.hidden)return;var cur=name(),f=effort(),list=(md&&md.models||[]).filter(function(m){return hid.indexOf(m.label)<0||m.label===cur}),main=list.filter(function(m){return !m.more}),more=list.filter(function(m){return m.more});  // без галочки «в быстром меню» — не показываем
  var effs=md&&md.efforts&&md.efforts.length?md.efforts:(f?[f]:[]);
  var h='<div class="cxqh">Модель Notion AI</div><div class="cxqlist" role="radiogroup" aria-label="Модель Notion AI">';
  if(!list.length)h+=cur?item({label:cur,tags:[]}):'';
@@ -1112,7 +1112,7 @@ function paintQ(){
  h+=effs.length?effs.map(function(e){return '<button type="button" class="cxqe'+(e===f?' on':'')+'" role="radio" aria-checked="'+(e===f)+'" data-effort="'+esc(e)+'"'+(job?' disabled':'')+'>'+esc(e)+'</button>'}).join(''):'<span class="cxsub">Недоступно для этой модели</span>';
  h+='</div><p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||'Меняется прямо в постоянном чате Notion AI и действует со следующего сообщения. Лимитов по времени у Notion AI нет.')+'</p>';
  q.querySelector('.cxpbody').innerHTML=h}
-function fetchModel(){return fetch(api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.ok){md=j;if(j.pending&&!job){job=j.pending;loading=true;poll()}paintTile();paintQ()}}).catch(function(){})}
+function fetchModel(){return fetch(api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.ok){md=j;if(j.hidden)hid=j.hidden;if(j.pending&&!job){job=j.pending;loading=true;poll()}paintTile();paintQ()}}).catch(function(){})}
 function poll(){clearTimeout(jobT);if(!job)return;jobT=setTimeout(function(){fetch(base+'notion-ai/send/'+job,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
  if(j.status==='done'||j.status==='error'||j.status==='unknown'){var was=msg;job='';loading=false;bad=j.status!=='done';msg=bad?'Не получилось: '+String(j.error||'нет ответа').replace(/^\w+Error: /,''):(was&&was.indexOf('…')>0?'Готово.':'');fetchModel()}else poll()}).catch(function(){poll()})},1500)}
 function pick(body,text){if(job)return;msg=text;bad=false;paintQ();
@@ -1122,6 +1122,8 @@ function openQ(){['cxQClose','cxPopClose','cxMenuClose'].forEach(function(f){try
  var old=!md||!(md.models||[]).length||Date.now()/1000-(md.models_ts||0)>600;if(old&&!job&&Date.now()-asked>20000){asked=Date.now();loading=true;pick({},'Читаю список моделей из Notion…')}}
 function close(){if(q&&!q.hidden){q.hidden=true;$i('naiModelTile').setAttribute('aria-expanded','false')}}
 window.addEventListener('nai-state',function(e){st=e.detail;paintTile()});
+window.addEventListener('nai-cfg',function(e){if(e.detail&&e.detail.model_hidden){hid=e.detail.model_hidden;paintQ()}});
+window.addEventListener('nai-models',function(e){if(e.detail&&e.detail.ok){md=e.detail;if(e.detail.hidden)hid=e.detail.hidden;paintTile();paintQ()}});
 function boot(){var n=0;(function try_(){if(build()){paintTile();fetchModel()}else if(n++<40)setTimeout(try_,250)})()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }catch(e){console.warn('notion-ai card',e)}})();
@@ -1229,7 +1231,7 @@ _SENT, _SENT_LOCK = {}, threading.Lock()
 # Один файл BASE/notion_ai.json читают все части: панель, notion-delegate (отправка в чат), notion-ai-view
 # (окно консоли), notion-ai-reply (ответ в Telegram), notion_ai_tg.py (мост), login2.py (вход по коду).
 CFG_FILE = '/opt/cc-limits/notion_ai.json'
-CFG_DEFAULTS = dict(chat_url='', owner='', notion_email='', tg_chat_id='', voice=True, console_tab=True)
+CFG_DEFAULTS = dict(chat_url='', owner='', notion_email='', tg_chat_id='', voice=True, console_tab=True, model_hidden=())  # model_hidden — без галочки «в быстром меню»
 CFG_LOCK = threading.Lock()
 UNITS = (('notion-delegate.service', 'Отправка в чат'), (BRIDGE_UNIT, 'Мост Telegram'), ('notion-ai-view.service', 'Окно консоли'))
 AUTH_KEYS = '/root/.ssh/authorized_keys'
@@ -1296,6 +1298,11 @@ def save_cfg(body):
     for k in ('voice', 'console_tab'):
         if k in body:
             new[k] = body.get(k) is True
+    if 'model_hidden' in body:
+        raw = body.get('model_hidden')
+        if not isinstance(raw, list):
+            return False, 'Модели в быстром меню: нужен список названий.', cur
+        new['model_hidden'] = sorted({x.strip()[:60] for x in raw if isinstance(x, str) and x.strip()})[:100]
     with CFG_LOCK:
         atomic(Path(CFG_FILE), new)
     if new['chat_url'] != cur['chat_url']:
@@ -1531,7 +1538,12 @@ CFG_UI = r'''
 .naicfg details li .nc-row{margin-top:6px}
 .naicfg details li textarea{margin-top:6px;min-height:160px}
 .naicfg code{font:11.5px/1.5 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.3);border:1px solid var(--fleet-line,#25303f);padding:0 5px;border-radius:5px;overflow-wrap:anywhere;color:var(--txt,#e6edf5)}
-#scrim:not([data-view="general"]) .nai-gen.claude,#scrim:not([data-view="general"]) .nai-gen.codex,#scrim:not([data-view="general"]) .nai-gen.tg{display:none}
+#scrim:not([data-view="general"]) .nai-gen.claude,#scrim:not([data-view="general"]) .nai-gen.codex,#scrim:not([data-view="general"]) .nai-gen.tg,#scrim:not([data-view="general"]) .nai-gen.nai{display:none}
+#naiPop{--fleet-accent:#a78bfa;--fleet-accent-soft:#2a2346}
+#naiPop .naicfg{margin:0}
+#naiPop .nc-in{margin:4px 0 0;padding-top:12px;border-top:1px solid var(--fleet-line,#25303f)}
+#naiPop .fleet-catalog-chip.nc-off{color:var(--fleet-muted,#8c9bad)}
+#naiPop #naiPopCheck{margin-top:2px}
 @media (max-width:560px){.naicfg .nc-st{grid-template-columns:auto 1fr;gap:5px 9px;font-size:12.5px;padding:9px 10px}.naicfg .nc-st b{max-width:96px}.nai-gen-h{font-size:13.5px}}
 </style>
 <script id="naiCfgScript">
@@ -1556,46 +1568,39 @@ function grid(rows){return '<div class="nc-st">'+rows.filter(Boolean).map(functi
 function shut(){var d=$i('modalDone');if(d)d.click()}
 function later(f){shut();setTimeout(function(){try{f()}catch(e){console.warn('notion-ai settings',e)}},80)}
 function keepOpen(root,f){var o={};root.querySelectorAll('details[data-k]').forEach(function(d){o[d.dataset.k]=d.open});f();root.querySelectorAll('details[data-k]').forEach(function(d){if(o[d.dataset.k])d.open=true})}
-function msg(t){document.querySelectorAll('#scrim .nc-msg[data-m]').forEach(function(m){m.textContent=t||''})}
+function msg(t){document.querySelectorAll('#naiPop .nc-msg[data-m]').forEach(function(m){m.textContent=t||''})}
 function val(id){var e=$i(id);return e?(e.type==='checkbox'?e.checked:e.value):undefined}
-// ---- Notion AI: главное на виду, поля и подключение — под спойлерами
-function render(){var box=$i('naiCfgBox');if(!box||!data)return;var c=data.cfg||{},s=data.status||{},p=naiP(),m=p.model||{},on=!!p.active;
+// ---- Notion AI: окно «⚙ Настройки Notion AI» (та же схема, что у Claude и Codex) и обзор в «Общих настройках»
+var pop=null,back=null,mdl=null,mjob='',mT=0,mmsg='',newIds=[];
+function authOf(s){var a={ok:[1,'подключён'],login_wait:[0,'ждёт код из письма'],lost:[0,'слетел — нужен вход'],down:[0,'сервис отправки не отвечает']}[s.auth]||[0,s.auth||'?'];return a}
+function render(){var box=$i('naiCfgBox');if(!box||!data)return;var c=data.cfg||{},s=data.status||{};
  var units=(s.units||[]).map(function(u){var ok=u.state==='active',bridge=u.unit.indexOf('notion-ai-tg')===0;return '<span class="'+(ok?'nc-ok':bridge?'nc-mut':'nc-bad')+'">●</span> '+esc(u.name)+(bridge&&!ok?' <span class="nc-mut">(включается с профилем Notion AI)</span>':'')}).join('<br>');
- var auth={ok:[1,'подключён'],login_wait:[0,'ждёт код из письма'],lost:[0,'слетел — нужен вход'],down:[0,'сервис отправки не отвечает']}[s.auth]||[0,s.auth||'?'];
- var lw=s.auth==='login_wait'||!!s.login_busy;
+ var auth=authOf(s),lw=s.auth==='login_wait'||!!s.login_busy;
  keepOpen(box,function(){box.innerHTML=grid([
   ['Чат',c.chat_url?'<a href="'+esc(c.chat_url)+'" target="_blank" rel="noopener">открыть постоянный чат</a>':bad('ссылка не задана')],
   ['Вход в Notion',dot(auth[0]&&!lw,lw&&auth[0]?'подключён · идёт новый вход':auth[1])+(c.notion_email?' '+mut('· '+c.notion_email):'')+(lw?'':'<button type="button" class="ghostbtn" id="naiLogin">'+(auth[0]?'Войти заново':'Войти')+'</button>')],
-  ['Модель',m.model?'<strong>'+esc(m.model)+'</strong>'+(m.effort?' · '+esc(m.effort):'')+' '+mut('· меняется в карточке Notion AI'):mut('ещё не прочитана — открой карточку Notion AI')],
-  ['Telegram',dot(!!(s.tg_bot&&s.tg_chat),'общий чат'+(s.tg_bot?' · бот @'+s.tg_bot:' · бот не отвечает')+(c.tg_chat_id?' → свой чат '+c.tg_chat_id:'')+(c.voice?' · с голосом':''))],
   ['Сервисы',units]])
   +'<div id="naiCode" class="nc-row"'+(lw?'':' hidden')+'><input class="dlginp" id="naiCodeIn" inputmode="numeric" maxlength="6" placeholder="6 цифр из письма" style="width:150px"><button type="button" id="naiCodeBtn">Ввести код</button></div>'
   +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiCfgCheck">Проверить связь</button><span class="nc-msg" data-m id="naiCfgMsg"></span></div>'
   +'<div class="nc-chk" id="naiCfgOut" hidden></div>'
-  +'<details data-k="nset"><summary>Настроить Notion AI</summary><div class="nc-in">'
+  +'<div class="nc-in">'
   +'<label class="nc-f">Ссылка на постоянный чат Notion AI<input class="dlginp" id="naiCfgUrl" spellcheck="false" autocomplete="off" placeholder="https://app.notion.com/chat?t=…" value="'+esc(c.chat_url)+'"></label>'
   +'<label class="nc-f">Как к тебе обращаться<input class="dlginp" id="naiCfgOwner" maxlength="40" value="'+esc(c.owner)+'"></label>'
   +'<label class="nc-f">Почта входа в Notion (на неё придёт код при повторном входе)<input class="dlginp" id="naiCfgMail" type="email" autocomplete="off" placeholder="name@example.com" value="'+esc(c.notion_email)+'"></label>'
+  +'<label class="nc-f">Telegram: куда отвечать (id чата)<input class="dlginp" id="naiCfgTg" inputmode="numeric" placeholder="пусто — общий чат'+(s.tg_default?': '+esc(s.tg_default):'')+'" value="'+esc(c.tg_chat_id)+'"></label>'
+  +'<label class="updchk"><input type="checkbox" id="naiCfgVoice"'+(c.voice?' checked':'')+'><span>Голосовые ответы в Telegram (текст + голос)</span></label>'
   +'<label class="updchk"><input type="checkbox" id="naiCfgTab"'+(c.console_tab?' checked':'')+'><span>Вкладка «Notion AI» в консоли</span></label>'
-  +'<div class="nc-row"><button type="button" id="naiCfgSave">Сохранить</button><span class="nc-msg" data-m></span></div>'
-  +'<div class="nc-mut nc-note">Куда Notion AI отвечает в Telegram и голос — в блоке «Telegram · общий чат» ниже.</div></div></details>'
-  +'<details data-k="nhow"><summary>Подробно: что, где, как и почему</summary>'
-  +'<p><b>Что это.</b> Notion AI — третий агент. Он живёт в постоянном чате Notion и заходит на этот сервер по SSH-ключу. Лимитов по времени у него нет. Пока включён профиль Notion AI, он же отвечает в общем чате Telegram, а Claude стоит на паузе.</p>'
-  +'<p><b>Где в панели.</b> Карточка Notion AI в «Активных аккаунтах» — модель и effort чата. Вкладка «Notion AI» в консоли — окно чата. Включение — в шапке: Notion AI → «Notion AI · только он».</p>'
-  +'<p><b>Как подключить с нуля</b></p><ol>'
-  +'<li>В Notion открой Notion AI, начни новый чат и скопируй ссылку на него (…/chat?t=…). Вставь её в «Настроить Notion AI» и нажми «Сохранить».</li>'
-  +'<li>Там же впиши почту входа в Notion, сохрани и нажми «Войти» в строке «Вход в Notion»: на почту придёт код — введи его здесь же.</li>'
-  +'<li>Попроси Notion AI создать SSH-ключ и вставь публичную часть — одну строку «ssh-ed25519 AAAA…». Добавлено из панели: <b>'+(s.keys||0)+'</b>.'
-  +'<div class="nc-row"><input class="dlginp" id="naiKeyIn" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA…" style="flex:1;min-width:200px"><button type="button" id="naiKeyAdd">Добавить ключ</button>'+(s.keys?'<button type="button" class="ghostbtn" id="naiKeyDel">Убрать ключи</button>':'')+'</div></li>'
-  +'<li>Скопируй инструкцию и отправь её первым сообщением в постоянный чат — так Notion AI узнает, откуда приходят сообщения и куда отвечать.<textarea readonly id="naiInstr">'+esc(data.instruction||'')+'</textarea><div class="nc-row"><button type="button" class="ghostbtn" id="naiInstrCopy">Копировать</button></div></li>'
-  +'<li>Нажми «Проверить связь». Потом в шапке выбери Notion AI → «Notion AI · только он».</li></ol>'
-  +'<p><b>Почему так.</b> Постоянный чат хранит весь контекст работы. Вход в Notion — по коду из письма, пароль в панели не нужен. Ключ даёт доступ только к серверу и убирается одной кнопкой. Один бот Telegram на Claude и Notion AI — чтобы писать в привычный чат, кто бы ни работал.</p></details>'});
- chip('naiCfgGroup',on?'работает':'выключен');renderTg();paintGen();bind()}
-function save(fields,okMsg){if(busy)return;var body={};fields.forEach(function(f){var v=val(f[1]);if(v!==undefined)body[f[0]]=v});busy=true;msg('Сохраняю…');
+  +'<div class="nc-row"><button type="button" id="naiCfgSave">Сохранить</button><span class="nc-msg" data-m></span></div></div>'
+  +'<details data-k="nkey"><summary>Ключ доступа к серверу (SSH)</summary><p>Попроси Notion AI создать SSH-ключ и вставь публичную часть — одну строку «ssh-ed25519 AAAA…». Добавлено из панели: <b>'+(s.keys||0)+'</b>.</p>'
+  +'<div class="nc-row"><input class="dlginp" id="naiKeyIn" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA…" style="flex:1;min-width:200px"><button type="button" id="naiKeyAdd">Добавить ключ</button>'+(s.keys?'<button type="button" class="ghostbtn" id="naiKeyDel">Убрать ключи</button>':'')+'</div></details>'
+  +'<details data-k="ninstr"><summary>Инструкция для постоянного чата</summary><p>Отправь её первым сообщением в постоянный чат — так Notion AI узнает, откуда приходят сообщения и куда отвечать.</p><textarea readonly id="naiInstr">'+esc(data.instruction||'')+'</textarea><div class="nc-row"><button type="button" class="ghostbtn" id="naiInstrCopy">Копировать</button></div></details>'});
+ paintNai();paintLim();paintModels();bind()}
+function save(fields,okMsg){if(busy)return;var c=(data&&data.cfg)||{},body={};fields.forEach(function(f){var v=val(f[1]),was=c[f[0]]===undefined?'':c[f[0]];if(v!==undefined&&v!==was)body[f[0]]=v});
+ if(!Object.keys(body).length){msg('Изменений нет — сохранять нечего');return}
+ busy=true;msg('Сохраняю…');
  call('config',body).then(function(d){busy=false;if(d&&d.ok){if(d.cfg)data=d;render();msg(d.message||okMsg||'Сохранено');try{window.dispatchEvent(new CustomEvent('nai-cfg',{detail:d.cfg}))}catch(_){}}else msg('⚠ '+(d&&d.message||'Не сохранилось'))}).catch(function(e){busy=false;msg('⚠ '+e.message)})}
 function bind(){
- var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['console_tab','naiCfgTab']])};
- var ts=$i('naiTgSave');if(ts)ts.onclick=function(){save([['tg_chat_id','naiCfgTg'],['voice','naiCfgVoice']])};
+ var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['tg_chat_id','naiCfgTg'],['voice','naiCfgVoice'],['console_tab','naiCfgTab']])};
  var ck=$i('naiCfgCheck');if(ck)ck.onclick=function(){msg('Проверяю…');call('check',{}).then(function(d){var o=$i('naiCfgOut');o.hidden=false;
   o.innerHTML=(d.items||[]).map(function(x){return '<div><span class="'+(x.ok?'nc-ok':'nc-bad')+'">'+(x.ok?'✓':'✗')+'</span><span><b>'+esc(x.name)+':</b> '+esc(x.text)+'</span></div>'}).join('');msg(d.ok?'Всё на месте':'Есть что поправить')}).catch(function(e){msg('⚠ '+e.message)})};
  var lg=$i('naiLogin');if(lg)lg.onclick=function(){if(data&&data.status&&data.status.auth==='ok'&&!confirm('Вход в Notion сейчас работает. Войти заново? На почту придёт код (не больше 3 входов в сутки).'))return;msg('Запрашиваю письмо…');call('login',{}).then(function(d){msg((d.ok?'':'⚠ ')+(d.message||''));if(d.ok){$i('naiCode').hidden=false;setTimeout(load,3000)}}).catch(function(e){msg('⚠ '+e.message)})};
@@ -1604,7 +1609,66 @@ function bind(){
  var kd=$i('naiKeyDel');if(kd)kd.onclick=function(){if(!confirm('Убрать ключи Notion AI, добавленные из панели? Доступ Notion AI к серверу по ним пропадёт.'))return;call('key',{action:'remove'}).then(function(d){msg(d.message||'');load()})};
  var cp=$i('naiInstrCopy');if(cp)cp.onclick=function(){var t=$i('naiInstr');t.select();try{navigator.clipboard.writeText(t.value).then(function(){msg('Скопировано')},function(){document.execCommand('copy');msg('Скопировано')})}catch(_){document.execCommand('copy');msg('Скопировано')}};
 }
-function load(){call('config').then(function(d){if(d&&d.ok){data=d;render()}}).catch(function(){var b=$i('naiCfgBox');if(b)b.innerHTML='<div class="modalsub">Настройки Notion AI не загрузились.</div>'})}
+function load(){call('config').then(function(d){if(d&&d.ok){data=d;render();if(general())paintGen()}}).catch(function(){var b=$i('naiCfgBox');if(b)b.innerHTML='<div class="modalsub">Настройки Notion AI не загрузились.</div>'})}
+// 1) Переключение и лимиты: лимитов нет, включение — профилем
+function paintLim(){var s=$i('naiPopLim'),t=s&&s.querySelector('[data-st]');if(!t)return;var p=naiP(),on=!!p.active;
+ var html='<div class="naicfg">'+grid([['Лимиты',esc('нет — у Notion AI нет окна 5 часов и недели, переключать аккаунты не нужно')],['Профиль',dot(on,on?'«'+(p.title||'Notion AI · только он')+'» — работает, Claude на паузе':'выключен — работают Claude и Codex')]])
+  +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiPopProf">Выбор профиля</button><span class="nc-mut nc-note">Notion AI включается профилем в шапке: «Notion AI · только он».</span></div></div>';
+ if(sigs.lim!==html){sigs.lim=html;t.innerHTML=html;$i('naiPopProf').onclick=function(){popClose();setTimeout(function(){var c=$i('cxBtn');if(c)c.click()},80)}}
+ var st=$i('naiPopSt');if(st)st.textContent=on?'работает':'выключен'}
+// 2) Модели в быстром меню: галочка, название, «Новая»/«Выбрана», проверка новых — перечитать список из Notion
+function hiddenList(){return (data&&data.cfg&&data.cfg.model_hidden)||[]}
+function paintModels(){var box=$i('naiPopModelList');if(!box)return;var list=(mdl&&mdl.models)||[],cur=(mdl&&mdl.model)||'',hid=hiddenList();
+ var html=list.length?list.map(function(m){var on=hid.indexOf(m.label)<0;return '<div class="fleet-catalog-row fleet-pick-row" data-model="'+esc(m.label)+'"><label class="fleet-mpick"><input type="checkbox" class="nai-show"'+(on?' checked':'')+' title="Показывать в быстром меню Notion AI"><span class="fleet-catalog-name">'+esc(m.label)+(m.tags&&m.tags.length?'<small>'+esc(m.tags.join(' · '))+'</small>':'')+'</span></label>'
+  +(newIds.indexOf(m.label)>=0?'<span class="fleet-catalog-chip">Новая</span>':'')+(m.label===cur?'<span class="fleet-catalog-chip">Выбрана</span>':'')+(m.disabled?'<span class="fleet-catalog-chip nc-off">недоступна</span>':'')+'</div>'}).join('')
+  :'<div class="fleet-catalog-note">Список моделей ещё не прочитан — нажми «Проверить новые модели».</div>';
+ if(sigs.models!==html){sigs.models=html;box.innerHTML=html}
+ var st=$i('naiPopModelSt');if(st)st.textContent=mmsg||(list.length?'Моделей: '+list.length+', в быстром меню: '+list.filter(function(m){return hid.indexOf(m.label)<0}).length+'. Выбор модели — в плитке Notion AI.':'');
+ var b=$i('naiPopCheck');if(b){b.disabled=!!mjob;b.textContent=mjob?'⏳ Читаю список моделей…':'🔄 Проверить новые модели'}}
+function loadModels(){return call('model').then(function(j){if(j&&j.ok){mdl=j;paintModels();try{window.dispatchEvent(new CustomEvent('nai-models',{detail:j}))}catch(_){}}}).catch(function(){})}
+function checkModels(){if(mjob)return;var before=((mdl&&mdl.models)||[]).map(function(m){return m.label});mmsg='Читаю список моделей из Notion…';paintModels();
+ call('model',{}).then(function(j){if(!(j&&j.ok&&j.id)){mmsg='⚠ '+(j&&j.message||'Не получилось');paintModels();return}mjob=j.id;paintModels();pollModels(before)}).catch(function(e){mmsg='⚠ '+e.message;paintModels()})}
+function pollModels(before){clearTimeout(mT);mT=setTimeout(function(){call('send/'+mjob).then(function(j){
+ if(j.status==='done'||j.status==='error'||j.status==='unknown'){mjob='';loadModels().then(function(){var now=((mdl&&mdl.models)||[]).map(function(m){return m.label});newIds=before.length?now.filter(function(x){return before.indexOf(x)<0}):[];
+  mmsg=j.status==='done'?(newIds.length?'Новых моделей: '+newIds.length+'. ':'Новых моделей нет. ')+'Моделей в списке: '+now.length+'.':'Не получилось: '+String(j.error||'нет ответа').replace(/^\w+Error: /,'');sigs.models='';paintModels()})}else pollModels(before)}).catch(function(){pollModels(before)})},1500)}
+function onShow(e){var box=e.target.closest('.nai-show');if(!box)return;var rows=[].slice.call($i('naiPopModelList').querySelectorAll('.nai-show')),labels=rows.map(function(b){return b.closest('[data-model]').dataset.model});
+ var hid=hiddenList().filter(function(x){return labels.indexOf(x)<0}).concat(rows.filter(function(b){return !b.checked}).map(function(b){return b.closest('[data-model]').dataset.model}));
+ rows.forEach(function(b){b.disabled=true});mmsg='';
+ call('config',{model_hidden:hid}).then(function(d){rows.forEach(function(b){b.disabled=false});if(d&&d.ok&&d.cfg){data.cfg=d.cfg;mmsg=box.checked?'Модель снова в быстром меню.':'Модель убрана из быстрого меню.';try{window.dispatchEvent(new CustomEvent('nai-cfg',{detail:d.cfg}))}catch(_){}}else{box.checked=!box.checked;mmsg='⚠ '+(d&&d.message||'Не сохранилось')}sigs.models='';paintModels()})
+  .catch(function(err){rows.forEach(function(b){b.disabled=false});box.checked=!box.checked;mmsg='⚠ '+err.message;paintModels()})}
+function popBuild(){if(pop)return pop;var x=$i('cxPopX');
+ pop=document.createElement('div');pop.id='naiPop';pop.className='cxpop fleet-settings-panel';pop.setAttribute('role','dialog');pop.setAttribute('aria-modal','true');pop.setAttribute('aria-labelledby','naiPopTitle');pop.hidden=true;
+ pop.innerHTML='<div class="cxphead"><b id="naiPopTitle">Настройки Notion AI</b><span class="cxsub" id="naiPopSt"></span><button type="button" class="hdrgear" id="naiPopX" aria-label="Закрыть настройки">'+(x?x.innerHTML:'×')+'</button></div><div class="cxpbody">'
+  +'<section class="fleet-settings-group" id="naiPopLim"><div class="fleet-settings-group-title">Переключение и лимиты</div><div data-st></div></section>'
+  +'<section class="fleet-settings-group" id="naiPopModels"><div class="fleet-settings-group-title">Модели в быстром меню</div><div class="modalsub">Отмеченные модели показываются в быстром меню плитки Notion AI. Применяется сразу.</div><div class="fleet-model-catalog" id="naiPopModelList"></div><div class="fleet-catalog-note" id="naiPopModelSt" role="status" aria-live="polite"></div><button type="button" class="ghostbtn" id="naiPopCheck">🔄 Проверить новые модели</button></section>'
+  +'<section class="fleet-settings-group" id="naiPopOwn"><div class="fleet-settings-group-title">Свои настройки Notion AI</div></section></div>';
+ document.body.appendChild(pop);
+ back=document.createElement('div');back.className='fleet-settings-backdrop';back.id='naiPopBack';back.hidden=true;document.body.appendChild(back);
+ back.addEventListener('click',popClose);$i('naiPopX').addEventListener('click',popClose);$i('naiPopCheck').addEventListener('click',checkModels);$i('naiPopModelList').addEventListener('change',onShow);
+ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&pop&&!pop.hidden)popClose()});
+ addEventListener('resize',function(){if(pop&&!pop.hidden)placePop(pop._a)});
+ var box=$i('naiCfgBox'),h=$i('naiCfgHdr');if(box)$i('naiPopOwn').appendChild(box);if(h)h.remove();
+ return pop}
+function placePop(a){if(!a||!a.getBoundingClientRect)return;var r=a.getBoundingClientRect(),w=Math.min(580,innerWidth-24),top=Math.max(12,Math.min(r.bottom+8,innerHeight-Math.min(620,innerHeight-24)));
+ pop.style.width=w+'px';pop.style.top=Math.round(top)+'px';pop.style.left=Math.max(12,Math.min(Math.round(r.right-w),innerWidth-w-12))+'px';pop.style.right='auto';pop.style.bottom='auto';pop.style.maxHeight=Math.max(160,innerHeight-top-12)+'px'}
+function popClose(){if(!pop||pop.hidden)return;pop.hidden=true;back.hidden=true;var g=$i('naiCardGear');if(g)g.setAttribute('aria-expanded','false')}
+window.naiPopOpen=function(anchor){popBuild();['cxQClose','cxPopClose','cxMenuClose'].forEach(function(f){try{typeof window[f]==='function'&&window[f]()}catch(_){}});
+ var sc=$i('scrim');if(sc&&!sc.hidden)shut();var g=$i('naiCardGear');
+ if(!(anchor&&anchor.offsetParent))anchor=g&&g.offsetParent?g:$i('fleetGeneralGear');pop._a=anchor;
+ pop.hidden=false;back.hidden=false;if(g)g.setAttribute('aria-expanded','true');placePop(anchor);
+ if(!data)$i('naiCfgBox').innerHTML='<div class="modalsub">Загрузка…</div>';load();loadModels();paintLim();paintModels();
+ var f=$i('naiPopX');if(f)try{f.focus({preventScroll:true})}catch(_){}};
+window.naiPopClose=popClose;
+// Обзор Notion AI в «Общих настройках»: главное на виду, всё остальное — в «⚙ Настройки Notion AI»
+function paintNai(){var c=(data&&data.cfg)||{},s=(data&&data.status)||{},p=naiP(),m=p.model||{},on=!!p.active,auth=authOf(s);
+ chip('naiCfgGroup',on?'работает':'выключен');
+ if(!data){put('naiCfgGroup','<div class="modalsub">Загрузка…</div>');return}
+ put('naiCfgGroup',grid([
+  ['Профиль',dot(on,on?'«'+(p.title||'Notion AI · только он')+'» — работает':'выключен')],
+  ['Чат',c.chat_url?'<a href="'+esc(c.chat_url)+'" target="_blank" rel="noopener">открыть постоянный чат</a>':bad('ссылка не задана')],
+  ['Вход в Notion',dot(auth[0],auth[1])+(c.notion_email?' '+mut('· '+c.notion_email):'')],
+  ['Модель',m.model?'<strong>'+esc(m.model)+'</strong>'+(m.effort?' · '+esc(m.effort):'')+' '+mut('· меняется в плитке Notion AI'):mut('ещё не прочитана — открой плитку Notion AI')],
+  ['Telegram',esc((c.tg_chat_id?'свой чат '+c.tg_chat_id:'общий чат')+(c.voice?' · текст + голос':' · только текст'))]]))}
 // ---- Claude, Codex, общий чат Telegram: главная строка — живые данные панели, подробности — под спойлером
 function chip(id,t){var s=$i(id),c=s&&s.querySelector('[data-chip]');if(!c)return;c.textContent=t||'';c.hidden=!t}
 function put(id,html){if(sigs[id]===html)return;sigs[id]=html;var s=$i(id),t=s&&s.querySelector('[data-st]');if(t)t.innerHTML=html}
@@ -1641,33 +1705,27 @@ function paintTg(){var s=(data&&data.status)||{},c=(data&&data.cfg)||{},p=naiP()
   ['Отвечает сейчас',who],
   ['Notion AI',esc((c.tg_chat_id?'в свой чат '+c.tg_chat_id:'в общий чат')+' · ')+(c.voice?(s.tts?esc('текст + голос'):bad('голос включён, но нет синтеза речи')):esc('только текст'))],
   ['Codex',b.token_set?esc('свой бот'+(b.bot?' @'+b.bot:'')+' → чат '+(b.chat_id||'—')+' · мост '+(b.enabled?'включён':'выключен')):mut('без бота — только консоль и панель')]]))}
-function renderTg(){var f=$i('naiTgForm');if(!f||!data)return;var c=data.cfg||{},s=data.status||{};
- f.innerHTML='<label class="nc-f">Notion AI: куда отвечать (id чата)<input class="dlginp" id="naiCfgTg" inputmode="numeric" placeholder="пусто — общий чат'+(s.tg_default?': '+esc(s.tg_default):'')+'" value="'+esc(c.tg_chat_id)+'"></label>'
-  +'<label class="updchk"><input type="checkbox" id="naiCfgVoice"'+(c.voice?' checked':'')+'><span>Notion AI: голосовые ответы (текст + голос)</span></label>'
-  +'<div class="nc-row"><button type="button" id="naiTgSave">Сохранить</button><button type="button" class="ghostbtn" id="naiTgCx">Мост Codex →</button><span class="nc-msg" data-m></span></div>'
-  +'<div class="nc-mut nc-note">Бот и общий чат Claude меняются в консоли Claude — шаги в «Подробно» ниже. Бот Codex — в настройках Codex, «Мост Telegram».</div>';
- var cx=$i('naiTgCx');if(cx)cx.onclick=function(){later(function(){if(typeof CXP_SEC!=='undefined')CXP_SEC.br=true;if(typeof cxPopOpen==='function')cxPopOpen()})};bind()}
-function paintGen(){try{paintClaude()}catch(e){console.warn('gen claude',e)}try{paintCodex()}catch(e){console.warn('gen codex',e)}try{paintTg()}catch(e){console.warn('gen tg',e)}}
+function paintGen(){try{paintClaude()}catch(e){console.warn('gen claude',e)}try{paintCodex()}catch(e){console.warn('gen codex',e)}try{paintNai()}catch(e){console.warn('gen nai',e)}try{paintTg()}catch(e){console.warn('gen tg',e)}}
 var HOW_CL='<details data-k="chow"><summary>Подробно: что, где, как и почему</summary>'
  +'<p><b>Что это.</b> Claude Code — агент Anthropic в консоли этого сервера (вкладка Claude). Работает по подписке Claude Pro или Max. У каждой подписки два лимита: окно 5 часов и неделя. Панель держит несколько аккаунтов и переключает их, чтобы работа не вставала.</p>'
- +'<p><b>Где в панели.</b> Плитка Claude в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Claude» — авто-переключение, недельная пауза, какие модели показывать, проверка новых моделей. «Управление аккаунтами» — карточки аккаунтов: переключить, войти заново, удалить. «Копии аккаунтов» ниже — запасные копии входов.</p>'
+ +'<p><b>Где в панели.</b> Плитка Claude в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Claude» сверху вниз: 1) «Переключение и лимиты» — % сессии и % недели, авто-переключение, недельная пауза; 2) «Модели в быстром меню» и проверка новых моделей; 3) «Свои настройки Claude» — аккаунты, Telegram, копии аккаунтов. «Управление аккаунтами» — карточки: до какого числа подписка и вход, переключить, войти заново, удалить.</p>'
  +'<p><b>Как подключить с нуля</b></p><ol>'
  +'<li>Нажми «Добавить аккаунт». Почту можно вписать — она подставится на странице входа. Нажми «Получить ссылку для входа».</li>'
  +'<li>Открой ссылку, войди в нужный аккаунт Claude, скопируй код со страницы и вставь в окно панели. Аккаунт сам встанет в ротацию.</li>'
  +'<li>Повтори для каждого аккаунта.</li>'
- +'<li>В «⚙ Настройки Claude» включи «Авто-переключение при 90% сессии». «Пауза на недельном потолке» — если не хочешь сжечь неделю, когда переключаться уже некуда.</li>'
+ +'<li>В «⚙ Настройки Claude» → «Переключение и лимиты» задай пороги (обычно сессия 90 %, неделя 99 %), нажми «Сохранить» и включи «Авто-переключение». «Пауза на недельном потолке» — если не хочешь сжечь неделю, когда переключаться уже некуда.</li>'
  +'<li>Модель и рассуждения выбери в плитке Claude.</li>'
  +'<li>Telegram — в блоке «Telegram · общий чат» ниже.</li></ol>'
  +'<p><b>Почему так.</b> Панель переключает аккаунт заранее, на 90% окна, — Claude не обрывается посреди задачи на лимите. Недельная пауза останавливает Claude на 99% недели, если у всех аккаунтов неделя на исходе: лучше дождаться сброса, чем застрять на полпути.</p></details>';
 var HOW_CX='<details data-k="xhow"><summary>Подробно: что, где, как и почему</summary>'
  +'<p><b>Что это.</b> Codex — агент OpenAI в консоли этого сервера (вкладка Codex). Работает по подписке ChatGPT Plus или Pro, со своими лимитами: 5 часов и неделя. Запускается от отдельного пользователя сервера, поэтому его вход и файлы не смешиваются с Claude.</p>'
- +'<p><b>Где в панели.</b> Плитка Codex в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Codex» — пороги переключения, список моделей, мост Telegram (бот, режим, права), аккаунты, удаление Codex. Кнопка «Codex+» в шапке видна, пока подключение не закончено.</p>'
+ +'<p><b>Где в панели.</b> Плитка Codex в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Codex» сверху вниз: 1) «Переключение и лимиты» — % сессии и % недели; 2) «Модели в быстром меню» и проверка новых моделей; 3) «Свои настройки Codex» — аккаунты, мост Telegram (бот, режим, права), удаление Codex. Кнопка «Codex+» в шапке видна, пока подключение не закончено.</p>'
  +'<p><b>Как подключить с нуля</b></p><ol>'
  +'<li>«Установить Codex» (или «Codex+» в шапке): мастер ставит Node.js и Codex на сервер. Можно поручить это Claude кнопкой в мастере.</li>'
  +'<li>Вход в ChatGPT по коду устройства: панель покажет ссылку и код. Открой ссылку в браузере, войди в ChatGPT и введи код. Пароль в панель вводить не нужно.</li>'
- +'<li>Ещё аккаунты — «Добавить аккаунт» здесь или в «⚙ Настройки Codex» → аккаунты. Они встанут в ротацию.</li>'
- +'<li>Пороги: при каком % сессии переключать аккаунт и на каком % недели остановиться. «⚙ Настройки Codex» → «Сохранить пороги Codex».</li>'
- +'<li>Telegram (по желанию): создай отдельного бота у @BotFather (команда /newbot) и скопируй токен. В «⚙ Настройки Codex» → «Мост Telegram» вставь токен и свой id чата (узнать — у @userinfobot), включи мост.</li>'
+ +'<li>Ещё аккаунты — «Добавить аккаунт» здесь или в «⚙ Настройки Codex» → «Свои настройки Codex». Они встанут в ротацию.</li>'
+ +'<li>Пороги: при каком % сессии переключать аккаунт и на каком % недели остановиться. «⚙ Настройки Codex» → «Переключение и лимиты» → «Сохранить».</li>'
+ +'<li>Telegram (по желанию): создай отдельного бота у @BotFather (команда /newbot) и скопируй токен. В «⚙ Настройки Codex» → «Свои настройки Codex» → «Мост Telegram» вставь токен и свой id чата (узнать — у @userinfobot), включи мост.</li>'
  +'<li>Там же — режим моста (сам, посредник, оркестратор) и права (чтение, запись, полный доступ). Профиль работы выбирается в шапке.</li></ol>'
  +'<p><b>Почему так.</b> У Codex свой бот, потому что Telegram отдаёт сообщения бота только одному получателю. Общий бот слушают Claude и Notion AI, а Codex со своим ботом работает параллельно и им не мешает.</p></details>';
 var HOW_TG='<details data-k="thow"><summary>Подробно: что, где, как и почему</summary>'
@@ -1678,35 +1736,44 @@ var HOW_TG='<details data-k="thow"><summary>Подробно: что, где, к
  +'<li>В консоли Claude: '+code('/plugin install telegram@claude-plugins-official')+', затем '+code('/telegram:configure <токен>')+'. Токен сохранится в '+code('/root/.claude/channels/telegram/.env')+'.</li>'
  +'<li>Панель сама запускает Claude с '+code('--channels plugin:telegram@claude-plugins-official')+'. После перезапуска Claude напиши боту — он ответит кодом из 6 знаков. В консоли Claude: '+code('/telegram:access pair <код>')+', потом '+code('/telegram:access policy allowlist')+' — чужим бот отвечать не будет.</li>'
  +'<li>Твой id чата (узнать — у @userinfobot) хранится в '+code('chat_id')+' файла '+code('/opt/cc-limits/config.json')+'. Туда панель шлёт уведомления; Notion AI и Codex по умолчанию отвечают туда же. Поменять — попроси Claude.</li>'
- +'<li>Notion AI отдельного бота не требует: он берёт этого же. Свой чат и голос для него — в «Настроить» выше.</li>'
- +'<li>Codex — свой бот: «⚙ Настройки Codex» → «Мост Telegram».</li></ol>'
+ +'<li>Notion AI отдельного бота не требует: он берёт этого же. Свой чат и голос для него — «⚙ Настройки Notion AI» → «Свои настройки Notion AI».</li>'
+ +'<li>Codex — свой бот: «⚙ Настройки Codex» → «Свои настройки Codex» → «Мост Telegram».</li></ol>'
  +'<p><b>Почему так.</b> Telegram отдаёт сообщения бота только одному слушателю. Поэтому общий бот в каждый момент слушает кто-то один — Claude (плагин telegram) или Notion AI (мост notion-ai-tg); переключение — профилем в шапке. Так ты всегда пишешь в один привычный чат.</p></details>';
+var HOW_NAI='<details data-k="nhow"><summary>Подробно: что, где, как и почему</summary>'
+ +'<p><b>Что это.</b> Notion AI — третий агент. Он живёт в постоянном чате Notion и заходит на этот сервер по SSH-ключу. Лимитов по времени у него нет. Пока включён профиль Notion AI, он же отвечает в общем чате Telegram, а Claude стоит на паузе.</p>'
+ +'<p><b>Где в панели.</b> Плитка Notion AI в «Активных аккаунтах» — модель и effort чата. «⚙ Настройки Notion AI» сверху вниз: 1) «Переключение и лимиты» — лимитов нет, включение профилем; 2) «Модели в быстром меню» и проверка новых моделей; 3) «Свои настройки Notion AI» — чат, вход в Notion, Telegram, ключ доступа, инструкция. Вкладка «Notion AI» в консоли — окно чата. Включение — в шапке: Notion AI → «Notion AI · только он».</p>'
+ +'<p><b>Как подключить с нуля</b></p><ol>'
+ +'<li>В Notion открой Notion AI, начни новый чат и скопируй ссылку на него (…/chat?t=…). «⚙ Настройки Notion AI» → «Ссылка на постоянный чат» → «Сохранить».</li>'
+ +'<li>Там же впиши почту входа в Notion, сохрани и нажми «Войти» в строке «Вход в Notion»: на почту придёт код — введи его там же.</li>'
+ +'<li>Попроси Notion AI создать SSH-ключ и вставь публичную часть — одну строку «ssh-ed25519 AAAA…» — в «Ключ доступа к серверу (SSH)».</li>'
+ +'<li>Скопируй «Инструкцию для постоянного чата» и отправь её первым сообщением в чат — так Notion AI узнает, откуда приходят сообщения и куда отвечать.</li>'
+ +'<li>Нажми «Проверить связь». Потом в шапке выбери Notion AI → «Notion AI · только он».</li></ol>'
+ +'<p><b>Почему так.</b> Постоянный чат хранит весь контекст работы. Вход в Notion — по коду из письма, пароль в панели не нужен. Ключ даёт доступ только к серверу и убирается одной кнопкой. Один бот Telegram на Claude и Notion AI — чтобы писать в привычный чат, кто бы ни работал.</p></details>';
 function mk(id,cls,title,acts,body){var s=document.createElement('section');s.className='fleet-settings-group nai-gen '+cls;s.id=id;
  s.innerHTML='<div class="nai-gen-h"><span class="nai-gen-dot"></span><span class="nai-gen-t">'+title+'</span><span class="nai-gen-chip" data-chip hidden></span></div><div class="naicfg"><div data-st><div class="modalsub">Загрузка…</div></div>'+(acts?'<div class="nc-row">'+acts+'</div>':'')+body+'</div>';return s}
 function build(c){
  var cl=$i('naiGenClaude')||mk('naiGenClaude','claude','Claude','<button type="button" class="ghostbtn" id="naiGenClGear">⚙ Настройки Claude</button><button type="button" class="ghostbtn" id="naiGenClAdd">+ Добавить аккаунт</button>',HOW_CL);
  var cx=$i('naiGenCodex')||mk('naiGenCodex','codex','Codex','<button type="button" class="ghostbtn" id="naiGenCxGear">⚙ Настройки Codex</button><button type="button" class="ghostbtn" id="naiGenCxAdd">+ Добавить аккаунт</button><button type="button" id="naiGenCxInst" hidden>Установить Codex</button>',HOW_CX);
- var tg=$i('naiGenTg')||mk('naiGenTg','tg','Telegram · общий чат','','<details data-k="tset"><summary>Настроить</summary><div id="naiTgForm" class="nc-in"><div class="modalsub">Загрузка…</div></div></details>'+HOW_TG);
- var nai=$i('naiCfgGroup'),h=$i('naiCfgHdr');
- if(nai){nai.classList.add('nai-gen','nai');if(h&&!h.querySelector('[data-chip]')){h.className='nai-gen-h';h.innerHTML='<span class="nai-gen-dot"></span><span class="nai-gen-t">Notion AI · третий агент</span><span class="nai-gen-chip" data-chip hidden></span>'}}
- var upd=$i('updHdr'),bk=$i('bkHdr');upd=upd&&upd.closest('section');bk=bk&&bk.closest('section');
- [cl,cx,nai,tg,upd,bk].forEach(function(x){if(x)c.append(x)});
+ var nai=$i('naiCfgGroup')||mk('naiCfgGroup','nai','Notion AI · третий агент','<button type="button" class="ghostbtn" id="naiGenNaiGear">⚙ Настройки Notion AI</button>',HOW_NAI);
+ var tg=$i('naiGenTg')||mk('naiGenTg','tg','Telegram · общий чат','<button type="button" class="ghostbtn" id="naiGenTgNai">⚙ Настройки Notion AI</button><button type="button" class="ghostbtn" id="naiTgCx">Мост Codex →</button>',HOW_TG);
+ var upd=$i('updHdr');upd=upd&&upd.closest('section');
+ [cl,cx,nai,tg,upd].forEach(function(x){if(x)c.append(x)});  // «Копии аккаунтов» — в «⚙ Настройки Claude» (это копии входов Claude)
  $i('naiGenClGear').onclick=function(){var g=$i('gear');if(g)g.click()};
  $i('naiGenClAdd').onclick=function(){later(function(){if(typeof acctAdd==='function')acctAdd()})};
  $i('naiGenCxGear').onclick=function(){later(function(){if(typeof cxPopOpen==='function')cxPopOpen()})};
  $i('naiGenCxAdd').onclick=function(){later(function(){if(typeof cxAdd==='function')cxAdd()})};
  $i('naiGenCxInst').onclick=function(){later(function(){if(typeof ciOpen==='function')ciOpen()})};
- renderTg();paintGen()}
-function place(){var c=document.querySelector('#scrim .fleet-common-settings'),h=$i('naiCfgHdr'),b=$i('naiCfgBox');if(!h||!b)return true;
- if(!c)return false;
- if(!h.closest('.fleet-common-settings')){var sec=document.createElement('section');sec.className='fleet-settings-group';sec.id='naiCfgGroup';sec.append(h,b);c.append(sec)}
- if(!$i('naiGenClaude'))build(c);return true}
+ $i('naiGenNaiGear').onclick=$i('naiGenTgNai').onclick=function(){later(function(){window.naiPopOpen()})};
+ $i('naiTgCx').onclick=function(){later(function(){if(typeof CXP_SEC!=='undefined')CXP_SEC.br=true;if(typeof cxPopOpen==='function')cxPopOpen()})};
+ paintGen()}
+function place(){var c=document.querySelector('#scrim .fleet-common-settings');if(!c)return false;  // «Общие настройки» собирает скрипт раскладки панели
+ popBuild();if(!$i('naiGenClaude'))build(c);return true}
 function general(){var sc=$i('scrim');return sc&&!sc.hidden&&sc.dataset.view==='general'}
 function setup(){var sc=$i('scrim');if(!sc||!$i('naiCfgBox'))return;
- var n=0;(function tryPlace(){if(!place()&&++n<40)setTimeout(tryPlace,250)})();  // в «Общие настройки» (их собирает скрипт раскладки панели)
+ var n=0;(function tryPlace(){if(!place()&&++n<40)setTimeout(tryPlace,250)})();
  var was=sc.hidden;new MutationObserver(function(){if(!sc.hidden&&was)load();was=sc.hidden;if(general())paintGen()}).observe(sc,{attributes:true,attributeFilter:['hidden','data-view']});if(!sc.hidden)load();
- window.addEventListener('nai-state',function(e){naiSt=e.detail||null;if(general()){paintGen();var p=naiP();chip('naiCfgGroup',p.active?'работает':'выключен')}});
- setInterval(function(){if(general())paintGen()},2000)}
+ window.addEventListener('nai-state',function(e){naiSt=e.detail||null;if(general())paintGen();if(pop&&!pop.hidden)paintLim()});
+ setInterval(function(){if(general())paintGen();if(pop&&!pop.hidden)paintLim()},2000)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setup);else setup();
 }catch(e){console.warn('notion-ai settings',e)}})();
 </script>
@@ -1747,7 +1814,8 @@ def model_public():
     except Exception:
         pass
     return dict(ok=True, model=d.get('model') or '', effort=d.get('effort') or '', models=d.get('models') or [],
-                efforts=d.get('efforts') or [], ts=d.get('ts') or 0, models_ts=d.get('models_ts') or 0, pending=pend)
+                efforts=d.get('efforts') or [], ts=d.get('ts') or 0, models_ts=d.get('models_ts') or 0, pending=pend,
+                hidden=list(load_cfg().get('model_hidden') or []))
 
 
 def model_set(body):

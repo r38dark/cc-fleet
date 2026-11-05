@@ -49,6 +49,12 @@ html:root:root .fleet-section .tag.plan,html:root:root .fleet-section .tag.free{
 .fleet-section .card>.row{margin:0 0 11px!important;padding:0}.fleet-section .card>.row .lbl{display:grid;grid-template-columns:minmax(0,1fr) auto 112px;align-items:center;gap:7px;margin-bottom:4px;line-height:1.3;font-size:10px;font-weight:400;color:var(--fleet-muted);letter-spacing:0;text-transform:none}
 .fleet-section .card>.row .lbl b{font-size:11px;font-weight:550;color:var(--txt)!important;font-variant-numeric:tabular-nums}.fleet-section .card>.row .lbl>span:last-child{font-size:9px;color:var(--fleet-faint);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fleet-section .card>.row .bar{height:4px!important;border-radius:5px;background:var(--fleet-line);box-shadow:none;margin:0;overflow:hidden}.fleet-section .card>.row .fill{height:100%;border-radius:5px;background:var(--fleet-accent)!important;box-shadow:none}.fleet-section#fleetClaude .card>.row .fill{background:var(--fleet-claude)!important}.fleet-section .card>.row[data-fleet-tone="warn"] .fill{background:var(--warn)!important}.fleet-section .card>.row[data-fleet-tone="bad"] .fill{background:var(--bad)!important}
 .fleet-card-footer{display:flex;align-items:center;gap:6px;border-top:1px solid var(--fleet-line);padding-top:9px;margin-top:auto;min-height:26px}.fleet-card-caption{font-size:9px;color:var(--fleet-faint);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fleet-card-footer .btn-sw{font-size:10px!important;font-weight:400;color:var(--fleet-muted)!important;background:transparent!important;border:0!important;box-shadow:none!important;border-radius:0!important;margin:0 0 0 auto!important;padding:0!important;white-space:nowrap;opacity:1}.fleet-card-footer .btn-sw:not(:disabled)::after{content:" →"}.fleet-card-footer .btn-sw:disabled{color:var(--fleet-faint)!important}
+.fleet-card-dates{display:flex;flex-wrap:wrap;gap:5px 7px;margin:-1px 0 9px;min-width:0}
+.fleet-card-date{display:inline-flex;align-items:baseline;gap:5px;min-width:0;padding:3px 8px;border:1px solid var(--fleet-line);border-radius:6px;font-size:11px;line-height:1.35;color:var(--txt);background:color-mix(in srgb,var(--fleet-muted) 6%,transparent)}
+.fleet-card-date-label{color:var(--fleet-muted);font-size:10px;white-space:nowrap}.fleet-card-date b{font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fleet-card-date.warn{border-color:color-mix(in srgb,var(--warn) 45%,var(--fleet-line))}.fleet-card-date.warn b{color:var(--warn)}
+.fleet-card-date.urgent{border-color:color-mix(in srgb,var(--bad) 50%,var(--fleet-line));background:color-mix(in srgb,var(--bad) 9%,transparent)}.fleet-card-date.urgent b{color:var(--bad)}
+.fleet-section .card:has(> .fleet-card-dates) .fleet-titleline .chip{display:none}
 .fleet-card-details{position:absolute;top:13px;right:13px;z-index:1}.fleet-card-details summary{display:flex;align-items:center;justify-content:center;list-style:none;cursor:pointer;width:25px;height:24px;color:var(--fleet-faint);font-size:19px;line-height:1;font-weight:650;border-radius:5px}.fleet-card-details summary::-webkit-details-marker{display:none}.fleet-card-details summary:hover,.fleet-card-details[open] summary{background:var(--fleet-line);color:var(--txt)}
 .fleet-card-panel{position:absolute;top:30px;right:0;min-width:270px;width:310px;max-width:calc(100vw - 50px);padding:14px;background:var(--card);color:var(--txt);border:1px solid var(--fleet-line);border-radius:10px;box-shadow:0 18px 45px #0007;z-index:36}.fleet-card-panel-title{font-size:11px;font-weight:600;margin:0 0 12px}.fleet-card-panel .hdrright{display:flex;gap:10px;align-items:center;justify-content:flex-start;margin:0 0 12px}.fleet-card-panel .ring{display:block}.fleet-card-panel .iconrow{display:flex;gap:7px}.fleet-card-panel .iconbtn{color:var(--fleet-muted);border-color:var(--fleet-line);background:transparent}.fleet-card-panel .cxsel{display:flex;flex-wrap:wrap;margin:0 0 12px;gap:8px}.fleet-card-panel .cxsel select{width:100%;flex-basis:100%;min-width:0;max-width:100%;height:35px;background:var(--bg);color:var(--txt);border:1px solid var(--fleet-line);border-radius:6px;font-size:11px;padding:6px 8px}.fleet-card-panel .acts{display:flex;flex-wrap:wrap;gap:8px;margin:0!important;align-items:center}.fleet-card-panel .acts button{font-size:11px;color:var(--mut);border:1px solid var(--fleet-line);border-radius:6px;padding:6px 8px;line-height:1.4;background:transparent;flex:none;max-width:100%;white-space:normal}.fleet-card-panel .acts .btn-del{margin-left:0}.fleet-card-panel .acts .btn-del .dl{display:inline}.fleet-card-panel .cxfast{font-size:11px}.fleet-card-panel .btn-del svg{width:13px;height:13px}
 .fleet-group-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:30px;margin-top:5px;font-size:10px;color:var(--fleet-muted)}.fleet-group-footer #optWrap,.fleet-group-footer .switchrow{display:inline-flex;align-items:center;gap:7px;margin:0 0 0 auto;font-size:10px;color:var(--fleet-muted);white-space:nowrap}.fleet-group-footer input[type="checkbox"]{appearance:none;-webkit-appearance:none;position:relative;flex:none;width:25px;height:14px;min-height:0;border:0;border-radius:8px;background:var(--fleet-faint);margin:0;cursor:pointer;vertical-align:middle}.fleet-group-footer input[type="checkbox"]::after{content:"";position:absolute;width:10px;height:10px;left:2px;top:2px;border-radius:50%;background:#fff;transition:transform .15s}.fleet-group-footer input[type="checkbox"]:checked{background:var(--fleet-accent)}.fleet-group-footer input[type="checkbox"]:checked::after{transform:translateX(11px)}.fleet-group-footer input[type="checkbox"]:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:3px}
@@ -296,6 +302,19 @@ html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0 0 0 auto;gap
 .fleet-common-settings>summary::-webkit-details-marker{display:none}
 .fleet-common-settings>summary::after{content:"⌄";margin-left:8px}
 #scrim[data-view="general"] .fleet-claude-group,#scrim[data-view="general"] .fleet-common-settings>summary{display:none}
+#scrim:not([data-view="general"]) .fleet-common-settings{display:none}
+#scrim #autoHdr,#scrim #modelsHdr,#scrim #thrMinus,#scrim #thrPlus{display:none!important}
+.fleet-settings-panel .fleet-limit-hint{margin:10px 0 4px}
+.fleet-own-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--txt);margin:0 0 4px}
+.fleet-own-row .fleet-own-text{flex:1 1 170px;min-width:0}
+.fleet-settings-group.fleet-own-sub{border:0;border-top:1px solid var(--fleet-line);border-radius:0;padding:12px 0 0;margin:10px 0 0}
+#fleetCodexOwn>.cxacc{border:0;border-top:1px solid var(--fleet-line);border-radius:0;padding:10px 0 0;margin:10px 0 0}
+#fleetCodexOwn>.cxwipe{margin:12px 0 0}
+.fleet-pick-row .fleet-mpick{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;margin:0}
+.fleet-pick-row .fleet-mpick input[type="checkbox"]{flex:none;width:16px;height:16px;margin:0;transform:none}
+#poolList .poolrow.fleet-pick-row{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;padding:9px 0;font-size:12px;cursor:default;border-bottom:1px solid var(--fleet-line)}
+#poolList .poolrow.is-hidden{opacity:.6}
+#poolList .poolrow input.poolname[type="text"]{flex-basis:100%;margin:2px 0 0 26px;max-width:calc(100% - 26px);box-sizing:border-box}
 #scrim[data-view="general"] .fleet-common-settings{display:contents}
 @media(max-width:1250px){.fleet-live-account{grid-template-columns:minmax(90px,1fr) minmax(145px,190px) 72px 72px;gap:10px;padding-left:11px;padding-right:11px}}
 @media(max-width:1000px){.fleet-live-rows{grid-template-columns:minmax(0,1fr)}.fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(175px,210px) 90px 90px}}
@@ -472,11 +491,11 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 /* Reset times stay visible, with an explicit control in both disclosure states. */
 .fleet-live-timezone{margin-left:auto;color:var(--fleet-muted);font-size:10px;white-space:nowrap}
 .fleet-live-fold{border:1px solid var(--fleet-line);border-radius:9px;background:var(--card);min-width:0}
-.fleet-live-summary{display:flex;align-items:center;gap:18px;list-style:none;padding:10px 13px;min-height:40px;cursor:pointer;min-width:0}
+.fleet-live-summary{display:grid;grid-template-columns:minmax(0,max-content) max-content max-content minmax(0,1fr);align-items:center;gap:0 24px;position:relative;list-style:none;padding:4px 104px 4px 13px;min-height:40px;cursor:pointer;min-width:0}
 .fleet-live-summary::-webkit-details-marker{display:none}
 .fleet-live-heading{color:var(--fleet-muted);font-size:10px;font-weight:500;letter-spacing:.025em;line-height:1.5}
 .fleet-live-toggle{flex:none;display:inline-flex;align-items:center;justify-content:center;min-height:24px;margin:0;padding:2px 0;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--fleet-muted);font-size:11px;font-weight:400;line-height:1.4;cursor:pointer;white-space:nowrap}
-.fleet-live-expand{order:2;margin-left:auto}
+.fleet-live-expand{position:absolute;right:13px;top:50%;transform:translateY(-50%);margin:0}
 .fleet-live-summary:hover .fleet-live-expand{color:var(--txt)}
 .fleet-live-footer{display:flex;justify-content:flex-end;padding:2px 13px 0}
 .fleet-live-toggle:hover{color:var(--txt);text-decoration:underline;text-underline-offset:3px}
@@ -491,10 +510,14 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-live-reset{display:inline-flex;align-items:baseline;gap:4px;min-width:0;font-size:10px;color:var(--txt);font-variant-numeric:tabular-nums}
 .fleet-live-reset-label{color:var(--fleet-muted);font-size:9px}
 .fleet-live-reset time{white-space:nowrap}
-.fleet-compact-account{display:flex;align-items:center;gap:13px;flex:1;min-width:0;white-space:nowrap;font-size:12px;--live-accent:var(--fleet-claude)}
-.fleet-compact-account.codex{--live-accent:var(--fleet-accent);border-left:1px solid var(--fleet-line);padding-left:18px}
-.fleet-compact-name{color:var(--live-accent);font-weight:600;font-size:13px;min-width:60px;max-width:180px;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
-.fleet-compact-warning{color:var(--warn);font-size:10px}.fleet-compact-warning:empty{display:none}
+/* [notion-ai] свёрнутая полоса: аккаунты всегда строками, колонки «имя · 5ч · неделя · пометка» выровнены между строками (subgrid) */
+.fleet-compact-account{grid-column:1/-1;display:grid;grid-template-columns:subgrid;align-items:center;min-width:0;padding:7px 0;white-space:nowrap;font-size:12px;--live-accent:var(--fleet-claude)}
+.fleet-compact-account+.fleet-compact-account{border-top:1px solid var(--fleet-line)}
+.fleet-compact-account>*{grid-row:1;min-width:0}
+.fleet-compact-account.codex{--live-accent:var(--fleet-accent)}
+.fleet-compact-name{grid-column:1;color:var(--live-accent);font-weight:600;font-size:13px;min-width:60px;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+.fleet-compact-window[data-window="session"]{grid-column:2}.fleet-compact-window[data-window="week"]{grid-column:3}
+.fleet-compact-warning{grid-column:4;color:var(--warn);font-size:10px}.fleet-compact-warning:empty{display:none}
 .fleet-compact-window{display:inline-flex;align-items:center;gap:6px;flex:none}
 .fleet-compact-label{color:var(--fleet-muted);font-size:11px}
 .fleet-compact-used{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--txt);padding:2px 5px;border-radius:4px;background:color-mix(in srgb,var(--live-accent) 12%,transparent)}
@@ -502,7 +525,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-compact-window[data-tone="warn"] .fleet-compact-used{color:var(--warn)}
 .fleet-compact-range{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--txt);font-variant-numeric:tabular-nums;white-space:nowrap}
 .fleet-compact-arrow{font-style:normal;color:var(--fleet-muted)}
-@media(max-width:1500px){.fleet-live-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:10px 12px;gap:8px 12px}.fleet-live-expand{grid-column:2;grid-row:1/3;align-self:center}.fleet-compact-account{flex-basis:100%}.fleet-compact-account.codex{border-left:0;padding-left:0;padding-top:8px;border-top:1px solid var(--fleet-line)}}
+@media(max-width:900px){.fleet-live-summary{display:flex;flex-direction:column;align-items:stretch;gap:0;padding:4px 12px}.fleet-live-expand{position:static;transform:none;order:9;align-self:flex-end}.fleet-compact-account{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}}
 @media(min-width:1501px) and (max-width:1750px){.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(160px,190px) 145px 245px;gap:10px}}
 @media(max-width:1500px){.fleet-live-fold[open]>.fleet-live-rows{grid-template-columns:minmax(0,1fr)}}
 @media(min-width:641px) and (max-width:900px){.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(90px,1fr) minmax(145px,175px) 145px 245px;gap:10px}}
@@ -709,7 +732,7 @@ JS = r'''
  const note=el('p','fleet-profile-note','Профиль определяет права и способ работы. Аккаунт определяет подписку и лимиты. Активный профиль отмечен галочкой.');menu.prepend(search,note);
  function filterProfiles(){if(search.value!==profileQuery)search.value=profileQuery;const q=profileQuery.trim().toLocaleLowerCase('ru');menu.querySelectorAll('.cxprof').forEach(n=>n.hidden=!!q&&!n.textContent.toLocaleLowerCase('ru').includes(q))}
  search.addEventListener('input',filterProfiles);new MutationObserver(filterProfiles).observe(document.getElementById('cxp'),{childList:true});
- const cxOptions=el('div','fleet-cx-options');cxOptions.innerHTML='<div class="modalh">Codex · пороги оптимизации</div><label>Сессия, % <input id="fleetCxThreshold" type="number" min="50" max="100" value="90"></label><label>Неделя, % <input id="fleetCxCap" type="number" min="50" max="100" value="99"></label><button type="button" id="fleetCxSave">Сохранить пороги Codex</button>';
+ const cxOptions=el('div','fleet-cx-options');cxOptions.innerHTML='<div class="modalh">Codex · пороги оптимизации</div><label>Сессия, % <input id="fleetCxThreshold" type="number" min="50" max="100" value="90"></label><label>Неделя, % <input id="fleetCxCap" type="number" min="50" max="100" value="99"></label><button type="button" id="fleetCxSave">Сохранить</button>';
  document.getElementById('autoNote').after(cxOptions);
  document.getElementById('fleetCxSave').addEventListener('click',async e=>{e.target.disabled=true;try{const d=await post('chatgpt/rotation/config',{threshold:Number(document.getElementById('fleetCxThreshold').value),weekly_cap:Number(document.getElementById('fleetCxCap').value)});toast(d.message);await loadRotation()}catch(err){toast('⚠ '+err.message)}finally{e.target.disabled=false}});
  const stateNode=document.getElementById('fleetInputState'),input=document.getElementById('fleetInput'),send=document.getElementById('fleetSend');
@@ -777,6 +800,35 @@ JS = r'''
  for(const head of [ch,xh]){const count=el('span','fleet-count');head.querySelector('h2').after(count)}
  function countText(n){const k=n%100,m=n%10;return n+' '+(k>=11&&k<=14?'аккаунтов':m===1?'аккаунт':m>=2&&m<=4?'аккаунта':'аккаунтов')}
  function putText(node,value){if(node.textContent!==value)node.textContent=value}
+ // [notion-ai] сроки на виду: до какого числа оплачена подписка и до какого числа действует вход (раньше — в чипах и в меню «⋯»)
+ function dayWord(n){const k=n%100,m=n%10;return k>=11&&k<=14?'дней':m===1?'день':m>=2&&m<=4?'дня':'дней'}
+ function dateLeft(iso){const t=new Date(iso),ms=t-Date.now();if(!iso||isNaN(ms))return null;const days=Math.floor(ms/86400000);
+  return{ms,days,date:t.toLocaleDateString('ru',{day:'2-digit',month:'2-digit'}),full:t.toLocaleString('ru',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),left:ms<=0?'сегодня':days>=1?days+' '+dayWord(days):Math.max(1,Math.floor(ms/3600000))+' ч'}}
+ function cardDateItem(label,value,tone,title){const item=el('span','fleet-card-date'+(tone?' '+tone:''));item.append(el('span','fleet-card-date-label',label),el('b','',value));if(title)item.title=title;return item}
+ function paintCardDates(card,a,engine){
+  let box=card.querySelector(':scope > .fleet-card-dates');
+  if(!box){box=el('div','fleet-card-dates');const top=card.querySelector(':scope > .top');if(!top)return;top.after(box)}
+  const items=[];
+  if(engine==='claude'){
+   const sub=dateLeft(a.renewal_next);
+   if(a.lapsed||a.plan==='free')items.push(cardDateItem('Подписка','не активна (FREE)','urgent','Аккаунт на бесплатном плане — продли подписку и нажми «Я продлил» в меню ⋯'));
+   else if(sub)items.push(cardDateItem('Подписка до',sub.date+' · '+(sub.ms<=0?'продление сегодня':sub.left),sub.days<3?'urgent':sub.days<=7?'warn':'','Ожидаемое продление (по прошлому списанию): '+sub.full+'. Если не продлится — аккаунт станет FREE'));
+   else items.push(cardDateItem('Подписка','дата не известна','','Дата появится после первого продления, замеченного панелью'));
+   const login=dateLeft(a.login_expires);
+   if(login)items.push(login.ms<=0?cardDateItem('Вход','истёк — «Войти заново» в меню ⋯','urgent','Вход истёк '+login.full):cardDateItem('Вход до',login.date+' · '+login.left,login.days<=3?'urgent':login.days<=7?'warn':'','Вход действует до '+login.full+'. Обновлением токена не продлевается — до этой даты нажми «Войти заново» в меню ⋯'));
+   else items.push(cardDateItem('Вход','срок не известен','','Срок появится после входа через панель'));
+  }else{
+   const sub=dateLeft(a.sub_until);
+   if(a.lapsed)items.push(cardDateItem('Подписка','закончилась (FREE)','urgent','Подписка не продлена — аккаунт на бесплатном плане'));
+   else if(sub)items.push(cardDateItem('Подписка до',sub.date+' · '+(sub.ms<=0?'сегодня':sub.left),sub.ms<=0||sub.days<=3?'urgent':sub.days<=7?'warn':'','Подписка активна до '+sub.full));
+   else items.push(cardDateItem('Подписка','дата не известна','','OpenAI не сообщил дату окончания подписки'));
+   const ref=a.last_refresh?Math.max(0,Math.floor((Date.now()-new Date(a.last_refresh))/86400000)):null;
+   if(a.login_required)items.push(cardDateItem('Вход','нужно войти заново','urgent','Codex потерял вход — «Войти заново» в меню ⋯'));
+   else items.push(cardDateItem('Вход','продлевается сам'+(ref==null?'':' · обновлён '+(ref===0?'сегодня':ref+' '+dayWord(ref)+' назад')),ref!=null&&ref>=10?'warn':'',ref==null?'Codex сам обновляет токен входа, пока аккаунтом пользуются':'Токен обновлён '+new Date(a.last_refresh).toLocaleString('ru')+'. Codex продлевает его сам, пока аккаунтом пользуются; долгий простой может потребовать «Войти заново»'));
+  }
+  const sig=items.map(i=>i.className+i.textContent+i.title).join('|');
+  if(box.dataset.sig!==sig){box.dataset.sig=sig;box.replaceChildren(...items)}
+ }
  function decorateCard(card,a,slot,engine){
   const key=engine+':'+slot;const isActive=card.classList.contains(engine==='codex'?'fleet-active':'active');
   if(!card.dataset.fleetReference){
@@ -803,6 +855,7 @@ JS = r'''
     const n=Number.parseFloat(percent.textContent);row.dataset.fleetTone=n>=100?'bad':n>=85?'warn':'normal';
    });
   }
+  paintCardDates(card,a,engine);
   const footer=card.querySelector('.fleet-card-footer');
   const pick=card.querySelector('.fleet-pick')||card.querySelector('.acts .btn-sw');if(pick&&pick.parentElement!==footer)footer.append(pick);
   const windows=engine==='codex'?a.windows||[]:[{mins:300,...a.five_hour},{mins:10080,...a.seven_day}];
@@ -917,28 +970,68 @@ JS = r'''
  const claudeTitle=document.getElementById('modalTitle'),modalHeader=el('div','cxphead'),modalClose=el('button','hdrgear fleet-panel-close');modalClose.id='fleetClaudeSettingsClose';modalClose.type='button';modalClose.setAttribute('aria-label','Закрыть настройки');modalClose.innerHTML=document.getElementById('cxPopX').innerHTML;modalHeader.append(claudeTitle,modalClose);
  const modalBody=el('div','cxpbody');while(modal.firstChild)modalBody.append(modal.firstChild);modal.replaceChildren(modalHeader,modalBody);
  function group(label,nodes,cls){const section=el('section','fleet-settings-group '+(cls||''));if(label)section.append(el('div','fleet-settings-group-title',label));for(const node of nodes)if(node)section.append(node);return section}
+ // [notion-ai] Одна схема у Claude, Codex и Notion AI: 1) переключение и лимиты, 2) модели в быстром меню, 3) свои настройки агента.
  const autoTitle=document.getElementById('autoHdr'),autoRow=document.getElementById('autoWrap').closest('.switchrow'),weekly=document.getElementById('wkPause').closest('label');
- const autoGroup=group('',[autoTitle,autoRow,document.getElementById('autoNote'),weekly],'fleet-claude-group');
- const modelGroup=group('',[document.getElementById('modelsHdr'),document.getElementById('modalSub'),document.getElementById('poolList'),document.getElementById('checkNew')],'fleet-claude-group');
+ autoTitle.hidden=true;document.getElementById('modelsHdr').hidden=true;for(const id of ['thrMinus','thrPlus'])document.getElementById(id).hidden=true;  // заголовки — у групп, пороги — полями
+ const LIMIT_HINT='Сессия — с какого % окна 5 часов переключать аккаунт. Неделя — потолок недели: выше него аккаунт не берётся в работу.';
+ const clLimits=el('div','fleet-cx-options');clLimits.id='fleetClLimits';clLimits.innerHTML='<label>Сессия, % <input id="fleetClThreshold" type="number" min="50" max="99" value="90"></label><label>Неделя, % <input id="fleetClCap" type="number" min="50" max="100" value="99"></label><button type="button" id="fleetClSave">Сохранить</button>';
+ const autoGroup=group('Переключение и лимиты',[clLimits,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT),autoRow,document.getElementById('autoNote'),weekly,autoTitle],'fleet-claude-group');autoGroup.id='fleetClaudeLimits';
+ const modelGroup=group('Модели в быстром меню',[document.getElementById('modelsHdr'),document.getElementById('modalSub'),document.getElementById('poolList'),document.getElementById('checkNew')],'fleet-claude-group');modelGroup.id='fleetClaudeModels';
+ const claudeOwnAccounts=el('div','fleet-own-row');claudeOwnAccounts.id='fleetClOwnAcc';
+ const claudeBackups=group('',[document.getElementById('bkHdr'),document.getElementById('bkBox')],'fleet-own-sub');
+ const claudeOwn=group('Свои настройки Claude',[claudeOwnAccounts,el('div','fleet-catalog-note','Telegram — общий бот, плагин telegram в Claude Code; настраивается в консоли Claude. Шаги — в «Общие настройки» → «Telegram · общий чат».'),claudeBackups],'fleet-claude-group');claudeOwn.id='fleetClaudeOwn';
  const common=el('details','fleet-common-settings');common.append(el('summary','','Общие настройки'));
- for(const [title,body] of [['updHdr','updBox'],['bkHdr','bkBox']])common.append(group('',[document.getElementById(title),document.getElementById(body)]));
- modalBody.prepend(autoGroup,modelGroup,common);
- const codexThresholds=group('Переключение и лимиты Codex',[cxOptions]);document.querySelector('#cxPop > .cxpbody').prepend(codexThresholds);
+ common.append(group('',[document.getElementById('updHdr'),document.getElementById('updBox')]));
+ modalBody.prepend(autoGroup,modelGroup,claudeOwn,common);
+ const clThreshold=document.getElementById('fleetClThreshold'),clCap=document.getElementById('fleetClCap');
+ function paintClaudeLimits(){if(clLimits.contains(document.activeElement))return;clThreshold.value=typeof THR!=='undefined'?THR:90;clCap.value=typeof WCAP!=='undefined'?WCAP:99}
+ document.getElementById('fleetClSave').addEventListener('click',async e=>{
+  const thr=Math.round(Number(clThreshold.value)),cap=Math.round(Number(clCap.value));
+  if(!(thr>=50&&thr<=99)||!(cap>=50&&cap<=100)){toast('⚠ Сессия — от 50 до 99 %, неделя — от 50 до 100 %');return}
+  e.target.disabled=true;
+  try{await post('config',{threshold:thr,weekly_cap:cap});THR=thr;WCAP=cap;renderAutoLbl();toast('Пороги Claude сохранены: сессия '+thr+' %, неделя '+cap+' %');load()}
+  catch(err){toast('⚠ '+err.message)}finally{e.target.disabled=false}
+ });
+ function ownButton(text,action){const button=el('button','ghostbtn',text);button.type='button';button.addEventListener('click',action);return button}
+ function toCards(selector,close){close();setTimeout(()=>(document.querySelector(selector+' .card')||document.querySelector(selector))?.scrollIntoView({behavior:'smooth',block:'center'}),80)}
+ function paintOwnAccounts(){
+  const accounts=Object.keys(lastSnap?.accounts||{}),active=lastSnap?.active;
+  claudeOwnAccounts.replaceChildren(el('span','fleet-own-text',accounts.length?'Аккаунты: '+accounts.length+' · сейчас '+(active||'—'):'Аккаунтов пока нет'),
+   ownButton('+ Добавить аккаунт',()=>{document.getElementById('modalDone').click();setTimeout(()=>acctAdd(),80)}),
+   ownButton('Управление аккаунтами ↓',()=>toCards('#cards',()=>document.getElementById('modalDone').click())));
+  const cx=(typeof cxData!=='undefined'&&cxData?.accounts)||[],current=typeof cxLimAcc==='function'?cxLimAcc():null;
+  codexOwnAccounts.replaceChildren(el('span','fleet-own-text',cx.length?'Аккаунты: '+cx.length+' · сейчас '+(current?.label||current?.slot||'—'):'Аккаунтов пока нет'),
+   ownButton('+ Добавить аккаунт',()=>{cxPopClose();setTimeout(()=>cxAdd(),80)}),
+   ownButton('Управление аккаунтами ↓',()=>toCards('#cxcards',cxPopClose)));
+ }
+ const codexThresholds=group('Переключение и лимиты',[cxOptions,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT+' Автовыбор аккаунта по этим порогам — переключатель «Автовыбор» в «Управление аккаунтами».')]);codexThresholds.id='fleetCxLimits';document.querySelector('#cxPop > .cxpbody').prepend(codexThresholds);
  // Каталог моделей: ручная проверка в фоне, без изменения выбранной модели.
  const catalogAccount=el('div','fleet-catalog-note'),catalogList=el('div','fleet-model-catalog'),catalogStatus=el('div','fleet-catalog-note'),catalogCheck=el('button','ghostbtn','🔄 Проверить новые модели');
  catalogAccount.id='fleetCxCatalogAccount';catalogList.id='fleetCxModelList';catalogStatus.id='fleetCxModelStatus';catalogStatus.setAttribute('role','status');catalogStatus.setAttribute('aria-live','polite');catalogCheck.id='fleetCxCheckNew';catalogCheck.type='button';
- const catalogGroup=group('Модели Codex',[catalogAccount,catalogList,catalogStatus,catalogCheck]);catalogGroup.id='fleetCxModels';codexThresholds.after(catalogGroup);
+ const catalogGroup=group('Модели в быстром меню',[el('div','modalsub','Отмеченные модели показываются в быстром меню плитки Codex. Применяется сразу.'),catalogAccount,catalogList,catalogStatus,catalogCheck]);catalogGroup.id='fleetCxModels';codexThresholds.after(catalogGroup);
+ const codexOwnAccounts=el('div','fleet-own-row');codexOwnAccounts.id='fleetCxOwnAcc';
+ const codexOwn=group('Свои настройки Codex',[codexOwnAccounts,document.getElementById('cxBrW'),document.getElementById('cxWipeW')]);codexOwn.id='fleetCodexOwn';catalogGroup.after(codexOwn);
+ function codexHidden(){return (typeof lastSnap!=='undefined'&&lastSnap?.config?.codex_hidden)||[]}
+ catalogList.addEventListener('change',async event=>{
+  const box=event.target.closest('.fleet-cx-show');if(!box)return;
+  const shown=[...catalogList.querySelectorAll('.fleet-cx-show')],ids=shown.map(b=>b.closest('[data-model]').dataset.model);
+  const hidden=[...codexHidden().filter(id=>!ids.includes(id)),...shown.filter(b=>!b.checked).map(b=>b.closest('[data-model]').dataset.model)];
+  shown.forEach(b=>b.disabled=true);
+  try{const d=await post('config',{codex_hidden:hidden});if(lastSnap){lastSnap.config={...(lastSnap.config||{}),codex_hidden:d.codex_hidden||hidden}}catalogSignature='';paintCodexCatalog();if(!document.getElementById('cxQ').hidden)cxQRender();toast(box.checked?'Модель снова в быстром меню Codex':'Модель убрана из быстрого меню Codex')}
+  catch(err){box.checked=!box.checked;toast('⚠ '+err.message)}finally{shown.forEach(b=>b.disabled=false)}
+ });
  let catalogState=null,catalogTimer=0,catalogBusy=false,catalogApplied='',catalogSignature='',catalogFailures=0;
  function paintCodexCatalog(){
   const account=cxLimAcc(),same=!!account&&catalogState?.slot===account.slot;
   catalogCheck.disabled=!!catalogState?.checking||!account;
   putText(catalogCheck,catalogState?.checking?'⏳ Проверяем модели…':'🔄 Проверить новые модели');
   putText(catalogAccount,account?'Активный аккаунт: '+(account.label||account.email||account.slot)+' · '+account.slot:'Сначала добавь и выбери аккаунт Codex.');
-  const models=account?.models||[],signature=JSON.stringify([account?.slot,account?.model,models,same?catalogState:null]);
+  const models=account?.models||[],hidden=codexHidden(),signature=JSON.stringify([account?.slot,account?.model,models,hidden,same?catalogState:null]);
   if(signature!==catalogSignature){
    catalogSignature=signature;catalogList.replaceChildren();
    for(const model of models){
-    const row=el('div','fleet-catalog-row'),name=el('div','fleet-catalog-name',model.name||model.id);name.append(el('small','',model.id));row.append(name);row.dataset.model=model.id;
+    const row=el('div','fleet-catalog-row fleet-pick-row'),pick=el('label','fleet-mpick'),box=el('input','fleet-cx-show'),name=el('span','fleet-catalog-name',model.name||model.id);
+    box.type='checkbox';box.checked=!hidden.includes(model.id);box.title='Показывать в быстром меню Codex';name.append(el('small','',model.id));pick.append(box,name);row.append(pick);row.dataset.model=model.id;
     if(same&&catalogState.new_ids?.includes(model.id))row.append(el('span','fleet-catalog-chip','Новая'));
     if(account.model===model.id)row.append(el('span','fleet-catalog-chip','Выбрана'));
     catalogList.append(row);
@@ -946,7 +1039,7 @@ JS = r'''
   }
   let note=same?catalogState.message:'';
   if(catalogState?.checking&&!same)note='Идёт проверка аккаунта '+catalogState.slot+'…';
-  if(!note)note=models.length?'Моделей в списке: '+models.length+'. Выбор — в плитке Codex.':'Каталог пока не загружен. Нажми «Проверить новые модели».';
+  if(!note)note=models.length?'Моделей: '+models.length+', в быстром меню: '+models.filter(m=>!hidden.includes(m.id)).length+'. Выбор модели — в плитке Codex.':'Каталог пока не загружен. Нажми «Проверить новые модели».';
   putText(catalogStatus,note);catalogStatus.dataset.error=String(same&&catalogState.ok===false);
  }
  function acceptCodexCatalog(data){
@@ -973,7 +1066,17 @@ JS = r'''
  });
  const catalogCxRender=cxRender;cxRender=function(){catalogCxRender();paintCodexCatalog()};
  const catalogRotation=renderRotation;renderRotation=function(data){catalogRotation(data);paintCodexCatalog()};
- const catalogOpen=cxPopOpen;cxPopOpen=function(){catalogOpen();paintCodexCatalog();loadCodexCatalog()};
+ const catalogOpen=cxPopOpen;cxPopOpen=function(){catalogOpen();paintCodexCatalog();paintOwnAccounts();loadCodexCatalog()};
+ // [notion-ai] Модели Claude: те же строки, что у Codex — галочка «в быстром меню», имя, id, «Новая»/«Выбрана»
+ function escText(value){return String(value==null?'':value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+ renderPool=function(){
+  const m=typeof lastModel!=='undefined'?lastModel:null,current=m&&(m.default||m.session),rows=unifiedRows(m,lastCandidates).filter(r=>poolScanned||!r.hidden);
+  document.getElementById('poolList').innerHTML=rows.map(r=>'<div class="poolrow fleet-catalog-row fleet-pick-row'+(r.hidden?' is-hidden':'')+'" data-id="'+escText(r.id)+'" data-known="'+(r.known?1:0)+'"><label class="fleet-mpick"><input type="checkbox" class="poolchk"'+(r.enabled?' checked':'')+' title="Показывать в быстром меню Claude"><span class="fleet-catalog-name">'+escText(r.name)+'<small>'+escText(r.id)+'</small></span></label>'
+   +(r.isNew?'<span class="fleet-catalog-chip">Новая</span>':'')+(r.id===current?'<span class="fleet-catalog-chip">Выбрана</span>':'')
+   +(r.known?'<input type="hidden" class="poolname" value="'+escText(r.name)+'">':'<input type="text" class="poolname" value="'+escText(r.name)+'" aria-label="Название новой модели в меню" title="Как назвать модель в меню">')+'</div>').join('')
+   ||'<div class="fleet-catalog-note">Список моделей пока пуст — нажми «Проверить новые модели».</div>';
+ };
+ if(typeof lastModel!=='undefined'&&lastModel)renderPool();
  paintCodexCatalog();
  const backdrop=el('div','fleet-settings-backdrop');backdrop.id='fleetSettingsBackdrop';backdrop.hidden=true;document.body.append(backdrop);backdrop.addEventListener('click',()=>{cxPopClose()});
  function paintSettingsState(){
@@ -983,7 +1086,7 @@ JS = r'''
  new MutationObserver(paintSettingsState).observe(scrim,{attributes:true,attributeFilter:['hidden']});
  new MutationObserver(paintSettingsState).observe(document.getElementById('cxPop'),{attributes:true,attributeFilter:['hidden']});
  gear.setAttribute('aria-haspopup','dialog');
- gear.addEventListener('click',()=>{cxPopClose();cxMenuClose();cxQClose();closeClaudeQ();scrim.dataset.view='claude';putText(claudeTitle,'Настройки Claude');common.open=false;placePanel(modal,gear,580);paintSettingsState()});
+ gear.addEventListener('click',()=>{cxPopClose();cxMenuClose();cxQClose();closeClaudeQ();scrim.dataset.view='claude';putText(claudeTitle,'Настройки Claude');common.open=false;paintClaudeLimits();paintOwnAccounts();placePanel(modal,gear,580);paintSettingsState()});
  generalGear.addEventListener('click',()=>{if(!scrim.hidden&&scrim.dataset.view==='general'){document.getElementById('modalDone').click();return}gear.click();scrim.dataset.view='general';putText(claudeTitle,'Общие настройки');common.open=true;placePanel(modal,generalGear,580);paintSettingsState()});
  codexGear.addEventListener('click',()=>{scrim.hidden=true;closeClaudeQ()});
  modalClose.addEventListener('click',()=>{document.getElementById('modalDone').click();(scrim.dataset.view==='general'?generalGear:gear).focus()});
