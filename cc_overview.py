@@ -713,17 +713,19 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(max-width:700px){#cxMenu.mono-profile-window .full-choice{padding:13px!important}.full-choice-top{margin-bottom:7px}.manual-companion{margin:6px 12px 12px}.manual-companion button{min-height:34px}}
 
 
-/* Reserve confirmation: one question and two actions. */
-#acctBox:has(.reserve-confirm){box-sizing:border-box;width:calc(100vw - 32px);max-width:320px;padding:20px;border-radius:12px;border:1px solid var(--fleet-line);background:var(--card)}
-.reserve-confirm h3{margin:0;color:var(--txt);font-size:15px;font-weight:600;line-height:1.4}
-.reserve-confirm .modalfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
-.reserve-confirm .modalfoot button{min-width:64px;min-height:36px;padding:7px 16px;margin:0;border-radius:7px;font-size:13px;font-weight:500;box-shadow:none}
+/* Reserve confirmation follows its switch without a backdrop. */
+.reserve-confirm{box-sizing:border-box;position:fixed;z-index:1010;width:224px;max-width:calc(100vw - 24px);padding:13px 14px;border:1px solid var(--fleet-line);border-radius:9px;background:var(--card);color:var(--txt);box-shadow:0 7px 22px #0004}
+.reserve-confirm h3{margin:0;font-size:13px;font-weight:600;line-height:1.4}
+.reserve-confirm .modalfoot{display:flex;justify-content:flex-end;gap:6px;margin-top:12px}
+.reserve-confirm .modalfoot button{min-width:54px;min-height:30px;padding:5px 13px;margin:0;border-radius:6px;font-size:12px;font-weight:500;box-shadow:none}
 #reserveConfirmNo{background:transparent;border:1px solid var(--fleet-line);color:var(--fleet-muted)}
 #reserveConfirmYes{background:var(--fleet-accent);border:1px solid transparent;color:var(--bg)}
-.reserve-confirm button:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:3px}
-@media(pointer:coarse){.reserve-confirm .modalfoot button{min-height:44px}}
-html:has(.reserve-confirm),body:has(.reserve-confirm){overflow:hidden}
-#acctScrim:has(.reserve-confirm){touch-action:none;overscroll-behavior:contain}
+.reserve-confirm button:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
+.reserve-confirm-tip{position:absolute;left:calc(var(--reserve-tip-x) - 4px);width:8px;height:8px;background:var(--card);transform:rotate(45deg);pointer-events:none}
+.reserve-confirm[data-side="below"] .reserve-confirm-tip{top:-5px;border-top:1px solid var(--fleet-line);border-left:1px solid var(--fleet-line)}
+.reserve-confirm[data-side="above"] .reserve-confirm-tip{bottom:-5px;border-bottom:1px solid var(--fleet-line);border-right:1px solid var(--fleet-line)}
+@media(pointer:coarse){.reserve-confirm .modalfoot button{min-height:36px}}
+
 '''
 
 JS = r'''
@@ -1330,16 +1332,49 @@ JS = r'''
  function mirrorApply(engine,id,confirmation=''){return mirrorRequest(engine,'apply',{id,confirm:confirmation})}
  function mirrorStop(engine){if(mirrorState.service?.kind==='emergency'&&!confirm('Выключить аварийный режим '+mirrorNames[engine]+' и восстановить прежний сценарий?'))return;return mirrorRequest(engine,'stop',{})}
  function mirrorShowTask(){const task=mirrorState.task;if(!task)return;cxMenuClose();acctShow('<h3>'+acctEsc(mirrorNames[task.leader]+' → '+mirrorNames[task.follower])+'</h3><p>Права шага: '+acctEsc({read:'чтение',dev:'дев',full:'полные'}[task.rights]||task.rights)+'</p><pre class="mirror-task-text">'+acctEsc(task.text)+'</pre>'+(task.result?'<h4>Результат</h4><pre class="mirror-task-text">'+acctEsc(task.result)+'</pre>':'')+(task.error?'<p>'+acctEsc(task.error)+'</p>':'')+(task.status==='pending'?(task.rights==='full'?'<label>Для полных прав введи «подтверждаю»<input id="mirrorTaskWord" class="dlginp" autocomplete="off"></label>':'')+'<div class="modalfoot"><button id="mirrorTaskReject" class="ghostbtn">Отклонить</button><button id="mirrorTaskApprove">Отправить исполнителю</button></div>':'<div class="modalfoot"><button id="mirrorTaskClose">Закрыть</button></div>'));document.getElementById('mirrorTaskClose')?.addEventListener('click',acctClose);for(const [id,approve] of [['mirrorTaskReject',false],['mirrorTaskApprove',true]])document.getElementById(id)?.addEventListener('click',async()=>{try{const response=await fetch(API+'profiles/task/confirm',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({id:task.id,approve,confirm:document.getElementById('mirrorTaskWord')?.value||''})}),result=await response.json();if(result.state)mirrorAccept(result.state);toast(result.message);if(result.ok)acctClose()}catch(_){toast('Не удалось подтвердить шаг. Обнови данные перед повтором.')}})}
+ let reserveConfirmation=null;
+ function reserveConfirmOpen(engine,action,body,revision){
+  if(reserveConfirmation?.engine===engine&&reserveConfirmation.action===action){reserveConfirmation.close(false,true);return}
+  reserveConfirmation?.close(false,false);
+  const anchor=mirrorReserves[engine]?.querySelector('.ntbtn');if(!anchor)return;
+  const dialog=el('div','reserve-confirm');dialog.id='reserveConfirmPopover';dialog.dataset.engine=engine;
+  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','false');dialog.setAttribute('aria-labelledby','reserveConfirmTitle');
+  dialog.innerHTML='<span class="reserve-confirm-tip" aria-hidden="true"></span><h3 id="reserveConfirmTitle">'+(action==='config'?'Включить авторезерв?':'Включить резерв?')+'</h3><div class="modalfoot"><button type="button" id="reserveConfirmNo">Нет</button><button type="button" id="reserveConfirmYes">Да</button></div>';
+  document.body.append(dialog);
+  const no=dialog.querySelector('#reserveConfirmNo'),yes=dialog.querySelector('#reserveConfirmYes'),events=new AbortController();let answered=false,frame=0;
+  const previousAttrs=new Map(['aria-expanded','aria-controls','aria-haspopup'].map(name=>[name,anchor.getAttribute(name)]));
+  anchor.setAttribute('aria-expanded','true');anchor.setAttribute('aria-controls',dialog.id);anchor.setAttribute('aria-haspopup','dialog');
+  const finish=(approved,restoreFocus=true)=>{
+   if(answered)return;answered=true;events.abort();observer.disconnect();cancelAnimationFrame(frame);dialog.remove();
+   for(const [name,value] of previousAttrs){if(value===null)anchor.removeAttribute(name);else anchor.setAttribute(name,value)}
+   reserveConfirmation=null;
+   if(restoreFocus&&anchor.isConnected)anchor.focus({preventScroll:true});
+   if(approved)mirrorRequest(engine,action,{...body,confirm:true},revision);
+  };
+  const viewport=()=>{const v=visualViewport,left=v?.offsetLeft||0,top=v?.offsetTop||0;return {left,top,right:left+(v?.width||innerWidth),bottom:top+(v?.height||innerHeight)}};
+  const place=()=>{
+   frame=0;const r=anchor.getBoundingClientRect(),v=viewport();
+   if(!anchor.isConnected||!r.width||!r.height||r.bottom<=v.top||r.top>=v.bottom||r.right<=v.left||r.left>=v.right){finish(false,false);return}
+   const w=dialog.offsetWidth,h=dialog.offsetHeight,gap=10,pad=12,below=v.bottom-r.bottom,above=r.top-v.top;
+   const side=below>=h+gap+pad||below>=above?'below':'above';
+   const x=Math.max(v.left+pad,Math.min(r.right-w,v.right-w-pad));
+   const y=Math.max(v.top+pad,Math.min(side==='below'?r.bottom+gap:r.top-h-gap,v.bottom-h-pad));
+   dialog.dataset.side=side;dialog.style.left=x+'px';dialog.style.top=y+'px';
+   dialog.style.setProperty('--reserve-tip-x',Math.max(14,Math.min(r.left+r.width/2-x,w-14))+'px');
+  };
+  const schedule=()=>{if(!frame)frame=requestAnimationFrame(place)};
+  const observer=new ResizeObserver(schedule);observer.observe(anchor);observer.observe(dialog);
+  no.onclick=()=>finish(false);yes.onclick=()=>finish(true);
+  document.addEventListener('pointerdown',event=>{if(!dialog.contains(event.target)&&!anchor.contains(event.target))finish(false,false)},{capture:true,signal:events.signal});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();finish(false)}},{capture:true,signal:events.signal});
+  window.addEventListener('scroll',schedule,{capture:true,passive:true,signal:events.signal});window.addEventListener('resize',schedule,{signal:events.signal});
+  visualViewport?.addEventListener('resize',schedule,{signal:events.signal});visualViewport?.addEventListener('scroll',schedule,{signal:events.signal});
+  reserveConfirmation={engine,action,close:finish};
+  const r=anchor.getBoundingClientRect(),v=viewport();if(r.top<v.top+12||r.bottom>v.bottom-12)anchor.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
+  place();if(!answered)no.focus({preventScroll:true});requestAnimationFrame(()=>{if(!answered)no.focus({preventScroll:true})});
+ }
  function mirrorConfirm(engine,id,word,action='apply',body={id},revision=mirrorState.revision){
-  if(id==='reserve'){
-   const automatic=action==='config',previous=document.activeElement;
-   acctShow('<div class="reserve-confirm" role="alertdialog" aria-modal="true" aria-labelledby="reserveConfirmTitle"><h3 id="reserveConfirmTitle">'+(automatic?'Включить авторезерв?':'Включить резерв?')+'</h3><div class="modalfoot"><button type="button" id="reserveConfirmNo" class="ghostbtn">Нет</button><button type="button" id="reserveConfirmYes">Да</button></div></div>');
-   const dialog=document.querySelector('#acctBox .reserve-confirm'),no=document.getElementById('reserveConfirmNo'),yes=document.getElementById('reserveConfirmYes');let answered=false;
-   const finish=approved=>{if(answered)return;answered=true;acctClose();if(approved)mirrorRequest(engine,action,{...body,confirm:true},revision);else (previous?.isConnected?previous:mirrorButtons[engine])?.focus({preventScroll:true})};
-   no.onclick=()=>finish(false);yes.onclick=()=>finish(true);
-   dialog.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();finish(false)}else if(event.key==='Tab'){event.preventDefault();(document.activeElement===no?yes:no).focus({preventScroll:true})}};
-   no.focus({preventScroll:true});return;
-  }
+  if(id==='reserve'){reserveConfirmOpen(engine,action,body,revision);return}
   const p=mirrorState.engines[engine].profiles.find(p=>p.id===id),impact=id==='reserve'?'Другая модель будет на паузе. Без ограничения срока. После выключения вернётся прежний сценарий.':'Full работает самостоятельно со всеми доступными инструментами, командами и файлами.';acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(p.title)+(action==='config'?' · автоматически':'')+'</h3><p>'+impact+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы подтвердить изменение сценария для '+mirrorNames[engine]+'.</p><input id="mirrorConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="mirrorConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="mirrorConfirmApply" disabled>Применить</button></div></div>');
   const input=document.getElementById('mirrorConfirmWord'),apply=document.getElementById('mirrorConfirmApply');input.addEventListener('input',()=>apply.disabled=input.value.trim().toLocaleLowerCase('ru')!==word);input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!apply.disabled)apply.click()});document.getElementById('mirrorConfirmCancel').onclick=()=>{acctClose();mirrorButtons[engine].focus()};apply.onclick=()=>{const text=input.value;acctClose();mirrorRequest(engine,action,{...body,confirm:text},revision)};setTimeout(()=>input.focus(),30);
  }
