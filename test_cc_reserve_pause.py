@@ -122,8 +122,8 @@ class HoldRelease(Base):
         orig_sleep = time.sleep
         time.sleep = lambda s: None
         self.addCleanup(setattr, time, "sleep", orig_sleep)
+        self.addCleanup(setattr, pc, "_queued", pc._queued)  # delattr стирал настоящую функцию для следующих тестов
         pc._queued = lambda: 2
-        self.addCleanup(delattr, pc, "_queued")
         pc.reserve_hold("резерв")
         pc.reserve_release()
         text = [c[-1] for c in calls if c[:2] == ["screen", "-S"] and "-X" in c and "stuff" in c and len(c[-1]) > 2]
@@ -333,6 +333,20 @@ class NotionAiProfile(Base):
             f.write("{oops")
         pc.cmd_wake(argparse.Namespace(if_due=True))
         self.assertFalse(pc.load()["active"])
+
+    def test_pause_off_button_silent_while_profile_on(self):
+        # кнопка «Отключить паузу» при профиле Notion AI: отключение запоминается, но Claude не запущен —
+        # ни «▶️ пауза отключена» в общий чат, ни подъёма
+        put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": "session", "resume_at": time.time() + 600})
+        self.nai(True)
+        self.assertEqual(pc.cmd_off(argparse.Namespace(by="панель")), 0)
+        st = pc.load()
+        self.assertEqual((st["active"], st["override"]), (False, True))
+        self.assertEqual((self.wakes, self.tgs), ([], []))
+        self.nai(False)
+        pc.cmd_off(argparse.Namespace(by="панель"))  # без профиля — как раньше: сообщение в общий чат
+        self.assertEqual(len(self.tgs), 1)
+        self.assertIn("пауза отключена", self.tgs[0])
 
     def test_reserve_pause_untouched_by_profile(self):
         pc.reserve_hold("резерв")

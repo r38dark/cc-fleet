@@ -1340,6 +1340,8 @@ JS = r'''
   }
   const summary=el('span','mirror-pair-summary');summary.id='mirrorPairSummary';liveHead.append(summary);const taskButton=el('button','mirror-task-button');taskButton.id='mirrorTaskButton';taskButton.type='button';taskButton.hidden=true;taskButton.onclick=mirrorShowTask;liveHead.append(taskButton);
   const savedCxbRender=cxbRender;cxbRender=function(force){savedCxbRender(force);if(cxbData?.profile_system)mirrorAccept(cxbData.profile_system)};
+  /* [notion-ai] 06.11: кнопку профиля Codex рисовали двое: cxHdr() — профилем моста Codex («Codex Full · самостоятельно»), paintMirrorWorkplace() — профилем системы («Codex · на паузе (работает Notion AI)»); строка скакала. Подпись одна — из системы профилей. */
+  const savedCxHdr=cxHdr;cxHdr=function(){savedCxHdr();paintMirrorWorkplace()};
   cxMenuOpen=function(){mirrorEngine='codex';mirrorTheme();nativeMirrorOpen()};
   cxMenuPlace=function(){placeProfilePalette(mirrorButtons[mirrorEngine])};
   cxpRender=paintMirrorPalette;

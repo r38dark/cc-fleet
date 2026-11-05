@@ -587,7 +587,13 @@ def cmd_off(a):
     was = bool(st.get("active"))
     st.update(active=False, override=True, override_since=_now(), override_by=a.by or "",
               cleared_at=_now())
+    st.pop("nai_hold", None)
     save(st)
+    if _notion_ai_active():
+        # [notion-ai] 06.11: при профиле Notion AI Claude не запущен — «пауза отключена» в общий чат и подъём лишние.
+        # Отключение запомнено: вернётся вместе с Claude после выключения профиля.
+        _log("пауза отключена вручную (%s), профиль Notion AI — Claude не бужу, в Telegram не пишу" % (a.by or "?"))
+        return 0
     _log("пауза отключена вручную (%s)%s" % (a.by or "?", ", сессия стояла — бужу" if was else ""))
     _tg("▶️ Claude: пауза отключена вручную — работа сверх порога, до настоящего лимита "
         "аккаунта. Включится сама, когда освободится окно, или кнопкой на панели.")
