@@ -27,6 +27,7 @@ MCP_ARGS = lambda: []  # cc_limits: ключи `-c` с инструментам�
 RESERVE_NOTE = lambda: ""  # cc_limits: строка-напоминание Codex про резерв и агента (пусто вне резерва)
 TAKE_DRAFT_ALLOWED = lambda: True
 DISPATCH_ALLOWED = lambda: True  # profile coordinator: hold incoming work while the engine is paused
+LIMIT_PAUSE = lambda: {}  # [notion-ai] пауза Codex по лимитам (cc_codex_rotation.Rotation.limit_pause, ставит cc_fleet)
 PROFILE_APPLIED = lambda: None  # cc_limits: обновить права и MCP-инструменты работающей консоли
 EMERGENCY = None  # cc_limits подставляет cc_codex_emergency: пока аварийный режим включён, права и папка заморожены
 TG_API = "https://api.telegram.org"  # на стенде — локальная заглушка Bot API
@@ -1092,6 +1093,25 @@ def _win_name(mins):
     return {300: "5 ч", 10080: "неделя"}.get(mins, f"{round((mins or 0) / 60)} ч")
 
 
+def _local_ts(ts):
+    """Метка времени → «02:00» (сегодня) или «06.11 02:00»."""
+    try:
+        d = datetime.datetime.fromtimestamp(float(ts)).astimezone()
+    except Exception:
+        return ""
+    return d.strftime("%H:%M") if d.date() == datetime.datetime.now().astimezone().date() else d.strftime("%d.%m %H:%M")
+
+
+def limit_hold_text(lp, queued):
+    """[notion-ai] Одно сообщение на эпизод паузы Codex по лимитам: что исчерпано, когда сброс, что с очередью."""
+    wins = ", ".join("окно " + n for n in lp.get("window_names") or []) or "сервис сообщил о лимите"
+    who = f" ({lp.get('label')})" if lp.get("multi") and lp.get("label") else ""
+    at = _local_ts(lp["resume_at"]) if lp.get("resume_at") else ""
+    return (f"⏸ Codex на паузе по лимитам{who}: {wins}" + (f", сброс в {at}" if at else "") + ". Переключаться некуда — "
+            + (f"сообщения ждут в очереди ({queued}) и уйдут сами после сброса." if queued else "новые сообщения подождут в очереди и уйдут сами после сброса.")
+            + " /stop — очистить очередь.")
+
+
 def limit_alerts(acc, prev, now=None):
     """Карточка аккаунта Codex + что уже сообщали → (сообщения, новое состояние).
     На каждом пороге — одно сообщение: «подходит» (от LIM_WARN), «исчерпан» (100) и «снова доступен»;
@@ -1270,6 +1290,12 @@ class Bridge:
             if not DISPATCH_ALLOWED():
                 self._end_media_action()
                 if self.stop_ev.wait(.05):
+                    with self.start_lock:self.worker = None
+                    return
+                continue
+            if self._limit_hold():  # [notion-ai] лимит исчерпан, переключаться некуда — ждём сброса, очередь цела
+                self._end_media_action()
+                if self.stop_ev.wait(1):
                     with self.start_lock:self.worker = None
                     return
                 continue
@@ -1457,6 +1483,28 @@ class Bridge:
             except OSError:
                 pass
 
+    def _limit_hold(self):
+        """[notion-ai] Пауза Codex по лимитам (как у Claude): → True, пока держим очередь.
+        Одно сообщение на эпизод паузы и одно — когда очередь пошла после сброса."""
+        try:
+            lp = LIMIT_PAUSE() or {}
+        except Exception as e:
+            log(f"limit pause: {type(e).__name__} {e}")
+            lp = {}
+        if lp.get("active"):
+            if not getattr(self, "limit_held", None):
+                self.limit_held = lp.get("resume_at") or True
+                log(f"delivery stage=limit_hold queued={len(self.inputs)} resume_at={lp.get('resume_at')}")
+                self._notice_async(limit_hold_text(lp, len(self.inputs)))
+            return True
+        if getattr(self, "limit_held", None):
+            self.limit_held = None
+            n = len(self.inputs)
+            log(f"delivery stage=limit_resume queued={n}")
+            if n:
+                self._notice_async(f"▶️ Codex: лимит снова доступен — отправляю сообщения из очереди ({n}).")
+        return False
+
     def handle_text(self, text, delivery=None):
         low = text.lower()
         if low == "/emergency_off":  # снять права можно и из телеграма; включить — только кнопкой в панели
@@ -1501,6 +1549,12 @@ class Bridge:
             emg = EMERGENCY.status_line() if EMERGENCY is not None else ""
             with self.start_lock:
                 queued = len(self.work_queue)
+            try:
+                lp = LIMIT_PAUSE() or {}
+            except Exception:
+                lp = {}
+            if lp.get("active"):  # [notion-ai]
+                emg = (emg + "\n" if emg else "") + "⏸ Пауза по лимитам" + (f" до {_local_ts(lp['resume_at'])}" if lp.get("resume_at") else "") + " — сообщения ждут в очереди."
             return self.send((emg + "\n" if emg else "") + f"Режим: {mode}\nПесочница: {sb}\nПапка: {cwd}\nВ очереди: {queued}\nПрава заданий Claude (потолок): "
                              f"{RIGHTS_RU[s['task_rights']]}")
         r = _RETRY.match(text)

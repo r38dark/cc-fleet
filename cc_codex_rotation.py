@@ -27,6 +27,60 @@ def eligible(account, model=None, effort=None, now=None, max_session=85, cap=99)
     return True
 
 
+WIN_NAMES = {300: '5 ч', 10080: 'неделя'}
+BAD = ('error', 'stale', 'login_required', 'lapsed', 'loading')
+
+
+def _iso_ts(iso):
+    try:
+        return datetime.datetime.fromisoformat(str(iso).replace('Z', '+00:00')).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def real_limit(account):
+    """[notion-ai] Настоящий лимит исчерпан (окно 100% или сервис сказал «лимит»)
+    → (да/нет, когда освободится — ts или None, длины исчерпанных окон в минутах)."""
+    wins = [w for w in account.get('windows') or [] if w.get('pct') is not None]
+    full = [w for w in wins if w['pct'] >= 100]
+    if not full and (account.get('reached') or account.get('usage_allowed') is False):
+        full = [min(wins, key=lambda w: w.get('mins') or 0)] if wins else [{}]
+    if not full:
+        return False, None, []
+    ts = [t for t in (_iso_ts(w.get('resets_at')) for w in full) if t]
+    return True, (max(ts) if ts else None), [w.get('mins') for w in full if w.get('mins')]
+
+
+def limit_pause_state(accounts, active, has_candidate, now=None, grace=120):
+    """[notion-ai] Пауза Codex по лимитам — как у Claude: у выбранного аккаунта исчерпан настоящий лимит,
+    а ротации переключиться не на кого. Входящие ждут в очереди моста и уходят сами, когда окно освободилось:
+    по свежим цифрам или через grace секунд после времени сброса (если цифры не обновились)."""
+    now = time.time() if now is None else now
+    cur = next((a for a in accounts if a.get('slot') == active), None)
+    if not cur or has_candidate or any(cur.get(k) for k in BAD):
+        return {'active': False}
+    full, until, mins = real_limit(cur)
+    if not full:
+        return {'active': False}
+    frees = []
+    for a in accounts:
+        if any(a.get(k) for k in ('error', 'login_required', 'lapsed')):
+            continue
+        f, t, _ = real_limit(a)
+        if f and t:
+            frees.append((t, a))
+    t, who = min(frees, key=lambda x: x[0]) if frees else (until, cur)
+    if t and now > t + grace:
+        return {'active': False, 'expired': True}
+    lab = lambda a: a.get('label') or a.get('email') or a.get('slot') or ''
+    pct = lambda a, m: next((w.get('pct') for w in a.get('windows') or [] if w.get('mins') == m), None)
+    return {'active': True, 'slot': active, 'label': lab(cur), 'windows': mins,
+            'window_names': [WIN_NAMES.get(m, f"{round(m / 60)} ч") for m in mins],
+            'resume_at': t, 'resume_slot': who.get('slot'), 'resume_label': lab(who), 'multi': len(accounts) > 1,
+            'accounts': [{'label': lab(a), 'active': a.get('slot') == active, 'ses': pct(a, 300), 'week': pct(a, 10080)}
+                         for a in accounts]}
+
+
 def score(account, now=None):
     now = time.time() if now is None else now
     windows = {w.get('mins'): w for w in account.get('windows') or []}
@@ -144,7 +198,17 @@ class Rotation:
                     'next': next_account.get('slot'), 'next_label': next_account.get('label') or next_account.get('email'),
                     'message': message, 'last_error': self.last_error, 'updated': self.updated,
                     'model': settings.get('model'), 'effort': settings.get('effort'),
-                    'pending_model': pending.get('model'), 'history': self.state.get('history', [])[-15:]}
+                    'pending_model': pending.get('model'), 'history': self.state.get('history', [])[-15:],
+                    'limit_pause': self.limit_pause()}
+
+    def limit_pause(self, now=None):
+        """[notion-ai] Пауза по лимитам для моста (держать очередь) и плашки панели. Без выбора модели — дёшево."""
+        active = self.active()
+        with self.lock:
+            rows = [dict(a) for a in self.accounts]
+            th, cap = self.state['threshold'], self.state['weekly_cap']
+        cands = [a for a in rows if a.get('slot') != active and eligible(a, max_session=min(85, th), cap=cap, now=now)]
+        return limit_pause_state(rows, active, bool(cands), now)
 
     def _store_slot(self, slot):
         with self.bridge._lock:

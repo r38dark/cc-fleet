@@ -118,6 +118,7 @@ def install(ns):
     models = cc_codex_models.Discovery(codex, rotation, ns['codex_bin'])
     inputs = ConsoleInput(ns)
     ns['FLEET_ROTATION'] = rotation
+    bridge.LIMIT_PAUSE = rotation.limit_pause  # [notion-ai] очередь моста ждёт сброса, если лимит исчерпан и переключаться некуда
     import cc_profiles
     profiles = cc_profiles.bind(ns, inputs)
     original = ns['H']
