@@ -244,6 +244,11 @@ def install(ns):
 
     ns['H'] = FleetHandler
     ns['PAGE'] = cc_overview.render(ns['PAGE'])
+    try:  # [notion-ai] профиль «Notion AI · только он» + уведомления о смене профилей в Telegram
+        import cc_notion_ai
+        cc_notion_ai.install(ns, profiles)
+    except Exception as exc:
+        print('notion-ai: модуль не подключён: %r' % (exc,), flush=True)
     ns['FLEET_ROTATION'] = rotation
     ns['FLEET_INPUT'] = inputs
     bridge.PROFILE_APPLIED = console.apply_plan
