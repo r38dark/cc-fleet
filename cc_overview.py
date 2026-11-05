@@ -8,10 +8,6 @@ CSS = r'''
 /* Оформление первоначального «Обзора». Действующие контролы сохраняют свои ID. */
 :root{--fleet-line:#25303f;--fleet-muted:#8c9bad;--fleet-faint:#647388;--fleet-accent:#45d6ab;--fleet-accent-soft:#16352e;--fleet-claude:#e7af85;--fleet-claude-soft:#372b25;--fleet-terminal:#0a0e14;--fleet-toolbar:#111722}
 html:not([data-skin]){--bg:#0c1017;--card:#131923;--txt:#e8edf4;--mut:#8c9bad;--ok:#45d6ab;--warn:#ecc277;--bad:#ef969e;--acc:#45d6ab}
-html[data-skin="phosphor"]{--fleet-line:var(--phl);--fleet-muted:var(--mut);--fleet-faint:#4f9f6b;--fleet-accent:var(--ok);--fleet-claude:#c2da9a}
-html[data-skin="aurora"]{--fleet-line:#343650;--fleet-accent:#59ddbe;--fleet-claude:#d6b4f0}
-html[data-skin="slate"]{--fleet-line:#2d333b;--fleet-muted:var(--mut);--fleet-faint:#6c7887}
-html[data-skin="blocks"]{--fleet-line:#c5c9ce;--fleet-muted:#5d6f80;--fleet-faint:#687b8d;--fleet-accent:#087b5c;--fleet-accent-soft:#e0f2eb;--fleet-claude:#9c5931;--fleet-claude-soft:#f6e9e0}
 html:root:root:not(.conly) body{height:auto!important;min-height:100dvh;overflow:auto!important;display:block!important;max-width:1680px;margin:0 auto;padding:23px 40px 28px;background:var(--bg);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--txt)}
 #cxp .cxprof[hidden]{display:none!important}
 html:root:root:not(.conly) .hdr{display:flex;align-items:center;gap:24px;padding:0;margin:0 0 22px;min-height:40px}
@@ -966,7 +962,7 @@ JS = r'''
  const autoGroup=group('',[autoTitle,autoRow,document.getElementById('autoNote'),weekly],'fleet-claude-group');
  const modelGroup=group('',[document.getElementById('modelsHdr'),document.getElementById('modalSub'),document.getElementById('poolList'),document.getElementById('checkNew')],'fleet-claude-group');
  const common=el('details','fleet-common-settings');common.append(el('summary','','Общие настройки'));
- for(const [title,body] of [['skinTitle','skinGrid'],['updHdr','updBox'],['bkHdr','bkBox']])common.append(group('',[document.getElementById(title),document.getElementById(body)]));
+ for(const [title,body] of [['updHdr','updBox'],['bkHdr','bkBox']])common.append(group('',[document.getElementById(title),document.getElementById(body)]));
  modalBody.prepend(autoGroup,modelGroup,common);
  const codexThresholds=group('Переключение и лимиты Codex',[cxOptions]);document.querySelector('#cxPop > .cxpbody').prepend(codexThresholds);
  // Каталог моделей: ручная проверка в фоне, без изменения выбранной модели.

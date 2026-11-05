@@ -220,11 +220,13 @@ class Page(unittest.TestCase):
         self.assertRegex(css, re.compile(r"^\.ctabs\{[^}]*background:transparent[^}]*\}$", re.M))
         self.assertNotRegex(css, r"\.ctabs\{[^}]*background:rgba")
 
-    def test_console_tabs_rules_beat_every_skin(self):
-        # правило вкладок специфичнее любого скина (по скинам .iconbtn красится фоном/тенью/рамкой)
+    def test_skins_removed_panel_is_always_classic(self):
+        # [notion-ai] скины убраны: нет выбора «Оформление», правил html[data-skin=…] и чтения cc_skin
         css = L.PAGE
-        for skin in ("phosphor", "aurora", "slate", "blocks"):
-            self.assertRegex(css, r'html\[data-skin="%s"\] \.hdrgear,html\[data-skin="%s"\] \.iconbtn\{' % (skin, skin))
+        self.assertNotIn('id="skinGrid"', css)
+        self.assertNotIn('id="skinTitle"', css)
+        self.assertNotRegex(css, r'html\[data-skin=')
+        self.assertIn("localStorage.removeItem('cc_skin')", css)
         self.assertIn("html:root:root .iconbtn.ctab[data-s]{", css)
 
     def test_form_has_project_and_own_workdir_fields(self):
@@ -1166,9 +1168,6 @@ class NotionInstantAndFrame(unittest.TestCase):
         self.assertNotIn(".ntbtn.res .ntsw::after{background:var(--warn)}", css)
         # правила стоят позже всех скинов и в ТОЙ ЖЕ специфичности, что и их :hover (0,3,1) — выигрывают порядком
         # (правило «.hdrgear.ntbtn{color}» у blocks красит только текст, рамку и тень не трогает — в счёт не идёт)
-        last_skin = max(m.start() for m in re.finditer(r'html\[data-skin="(?:phosphor|aurora|slate|blocks)"\] \.hdrgear(?::hover)?[,{]', css))
-        self.assertGreater(css.index("html:root .ntgrp.res .hdrgear{"), last_skin)
-        self.assertGreater(css.index("html:root .ntgrp.bad .hdrgear{"), last_skin)
         # старые рамки по кнопке (они красили только переключатель и не доходили до ⚙) убраны
         for old in ('.ntbtn[aria-checked="true"]{border-color', ".ntbtn.bad{border-color", ".ntbtn.res{border-color"):
             self.assertNotIn(old, css)
