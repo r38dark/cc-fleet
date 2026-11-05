@@ -463,6 +463,15 @@ def cmd_status(a):
     return 0
 
 
+def _notion_ai_active():
+    """[notion-ai] Включён профиль «Notion AI · только он» / «Notion AI → Codex»: Claude стоит, его не будим."""
+    try:
+        with open(os.path.join(BASE, "notion_ai_mode.json"), encoding="utf-8") as f:
+            return bool(json.load(f).get("active"))
+    except Exception:
+        return False
+
+
 def cmd_wake(a):
     st = load()
     if st.get("override"):
@@ -478,6 +487,14 @@ def cmd_wake(a):
         return 0
     if st.get("kind") == "reserve":
         return 0  # пауза резерва (Codex + Notion-агент вместо Claude) держится, пока человек не снимет галочку
+    if _notion_ai_active():
+        # [notion-ai] 06.11: будильник снял паузу и разбудил Claude при профиле Notion AI — второй слушатель бота.
+        # Пока профиль включён, пауза держится; снимется первым же запуском cron после выключения профиля.
+        if not st.get("nai_hold"):
+            st["nai_hold"] = _now()
+            save(st)
+            _log("включён профиль Notion AI — Claude не бужу, пауза снимется после выключения профиля")
+        return 0
     # пауза на неделе может стоять сутками, а уйти становится куда раньше будильника
     # (добавили аккаунт, выключили опцию, сняли потолок) — её проверяем каждую минуту
     week = st.get("kind") == "week"
@@ -507,6 +524,7 @@ def cmd_wake(a):
         return 0
 
     st.update(active=False, resumed_at=_now(), last_gate=line)
+    st.pop("nai_hold", None)
     save(st)
     _log("пауза снята автоматически: %s" % line)
     stood = _dur(_now() - float(st.get("since") or _now()))

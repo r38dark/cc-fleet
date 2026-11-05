@@ -211,11 +211,68 @@ def callback(cq, who):
         pass
 
 
-def claude_plugin_running():
+PLUGIN_MARK = "claude-plugins-official/telegram"
+
+
+def _cmdline(pid, proc="/proc"):
     try:
-        return subprocess.run(["pgrep", "-f", "claude-plugins-official/telegram"], capture_output=True, timeout=10).returncode == 0
-    except Exception:
-        return False
+        with open("%s/%s/cmdline" % (proc, pid), "rb") as f:
+            return [x.decode("utf-8", "replace") for x in f.read().split(b"\0") if x]
+    except OSError:
+        return []
+
+
+def claude_plugin_pids(proc="/proc"):
+    """PID Telegram-плагина Claude (bun/node с путём плагина). Шеллы и grep с этой строкой не считаются."""
+    out = set()
+    for pid in os.listdir(proc):
+        if not pid.isdigit() or int(pid) == os.getpid():
+            continue
+        argv = _cmdline(pid, proc)
+        if argv and PLUGIN_MARK in " ".join(argv) and os.path.basename(argv[0]).startswith(("bun", "node")):
+            out.add(pid)
+    return frozenset(out)
+
+
+def _children(pids, proc="/proc"):
+    """Все потомки процессов pids (сервер плагина — дочерний bun)."""
+    parent = {}
+    for pid in os.listdir(proc):
+        if pid.isdigit():
+            try:
+                with open("%s/%s/stat" % (proc, pid)) as f:
+                    parent[pid] = f.read().rsplit(")", 1)[1].split()[1]
+            except (OSError, IndexError):
+                pass
+    found, todo = set(pids), list(pids)
+    while todo:
+        p = todo.pop()
+        for c, pp in parent.items():
+            if pp == p and c not in found:
+                found.add(c)
+                todo.append(c)
+    return found
+
+
+def claude_plugin_off():
+    """[notion-ai] 06.11, правило Дениса: при профиле Notion AI Claude Telegram не слушает.
+    Запущенному вручную Claude отключаем плагин (SIGTERM ему и потомкам); сам Claude остаётся в консоли."""
+    pids = claude_plugin_pids()
+    if not pids:
+        return []
+    killed = []
+    for pid in sorted(_children(pids), key=int):
+        try:
+            os.kill(int(pid), 15)
+            killed.append(pid)
+        except OSError:
+            pass
+    log("Claude слушал бота при профиле Notion AI — плагин Telegram остановлен (PID %s)" % ",".join(killed))
+    return killed
+
+
+def claude_plugin_running():
+    return bool(claude_plugin_pids())
 
 
 def main():
@@ -223,13 +280,19 @@ def main():
     who = allowed()
     log("старт, offset=%s" % st.get("offset"))
     fails = 0
-    conflicts, last_warn = [], 0
+    last_warn = 0
     while True:
         md = mode()
         if not md.get("active"):
             log("профиль Notion AI выключен — выхожу")
             return 0
         since = float(md.get("since") or 0)
+        if claude_plugin_off() and time.time() - last_warn > 1800:
+            last_warn = time.time()
+            for chat in who:
+                say(chat, "⚠️ Claude запустили при профиле Notion AI — отключил ему Telegram, чтобы бота слушал один агент. "
+                          "Claude остаётся в консоли без бота. Вернуть Claude в Telegram: выключи профиль Notion AI "
+                          "(кнопка «Notion AI» в шапке панели или notion-ai-mode off).")
         try:
             ups = tg("getUpdates", {"offset": st.get("offset", 0), "timeout": 20, "allowed_updates": UPDATES}, 35).get("result") or []
             if ups:
@@ -238,14 +301,6 @@ def main():
                 ups += more
         except urllib.error.HTTPError as e:
             log("getUpdates HTTP %s" % e.code)
-            if e.code == 409:
-                now = time.time()
-                conflicts = [t for t in conflicts if now - t < 300] + [now]
-                if len(conflicts) >= 3 and now - last_warn > 3600 and claude_plugin_running():
-                    last_warn = now
-                    for chat in who:
-                        say(chat, "⚠️ Бота сейчас слушает ещё и Claude (запущен с Telegram-каналом). Часть сообщений может уйти ему. "
-                                  "Выйди из Claude (/exit) или напиши — Notion AI остановит его сам.")
             time.sleep(10 if e.code == 409 else 5)
             continue
         except Exception as e:

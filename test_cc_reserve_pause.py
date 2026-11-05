@@ -282,6 +282,68 @@ class Queue(Base):
         pc.reserve_release()
         self.assertEqual(self.enqueue().returncode, 0)
 
+class NotionAiProfile(Base):
+    """[notion-ai] 06.11: будильник (cron wake --if-due) снял паузу и разбудил Claude при профиле Notion AI — бота слушали двое.
+    Пока профиль включён, пауза держится и никто не будится; после выключения профиля — обычный подъём, один раз."""
+
+    def setUp(self):
+        super().setUp()
+        saved = (pc.session_blocked, pc.week_blocked, pc.level_state)
+        pc.session_blocked = lambda: (False, "окно отпустило")
+        pc.week_blocked = lambda: (False, "неделя отпустила")
+        pc.level_state = lambda: {"line": "acc3 0%"}
+
+        def back():
+            pc.session_blocked, pc.week_blocked, pc.level_state = saved
+        self.addCleanup(back)
+
+    def nai(self, active):
+        put(os.path.join(self.d, "notion_ai_mode.json"), {"active": active, "kind": "solo"})
+
+    def test_due_alarm_holds_pause_while_profile_on_then_lifts_once(self):
+        for kind in ("session", "week"):
+            put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": kind, "resume_at": time.time() - 60})
+            self.nai(True)
+            for _ in range(3):  # cron каждую минуту
+                self.assertEqual(pc.cmd_wake(argparse.Namespace(if_due=True)), 0)
+            st = pc.load()
+            self.assertTrue(st["active"], kind)
+            self.assertTrue(st.get("nai_hold"), kind)
+            self.assertEqual((self.wakes, self.tgs), ([], []), kind)
+            self.nai(False)
+            pc.cmd_wake(argparse.Namespace(if_due=True))
+            st = pc.load()
+            self.assertFalse(st["active"], kind)
+            self.assertNotIn("nai_hold", st)
+            self.assertEqual((len(self.wakes), len(self.tgs)), (1, 1), kind)
+            pc.cmd_wake(argparse.Namespace(if_due=True))
+            self.assertEqual(len(self.wakes), 1, kind)
+            self.wakes.clear()
+            self.tgs.clear()
+
+    def test_without_profile_file_alarm_works_as_before(self):
+        put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": "session", "resume_at": time.time() - 60})
+        pc.cmd_wake(argparse.Namespace(if_due=True))
+        self.assertFalse(pc.load()["active"])
+        self.assertEqual(len(self.wakes), 1)
+
+    def test_broken_profile_file_does_not_hold(self):
+        put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": "session", "resume_at": time.time() - 60})
+        with open(os.path.join(self.d, "notion_ai_mode.json"), "w") as f:
+            f.write("{oops")
+        pc.cmd_wake(argparse.Namespace(if_due=True))
+        self.assertFalse(pc.load()["active"])
+
+    def test_reserve_pause_untouched_by_profile(self):
+        pc.reserve_hold("резерв")
+        self.nai(True)
+        pc.cmd_wake(argparse.Namespace(if_due=True))
+        st = pc.load()
+        self.assertTrue(st["active"])
+        self.assertNotIn("nai_hold", st)
+        self.assertEqual(self.wakes, [])
+
+
 
 if __name__ == "__main__":
     unittest.main()
