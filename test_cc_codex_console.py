@@ -112,7 +112,9 @@ class Start(unittest.TestCase):
         self.d = fresh()
         self.work = tempfile.mkdtemp(prefix="w_", dir=TMP)
         for p in (mock.patch.object(C, "_dir", return_value=self.d),
+                  mock.patch.object(C, "_retire_unit", return_value=True),
                   mock.patch.object(C, "BIN", return_value="/x/codex"),
+                  mock.patch.object(cc_codex, "profile_dir", side_effect=lambda slot: os.path.join(TMP, 'profiles', slot)),
                   mock.patch.object(C, "PLAN", return_value=("read-only", self.work, None)),
                   mock.patch.object(cc_codex, "profile_slots", return_value=["gpt1"])):
             p.start()
@@ -362,6 +364,7 @@ class Ask(Rollout):
         self.d = fresh()
         self.fc = FakeConsole(self, self.prof)
         for p in (mock.patch.object(C, "_dir", return_value=self.d),
+                  mock.patch.object(C, "_retire_unit", return_value=True),
                   mock.patch.object(C, "BIN", return_value="/x/codex"),
                   mock.patch.object(C, "PLAN", return_value=("workspace-write", self.work, "gpt1")),
                   mock.patch.object(cc_codex, "profile_slots", return_value=["gpt1"]),

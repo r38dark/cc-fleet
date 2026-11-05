@@ -28,8 +28,41 @@ class Recovery(unittest.TestCase):
   with patch.object(self.n,'rollback',side_effect=ProfileError('locked')) as rollback:
    result=self.p.action('codex','apply',dict(id='reserve',confirm=True,revision=0))
    self.assertFalse(result['ok']);self.assertTrue(self.p.public()['recovery']['blocked'])
+   raw=json.loads(self.p.pending.read_text());self.assertEqual(raw['rollback_failure']['code'],'locked');self.assertIn('failure',raw)
    for _ in range(5):self.p.tick()
    self.assertEqual(rollback.call_count,1)
+ def test_verified_restore_unblocks_queue_without_another_restart(self):
+  self.pending()
+  with patch.object(self.n,'rollback',side_effect=ProfileError('unit_still_stopping')) as rollback:
+   self.p.tick();self.assertTrue(self.p.pending.exists());self.assertEqual(rollback.call_count,1)
+   self.n.recovery_matches=lambda *args:True
+   self.p.tick();self.assertFalse(self.p.pending.exists());self.assertEqual(rollback.call_count,1)
+   self.assertTrue(self.p.input_allowed('codex'));self.assertEqual(self.p.error,'')
+   self.assertEqual(len(list((Path(self.tmp.name)/'profile_runtime').glob('recovered-*.json'))),1)
+ def test_busy_turn_does_not_clear_recovery_barrier(self):
+  self.pending();raw=json.loads(self.p.pending.read_text());raw['recovery_blocked']=True;atomic(self.p.pending,raw)
+  self.n.busy_value=True;self.n.recovery_matches=lambda *args:True
+  self.p.tick();self.assertTrue(self.p.pending.exists());self.assertFalse(self.n.rollbacks)
+ def test_runtime_mismatch_keeps_queue_blocked_without_restarting(self):
+  self.pending();raw=json.loads(self.p.pending.read_text());raw['recovery_blocked']=True;atomic(self.p.pending,raw)
+  self.n.recovery_matches=lambda *args:False
+  self.p.tick();self.assertTrue(self.p.pending.exists());self.assertFalse(self.p.input_allowed('codex'));self.assertFalse(self.n.rollbacks)
+ def test_native_restore_check_rejects_changed_thread_rights_or_tools(self):
+  settings=dict(access='full',profile='codex_solo_full');runtime=dict(thread_id='exact',model='gpt-6.1-sol',effort='xhigh',cwd='/tmp/test')
+  meta=dict(sandbox='danger-full-access',mcp=[])
+  n=SimpleNamespace(bridge=SimpleNamespace(load=lambda:settings),codex=SimpleNamespace(_pid=lambda:'123',_meta=lambda:meta,active_settings=lambda:runtime,MCP=lambda:[],verify_ready=lambda **kw:(True,'')))
+  captured=dict(codex_settings=settings.copy(),codex_runtime=runtime.copy(),codex_sandbox='danger-full-access')
+  self.assertTrue(NativeProfiles.recovery_matches(n,self.p.state,['codex'],captured))
+  for target,key,value in ((runtime,'thread_id','another'),(meta,'sandbox','workspace-write'),(meta,'mcp',['changed']),(meta,'pending_settings',{'thread_id':'exact'})):
+   old=target.get(key);target[key]=value
+   self.assertFalse(NativeProfiles.recovery_matches(n,self.p.state,['codex'],captured))
+   if old is None:target.pop(key)
+   else:target[key]=old
+  n.codex.verify_ready=lambda **kw:(False,'locked')
+  self.assertFalse(NativeProfiles.recovery_matches(n,self.p.state,['codex'],captured))
+ def test_stale_recovery_error_is_cleared_after_external_repair(self):
+  self.p.error='Автоматические повторы восстановления остановлены. stale'
+  self.p.tick();self.assertEqual(self.p.error,'')
  def test_explicit_profile_selection_can_retry_blocked_recovery(self):
   self.pending()
   with patch.object(self.n,'rollback',side_effect=ProfileError('locked')):self.p.tick()
@@ -59,5 +92,17 @@ class Recovery(unittest.TestCase):
    self.assertTrue(console.verify_ready()[0])
    path.write_text('This conversation is open in another app\n›')
    ok,message=console.verify_ready();self.assertFalse(ok);self.assertIn('занята другим подключением',message)
+
+class UnitRetirement(unittest.TestCase):
+ def test_waits_until_systemd_releases_old_unit(self):
+  from subprocess import CompletedProcess
+  results=[CompletedProcess([],0,''),CompletedProcess([],0,'loaded\n'),CompletedProcess([],0,'not-found\n')]
+  with patch.object(console.subprocess,'run',side_effect=results) as run,patch.object(console.time,'sleep') as sleep:
+   self.assertTrue(console._retire_unit());self.assertEqual(run.call_count,3);sleep.assert_called_once()
+   self.assertEqual(run.call_args_list[0].args[0],['/usr/bin/systemctl','stop',console.UNIT])
+ def test_failed_systemd_query_does_not_claim_unit_is_gone(self):
+  from subprocess import CompletedProcess
+  with patch.object(console.subprocess,'run',side_effect=[CompletedProcess([],0,''),CompletedProcess([],1,'')]):
+   self.assertFalse(console._retire_unit())
 
 if __name__=='__main__':unittest.main()

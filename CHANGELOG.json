@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.28.26",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Переключение резерва и доставка сообщений",
+        "p": [
+          "Консоль дожидается освобождения прежней службы перед повторным запуском",
+          "Подтверждённое восстановление профиля снимает блокировку очереди без нового перезапуска",
+          "Причины неудачного переключения и отката сохраняются для диагностики"
+        ]
+      },
+      "en": {
+        "t": "Reserve switching and message delivery",
+        "p": [
+          "Console startup waits for the previous transient service to be released",
+          "A verified restored profile releases queued messages without another restart",
+          "Failed transitions and rollbacks retain diagnostic error codes"
+        ]
+      }
+    },
+    {
       "v": "1.28.25",
       "date": "2026-11-05",
       "ru": {

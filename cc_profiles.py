@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import threading
 import time
@@ -191,6 +192,32 @@ class NativeProfiles:
             if self.plan(before,'codex')['role']=='paused':self._codex_pause(True)
         if 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(before),self.prompt(before,'claude'))
 
+    def recovery_matches(self,before,changed,captured):
+        """Clear a stale barrier only after a read-only check of the old runtime."""
+        try:
+            if 'codex' in changed:
+                if not self.codex._pid():return False
+                settings=self.bridge.load()
+                if any(settings.get(key)!=value for key,value in captured['codex_settings'].items()):return False
+                meta=self.codex._meta();current=self.codex.active_settings()
+                if meta.get('pending_settings') or meta.get('sandbox')!=captured.get('codex_sandbox'):return False
+                if list(meta.get('mcp') or [])!=list(self.codex.MCP()):return False
+                if any(current.get(key)!=captured['codex_runtime'].get(key) for key in ('thread_id','model','effort','cwd')):return False
+                if not self.codex.verify_ready(wait=False)[0]:return False
+            if 'claude' in changed:
+                if captured.get('claude_absent'):
+                    try:self.claude.process()
+                    except ProfileError as exc:
+                        if str(exc)!='claude_console_missing':return False
+                    else:return False
+                else:
+                    current=self.claude.capture();saved=captured['claude']
+                    if any(current.get(key)!=saved.get(key) for key in ('thread_id','model','effort','cwd','bypass')):return False
+                    policy_path=self.claude.runtime/'claude-policy.json'
+                    if policy_path.exists() and json.loads(policy_path.read_text())!=self.claude_policy(before):return False
+            return True
+        except Exception:return False
+
     def interrupt(self,e):
         if e=='codex':self.codex.interrupt()
         else:
@@ -285,6 +312,11 @@ class Profiles:
             self.native.apply(before,candidate,changed,captured);self.save();self.pending.unlink();self.error=''
             return dict(ok=True,message=message,state=self.public())
         except Exception as exc:
+            if self.pending.exists():
+                failed=json.loads(self.pending.read_text())
+                code=str(exc)
+                failed['failure']=dict(type=type(exc).__name__,code=code if re.fullmatch(r'[a-z_]+',code) else None)
+                atomic(self.pending,failed)
             reasons={'codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели, затем включи резерв.','reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.'}
             self.error='Переключение отменено. '+reasons.get(str(exc),'Консоль не подтвердила применение профиля; проверь её экран перед повтором.')
             revoked=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active() and self.pending.exists())
@@ -294,7 +326,9 @@ class Profiles:
             self.state=before;self.managed=old_managed
             if captured and self.pending.exists():
                 try:self.native.rollback(before,changed,captured);self.save();self.pending.unlink()
-                except Exception:
+                except Exception as rollback_error:
+                    failed=json.loads(self.pending.read_text());code=str(rollback_error)
+                    failed['rollback_failure']=dict(type=type(rollback_error).__name__,code=code if re.fullmatch(r'[a-z_]+',code) else None);atomic(self.pending,failed)
                     self._block_recovery()
             return dict(ok=False,message=self.error,state=self.public())
         finally:self.transitioning=False
@@ -342,6 +376,11 @@ class Profiles:
         if not self.pending.exists():return True
         raw=json.loads(self.pending.read_text());before=ProfileState.from_data(raw['before'],self.clock)
         if raw.get('recovery_blocked') and not manual:
+            matches=getattr(self.native,'recovery_matches',lambda *args:False)
+            if raw.get('recover_to')!='after' and not self.native.busy() and matches(before,raw['changed'],raw['captured']):
+                self.state=before;self.managed.update(raw.get('managed') or {})
+                atomic(self.base/'profile_runtime'/('recovered-'+uuid.uuid4().hex+'.json'),raw)
+                self.save();self.pending.unlink();self.error='';return True
             self.error='Автоматические повторы восстановления остановлены. После освобождения беседы повтори выбор профиля.'
             return False
         forward=raw.get('recover_to')=='after';self.state=ProfileState.from_data(raw['after'],self.clock) if forward else before
@@ -365,6 +404,8 @@ class Profiles:
         if not self.lock.acquire(blocking=False):return
         try:
             if self.pending.exists():self.recover();return
+            if self.error.startswith(('Автоматические повторы восстановления остановлены.','Восстановление остановлено после ошибки,')):
+                self.error=''
             statuses=self.native.availability();now=self.clock()
             for e in ENGINES:
                 if self.avail[e]['status']!=statuses[e]:self.avail[e]=dict(status=statuses[e],since=now)

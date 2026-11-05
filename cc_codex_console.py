@@ -21,6 +21,7 @@ ROW_HTML = None  # cc_limits подставляет _row_html(line, ncols): од
 pyte = None  # cc_limits передаёт модуль pyte
 
 NAME = "cc-codex"  # имя screen-сессии
+UNIT = 'cc-codex-console.service'
 COLS, ROWS = 100, 32  # размер окна: детачнутая сессия иначе 80x24
 CLI_CWD = "/opt/codex-trial"  # каталог запуска команды из `cxw`
 HISTORY_LINES = 2000  # скроллбэк сверх экрана
@@ -222,6 +223,18 @@ def send_input(text, lang='ru'):
         _ask_lock.release()
 
 
+def _retire_unit():
+    """The screen socket can disappear before systemd has released its unit."""
+    subprocess.run(['/usr/bin/systemctl','stop',UNIT],capture_output=True,timeout=20)
+    deadline=time.monotonic()+8
+    while time.monotonic()<deadline:
+        result=subprocess.run(['/usr/bin/systemctl','show',UNIT,'-p','LoadState','--value'],capture_output=True,text=True,timeout=5)
+        if result.stdout.strip()=='not-found' or result.returncode==0 and not result.stdout.strip():return True
+        if result.returncode:return False
+        time.sleep(.1)
+    return False
+
+
 def start(lang="ru"):
     """Запустить `codex` в screen-сессии. → (ok, сообщение)."""
     t = lambda ru, en: cc_codex._t(lang, ru, en)
@@ -231,6 +244,8 @@ def start(lang="ru"):
             return False, t("Codex не установлен на сервере.", "Codex is not installed on this server.")
         if _pid():
             return True, t("Консоль уже запущена.", "The console is already running.")
+        if not _retire_unit():
+            return False, t('Предыдущая служба консоли ещё останавливается. Повтори подключение.', 'The previous console service is still stopping. Retry the connection.')
         sandbox, cwd, slot = PLAN()
         if sandbox not in _SANDBOXES:
             return False, t("Неизвестные права доступа.", "Unknown access rights.")
@@ -297,7 +312,7 @@ def start(lang="ru"):
         # systemd запускает ExecStart с ограниченным PATH; runuser должен быть абсолютным путём.
         if argv and argv[0] == "runuser":
             argv[0] = shutil.which("runuser") or "/usr/sbin/runuser"
-        unit_argv = ["/usr/bin/systemd-run", "--unit=cc-codex-console.service", "--collect", "--no-block",
+        unit_argv = ["/usr/bin/systemd-run", "--unit="+UNIT, "--collect", "--no-block",
                      "--property=Type=exec", "--property=KillMode=control-group",
                      "--working-directory=" + CLI_CWD, "--", *argv]
         p = subprocess.run(unit_argv, env={"PATH": "/usr/bin:/bin"}, cwd=CLI_CWD,
@@ -323,8 +338,10 @@ def stop(lang="ru"):
     t = lambda ru, en: cc_codex._t(lang, ru, en)
     with _lock:
         if not _pid():
-            return True, t("Консоль уже остановлена.", "The console is already stopped.")
+            ok=_retire_unit()
+            return ok, t("Консоль уже остановлена.", "The console is already stopped.") if ok else t('Служба консоли ещё останавливается.', 'The console service is still stopping.')
         _ctl(["-S", NAME, "-X", "quit"])
+        if not _retire_unit():return False, t('Служба консоли ещё останавливается.', 'The console service is still stopping.')
         for _ in range(20):
             if not _pid():
                 return True, t("Консоль Codex остановлена.", "The Codex console is stopped.")
@@ -511,9 +528,9 @@ def _wait_ready():
         time.sleep(POLL)
 
 
-def verify_ready():
+def verify_ready(wait=True):
     """PID недостаточно: не фиксируем смену аккаунта перед модальным отказом CLI."""
-    _wait_ready()
+    if wait:_wait_ready()
     if not _pid():
         return False, 'Консоль закрылась при запуске.'
     try:
