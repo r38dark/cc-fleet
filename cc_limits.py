@@ -1563,7 +1563,7 @@ def session_model():
             except Exception:
                 continue
             m = (d.get("message") or {}).get("model")
-            if d.get("type") == "assistant" and m:
+            if d.get("type") == "assistant" and m and not m.startswith("<"):  # «<synthetic>» — служебный ответ Claude Code, не модель
                 model = m
     except Exception:
         pass

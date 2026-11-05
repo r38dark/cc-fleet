@@ -259,3 +259,25 @@ class TestModelCard(unittest.TestCase):
         self.assertNotIn('fleet-live-meter', card)  # ни 5 часов, ни недели
         self.assertIn("CustomEvent('nai-state'", ui)
         self.assertIn("'/api/notion-ai/model'", open(M.__file__, encoding='utf-8').read())
+
+
+class TestGeneralSettings(unittest.TestCase):
+    """«Общие настройки»: у каждого агента главный блок на виду, остальное под спойлером; инструкции полные."""
+    def test_blocks_for_every_agent_and_full_instructions(self):
+        ui = M.CFG_UI
+        for k in ('naiGenClaude', 'naiGenCodex', 'naiGenTg', 'naiTgForm', 'naiTgSave', 'naiCfgSave', 'naiCfgTg', 'naiCfgVoice', 'naiKeyAdd', 'naiInstr'):
+            self.assertIn(k, ui)
+        for k in ('/telegram:configure', '/telegram:access pair', '@BotFather', '@userinfobot', 'Получить ссылку для входа', 'по коду устройства'):
+            self.assertIn(k, ui)
+        self.assertEqual(ui.count('Подробно: что, где, как и почему'), 4)  # Claude, Codex, Notion AI, Telegram
+
+    def test_saves_are_split_between_notion_and_telegram_blocks(self):
+        ui = M.CFG_UI
+        main = ui[ui.index('sv.onclick'):ui.index('var ts=')]
+        self.assertNotIn('tg_chat_id', main); self.assertIn("'chat_url','naiCfgUrl'", main)
+        tg = ui[ui.index('ts.onclick'):ui.index('var ck=')]
+        self.assertIn("'tg_chat_id','naiCfgTg'", tg); self.assertIn("'voice','naiCfgVoice'", tg)
+        self.assertIn('if(d.cfg)data=d', ui)  # ответ без cfg не стирает поля
+
+    def test_agent_blocks_only_in_general_view(self):
+        self.assertIn('#scrim:not([data-view="general"]) .nai-gen.claude', M.CFG_UI)
