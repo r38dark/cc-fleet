@@ -9,6 +9,7 @@ import cc_notion as notion
 import cc_codex_bridge as bridge
 from cc_profile_state import ProfileState
 from cc_profiles import NativeProfiles,Profiles
+from cc_claude_profile import ProfileError
 from cc_profile_gate import decide
 from test_cc_profiles import FakeNative,legacy_pair_state
 
@@ -64,7 +65,7 @@ class FullReserveTests(unittest.TestCase):
                     text=NativeProfiles.prompt(native,s,e)
                     self.assertIn('Reserve Helper',text)
                     for tool in notion.CODEX_TOOLS:self.assertIn(tool,text)
-                    for phrase in ('секреты','проверяй','уже подтверждённой задачи','хэшами'):self.assertIn(phrase,text)
+                    for phrase in ('секреты','проверяй','уже подтверждённой задачи','хэшами'):self.assertIn(phrase,text.casefold())
                     s.service['source']='auto';text=NativeProfiles.prompt(native,s,e)
                     self.assertIn('данным лимитов',text);self.assertNotIn('отключён человеком',text)
 
@@ -109,18 +110,25 @@ class FullReserveTests(unittest.TestCase):
             n=SimpleNamespace(busy=lambda:False,bridge=SimpleNamespace(_state=lambda:{}),manager=SimpleNamespace(exchange=lambda e:Path(tmp)/e),ns={'cc_codex':SimpleNamespace(own=lambda p:None)},reserve_ready=lambda:True,claude_work=tmp)
             for actual in ('write','full'):
                 before=self.full('codex');after=ProfileState.from_data(before.export());self.reserve(after,'codex',False)
-                NativeProfiles.preflight(n,before,after,['codex'],dict(codex_settings=dict(access=actual),codex_runtime=dict(thread_id='same'),codex_sandbox='danger-full-access' if actual=='full' else 'workspace-write'))
-                self.assertEqual(after.service['access'],actual)
+                captured=dict(codex_settings=dict(access=actual),codex_runtime=dict(thread_id='same'),codex_sandbox='danger-full-access' if actual=='full' else 'workspace-write')
+                if actual=='full':
+                    NativeProfiles.preflight(n,before,after,['codex'],captured)
+                    self.assertEqual(after.service['access'],'full')
+                else:
+                    with self.assertRaisesRegex(ProfileError,'full_access_not_active'):NativeProfiles.preflight(n,before,after,['codex'],captured)
             before=self.full('codex');after=ProfileState.from_data(before.export());self.reserve(after,'codex',False)
-            NativeProfiles.preflight(n,before,after,['codex'],dict(codex_settings=dict(access='full'),codex_runtime=dict(thread_id='same'),codex_sandbox='workspace-write'))
-            self.assertEqual(after.service['access'],'write')
+            with self.assertRaisesRegex(ProfileError,'full_access_not_active'):
+                NativeProfiles.preflight(n,before,after,['codex'],dict(codex_settings=dict(access='full'),codex_runtime=dict(thread_id='same'),codex_sandbox='workspace-write'))
 
     def test_claude_preflight_preserves_only_existing_bypass_access(self):
         with tempfile.TemporaryDirectory() as tmp:
             n=SimpleNamespace(busy=lambda:False,bridge=SimpleNamespace(_state=lambda:{}),manager=SimpleNamespace(exchange=lambda e:Path(tmp)/e),ns={'cc_codex':SimpleNamespace(own=lambda p:None)},reserve_ready=lambda:True,claude_work=tmp,claude=SimpleNamespace(prepare=lambda *a:None),claude_policy=lambda s:{},prompt=lambda s,e:'test')
             for actual in (False,True):
                 before=self.full('claude');after=ProfileState.from_data(before.export());self.reserve(after,'claude',False)
-                NativeProfiles.preflight(n,before,after,['claude'],dict(claude=dict(bypass=actual)))
-                self.assertEqual(after.service['access'],'full' if actual else 'write')
+                if actual:
+                    NativeProfiles.preflight(n,before,after,['claude'],dict(claude=dict(bypass=True)))
+                    self.assertEqual(after.service['access'],'full')
+                else:
+                    with self.assertRaisesRegex(ProfileError,'full_access_not_active'):NativeProfiles.preflight(n,before,after,['claude'],dict(claude=dict(bypass=False)))
 
 if __name__=='__main__':unittest.main()

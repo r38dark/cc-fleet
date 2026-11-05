@@ -818,7 +818,7 @@ def ensure_workspace(s=None):
     path = os.path.join(ws, "AGENTS.md")
     current = s or load()
     template = AGENTS_SELF_FULL_TEXT if active_profile(current) == "codex_solo_full" else AGENTS_SELF_TEXT
-    if active_profile(current) == RESERVE_ID and current['access']=='full':
+    if current['access']=='full' and (active_profile(current) == RESERVE_ID or RESERVE_ACTIVE()):
         template = AGENTS_RESERVE_FULL_TEXT
     text = AGENTS_MARK + "\n" + template.format(project=project_dir(current) or "(не задан)")
     text += "\n" + RESERVE_NOTE() + "\n" + image_output_note(current) + "\n"
@@ -838,6 +838,7 @@ def ensure_workspace(s=None):
 
 
 AGENTS_MARK = "<!-- создано мостом cc-limits: пока эта строка на месте, файл обновляется сам; правишь — удали её -->"
+RESERVE_ACTIVE = lambda: False  # Native manager owns the workflow independently of Full.
 AGENTS_SELF_TEXT = """# Codex — работает сам (профиль «Codex»)
 
 Ты общаешься с человеком через Telegram и консоль. Эта папка — твоя рабочая: здесь читай, пиши и запускай.
@@ -1495,8 +1496,8 @@ class Bridge:
             s = load()
             sb, cwd = plan(s)
             mode = {"mediator": "Посредник", "orchestrator": "Оркестратор"}.get(s["mode"], "Самостоятельно")
-            if active_profile(s) == RESERVE_ID:
-                mode = "Резерв (Codex вместе с Notion-агентом)"
+            if RESERVE_ACTIVE() or active_profile(s) == RESERVE_ID:
+                mode = "Full · задачи через резерв Notion" if s['access']=='full' else "Резерв (Codex вместе с Notion-агентом)"
             emg = EMERGENCY.status_line() if EMERGENCY is not None else ""
             with self.start_lock:
                 queued = len(self.work_queue)

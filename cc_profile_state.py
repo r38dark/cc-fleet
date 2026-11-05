@@ -2,7 +2,7 @@
 import copy
 import threading
 import time
-from cc_manual_scenarios import ManualScenarioMixin, validate_stored_choices
+from cc_manual_scenarios import ManualScenarioMixin, validate_stored_choices, reserve_confirmed
 
 ENGINES = ('claude', 'codex')
 
@@ -103,8 +103,8 @@ class ProfileScenarios:
                 return dict(ok=False, message='Неверные настройки резерва.')
             if emergency:
                 return dict(ok=False, message='Аварийный сценарий удалён. Доступен только резерв с Notion.')
-            if enabled and not self.auto[engine]['enabled'] and str(confirm).casefold().strip() != 'подтверждаю':
-                return dict(ok=False, confirmation_required=True, word='подтверждаю', message='Подтверди автоматический резерв.')
+            if enabled and not self.auto[engine]['enabled'] and not reserve_confirmed(confirm):
+                return dict(ok=False, confirmation_required=True, confirmation='yes_no', message='Включить автоматический резерв?')
             changed = dict(enabled=enabled, emergency=False)
             if self.auto[engine] != changed:
                 self.auto[engine] = changed

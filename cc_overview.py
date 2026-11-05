@@ -712,6 +712,18 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu.mono-profile-window.fleet-profile-desktop .full-choice .fleet-profile-card-footer{padding-top:6px}
 @media(max-width:700px){#cxMenu.mono-profile-window .full-choice{padding:13px!important}.full-choice-top{margin-bottom:7px}.manual-companion{margin:6px 12px 12px}.manual-companion button{min-height:34px}}
 
+
+/* Reserve confirmation: one question and two actions. */
+#acctBox:has(.reserve-confirm){box-sizing:border-box;width:calc(100vw - 32px);max-width:320px;padding:20px;border-radius:12px;border:1px solid var(--fleet-line);background:var(--card)}
+.reserve-confirm h3{margin:0;color:var(--txt);font-size:15px;font-weight:600;line-height:1.4}
+.reserve-confirm .modalfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.reserve-confirm .modalfoot button{min-width:64px;min-height:36px;padding:7px 16px;margin:0;border-radius:7px;font-size:13px;font-weight:500;box-shadow:none}
+#reserveConfirmNo{background:transparent;border:1px solid var(--fleet-line);color:var(--fleet-muted)}
+#reserveConfirmYes{background:var(--fleet-accent);border:1px solid transparent;color:var(--bg)}
+.reserve-confirm button:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:3px}
+@media(pointer:coarse){.reserve-confirm .modalfoot button{min-height:44px}}
+html:has(.reserve-confirm),body:has(.reserve-confirm){overflow:hidden}
+#acctScrim:has(.reserve-confirm){touch-action:none;overscroll-behavior:contain}
 '''
 
 JS = r'''
@@ -1310,13 +1322,24 @@ JS = r'''
   if(action==='apply'||(!card.classList.contains('mirror-service')&&!event.target.closest('.cxpinfo')))mirrorApply(mirrorEngine,id);
  }
  async function mirrorRequest(engine,action,body,revision=mirrorState.revision){
-  if(mirrorBusy)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
+  if(mirrorBusy)return;
+  if(((action==='apply'&&body.id==='reserve')||(action==='config'&&body.enabled))&&body.confirm!==true&&body.confirm!=='подтверждаю'){cxMenuClose();mirrorConfirm(engine,'reserve',null,action,body,revision);return}
+  mirrorBusy=true;menu.setAttribute('aria-busy','true');
   try{const response=await fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...body,revision})}),result=await response.json();if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id||'reserve',result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Действие выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
  }
  function mirrorApply(engine,id,confirmation=''){return mirrorRequest(engine,'apply',{id,confirm:confirmation})}
  function mirrorStop(engine){if(mirrorState.service?.kind==='emergency'&&!confirm('Выключить аварийный режим '+mirrorNames[engine]+' и восстановить прежний сценарий?'))return;return mirrorRequest(engine,'stop',{})}
  function mirrorShowTask(){const task=mirrorState.task;if(!task)return;cxMenuClose();acctShow('<h3>'+acctEsc(mirrorNames[task.leader]+' → '+mirrorNames[task.follower])+'</h3><p>Права шага: '+acctEsc({read:'чтение',dev:'дев',full:'полные'}[task.rights]||task.rights)+'</p><pre class="mirror-task-text">'+acctEsc(task.text)+'</pre>'+(task.result?'<h4>Результат</h4><pre class="mirror-task-text">'+acctEsc(task.result)+'</pre>':'')+(task.error?'<p>'+acctEsc(task.error)+'</p>':'')+(task.status==='pending'?(task.rights==='full'?'<label>Для полных прав введи «подтверждаю»<input id="mirrorTaskWord" class="dlginp" autocomplete="off"></label>':'')+'<div class="modalfoot"><button id="mirrorTaskReject" class="ghostbtn">Отклонить</button><button id="mirrorTaskApprove">Отправить исполнителю</button></div>':'<div class="modalfoot"><button id="mirrorTaskClose">Закрыть</button></div>'));document.getElementById('mirrorTaskClose')?.addEventListener('click',acctClose);for(const [id,approve] of [['mirrorTaskReject',false],['mirrorTaskApprove',true]])document.getElementById(id)?.addEventListener('click',async()=>{try{const response=await fetch(API+'profiles/task/confirm',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({id:task.id,approve,confirm:document.getElementById('mirrorTaskWord')?.value||''})}),result=await response.json();if(result.state)mirrorAccept(result.state);toast(result.message);if(result.ok)acctClose()}catch(_){toast('Не удалось подтвердить шаг. Обнови данные перед повтором.')}})}
  function mirrorConfirm(engine,id,word,action='apply',body={id},revision=mirrorState.revision){
+  if(id==='reserve'){
+   const automatic=action==='config',previous=document.activeElement;
+   acctShow('<div class="reserve-confirm" role="alertdialog" aria-modal="true" aria-labelledby="reserveConfirmTitle"><h3 id="reserveConfirmTitle">'+(automatic?'Включить авторезерв?':'Включить резерв?')+'</h3><div class="modalfoot"><button type="button" id="reserveConfirmNo" class="ghostbtn">Нет</button><button type="button" id="reserveConfirmYes">Да</button></div></div>');
+   const dialog=document.querySelector('#acctBox .reserve-confirm'),no=document.getElementById('reserveConfirmNo'),yes=document.getElementById('reserveConfirmYes');let answered=false;
+   const finish=approved=>{if(answered)return;answered=true;acctClose();if(approved)mirrorRequest(engine,action,{...body,confirm:true},revision);else (previous?.isConnected?previous:mirrorButtons[engine])?.focus({preventScroll:true})};
+   no.onclick=()=>finish(false);yes.onclick=()=>finish(true);
+   dialog.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();finish(false)}else if(event.key==='Tab'){event.preventDefault();(document.activeElement===no?yes:no).focus({preventScroll:true})}};
+   no.focus({preventScroll:true});return;
+  }
   const p=mirrorState.engines[engine].profiles.find(p=>p.id===id),impact=id==='reserve'?'Другая модель будет на паузе. Без ограничения срока. После выключения вернётся прежний сценарий.':'Full работает самостоятельно со всеми доступными инструментами, командами и файлами.';acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(p.title)+(action==='config'?' · автоматически':'')+'</h3><p>'+impact+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы подтвердить изменение сценария для '+mirrorNames[engine]+'.</p><input id="mirrorConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="mirrorConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="mirrorConfirmApply" disabled>Применить</button></div></div>');
   const input=document.getElementById('mirrorConfirmWord'),apply=document.getElementById('mirrorConfirmApply');input.addEventListener('input',()=>apply.disabled=input.value.trim().toLocaleLowerCase('ru')!==word);input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!apply.disabled)apply.click()});document.getElementById('mirrorConfirmCancel').onclick=()=>{acctClose();mirrorButtons[engine].focus()};apply.onclick=()=>{const text=input.value;acctClose();mirrorRequest(engine,action,{...body,confirm:text},revision)};setTimeout(()=>input.focus(),30);
  }
@@ -1456,7 +1479,7 @@ JS = r'''
   if(manualRevision!==mirrorState.revision)return {valid:false,text:'Профиль изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
   const leader=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
   if(leader){const other=manualOther(leader);return manualDraft[other]==='executor'?{valid:true,text:mirrorNames[leader]+' → '+mirrorNames[other]+' · выполнение шагов подключено'}:{valid:false,text:mirrorNames[leader]+' — оркестратор. Подключи '+mirrorNames[other]+' для выполнения подтверждённых шагов.'}}
-  if(full&&roles.length===1)return {valid:true,text:mirrorNames[full]+' Full · самостоятельно; '+mirrorNames[manualOther(full)]+' не участвует'};
+  if(full&&roles.length===1){const reserve=!manualDirty&&mirrorState.service?.engine===full&&mirrorState.service?.kind==='reserve';return {valid:true,text:mirrorNames[full]+' Full · '+(reserve?'задачи через Notion':'самостоятельно')+'; '+mirrorNames[manualOther(full)]+' не участвует'}};
   return {valid:false,text:'Выбери Full или Оркестратор. До применения текущая работа продолжается.'};
  }
  function manualSelect(engine,role){
@@ -1474,7 +1497,8 @@ JS = r'''
  function manualCardTitle(engine,role){return mirrorNames[engine]+(role==='reserve'?' + Notion · резерв':role==='orchestrator'?' · оркестратор':' Full · самостоятельно');}
  function manualRoleCard(engine,role){
   const state=mirrorState.engines[engine],id=role==='full'?engine+'_solo_full':'orchestrator',p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]===role,reason=manualReason(engine,role),info=mirrorInfo[engine].has(id),current=state.selected===id&&['solo','leader'].includes(state.role),label=role==='full'?mirrorNames[engine]+' Full':mirrorNames[engine]+' · оркестратор';
-  const copy=role==='full'?'Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.':'Планирует и проверяет работу. Вторая модель выполняет шаги после твоего подтверждения.';
+  const reserve=role==='full'&&mirrorState.service?.engine===engine&&mirrorState.service?.kind==='reserve'&&state.selected===id;
+  const copy=role==='full'?(reserve?'Передаёт задачи Notion-агенту, внедряет и проверяет результат. Полные доступные права.':'Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.'):'Планирует и проверяет работу. Вторая модель выполняет шаги после твоего подтверждения.';
   return '<div class="cxprof fleet-profile-card manual-role full-choice'+(role==='orchestrator'?' orchestrator-choice':'')+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="'+role+'" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="full-choice-top"><span class="full-choice-check" aria-hidden="true">'+(selected?'✓':'')+'</span><span class="full-choice-badge">'+(reason?'Заблокирован':selected?'Выбран':current?'Текущая сессия':role==='full'?'Full':'Оркестратор')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(label)+'</span></span><span class="cxps">'+copy+'</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(reason?'Недоступен при выбранном оркестраторе':selected?(role==='orchestrator'?'Нажми повторно, чтобы снять':manualDirty?'Выбран для применения':'Действующий профиль'):'Нажми, чтобы выбрать')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
  }
  function manualCompanionPanel(engine){
@@ -1510,7 +1534,7 @@ JS = r'''
   if(!event.target.closest('.cxpinfo'))manualSelect(engine,role);
  }
  const manualApplyBefore=mirrorApply;
- mirrorApply=function(engine,id,confirmation=''){if(monoView==='profiles'&&!menu.hidden){manualSelect(engine,id.endsWith('_solo_full')?'full':id);return Promise.resolve()}return manualApplyBefore(engine,id,confirmation)};
+ mirrorApply=function(engine,id,confirmation=''){if(id!=='reserve'&&monoView==='profiles'&&!menu.hidden){manualSelect(engine,id.endsWith('_solo_full')?'full':id);return Promise.resolve()}return manualApplyBefore(engine,id,confirmation)};
  profileRoot.addEventListener('keydown',event=>{const card=event.target.closest('.mono-reserve[data-manual-role]');if(monoView!=='profiles'||!card||event.target!==card||!['Enter',' '].includes(event.key))return;event.preventDefault();event.stopImmediatePropagation();manualSelect(card.dataset.engine,'reserve')},true);
  async function manualApplyScenario(confirmation='',choices={...manualDraft},revision=manualRevision){
   if(mirrorBusy||!manualStatus().valid)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
@@ -1524,6 +1548,7 @@ JS = r'''
  }
  function manualConfirmScenario(choices,revision,word){
   const engine=manualEngines.find(e=>choices[e]),name=manualCardTitle(engine,choices[engine]),other=mirrorNames[manualOther(engine)];cxMenuClose();
+  if(choices[engine]==='reserve'){mirrorConfirm(engine,'reserve',null,'apply',{id:'reserve'},revision);return}
   acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(name)+'</h3><p>'+other+' не участвует в этом сценарии. '+(choices[engine]==='reserve'?'Резерв с Notion работает без ограничения срока.':'Работает только '+mirrorNames[engine]+' с полными доступными правами.')+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы применить профиль Full.</p><input id="manualConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="manualConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="manualConfirmApply" disabled>Применить профиль</button></div></div>');
   const input=document.getElementById('manualConfirmWord'),button=document.getElementById('manualConfirmApply');input.oninput=()=>button.disabled=input.value.trim().toLocaleLowerCase('ru')!==word;input.onkeydown=event=>{if(event.key==='Enter'&&!button.disabled)button.click()};document.getElementById('manualConfirmCancel').onclick=()=>{acctClose();mirrorOpen(engine)};button.onclick=()=>{const value=input.value;acctClose();manualApplyScenario(value,choices,revision).then(()=>mirrorOpen(engine))};setTimeout(()=>input.focus(),30);
  }

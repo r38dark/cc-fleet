@@ -99,7 +99,7 @@ class NativeProfiles:
             engine=after.service['engine']
             actual_full=(captured.get('codex_settings',{}).get('access')=='full' and captured.get('codex_sandbox')=='danger-full-access' if engine=='codex'
                          else captured.get('claude',{}).get('bypass',False))
-            if not actual_full:after.service['access']='write'
+            if not actual_full:raise ProfileError('full_access_not_active')
         if 'claude' in changed:Path(self.claude_work).mkdir(parents=True,exist_ok=True)
         if 'claude' in changed:self.claude.prepare(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
         if 'codex' in changed and not captured.get('codex_runtime',{}).get('thread_id'):raise ProfileError('codex_history_unknown')
@@ -270,7 +270,7 @@ class Profiles:
             self.native.apply(before,candidate,changed,captured);self.save();self.pending.unlink();self.error=''
             return dict(ok=True,message=message,state=self.public())
         except Exception as exc:
-            reasons={'reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.'}
+            reasons={'full_access_not_active':'Сначала примени Full к выбранной модели, затем включи резерв.','reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.'}
             self.error='Переключение отменено. '+reasons.get(str(exc),'Консоль не подтвердила применение профиля; проверь её экран перед повтором.')
             revoked=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active() and self.pending.exists())
             if revoked:
@@ -376,6 +376,8 @@ def bind(ns, inputs):
     bridge.RESERVE_NOTE=lambda:native.prompt(profiles.state,'codex') if profiles.managed['codex'] else native.original_notion_note()
     # One scheduler owns both directions. The legacy service remains the connector/UI adapter.
     notion.active=lambda:bool(profiles.state.service and profiles.state.service['engine']=='codex' and profiles.state.service['kind']=='reserve')
+    bridge.RESERVE_ACTIVE=notion.active
+    notion.SOLO_PROFILE=lambda:bridge.active_profile(bridge.load())=='codex_solo_full' and not notion.active()
     def notion_public(lv=None):
         data=native.original_notion_public(lv)
         if not data.get('available'):data=dict(available=True,connected=False,agent=dict(name='',set=False))

@@ -5,6 +5,11 @@ ENGINES = ('claude', 'codex')
 ROLES = (None, 'full', 'reserve', 'orchestrator', 'executor')
 
 
+def reserve_confirmed(value):
+    # Accept cached older clients, while the current UI sends a boolean Yes.
+    return value is True or (isinstance(value, str) and value.strip().casefold() == 'подтверждаю')
+
+
 def reserve_access(base, engine):
     """Keep existing Full; entering reserve never grants it to a paired/paused role."""
     choices = base.get('manual_choices')
@@ -82,6 +87,11 @@ class ManualScenarioMixin:
                     data.update(selected=None, label=self.actor(engine)+' · не участвует')
                 elif choice == 'executor':
                     data['label'] = self.actor(engine)+' · исполнитель '+self.actor(self.leader)
+        if self.service and self.service.get('access') == 'full':
+            engine = self.service['engine']
+            # Reserve changes the workflow; Full remains the working profile.
+            result['engines'][engine].update(selected=engine+'_solo_full', label=self.actor(engine)+' Full')
+            result['manual_scenario']['choices'][engine] = 'full'
         return result
 
     def apply_scenario(self, choices, confirm='', revision=None):
@@ -96,7 +106,11 @@ class ManualScenarioMixin:
                 return dict(ok=False, message=message)
             if choices == self.manual_choices:
                 return dict(ok=True, message='Этот сценарий уже действует.', state=self.public())
-            if any(value in ('full', 'reserve') for value in choices.values()) and str(confirm).strip().casefold() != 'подтверждаю':
+            has_reserve = 'reserve' in choices.values()
+            if has_reserve and not reserve_confirmed(confirm):
+                return dict(ok=False, confirmation_required=True, confirmation='yes_no',
+                            message='Включить резерв с Notion?')
+            if not has_reserve and 'full' in choices.values() and str(confirm).strip().casefold() != 'подтверждаю':
                 return dict(ok=False, confirmation_required=True, word='подтверждаю',
                             message='Подтверди весь сценарий: вторая модель не будет участвовать.')
             previous = copy.deepcopy(self.restore if self.service and self.restore else self._base())
