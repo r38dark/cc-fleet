@@ -191,35 +191,13 @@ cc_codex.EXTRA_ENV = cc_codex_emergency.env_extra
 # Notion-агент: карточка на странице; вход берём из файла входа Claude Code, имя агента — из config.json
 cc_notion.CREDS = lambda: LIVE_CREDS
 cc_notion.CONFIG = lambda: cfg().get("notion_agent") or {}
-# резерв «Claude недоступен»: признак — тот же расчёт паузы, что у баннера; сообщение — в телеграм; аварийный режим — вместе с ним
-cc_notion.BASE = BASE
-cc_notion.LEVEL = lambda: pause_state()
-cc_notion.NOTIFY = tg_notify
-cc_notion.EMERGENCY = cc_codex_emergency
+# [notion-ai] резерв (Codex + Notion-агент вместо Claude) убран: сторожа, паузы и служебного профиля больше нет
 cc_notion.SOLO_PROFILE = lambda: cc_codex_bridge.active_profile(cc_codex_bridge.load()) == "codex_solo_full"
-# инструменты Notion-агента у Codex — только пока резерв включён; при смене резерва консоль перезапускается (не посреди ответа)
 cc_codex_bridge.MCP_ARGS = cc_notion.codex_args
 cc_codex_bridge.RESERVE_NOTE = cc_notion.codex_note
 cc_codex_bridge.PROFILE_APPLIED = cc_codex_emergency._restart_console
 cc_codex_console.MCP = cc_notion.codex_args
-cc_notion.APPLY = cc_codex_emergency._restart_console
 cc_codex_bridge.EMERGENCY = cc_codex_emergency
-
-
-def _reserve_pause(on):
-    """Резерв включён галочкой вручную → Claude на паузу (аккаунты не тратятся); снята → пауза снимается, сессия просыпается."""
-    import sys
-    if BASE not in sys.path:
-        sys.path.insert(0, BASE)
-    import pause_ctl
-    if on:
-        pause_ctl.reserve_hold("резерв: Codex + Notion-агент вместо Claude")
-    else:
-        pause_ctl.reserve_release()
-
-
-cc_notion.PAUSE = _reserve_pause
-cc_notion.PROFILE = cc_codex_bridge.reserve_profile  # профиль Codex сам встаёт на «Резерв» и возвращается назад
 
 
 # автообновление из GitHub Releases (cc_update.py): проверка раз в 6 часов, ручной/авто режим
@@ -3152,7 +3130,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/backup/restore":  # «Восстановить недостающие»: живые профили не трогаются
             res = cc_backup.restore_missing(PROFILES, BACKUP_DIR)
             return self._send(200, dict(backup_status(), ok=True, restored=res["restored"]))
-        if u.path == "/api/notion/save":  # окно ⚙ блока Notion и переключатель резерва: имя агента / ссылка агента / галочки резерва
+        if u.path == "/api/notion/save":  # имя и ссылка Notion-агента ([notion-ai] резерва больше нет)
             c = cfg()  # без lock — как /api/config: он не реентерабельный и занят на время опроса
             ok, conf, err = cc_notion.save(c.get("notion_agent") or {}, body)
             if not ok:
@@ -3160,11 +3138,6 @@ class H(BaseHTTPRequestHandler):
                     body.get("lang"), "Не принято поле «%s»." % err, "Field “%s” was not accepted." % err)})
             c["notion_agent"] = conf
             jsave(CONFIG, c)
-            # любое сохранение (переключатель резерва, галочки, имя/ссылка агента) действует сразу, а не через TICK секунд;
-            # аварийный режим включается долго — его в запросе не ждём. Такты идут по одному (cc_notion._run)
-            th = threading.Thread(target=cc_notion.tick, daemon=True, name="notion-reserve-now")
-            th.start()
-            th.join(2)  # быстрый случай (без аварийного режима) успевает — ответ уже с новым состоянием; долгий догонит опрос страницы
             return self._send(200, {"ok": True, "notion": cc_notion.public()})
         if u.path == "/api/config":
             c = cfg()
@@ -3685,40 +3658,6 @@ html:root:root .dmet .dtop{gap:6px}
 @keyframes cxpulse{50%{opacity:.35}}
 .cxbtn[aria-expanded="true"],.cxgbtn[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
 /* профиль и настройки — одна плашка: слева меню профилей, справа ⚙ */
-.ntgrp{display:flex;align-items:center;flex:none}
-.ntgrp[hidden]{display:none}
-.hdrgear.ntind{width:auto;padding:0 9px 0 8px;gap:6px;border-radius:8px 0 0 8px;cursor:default;color:var(--txt)}
-.hdrgear.ntbtn{width:auto;padding:0 9px 0 8px;gap:7px;font-size:12px;font-weight:600;color:var(--txt);border-radius:0;margin-left:-1px;cursor:pointer}
-.hdrgear.ntbtn.dis{opacity:.5;cursor:not-allowed}
-.hdrgear.ntgbtn{border-radius:0 8px 8px 0;margin-left:-1px;cursor:pointer}
-.ntgrp .hdrgear:hover,.ntgrp .hdrgear[aria-expanded="true"]{position:relative;z-index:1}
-.ntgbtn[aria-expanded="true"]{color:var(--acc)}
-/* рамка блока Notion — одна по периметру на ВСЮ группу (индикатор + переключатель резерва + ⚙), цвет задаёт класс группы:
-   без класса — обычная серая рамка скина, как у группы Codex (резерв выключен);
-   зелёная — пока работает резерв; красная — Notion не подключён или нужен вход заново (обе перебивают скины) */
-html:root .ntgrp.res .hdrgear{border-color:rgba(52,192,124,.75)}
-html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
-.hdrgear.ntind svg{width:15px;height:15px;flex:none}
-.ntsw{position:relative;width:22px;height:12px;border-radius:99px;background:#2a3140;flex:none;transition:background .15s}
-.ntsw::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--mut);transition:transform .15s,background .15s}
-.ntbtn[aria-checked="true"] .ntsw{background:rgba(52,192,124,.3)}
-.ntbtn[aria-checked="true"] .ntsw::after{transform:translateX(10px);background:var(--ok)}
-.ntbtn.res{color:var(--ok)}
-.ntgrp.bad .cxdot{background:var(--bad)}
-.ntgrp:not(.bad) .cxdot{background:var(--ok)}
-.ntres .updchk{font-size:13px;color:var(--txt);margin-top:10px}
-.ntres .updchk.dis{opacity:.5;cursor:default}
-.ntres .cxsub{margin-top:10px}
-.cxpop.ntpop{width:min(420px,calc(100vw - 20px))}
-.ntpop .cxpbody{padding-bottom:16px}
-.ntrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0;font-size:14px;color:var(--mut)}
-.ntrow b{color:var(--txt);font-weight:600;text-align:right;min-width:0;overflow-wrap:anywhere}
-.ntrow b.ok{color:var(--ok)}.ntrow b.bad{color:var(--bad)}
-.ntsec{margin-top:16px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
-.ntnote{margin-top:4px;font-size:12.5px;line-height:1.45;color:var(--mut)}
-.ntsteps{margin:6px 0 0 18px;padding:0;font-size:12.5px;line-height:1.5;color:var(--mut)}
-.ntsteps li{margin-top:4px}
-.ntsteps code{display:inline-block;margin-top:3px;font:11.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:#0f1115;border:1px solid #2a3140;border-radius:6px;padding:2px 6px;color:var(--txt);overflow-wrap:anywhere;user-select:all}
 .cxgrp{display:flex;align-items:center;flex:none}
 .cxgrp[hidden]{display:none}
 .cxgrp .hdrgear.cxbtn{border-radius:8px 0 0 8px}
@@ -3782,7 +3721,6 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxprof::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc,var(--acc))}
 .cxprof[data-id="orchestrator"]{--pc:linear-gradient(180deg,#19c3a0,#f0905f)}
 .cxprof[data-id="codex"]{--pc:#19c3a0}
-.cxprof[data-id="reserve"]{--pc:linear-gradient(180deg,#9b8cff,#19c3a0)}
 .cxprof.rsv:not(.act){opacity:.65;cursor:default}
 .cxprof.rsv:not(.act):hover{border-color:#2a3140}
 .cxprof .cxpn{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
@@ -3932,7 +3870,6 @@ html:root:root .cxbtnname{max-width:84px}
 /* с счётчиками кнопка профиля не помещается в одну строку с остальными кнопками — занимает свою строку на всю ширину */
 html:root:root .hdrctl{flex:1 1 100%;min-width:0;flex-wrap:wrap;justify-content:flex-end}
 html:root:root .cxgrp{flex:1 1 280px;min-width:0}  /* меньше 280 px группе Codex не отдаём: не помещается рядом с группой Notion — уходит на свою строку */
-html:root:root .ntgrp{flex:none}
 html:root:root .cxgrp .hdrgear.cxbtn{flex:1 1 auto;min-width:0;justify-content:flex-start}
 html:root:root .cxlim{margin-left:auto}
 html:root:root .hdrgear.cxmodbtn{flex:0 1 auto;min-width:0;padding:0 6px;gap:5px}
@@ -3945,7 +3882,7 @@ html:root:root .cxmodn{display:none}
 html:root:root .hdrgear.cxmodbtn svg{display:block}
 }
 </style></head><body>
-<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="ntgrp" id="ntGrp" hidden><span id="ntInd" class="hdrgear ntind" role="img" aria-label="Notion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M9 16V8l6 8V8"/></svg><i class="cxdot" id="ntDot"></i></span><button id="ntBtn" class="hdrgear ntbtn" type="button" role="switch" aria-checked="false"><span class="ntname" id="ntBtnName">Резерв</span><i class="ntsw" aria-hidden="true"></i></button><button id="ntGear" class="hdrgear ntgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
@@ -3972,10 +3909,6 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
   <div class="cxacc" id="cxAccW"><button type="button" class="cxacch" data-sec="acc"><span id="cxAccT"></span><span class="cxsum" id="cxAccS"></span><svg class="cxar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><div id="cx" class="cxsec" hidden></div></div>
   <div class="cxwipe" id="cxWipeW" hidden><button type="button" class="btn-del" id="cxWipe" onclick="cxWipe()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span id="cxWipeT"></span></button></div>
  </div>
-</div>
-<div id="ntPop" class="cxpop ntpop" role="dialog" aria-labelledby="ntPopTitle" hidden>
- <div class="cxphead"><b id="ntPopTitle">Notion</b><span class="cxsub" id="ntPopSt"></span><button type="button" class="hdrgear" id="ntPopX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
- <div class="cxpbody" id="ntPopB"></div>
 </div>
 <div id="cxInstPop" class="cxpop cxinstpop" role="dialog" aria-labelledby="cxInstTitle" hidden>
  <div class="cxphead"><b id="cxInstTitle">Codex</b><span class="cxsub"></span><button type="button" class="hdrgear" id="cxInstX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
@@ -4024,51 +3957,6 @@ const I18N={
   switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
   extended:'Я продлил',
   lapsedTag:'НЕАКТИВНЫЙ',
-  ntGearTip:'Notion-агент: настройки и пояснения',
-  ntIndTip:'Notion-агент',
-  ntSwTipOff:'Перейти в резервный режим: Claude на паузе, работают Codex + агент',
-  ntSwTipOn:'Резервный режим включён вручную — нажми, чтобы выключить и вернуть Claude',
-  ntSwTipAuto:'Резерв включился сам, потому что кончились лимиты. Нажми, чтобы включить его вручную',
-  ntResConfirm:'Точно перейти в резервный режим?\n\nЧто это значит:\n• Claude встанет на паузу: аккаунты не тратятся, входящие сообщения ждут в очереди. Две минуты у него есть, чтобы закончить начатое.\n• Работают Codex и Notion-агент: ты ставишь задачу Codex, он отправляет агенту нужный текст, агент возвращает результат, Codex внедряет его и проверяет. Каждое изменение — только после твоего «да».\n• Профиль Codex сам переключится на служебный «Резерв».\n\nВыключишь переключатель — всё вернётся сразу, Claude продолжит с места остановки.',
-  ntTitle:'Notion-агент',
-  ntLogin:'Вход в Notion',
-  ntLoginOk:'подключён',
-  ntLoginBad:'нужен вход заново',
-  ntName:'Имя агента',
-  ntNamePh:'как называется в Notion',
-  ntUrl:'Ссылка агента',
-  ntUrlSet:'Ссылка задана и скрыта. Чтобы заменить — вставь новую.',
-  ntUrlNone:'Ссылка не задана. Скопируй её в Notion у своего агента (agent://…).',
-  ntUrlClear:'Стереть ссылку',
-  ntUrlClearQ:'Стереть ссылку агента? Вернуть её можно только вставив заново.',
-  ntSave:'Сохранить',
-  ntSaved:'Сохранено',
-  ntErr:'Не сохранилось',
-  ntWhat:'Что это',
-  ntWhatTxt:'Твой агент в Notion (Custom Agent). Его зовёт через подключение Notion (MCP) та модель, что осталась в «Резерве»: Codex, когда Claude недоступен, или Claude, когда недоступен Codex. Получает задание текстом и отвечает текстом. Файлы на сервере сам не правит — изменения делает тот, кто его позвал, и только после твоего «да». Это не Notion AI из шапки: тот работает в постоянном чате и настраивается отдельно.',
-  ntSetup:'Как подключить с нуля',
-  ntStep1:'Подключить Notion в Claude Code (команда в терминале):',
-  ntStep2:'В Claude Code открыть /mcp, выбрать notion и войти в свой аккаунт Notion. «Вход в Notion» выше станет «подключён».',
-  ntStep3:'В Notion создать своего агента и скопировать его имя и ссылку (agent://…).',
-  ntStep4:'Вставить имя и ссылку выше и нажать «Сохранить».',
-  ntStep5:'Только для резерва: Codex тоже должен войти в Notion — команда и проверка в README, раздел «Notion-агент и резерв».',
-  ntBtnRes:'Резерв',
-  ntResSwNote:'Переключатель «Резерв» в шапке переводит в резервный режим вручную: Claude встаёт на паузу (аккаунты не тратятся, входящие сообщения ждут в очереди, две минуты на то, чтобы закончить начатое), а работают Codex и агент. Включается только после подтверждения; выключил — Claude сразу возвращается и продолжает с места остановки. Значок N рядом — просто индикатор: зелёная точка, когда Notion подключён, красная — нужен вход заново.',
-  ntRes:'Резерв: когда Claude недоступен',
-  ntResTxt:'Когда лимиты всех аккаунтов Claude кончились, Claude стоит на паузе. Работать дальше может Codex: ты ставишь задачу ему, он отправляет агенту нужный текст, агент возвращает результат, Codex внедряет его и проверяет. Каждое изменение — только после твоего «да».',
-  ntResAuto:'Включать само, когда лимиты всех аккаунтов Claude кончились',
-  ntResEmg:'и сразу включать аварийный режим Codex — полный доступ к проекту, чтобы он мог внедрять результат',
-  ntResEmgNo:'Аварийный режим не настроен — резерв будет работать без полного доступа.',
-  ntResNotReady:'Резерв недоступен: нужен подключённый Notion и ссылка агента (⚙).',
-  ntResIdle:'Сейчас: Claude работает, резерв не нужен.',
-  ntResIdleAuto:'Сейчас: Claude работает. Резерв включится сам, когда лимиты кончатся.',
-  ntResWait:'Сейчас: лимиты кончились, проверяю, что это не сбой…',
-  ntResUnknown:'Сейчас: данные о лимитах устарели — резерв не меняю.',
-  ntResOnManual:'Сейчас: резерв включён вручную — Claude на паузе.',
-  ntResOnAuto:'Сейчас: лимиты кончились — резерв включён.',
-  ntResReset:t=>' Ближайший сброс в '+t+'.',
-  ntResEmgOn:' Аварийный режим включён.',
-  ntResErr:'Не сохранилось',
   lapsedTitle:'Аккаунт неактивный',
   lapsedNote:'подписка закончилась, в ротации не участвует. Опрос остановлен, пока не нажмёшь «Я продлил»',
   lapsedSince:t=>` (с ${t})`,
@@ -4210,8 +4098,6 @@ const I18N={
   ccpResGraceNow:'Claude получил отказ и доделывает начатое; после отсчёта его инструменты блокируются.',
   ccpResGraceL:'Claude доделывает начатое',
   ccpResLocked:'Инструменты Claude заблокированы.',
-  ntResOnToast:'Резерв включён: Claude на паузе, работают Codex + агент',
-  ntResOffToast:down=>down?'Резерв выключен, но лимиты Claude ещё кончились: он остаётся на паузе':'Резерв выключен: Claude снова работает и продолжит с места остановки',
   ccpHintResOff:'аварийный выход: Claude продолжит сразу, резерв останется включённым',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
@@ -4381,9 +4267,6 @@ const I18N={
   cxpN_orchestrator:'Оркестратор',
   cxpN_codex:'Codex',
   cxpN_codex_solo_full:'Codex Full · сам',
-  cxpN_reserve:'Резерв',
-  cxpS_reserve:'Включается само вместе с резервом Notion: Codex работает вместе с агентом, Claude на паузе. Вручную не выбирается.',
-  cxpS_reserveOn:'Сейчас включён: Codex ведёт работу вместе с Notion-агентом. Прежний профиль вернётся, когда резерв закончится.',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Нативный ИИ'],
   cxpRoute_codex_solo_full:['Codex','Самостоятельно'],
@@ -4543,51 +4426,6 @@ const I18N={
   switchBlockedTitle:'Blocked: limit-switch optimization is on',
   extended:'I renewed',
   lapsedTag:'INACTIVE',
-  ntGearTip:'Notion agent: settings and notes',
-  ntIndTip:'Notion agent',
-  ntSwTipOff:'Switch to reserve mode: Claude is paused, Codex + the agent work',
-  ntSwTipOn:'Reserve mode was turned on by hand — press to turn it off and bring Claude back',
-  ntSwTipAuto:'The reserve switched on by itself because the limits ran out. Press to turn it on by hand',
-  ntResConfirm:'Really switch to reserve mode?\n\nWhat it means:\n• Claude is paused: accounts are not spent, incoming messages wait in the queue. It gets two minutes to finish what it started.\n• Codex and the Notion agent work instead: you give Codex the task, it sends the agent the text it needs, the agent returns a result, and Codex applies and checks it. Every change waits for your "yes".\n• The Codex profile switches by itself to the service profile "Reserve".\n\nTurn the switch off and everything returns at once; Claude continues where it stopped.',
-  ntTitle:'Notion agent',
-  ntLogin:'Notion sign-in',
-  ntLoginOk:'connected',
-  ntLoginBad:'sign in again',
-  ntName:'Agent name',
-  ntNamePh:'its name in Notion',
-  ntUrl:'Agent link',
-  ntUrlSet:'The link is set and hidden. Paste a new one to replace it.',
-  ntUrlNone:'No link yet. Copy it in Notion from your agent (agent://…).',
-  ntUrlClear:'Erase the link',
-  ntUrlClearQ:'Erase the agent link? You can only get it back by pasting it again.',
-  ntSave:'Save',
-  ntSaved:'Saved',
-  ntErr:'Could not save',
-  ntWhat:'What it is',
-  ntWhatTxt:'Your own Notion agent (Custom Agent). The model left working in “Reserve” calls it through the Notion connection (MCP): Codex when Claude is unavailable, or Claude when Codex is. It takes a task as text and replies as text. It does not edit server files itself — whoever called it applies the change, and only after your "yes". This is not the Notion AI from the header: that one works in a permanent chat and is set up separately.',
-  ntSetup:'Set it up from scratch',
-  ntStep1:'Connect Notion in Claude Code (terminal command):',
-  ntStep2:'In Claude Code open /mcp, pick notion and sign in to your Notion account. “Notion sign-in” above turns “connected”.',
-  ntStep3:'In Notion create your own agent and copy its name and link (agent://…).',
-  ntStep4:'Paste the name and link above and press "Save".',
-  ntStep5:'Reserve only: Codex has to sign in to Notion too — the command and a check are in the README, section "Notion agent and the reserve".',
-  ntBtnRes:'Reserve',
-  ntResSwNote:'The "Reserve" switch in the header moves to reserve mode by hand: Claude is paused (accounts are not spent, incoming messages wait in the queue, two minutes to finish what it started), and Codex plus the agent work. It turns on only after a confirmation; turn it off and Claude comes back at once and continues where it stopped. The N icon next to it is just an indicator: a green dot when Notion is connected, red when you need to sign in again.',
-  ntRes:'Reserve: when Claude is unavailable',
-  ntResTxt:'When every Claude account has run out of limits, Claude is paused. Codex can carry on: you give it the task, it sends the agent the text it needs, the agent returns a result, and Codex applies and checks it. Every change waits for your "yes".',
-  ntResAuto:'Turn on by itself when the limits of every Claude account are used up',
-  ntResEmg:'and also turn on Codex emergency mode — full access to the project, so it can apply the result',
-  ntResEmgNo:'Emergency mode is not set up — the reserve will work without full access.',
-  ntResNotReady:'Reserve is unavailable: it needs Notion connected and the agent link (⚙).',
-  ntResIdle:'Now: Claude is working, no reserve needed.',
-  ntResIdleAuto:'Now: Claude is working. The reserve will switch on by itself when the limits run out.',
-  ntResWait:'Now: limits are used up, checking it is not a glitch…',
-  ntResUnknown:'Now: the limits data is stale — leaving the reserve as it is.',
-  ntResOnManual:'Now: the reserve was turned on by hand — Claude is paused.',
-  ntResOnAuto:'Now: limits are used up — the reserve is on.',
-  ntResReset:t=>' Nearest reset at '+t+'.',
-  ntResEmgOn:' Emergency mode is on.',
-  ntResErr:'Could not save',
   lapsedTitle:'Account inactive',
   lapsedNote:'the subscription has ended, so it is out of the rotation. Polling is stopped until you press “I renewed”',
   lapsedSince:t=>` (since ${t})`,
@@ -4729,8 +4567,6 @@ const I18N={
   ccpResGraceNow:'Claude got the refusal and is finishing what it started; its tools are blocked when the countdown ends.',
   ccpResGraceL:'Claude is finishing up',
   ccpResLocked:'Claude’s tools are blocked.',
-  ntResOnToast:'Reserve on: Claude is paused, Codex + the agent are working',
-  ntResOffToast:down=>down?'Reserve off, but Claude’s limits are still used up: it stays paused':'Reserve off: Claude is working again and continues where it stopped',
   ccpHintResOff:'emergency exit: Claude continues right away, the reserve stays on',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
@@ -4900,9 +4736,6 @@ const I18N={
   cxpN_orchestrator:'Orchestrator',
   cxpN_codex:'Codex',
   cxpN_codex_solo_full:'Codex Full · solo',
-  cxpN_reserve:'Reserve',
-  cxpS_reserve:'Turns on by itself with the Notion reserve: Codex works together with the agent, Claude is paused. Cannot be picked by hand.',
-  cxpS_reserveOn:'On now: Codex works together with the Notion agent. The previous profile comes back when the reserve ends.',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Native AI'],
   cxpRoute_codex_solo_full:['Codex','Standalone'],
@@ -5310,7 +5143,6 @@ function renderCards(d){
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
   </div>`;
  }).join('');
- ntApply(d.notion);
  renderDock(d);
 }
 // время последнего обновления данных — в подсказки зелёной точки и кнопки «Обновить»
@@ -5880,7 +5712,7 @@ function cxHdr(){
  if(emg)cls='emg';
  btn.classList.toggle('emg',emg);
  $('#cxDot').className='cxdot '+cls;
- const name=emg?tr('cxeHdr'):cur?cxpName(cur):(b&&b.profile==='reserve'?tr('cxpN_reserve'):(b&&b.enabled?tr('cxpManualShort'):''));
+ const name=emg?tr('cxeHdr'):cur?cxpName(cur):(b&&b.enabled?tr('cxpManualShort'):'');
  $('#cxBtnName').textContent=name;
  const st=b?(b.last_error?'⚠ '+b.last_error:b.running?tr('cxbRunning'):tr('cxbOff')):'';
  const la=cxLimAcc(),lim=$('#cxLim');
@@ -6038,12 +5870,8 @@ function cxpRender(){
    <button type="button" class="cxpi${open?' on':''}" data-info="${acctEsc(p.id)}" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
    ${p.builtin?'':`<button type="button" class="cxpx" title="${acctEsc(tr('cxpDel'))}" aria-label="${acctEsc(tr('cxpDel'))}" data-del="${acctEsc(p.id)}">×</button>`}</div>`;
  }).join('');
- // «Резерв» — служебный профиль: встаёт сам вместе с резервом Notion, вручную не выбирается (клик объяснит это)
- const rs=b.profile==='reserve';
- const rsv=`<div class="cxprof rsv${rs?' act':''}" role="radio" aria-checked="${rs}" aria-disabled="true" tabindex="0" data-id="reserve" data-auto="1"><span class="cxpr"></span>
-   <span class="cxpt"><span class="cxpn"><span class="cxpnm caps">${acctEsc(tr('cxpN_reserve'))}</span><span class="cxroute">${cxpSeq([cxpChip('cx','Codex'),cxpChip('nat','Notion')])}</span></span><span class="cxps">${acctEsc(tr(rs?'cxpS_reserveOn':'cxpS_reserve'))}</span></span></div>`;
  el.innerHTML=`<div class="cxhead"><h2>${tr('cxpTitle')}</h2><span class="cxsub">${tr('cxpHint')}</span><button type="button" class="cxmx" data-close="1" title="${acctEsc(tr('cxpClose'))}" aria-label="${acctEsc(tr('cxpClose'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-  <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}${rsv}</div>
+  <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}</div>
   ${cxeHtml(cxbData.emergency)}
   ${!b.profile&&b.enabled?`<div class="cxpmanual">${tr('cxpManual')}</div>`:''}`;
 }
@@ -6071,7 +5899,7 @@ function cxPopPlace(){
 }
 function cxPopOpen(){
  if(!cxAvail())return;
- cxMenuClose();cxQClose();ntClose();
+ cxMenuClose();cxQClose();
  $('#cxPop').hidden=false;$('#cxGear').setAttribute('aria-expanded','true');
  cxAll();cxPopPlace();cxbLoad(true);cxLoad();
 }
@@ -6188,7 +6016,7 @@ function ciRender(){
 }
 function ciOpen(){
  if(!ciShow())return;
- cxPopClose();cxMenuClose();cxQClose();ntClose();
+ cxPopClose();cxMenuClose();cxQClose();
  $('#cxInstPop').hidden=false;$('#cxInst').setAttribute('aria-expanded','true');
  ciRender();
  if(ciStage()===1)ciLoad();  // ход установки нужен только на шаге 1
@@ -6272,152 +6100,6 @@ async function ciRecheck(){
 }
 $('#cxInst').addEventListener('click',()=>{$('#cxInstPop').hidden?ciOpen():ciClose();});
 $('#cxInstX').addEventListener('click',ciClose);
-// ---- блок Notion-агента в шапке: выключатель и ⚙ с настройками и пояснениями ----
-let ntData=null,ntPrevRes=null,ntActAt=0;  // ntPrevRes — резерв был включён на прошлом показе; ntActAt — когда человек последний раз нажал
-function ntAfter(){ntActAt=Date.now();}
-// после любой правки: баннер паузы и шапку Codex обновляем сразу (не ждём опросов) и ещё раз через пару секунд — догнать долгие шаги
-function ntSync(){ccpLoad();cxbLoad(true);setTimeout(()=>{ntRefresh();ccpLoad();cxbLoad(true);},2500);}  // cxbLoad — имя профиля в шапке Codex (резерв ↔ прежний)
-function ntApply(n){
- const g=$('#ntGrp');if(!g)return;
- ntData=n&&n.available?n:null;g.hidden=!ntData;
- if(!ntData){ntClose();return;}
- const b=$('#ntBtn'),rv=ntData.reserve||{},res=!!rv.active,man=!!rv.manual,ok=!!ntData.connected;
- // иконка N — только индикатор (подключён или нет); переключатель — ручной резерв: Claude на паузе, работают Codex + агент
- g.classList.toggle('bad',!ok);g.classList.toggle('res',res);  // рамка всей группы вместе с ⚙
- const it=tr('ntIndTip')+' — '+(ok?tr('ntLoginOk'):tr('ntLoginBad'));
- $('#ntInd').title=it;$('#ntInd').setAttribute('aria-label',it);$('#ntDot').className='cxdot '+(ok?'on':'err');
- b.setAttribute('aria-checked',man?'true':'false');b.classList.toggle('res',res);
- const dis=!rv.ready&&!man;b.classList.toggle('dis',dis);b.setAttribute('aria-disabled',dis?'true':'false');
- if(ntPrevRes!==null&&ntPrevRes!==res&&Date.now()-ntActAt<15000)toast(res?tr('ntResOnToast'):tr('ntResOffToast',rv.claude==='down'));  // человек видит, что переключилось
- ntPrevRes=res;
- const tip=dis?tr('ntResNotReady'):man?tr('ntSwTipOn'):res?tr('ntSwTipAuto'):tr('ntSwTipOff');
- b.title=tip;b.setAttribute('aria-label',tr('ntBtnRes')+' — '+tip);$('#ntBtnName').textContent=tr('ntBtnRes');
- const gb=$('#ntGear');gb.title=tr('ntGearTip');gb.setAttribute('aria-label',tr('ntGearTip'));
- if(!$('#ntPop').hidden){  // окно открыто: обновляем только строки состояния, поля ввода не трогаем
-  const l=$('#ntLoginV');
-  if(l){l.className=ok?'ok':'bad';l.textContent=ok?tr('ntLoginOk'):tr('ntLoginBad');}
-  ntResPaint();
- }
-}
-// строка «что с резервом сейчас» и состояние галочек (пока идёт сохранение, галочки не трогаем)
-function ntResText(rv){
- if(!rv.ready)return tr('ntResNotReady');
- let t;
- if(rv.active)t=rv.why==='manual'?tr('ntResOnManual'):tr('ntResOnAuto');
- else if(rv.claude==='down')t=tr('ntResWait');
- else if(rv.claude==='unknown')t=tr('ntResUnknown');
- else t=tr(rv.auto?'ntResIdleAuto':'ntResIdle');
- if(rv.active&&rv.why!=='manual'&&rv.reset)t+=tr('ntResReset')(rv.reset);
- if(rv.emergency&&rv.emergency.active&&rv.emergency.by_reserve)t+=tr('ntResEmgOn');
- return t;
-}
-let ntResBusy=false;
-function ntResPaint(){
- const rv=(ntData&&ntData.reserve)||{},st=$('#ntResSt');
- if(st)st.textContent=ntResText(rv);
- if(ntResBusy)return;
- const a=$('#ntResAuto'),e=$('#ntResEmg');
- if(a)a.checked=!!rv.auto;if(e){e.checked=!!rv.auto_emergency;e.disabled=!rv.auto;}
- const w=$('#ntResEmgW');if(w)w.classList.toggle('dis',!rv.auto);
-}
-async function ntResSave(){
- ntResBusy=true;ntAfter();
- const body={reserve:{auto:$('#ntResAuto').checked,auto_emergency:$('#ntResEmg').checked}};
- $('#ntResEmg').disabled=!body.reserve.auto;
- let msg='';
- try{
-  const r=await acctPost('notion/save',body);
-  if(r&&r.ok)ntApply(r.notion);else msg=(r&&r.message)||tr('ntResErr');
- }catch(e){msg=tr('ntResErr');}
- ntResBusy=false;ntResPaint();ntSync();
- if(msg)toast(msg);
-}
-let ntPollT=null;
-async function ntRefresh(){  // только блок Notion: дёшево, можно часто
- try{const r=await fetch(API+'notion?token='+TOKEN);if(r.ok)ntApply(await r.json());}catch(e){}
-}
-async function ntToggle(){
- if(!ntData)return;
- const prev=ntData,rv=prev.reserve||{},next=!rv.manual;
- if(next){
-  if(!rv.ready){toast(tr('ntResNotReady'));return;}
-  if(!confirm(tr('ntResConfirm')))return;  // переход в резерв ставит Claude на паузу — только после явного «да»
- }
- ntAfter();
- // сразу показываем, правду потом приносит сервер: рамка, шапка и переключатель меняются без ожидания
- const act=next||(!!rv.auto&&rv.claude==='down');
- ntApply(Object.assign({},prev,{reserve:Object.assign({},rv,{manual:next,active:act,why:next?'manual':(act?'claude_down':'')})}));
- try{
-  const r=await acctPost('notion/save',{reserve:{manual:next}});
-  if(r&&r.ok)ntApply(r.notion);else{ntActAt=0;ntApply(prev);toast((r&&r.message)||tr('ntErr'));}  // откат — без тоста о смене режима
- }catch(e){ntActAt=0;ntApply(prev);toast(tr('ntErr'));}
- ntSync();
-}
-function ntRender(){
- const n=ntData;if(!n)return;const ag=n.agent||{};
- $('#ntPopTitle').textContent=tr('ntTitle');$('#ntPopX').title=tr('cxpClose');$('#ntPopX').setAttribute('aria-label',tr('cxpClose'));
- $('#ntPopB').innerHTML=`
-  <div class="ntrow"><span>${tr('ntLogin')}</span><b id="ntLoginV" class="${n.connected?'ok':'bad'}">${n.connected?tr('ntLoginOk'):tr('ntLoginBad')}</b></div>
-  <label class="dlglbl" for="ntName" style="margin-top:10px">${tr('ntName')}</label>
-  <input id="ntName" class="dlginp" autocomplete="off" spellcheck="false" maxlength="80" placeholder="${acctEsc(tr('ntNamePh'))}" value="${acctEsc(ag.name||'')}">
-  <label class="dlglbl" for="ntUrl" style="margin-top:12px">${tr('ntUrl')}</label>
-  <input id="ntUrl" class="dlginp" autocomplete="off" spellcheck="false" placeholder="agent://…">
-  <div class="cxsub" style="margin-top:6px">${ag.set?tr('ntUrlSet'):tr('ntUrlNone')}</div>
-  <div class="cxbrow"><button id="ntSave" onclick="ntSave()">${tr('ntSave')}</button>${ag.set?`<button class="ghostbtn" onclick="ntClearUrl()">${tr('ntUrlClear')}</button>`:''}<span class="cxsub" id="ntStat" role="status"></span></div>
-  <div class="ntsec">${tr('ntRes')}</div>
-  <div class="ntnote">${tr('ntResTxt')}</div>
-  <div class="ntres">
-   <div class="ntnote">${tr('ntResSwNote')}</div>
-   <label class="updchk wkchk"><input type="checkbox" id="ntResAuto"><span>${tr('ntResAuto')}</span></label>
-   <label class="updchk wkchk" id="ntResEmgW"><input type="checkbox" id="ntResEmg"><span>${tr('ntResEmg')}</span></label>
-   ${(n.reserve&&n.reserve.emergency&&!n.reserve.emergency.configured)?`<div class="ntnote">${tr('ntResEmgNo')}</div>`:''}
-   <div class="cxsub" id="ntResSt" role="status"></div>
-  </div>
-  <div class="ntsec">${tr('ntWhat')}</div>
-  <div class="ntnote">${tr('ntWhatTxt')}</div>
-  <div class="ntsec">${tr('ntSetup')}</div>
-  <ol class="ntsteps">
-   <li>${tr('ntStep1')}<br><code>claude mcp add --transport http notion https://mcp.notion.com/mcp</code></li>
-   <li>${tr('ntStep2')}</li><li>${tr('ntStep3')}</li><li>${tr('ntStep4')}</li><li>${tr('ntStep5')}</li>
-  </ol>`;
- ['ntResAuto','ntResEmg'].forEach(id=>$('#'+id).addEventListener('change',ntResSave));
- ntResPaint();
-}
-async function ntSave(extra){
- ntAfter();
- const btn=$('#ntSave');if(btn)btn.disabled=true;
- let msg='';
- try{
-  const body=extra||{name:$('#ntName').value};
-  if(!extra){const u=$('#ntUrl').value.trim();if(u)body.url=u;}
-  const r=await acctPost('notion/save',body);
-  if(r&&r.ok){ntApply(r.notion);ntRender();msg=tr('ntSaved');ntSync();}else msg=(r&&r.message)||tr('ntErr');
- }catch(e){msg=tr('ntErr');}
- const st=$('#ntStat');if(st)st.textContent=msg;
- const b2=$('#ntSave');if(b2)b2.disabled=false;
-}
-function ntClearUrl(){if(confirm(tr('ntUrlClearQ')))ntSave({clear_url:true});}
-function ntPlace(){
- const pop=$('#ntPop'),r=$('#ntGear').getBoundingClientRect();
- const top=Math.round(r.bottom+8);
- pop.style.top=top+'px';pop.style.maxHeight='calc(100vh - '+(top+12)+'px)';
- if(innerWidth>640){pop.style.right='';pop.style.left=Math.max(10,Math.min(Math.round(r.right-pop.offsetWidth),innerWidth-pop.offsetWidth-10))+'px';}
- else{pop.style.right='';pop.style.left='';}
-}
-function ntOpen(){
- if(!ntData)return;
- cxPopClose();cxMenuClose();cxQClose();ciClose();
- $('#ntPop').hidden=false;$('#ntGear').setAttribute('aria-expanded','true');
- ntRender();ntPlace();
- clearInterval(ntPollT);ntPollT=setInterval(ntRefresh,4000);ntRefresh();  // пока окно открыто — состояние резерва живое
-}
-function ntClose(){
- const pop=$('#ntPop');if(!pop||pop.hidden)return;
- pop.hidden=true;$('#ntGear').setAttribute('aria-expanded','false');clearInterval(ntPollT);ntPollT=null;
-}
-$('#ntBtn').addEventListener('click',ntToggle);
-$('#ntGear').addEventListener('click',()=>{$('#ntPop').hidden?ntOpen():ntClose();});
-$('#ntPopX').addEventListener('click',ntClose);
 // выбор профиля: на ПК боковая шторка справа, на телефоне — под кнопкой «>_ Профиль ▾» (просьба владельца); выбрал строку — применилось и закрылось
 let cxmPushed=false,cxmBacking=false;  // шаг в истории браузера: кнопка «назад» закрывает шторку, а не страницу
 function cxMenuPlace(){
@@ -6428,7 +6110,7 @@ function cxMenuPlace(){
 }
 function cxMenuOpen(){
  if(!cxAvail())return;
- cxPopClose();cxQClose();ntClose();
+ cxPopClose();cxQClose();
  $('#cxMenu').hidden=false;$('#cxMenuScrim').hidden=false;$('#cxBtn').setAttribute('aria-expanded','true');
  if(!cxmPushed&&!cxmBacking){try{history.pushState({cxm:1},'');cxmPushed=true;}catch(e){}}
  cxpRender();cxMenuPlace();cxbLoad(true);
@@ -6484,7 +6166,7 @@ function cxQPlace(){
 }
 function cxQOpen(){
  if(!cxAvail()||$('#cxMod').hidden)return;
- cxPopClose();cxMenuClose();ntClose();
+ cxPopClose();cxMenuClose();
  cxQRender();
  $('#cxQ').hidden=false;$('#cxMod').setAttribute('aria-expanded','true');
  cxQPlace();cxLoad();
@@ -6564,11 +6246,11 @@ $('#cxp').addEventListener('click',e=>{
  const em=e.target.closest('[data-emg]');
  if(em){e.stopPropagation();em.dataset.emg==='on'?cxeOn():cxeOff();return;}
  if(e.target.closest('.cxemg'))return;
-  const r=e.target.closest('.cxprof');if(r){if(r.dataset.auto){toast(tr('cxpS_reserve'));return;}cxMenuClose();cxpApply(r.dataset.id);}
+  const r=e.target.closest('.cxprof');if(r){cxMenuClose();cxpApply(r.dataset.id);}
 });
 $('#cxp').addEventListener('keydown',e=>{
  const r=e.target.closest&&e.target.closest('.cxprof');
- if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(r.dataset.auto){toast(tr('cxpS_reserve'));return;}cxMenuClose();cxpApply(r.dataset.id);}
+ if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();cxMenuClose();cxpApply(r.dataset.id);}
 });
 document.querySelectorAll('.cxacch').forEach(h=>h.addEventListener('click',()=>{
  const k=h.dataset.sec;CXP_SEC[k]=!CXP_SEC[k];
@@ -6578,15 +6260,14 @@ document.querySelectorAll('.cxacch').forEach(h=>h.addEventListener('click',()=>{
 document.addEventListener('pointerdown',e=>{
  if(e.target.closest('#acctScrim,#scrim'))return;
  if(!$('#cxPop').hidden&&!e.target.closest('#cxPop,#cxGear'))cxPopClose();
- if(!$('#ntPop').hidden&&!e.target.closest('#ntPop,#ntGear'))ntClose();
  if(!$('#cxInstPop').hidden&&!e.target.closest('#cxInstPop,#cxInst'))ciClose();
  if(!$('#cxMenu').hidden&&!e.target.closest('#cxMenu,#cxBtn'))cxMenuClose();
  if(!$('#cxQ').hidden&&!e.target.closest('#cxQ,#cxMod'))cxQClose();
 });
 document.addEventListener('keydown',e=>{
- if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();cxQClose();ntClose();ciClose();}
+ if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();cxQClose();ciClose();}
 });
-addEventListener('resize',()=>{if(!$('#ntPop').hidden)ntPlace();if(!$('#cxInstPop').hidden)ciPlace();if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();if(!$('#cxQ').hidden)cxQPlace();});
+addEventListener('resize',()=>{if(!$('#cxInstPop').hidden)ciPlace();if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();if(!$('#cxQ').hidden)cxQPlace();});
 async function cxLoad(refresh){
  if(cxBusy){if(refresh)cxAgain=true;return;}
  cxBusy=true;
@@ -7179,7 +6860,7 @@ $('#bkBox').addEventListener('change',async e=>{
  bkLoad();
 });
 $('#gear').addEventListener('click',()=>{bkMsg='';updSettingsRender();updLoad();bkLoad();});
-applyI18n();load();setInterval(()=>load(),60000);setInterval(ntRefresh,15000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
+applyI18n();load();setInterval(()=>load(),60000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
 updLoad();
 ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
 cxlpLoad();setInterval(cxlpLoad,30000);setInterval(cxlpTick,1000);
@@ -7202,7 +6883,7 @@ if __name__ == "__main__":
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
     cc_codex_emergency.start()  # аварийный режим: после перезапуска довести до рабочего состояния или снять, запустить сторож срока
     cc_backup.start(lambda: PROFILES, BACKUP_DIR, lambda: cfg().get("profile_backup", True) is not False)  # копии профилей аккаунтов
-    cc_notion.start()  # резерв «Claude недоступен»: сторож лимитов, включает и выключает Codex + Notion-агент
+    cc_notion.start()  # такт профилей (cc_profiles подменяет start); [notion-ai] сторожа резерва больше нет
     cc_codex_bridge.BRIDGE.sync()  # мост Telegram ↔ Codex: поднимется, только если включён в карточке
     port = cfg().get("port", 8877)
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)

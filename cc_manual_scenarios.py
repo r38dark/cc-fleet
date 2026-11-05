@@ -2,7 +2,7 @@
 import copy
 
 ENGINES = ('claude', 'codex')
-ROLES = (None, 'full', 'reserve', 'orchestrator', 'executor')
+ROLES = (None, 'full', 'orchestrator', 'executor')  # [notion-ai] роли «резерв» больше нет
 
 
 def reserve_confirmed(value):
@@ -23,7 +23,7 @@ def validate_choices(choices):
     if any(value not in ROLES for value in choices.values()):
         return False, 'Неизвестная роль.'
     active = [value for value in choices.values() if value]
-    if len(active) == 1 and active[0] in ('full', 'reserve'):
+    if len(active) == 1 and active[0] == 'full':
         return True, ''
     if len(active) == 2 and set(active) == {'orchestrator','executor'}:
         return True, ''
@@ -64,12 +64,7 @@ class ManualScenarioMixin:
         self.manual_choices = choices
 
     def reconcile_availability(self):
-        previous = copy.deepcopy(self.service)
-        super()._reconcile()
-        if self.service and self.service != previous:
-            engine = self.service['engine']
-            self.service['access'] = reserve_access(self.restore, engine)
-            self.manual_choices = {e: 'reserve' if e == engine else None for e in ENGINES}
+        super()._reconcile()  # [notion-ai] резерв сам не включается: только снимаем устаревший служебный режим
 
     def public(self):
         result = super().public()
@@ -77,12 +72,12 @@ class ManualScenarioMixin:
                                          legacy=self.manual_choices is None)
         result['capabilities'] = dict(manual_scenario=True,full_only=False,orchestrator=True)
         for data in result['engines'].values():
-            data['profiles']=[p for p in data['profiles'] if p['kind'] in ('full','orchestrator','reserve')]
+            data['profiles']=[p for p in data['profiles'] if p['kind'] in ('full','orchestrator')]
         if self.manual_choices is not None:
             for engine, choice in self.manual_choices.items():
                 data = result['engines'][engine]
-                data.update(role={'full':'solo', 'orchestrator':'leader', 'executor':'executor',
-                                  'reserve':'reserve'}.get(choice, 'paused'), active=choice is not None)
+                data.update(role={'full':'solo', 'orchestrator':'leader', 'executor':'executor'}.get(choice, 'paused'),
+                            active=choice is not None)
                 if choice is None:
                     data.update(selected=None, label=self.actor(engine)+' · не участвует')
                 elif choice == 'executor':
@@ -106,17 +101,9 @@ class ManualScenarioMixin:
                 return dict(ok=False, message=message)
             if choices == self.manual_choices:
                 return dict(ok=True, message='Этот сценарий уже действует.', state=self.public())
-            has_reserve = 'reserve' in choices.values()
-            if has_reserve and not reserve_confirmed(confirm):
-                return dict(ok=False, confirmation_required=True, confirmation='yes_no',
-                            message='Включить резерв с Notion?')
-            if not has_reserve and 'full' in choices.values() and str(confirm).strip().casefold() != 'подтверждаю':
+            if 'full' in choices.values() and str(confirm).strip().casefold() != 'подтверждаю':
                 return dict(ok=False, confirmation_required=True, word='подтверждаю',
                             message='Подтверди весь сценарий: вторая модель не будет участвовать.')
-            previous = copy.deepcopy(self.restore if self.service and self.restore else self._base())
-            reserve = next((e for e in ENGINES if choices[e] == 'reserve'), None)
-            access = (self.service.get('access', 'write') if self.service and self.service['engine'] == reserve
-                      else 'write' if self.service else reserve_access(previous, reserve)) if reserve else None
             self.manual_choices = copy.deepcopy(choices)
             self.leader = next((e for e in ENGINES if choices[e] == 'orchestrator'), None)
             self.selected = {e: choices[e] if choices[e] in ('orchestrator', 'executor')
@@ -124,8 +111,8 @@ class ManualScenarioMixin:
             for e in ENGINES:
                 if choices[e] == 'full':
                     self.selected[e] = self.last_solo[e] = e+'_solo_full'
-            self.service = dict(engine=reserve, kind='reserve', source='manual', emergency=False, access=access) if reserve else None
-            self.restore = previous if reserve else None
+            self.service = None
+            self.restore = None
             self.until = 0
             self.auto_blocked.update(e for e in ENGINES if not self.availability[self.other(e)])
             self.revision += 1
@@ -137,7 +124,6 @@ class ManualScenarioMixin:
         stale = self._check_revision(revision)
         if stale:
             return stale
-        if engine not in ENGINES or profile_id not in (engine+'_solo_full', 'reserve'):
+        if engine not in ENGINES or profile_id != engine+'_solo_full':
             return dict(ok=False, message='Выбери оркестратора в общем окне и подключи вторую модель перед применением.')
-        return self.apply_scenario({e: ('reserve' if profile_id == 'reserve' else 'full')
-                                    if e == engine else None for e in ENGINES}, confirm, revision)
+        return self.apply_scenario({e: 'full' if e == engine else None for e in ENGINES}, confirm, revision)

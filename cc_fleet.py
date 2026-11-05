@@ -163,7 +163,7 @@ def install(ns):
             try:
                 if path == '/api/notion/save':
                     if 'reserve' in body:
-                        return self._send(200, dict(ok=False, message='Настройки резерва доступны в меню профилей. Аварийный сценарий удалён.'))
+                        return self._send(200, dict(ok=False, message='Резерв убран из панели.'))
                     config = ns['cfg']()
                     ok, conf, error = ns['cc_notion'].save(config.get('notion_agent') or {}, body)
                     if not ok:

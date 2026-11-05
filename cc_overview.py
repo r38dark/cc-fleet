@@ -226,18 +226,13 @@ html.conly .fleet-active-strip{display:none!important}
 @media(max-width:740px){.fleet-live-rows{grid-template-columns:minmax(0,1fr);gap:7px}.fleet-live-account{grid-template-columns:minmax(0,1fr) 78px 78px;min-height:54px;padding:8px 11px}.fleet-live-head{gap:7px}.fleet-live-label{font-size:10px}.fleet-tools>summary{font-size:11px;padding-right:3px}.fleet-pause-summary{padding:5px 9px;gap:7px}.fleet-pause-summary .ccp-timer .l{display:none}.fleet-pause-content{padding-left:24px}.fleet-tools-panel{max-height:calc(100dvh - 240px)}}
 @media(max-width:380px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 62px 62px;gap:9px}.fleet-live-name{font-size:12px}.fleet-live-email{font-size:10px}.fleet-live-meter-label{font-size:10px}.fleet-live-meter-label b{font-size:12px}.fleet-live-label{max-width:180px;line-height:1.4}}
 
-/* Резерв остаётся на главной; управление относится к своей плитке провайдера. */
+/* Управление профилем относится к своей плитке провайдера. */
 html:root:root:not(.conly) .hdr{gap:14px!important}
 html:root:root:not(.conly) .hdr>.hdrl{order:0;flex:1;min-width:0}
 html:root:root:not(.conly) .hdr>.hdrctl{order:1;flex:0 1 auto!important;flex-basis:auto!important;gap:12px!important;min-width:0}
 html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0 0 0 auto;gap:7px!important}
 .hdr #fleetGeneralGear,.hdr #rfBtn{width:32px;height:32px;padding:7px;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--fleet-muted)}
 .hdr #fleetGeneralGear svg,.hdr #rfBtn svg{width:16px;height:16px}
-.hdr #ntGrp{flex:none;margin:0;border:1px solid var(--fleet-line);border-radius:7px;overflow:hidden;background:transparent;box-shadow:none}
-.hdr #ntGrp.res{border-color:var(--fleet-accent);background:var(--fleet-accent-soft)}
-.hdr #ntGrp .hdrgear{height:32px;min-height:0;border:0;border-radius:0;background:transparent;box-shadow:none;margin:0;font-size:12px}
-.hdr #ntInd{width:29px;padding:6px;gap:3px}.hdr #ntInd svg{width:15px;height:15px}.hdr #ntInd .cxdot{width:5px;height:5px}
-.hdr #ntBtn{padding:6px 7px;gap:7px}.hdr #ntGear{width:29px;padding:7px;border-left:1px solid var(--fleet-line)!important}.hdr #ntGear svg{width:15px;height:15px}
 .fleet-live-head{min-height:18px;margin-bottom:6px}
 .fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(175px,210px) 90px 90px;grid-template-areas:"identity controls session week";gap:14px;cursor:default}
 .fleet-live-identity{grid-area:identity;display:block;color:inherit;text-decoration:none;min-width:0;border-radius:4px}
@@ -309,8 +304,7 @@ html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0 0 0 auto;gap
  html:root:root:not(.conly) .hdr>.hdrbtns{order:2}
  .hdr .cxgrp{flex:1;min-width:0;max-width:calc(100% - 160px)}.hdr .cxbtn{max-width:100%;min-width:0;padding-left:2px;padding-right:2px;gap:4px}
  .hdr .cxbtnname{min-width:0;max-width:100%!important;font-size:12px!important;overflow:hidden;text-overflow:ellipsis}
- .hdr #ntGrp{max-width:156px}.hdr #ntBtn{font-size:11px;gap:6px;padding:6px}
- .hdr #ntInd{width:25px}.hdr #ntGear{width:27px}.hdr #fleetGeneralGear,.hdr #rfBtn{width:29px;height:29px;padding:6px}
+ .hdr #fleetGeneralGear,.hdr #rfBtn{width:29px;height:29px;padding:6px}
  .fleet-live-account{grid-template-columns:minmax(0,1fr) 72px 72px;grid-template-areas:"identity session week" "controls session week";gap:4px 12px;min-height:70px;padding:8px 11px}
  .fleet-live-email{display:none}.fleet-live-name{font-size:13px;line-height:1.3}
  .fleet-provider-controls{gap:5px;max-width:230px}
@@ -439,7 +433,7 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
 
 .fleet-profile-service-heading{grid-column:1/-1;font-size:11px;font-weight:550;color:var(--fleet-muted);margin-top:2px}
 
-/* У каждого исполнителя свой профиль и резерв; одна структура, два цвета. */
+/* У каждого исполнителя свой профиль; одна структура, два цвета. */
 .mirror-profile-footer{grid-column:1/-1;grid-row:2;display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--fleet-line);padding-top:8px;min-width:0}
 .mirror-profile-holder{flex:1;min-width:0;max-width:70%}.mirror-profile-holder #cxGrp{display:flex;width:100%;min-width:0;border:0;background:transparent}
 .mirror-profile-footer .mirror-profile-button{display:flex;align-items:center;width:100%;max-width:100%;min-width:0;height:30px;margin:0;padding:5px 8px;gap:6px;background:var(--bg);border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);font-size:12px;box-shadow:none;justify-content:flex-start}
@@ -448,9 +442,6 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
 .fleet-live-account[data-provider="claude"]{border-color:color-mix(in srgb,var(--fleet-claude) 38%,var(--fleet-line));background:linear-gradient(120deg,var(--fleet-claude-soft),var(--card) 60%)}
 .fleet-live-account[data-provider="codex"]{border-color:color-mix(in srgb,var(--fleet-accent) 38%,var(--fleet-line));background:linear-gradient(120deg,var(--fleet-accent-soft),var(--card) 60%)}
 .fleet-live-account[data-provider="claude"] .mirror-profile-button{border-color:color-mix(in srgb,var(--fleet-claude) 40%,var(--fleet-line))}.fleet-live-account[data-provider="codex"] .mirror-profile-button{border-color:color-mix(in srgb,var(--fleet-accent) 40%,var(--fleet-line))}
-.mirror-reserve-group{display:inline-flex;align-items:center;flex:none;max-width:148px;border:1px solid var(--fleet-line);border-radius:6px;overflow:hidden;margin:0;background:transparent;box-shadow:none}
-.mirror-reserve-group .hdrgear{height:28px;min-height:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--fleet-muted);padding:5px 6px;font-size:11px;gap:6px;display:flex;align-items:center}
-.mirror-reserve-group .ntind{width:38px;padding:5px 6px}.mirror-reserve-group .ntgbtn{width:27px;padding:6px;border-left:1px solid var(--fleet-line)}.mirror-reserve-group svg{width:13px;height:13px}.mirror-reserve-group .cxdot{width:5px;height:5px}.mirror-reserve-group.res{border-color:var(--live-accent);background:color-mix(in srgb,var(--live-accent) 12%,var(--card))}
 .mirror-pair-summary{font-size:10px;color:var(--fleet-muted);margin-left:auto;line-height:1.4}
 html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);--fleet-accent-soft:var(--fleet-claude-soft);--acc:var(--fleet-claude)}
 #cxMenu[data-engine="claude"] .fleet-profile-card{border-color:color-mix(in srgb,var(--fleet-claude) 40%,var(--fleet-line));background:color-mix(in srgb,var(--fleet-claude-soft) 40%,var(--bg))}
@@ -466,7 +457,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu[aria-busy="true"] .cxpbody{pointer-events:none;opacity:.7}
 .mirror-confirm[data-engine="claude"]{--mirror-color:var(--fleet-claude)}.mirror-confirm[data-engine="codex"]{--mirror-color:var(--fleet-accent)}.mirror-confirm h3{color:var(--mirror-color)}.mirror-confirm #mirrorConfirmApply{background:var(--mirror-color);color:var(--bg)}
 @media(min-width:1100px) and (min-height:700px){html:not(.conly) body.fleet-mirror #termBox{height:clamp(320px,calc(100dvh - 470px),610px)!important;min-height:320px!important}}
-@media(max-width:640px){.mirror-profile-footer{grid-row:3;gap:7px;padding-top:7px}.mirror-profile-holder{max-width:none;flex:1}.mirror-profile-footer .mirror-profile-button{font-size:11px;padding:5px 6px;height:29px;gap:4px}.mirror-profile-button .cxbtnname{font-size:11px}.mirror-profile-button>svg:first-child{display:none}.mirror-reserve-group{max-width:140px}.mirror-reserve-group .hdrgear{font-size:10px;padding-left:5px;padding-right:5px}.mirror-reserve-group .ntind{width:36px}.mirror-reserve-group .ntgbtn{width:25px}.mirror-pair-summary{max-width:55%;font-size:9px;text-align:right}#cxMenu .mirror-service{padding:11px;gap:9px}.mirror-service-copy>strong{font-size:12px}.mirror-service-actions button{font-size:10px;padding:6px}}
+@media(max-width:640px){.mirror-profile-footer{grid-row:3;gap:7px;padding-top:7px}.mirror-profile-holder{max-width:none;flex:1}.mirror-profile-footer .mirror-profile-button{font-size:11px;padding:5px 6px;height:29px;gap:4px}.mirror-profile-button .cxbtnname{font-size:11px}.mirror-profile-button>svg:first-child{display:none}.mirror-pair-summary{max-width:55%;font-size:9px;text-align:right}#cxMenu .mirror-service{padding:11px;gap:9px}.mirror-service-copy>strong{font-size:12px}.mirror-service-actions button{font-size:10px;padding:6px}}
 
 .mirror-profile-holder #cxGrp{border-radius:6px;overflow:visible}.mirror-profile-footer .mirror-profile-button{border-radius:6px!important}
 #cxMenu .mirror-service{opacity:1;cursor:default}#cxMenu .mirror-service *{pointer-events:auto}
@@ -592,30 +583,16 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu.mono-profile-window .fleet-profile-card .cxps{font-size:12px;line-height:1.55}
 #cxMenu.mono-profile-window .fleet-profile-card-footer{border:0;padding:0;margin-top:8px;min-height:26px}
 #cxMenu.mono-profile-window .fleet-profile-more{min-height:26px;font-size:11px;padding:5px 8px}
-#cxMenu.mono-profile-window .mono-reserve{border:0;border-radius:0;display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:14px 18px;background:transparent;margin:0}
-.mono-reserve-copy strong{display:block;font-size:13px;font-weight:600;color:var(--txt)}
-#cxMenu.mono-profile-window .mono-reserve .cxps{margin-top:5px;font-size:11px;line-height:1.5}
-#cxMenu.mono-profile-window .mono-reserve .mirror-service-actions{flex-direction:row;justify-content:flex-end;gap:7px}
-.mono-reserve-config{padding:17px 18px;min-width:0}.mono-reserve-status{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--txt)}.mono-reserve-status span{font-size:10px;color:var(--fleet-muted)}
-.mono-auto{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.6;color:var(--txt);margin-top:17px;cursor:pointer}.mono-auto input{width:16px;height:16px;flex:none;margin:2px 0 0;accent-color:var(--fleet-accent)}
-.mono-note{font-size:11px;color:var(--fleet-muted);line-height:1.6;margin:10px 0 14px}.mono-reserve-actions{display:flex;justify-content:flex-end}.mono-reserve-actions button{font-size:11px;padding:7px 10px;background:transparent;border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);margin:0;box-shadow:none}
 .mono-window-note{border-top:1px solid var(--fleet-line);padding:10px 18px;font-size:10px;line-height:1.6;color:var(--fleet-muted)}
-.mono-agent{padding:14px 18px;border-top:1px solid var(--fleet-line)}.mono-agent>header{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:12px}.mono-agent>header strong{font-size:12px}.mono-agent>header span{font-size:11px;color:var(--fleet-muted)}
-.mono-agent #ntPopB{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px 12px;padding:0;overflow:visible}
-.mono-agent #ntPopB>.ntrow{grid-column:1/-1;margin:0;font-size:11px}.mono-agent #ntPopB>label{margin:0!important;font-size:11px}
-.mono-agent label[for="ntName"]{grid-column:1;grid-row:2}.mono-agent #ntName{grid-column:1;grid-row:3}.mono-agent label[for="ntUrl"]{grid-column:2;grid-row:2}.mono-agent #ntUrl{grid-column:2;grid-row:3}
-.mono-agent #ntPopB>.cxbrow{grid-column:3;grid-row:3;display:flex;align-items:center;margin:0;gap:7px}.mono-agent #ntPopB>.cxsub{grid-column:2;grid-row:4;font-size:10px;margin:0!important}
 .mono-agent .dlginp{height:34px;min-height:34px;font-size:12px;padding:7px 9px;margin:0}.mono-agent .cxbrow button{height:34px;min-height:34px;padding:7px 10px;font-size:11px;margin:0}
 .mono-notion-help{grid-column:1/-1;font-size:11px;color:var(--fleet-muted);margin-top:5px}.mono-notion-help>summary{cursor:pointer}.mono-notion-help .ntsteps{font-size:11px;line-height:1.6}.mono-notion-help .ntnote{font-size:11px}
 @media(max-width:700px){
  .mono-provider-grid{grid-template-columns:minmax(0,1fr)}.mono-provider+.mono-provider{border-left:0;border-top:1px solid var(--fleet-line)}
  #cxMenu.mono-profile-window .fleet-palette-current{font-size:10px;max-width:46%}#cxMenu.mono-profile-window .fleet-palette-heading h2{font-size:16px;white-space:normal}
  .mono-provider-head{padding:11px 13px}#cxMenu.mono-profile-window .fleet-profile-card,#cxMenu.mono-profile-window .mono-reserve{padding:12px 13px}.mono-reserve-config,.mono-agent{padding:13px}
- .mono-agent #ntPopB{grid-template-columns:minmax(0,1fr)}.mono-agent #ntPopB>*{grid-column:1!important;grid-row:auto!important}.mono-agent #ntPopB>.cxbrow{justify-content:flex-end;margin-top:4px}
  .mono-agent>header,.mono-reserve-status{align-items:flex-start;flex-wrap:wrap}.mono-auto{font-size:13px}
 }
 
-#cxMenu.mono-profile-window .mono-reserve[hidden]{display:none!important}
 
 .mono-agent>header span{min-width:0;max-width:100%;overflow-wrap:anywhere}.mono-notion-help code{white-space:normal;overflow-wrap:anywhere}
 @media(max-width:700px){.mono-agent .dlginp{font-size:16px;min-height:38px;height:38px}}
@@ -639,10 +616,6 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu.mono-profile-window .manual-role .fleet-profile-choose{font-size:10px}
 .manual-compatibility{margin:0;padding:8px 16px;font-size:11px;line-height:1.5;min-height:33px;color:var(--fleet-muted);border-bottom:1px solid var(--fleet-line)}
 .manual-compatibility[data-blocked="true"]{color:var(--fleet-accent)}
-#cxMenu.mono-profile-window .mono-reserve.manual-role{padding:10px 16px;gap:5px;cursor:pointer}
-#cxMenu.mono-profile-window .mono-reserve.manual-role .cxps{min-height:0;margin-top:4px}
-#cxMenu.mono-profile-window .mono-reserve.manual-role .mirror-service-actions{align-items:center;justify-content:space-between;min-height:26px}
-#cxMenu.mono-profile-window .mono-reserve.manual-role .mirror-service-actions button{font-size:10px;padding:5px 8px}
 .manual-apply-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:15px;padding:13px 16px;border-top:1px solid var(--fleet-line);background:var(--card)}
 .manual-selection-summary{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:11px;line-height:1.5;color:var(--fleet-muted)}
 .manual-selection-summary strong{font-size:12px;font-weight:600;color:var(--txt)}
@@ -657,7 +630,6 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
  .manual-compatibility{padding:8px 13px;min-height:0}
  #cxMenu.mono-profile-window .manual-role.fleet-profile-card,#cxMenu.mono-profile-window .mono-reserve.manual-role{padding:11px 13px}
  #cxMenu.mono-profile-window .manual-role .fleet-profile-more{min-height:30px;padding:6px 9px}
- #cxMenu.mono-profile-window .mono-reserve.manual-role .mirror-service-actions button{min-height:32px;padding:7px 9px}
  .manual-apply-bar{grid-template-columns:minmax(0,1fr);padding:12px 13px;gap:10px}
  .manual-scenario-actions{justify-content:stretch}.manual-scenario-actions button{flex:1;min-height:36px}
  .manual-scenario-actions .manual-apply{flex-basis:100%}
@@ -674,7 +646,6 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .cxps{min-height:0}
 #cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .fleet-profile-more{height:23px;min-height:23px}
 #cxMenu.mono-profile-window.fleet-profile-desktop .manual-role .cxpn{margin-bottom:3px}
-#cxMenu.mono-profile-window.fleet-profile-desktop .mono-reserve.manual-role{padding:8px 14px;gap:4px}
 #cxMenu.mono-profile-window.fleet-profile-desktop .manual-apply-bar{padding:10px 14px}
 #cxMenu.mono-profile-window .manual-apply-bar{position:sticky;bottom:0;z-index:2}
 #cxMenu.mono-profile-window .manual-selection-summary strong{line-height:1.4}
@@ -709,18 +680,6 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(max-width:700px){#cxMenu.mono-profile-window .full-choice{padding:13px!important}.full-choice-top{margin-bottom:7px}.manual-companion{margin:6px 12px 12px}.manual-companion button{min-height:34px}}
 
 
-/* Reserve confirmation follows its switch without a backdrop. */
-.reserve-confirm{box-sizing:border-box;position:fixed;z-index:1010;width:224px;max-width:calc(100vw - 24px);padding:13px 14px;border:1px solid var(--fleet-line);border-radius:9px;background:var(--card);color:var(--txt);box-shadow:0 7px 22px #0004}
-.reserve-confirm h3{margin:0;font-size:13px;font-weight:600;line-height:1.4}
-.reserve-confirm .modalfoot{display:flex;justify-content:flex-end;gap:6px;margin-top:12px}
-.reserve-confirm .modalfoot button{min-width:54px;min-height:30px;padding:5px 13px;margin:0;border-radius:6px;font-size:12px;font-weight:500;box-shadow:none}
-#reserveConfirmNo{background:transparent;border:1px solid var(--fleet-line);color:var(--fleet-muted)}
-#reserveConfirmYes{background:var(--fleet-accent);border:1px solid transparent;color:var(--bg)}
-.reserve-confirm button:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
-.reserve-confirm-tip{position:absolute;left:calc(var(--reserve-tip-x) - 4px);width:8px;height:8px;background:var(--card);transform:rotate(45deg);pointer-events:none}
-.reserve-confirm[data-side="below"] .reserve-confirm-tip{top:-5px;border-top:1px solid var(--fleet-line);border-left:1px solid var(--fleet-line)}
-.reserve-confirm[data-side="above"] .reserve-confirm-tip{bottom:-5px;border-bottom:1px solid var(--fleet-line);border-right:1px solid var(--fleet-line)}
-@media(pointer:coarse){.reserve-confirm .modalfoot button{min-height:36px}}
 
 '''
 
@@ -881,7 +840,7 @@ JS = r'''
   activeCardsOnMobile=mobileConsole.matches;
  }
  placeActiveAccounts();mobileConsole.addEventListener('change',placeActiveAccounts);
- const reserve=document.getElementById('ntGrp');hdr.querySelector('.hdrctl').append(reserve,document.getElementById('cxInst'));
+ hdr.querySelector('.hdrctl').append(document.getElementById('cxInst'));
  const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
  const generalGear=el('button','hdrgear fleet-header-icon');generalGear.id='fleetGeneralGear';generalGear.type='button';generalGear.innerHTML=gear.innerHTML;generalGear.title='Общие настройки';generalGear.setAttribute('aria-label','Общие настройки');
  headerButtons.replaceChildren(document.getElementById('rfBtn'),generalGear);hdr.append(headerButtons);
@@ -948,11 +907,11 @@ JS = r'''
   choices.setAttribute('role','radiogroup');choices.setAttribute('aria-label','Уровень рассуждений Claude');claudeQBody.append(choices);
  }
  const nativeModelRender=renderModel;renderModel=function(m){nativeModelRender(m);paintClaudeModel(m)};
- claudeModel.addEventListener('click',()=>{if(!claudeQ.hidden){closeClaudeQ();return}cxQClose();cxPopClose();cxMenuClose();ntClose();document.getElementById('scrim').hidden=true;claudeQ.hidden=false;claudeModel.setAttribute('aria-expanded','true');paintClaudeModel(lastModel);placePanel(claudeQ,claudeModel,330)});
+ claudeModel.addEventListener('click',()=>{if(!claudeQ.hidden){closeClaudeQ();return}cxQClose();cxPopClose();cxMenuClose();document.getElementById('scrim').hidden=true;claudeQ.hidden=false;claudeModel.setAttribute('aria-expanded','true');paintClaudeModel(lastModel);placePanel(claudeQ,claudeModel,330)});
  codexModel.addEventListener('click',()=>{closeClaudeQ();document.getElementById('scrim').hidden=true});
  cxQPlace=function(){placePanel(document.getElementById('cxQ'),codexModel,330)};
  cxPopPlace=function(){placePanel(document.getElementById('cxPop'),codexGear,580)};
- document.getElementById('cxQ').classList.add('fleet-quick-panel');document.getElementById('cxPop').classList.add('fleet-settings-panel');document.getElementById('ntPop').classList.add('fleet-settings-panel');for(const id of ['cxPop','ntPop'])document.getElementById(id).setAttribute('aria-modal','true');
+ document.getElementById('cxQ').classList.add('fleet-quick-panel');document.getElementById('cxPop').classList.add('fleet-settings-panel');document.getElementById('cxPop').setAttribute('aria-modal','true');
  // Нативные настройки Claude и общие разделы сохраняют все узлы и обработчики.
  const scrim=document.getElementById('scrim'),modal=scrim.querySelector('.modal');scrim.classList.add('fleet-settings-scrim');modal.classList.add('fleet-settings-panel');modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-labelledby','modalTitle');
  const claudeTitle=document.getElementById('modalTitle'),modalHeader=el('div','cxphead'),modalClose=el('button','hdrgear fleet-panel-close');modalClose.id='fleetClaudeSettingsClose';modalClose.type='button';modalClose.setAttribute('aria-label','Закрыть настройки');modalClose.innerHTML=document.getElementById('cxPopX').innerHTML;modalHeader.append(claudeTitle,modalClose);
@@ -1016,18 +975,17 @@ JS = r'''
  const catalogRotation=renderRotation;renderRotation=function(data){catalogRotation(data);paintCodexCatalog()};
  const catalogOpen=cxPopOpen;cxPopOpen=function(){catalogOpen();paintCodexCatalog();loadCodexCatalog()};
  paintCodexCatalog();
- const backdrop=el('div','fleet-settings-backdrop');backdrop.id='fleetSettingsBackdrop';backdrop.hidden=true;document.body.append(backdrop);backdrop.addEventListener('click',()=>{cxPopClose();ntClose()});
+ const backdrop=el('div','fleet-settings-backdrop');backdrop.id='fleetSettingsBackdrop';backdrop.hidden=true;document.body.append(backdrop);backdrop.addEventListener('click',()=>{cxPopClose()});
  function paintSettingsState(){
-  backdrop.hidden=document.getElementById('cxPop').hidden&&document.getElementById('ntPop').hidden;
+  backdrop.hidden=document.getElementById('cxPop').hidden;
   gear.setAttribute('aria-expanded',String(!scrim.hidden&&scrim.dataset.view==='claude'));generalGear.setAttribute('aria-expanded',String(!scrim.hidden&&scrim.dataset.view==='general'));
  }
  new MutationObserver(paintSettingsState).observe(scrim,{attributes:true,attributeFilter:['hidden']});
- for(const id of ['cxPop','ntPop'])new MutationObserver(paintSettingsState).observe(document.getElementById(id),{attributes:true,attributeFilter:['hidden']});
+ new MutationObserver(paintSettingsState).observe(document.getElementById('cxPop'),{attributes:true,attributeFilter:['hidden']});
  gear.setAttribute('aria-haspopup','dialog');
- gear.addEventListener('click',()=>{cxPopClose();cxMenuClose();cxQClose();ntClose();closeClaudeQ();scrim.dataset.view='claude';putText(claudeTitle,'Настройки Claude');common.open=false;placePanel(modal,gear,580);paintSettingsState()});
+ gear.addEventListener('click',()=>{cxPopClose();cxMenuClose();cxQClose();closeClaudeQ();scrim.dataset.view='claude';putText(claudeTitle,'Настройки Claude');common.open=false;placePanel(modal,gear,580);paintSettingsState()});
  generalGear.addEventListener('click',()=>{if(!scrim.hidden&&scrim.dataset.view==='general'){document.getElementById('modalDone').click();return}gear.click();scrim.dataset.view='general';putText(claudeTitle,'Общие настройки');common.open=true;placePanel(modal,generalGear,580);paintSettingsState()});
  codexGear.addEventListener('click',()=>{scrim.hidden=true;closeClaudeQ()});
- document.getElementById('ntGear').addEventListener('click',()=>{scrim.hidden=true;closeClaudeQ()});
  modalClose.addEventListener('click',()=>{document.getElementById('modalDone').click();(scrim.dataset.view==='general'?generalGear:gear).focus()});
  document.addEventListener('pointerdown',event=>{if(!event.target.closest('#fleetClaudeQ,#fleetClaudeModel'))closeClaudeQ()});
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!claudeQ.hidden){closeClaudeQ();claudeModel.focus()}});
@@ -1141,8 +1099,8 @@ JS = r'''
  foldPauseBanner();
 
  // Заголовок начинаетcя с реальных ролей: ведущий, затем исполнитель.
- Object.assign(I18N.ru,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · самостоятельно',cxpN_codex_solo_full:'Codex Full · самостоятельно',cxpN_reserve:'Codex + Notion · резерв',cxeN:'Codex · самостоятельно · аварийный',cxeHdr:'Codex · самостоятельно · аварийный',cxeOnT:'Codex · самостоятельно · аварийный включён'});
- Object.assign(I18N.en,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · solo',cxpN_codex_solo_full:'Codex Full · solo',cxpN_reserve:'Codex + Notion · reserve',cxeN:'Codex · solo · emergency',cxeHdr:'Codex · solo · emergency',cxeOnT:'Codex · solo · emergency enabled'});
+ Object.assign(I18N.ru,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · самостоятельно',cxpN_codex_solo_full:'Codex Full · самостоятельно',cxeN:'Codex · самостоятельно · аварийный',cxeHdr:'Codex · самостоятельно · аварийный',cxeOnT:'Codex · самостоятельно · аварийный включён'});
+ Object.assign(I18N.en,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · solo',cxpN_codex_solo_full:'Codex Full · solo',cxeN:'Codex · solo · emergency',cxeHdr:'Codex · solo · emergency',cxeOnT:'Codex · solo · emergency enabled'});
  const originalProfileDisplayName=cxpName;
  cxpName=function(profile){
   const name=originalProfileDisplayName(profile);if(profile.builtin)return name;
@@ -1171,7 +1129,7 @@ JS = r'''
    const saved=profilePageLock;profilePageLock=null;root.classList.remove('fleet-profile-locked');root.style.removeProperty('--fleet-profile-page-top');
    for(const [node,inert] of saved.inert)node.inert=inert;
    window.scrollTo(saved.x,saved.y);
-   const anotherDialog=['acctScrim','scrim','cxPop','ntPop'].some(id=>{const node=document.getElementById(id);return node&&!node.hidden&&node.getClientRects().length});
+   const anotherDialog=['acctScrim','scrim','cxPop'].some(id=>{const node=document.getElementById(id);return node&&!node.hidden&&node.getClientRects().length});
    if(menu.hidden&&!anotherDialog)document.getElementById((menu.dataset.returnEngine||menu.dataset.engine)==='claude'?'mirrorClaudecxBtn':'cxBtn')?.focus({preventScroll:true});
   }
   if(!menu.hidden)cxMenuPlace();
@@ -1195,7 +1153,7 @@ JS = r'''
  }
  function decorateProfilePalette(){
   const bridge=cxbData&&cxbData.bridge,profiles=bridge?.profiles||[],current=profiles.find(profile=>profile.id===bridge.profile);
-  putText(paletteCurrent,cxbData?.emergency?.active?'Сейчас: '+tr('cxeHdr'):current?'Сейчас: '+cxpName(current):bridge?.profile==='reserve'?'Сейчас: '+tr('cxpN_reserve'):'Сейчас: свои настройки');
+  putText(paletteCurrent,cxbData?.emergency?.active?'Сейчас: '+tr('cxeHdr'):current?'Сейчас: '+cxpName(current):'Сейчас: свои настройки');
   paletteCurrent.title=current?cxpSub(current):'';menu.dataset.compare=String(compareProfiles);compareButton.setAttribute('aria-pressed',String(compareProfiles));putText(compareButton,compareProfiles?'Краткий вид':'Сравнить');compareButton.title=compareProfiles?'Вернуть краткий вид':'Показать состав и возможности всех профилей';
   for(const card of profileRoot.querySelectorAll('.cxprof:not([data-auto])')){
    const profile=profiles.find(profile=>profile.id===card.dataset.id);if(!profile)continue;
@@ -1213,7 +1171,6 @@ JS = r'''
    if(info){info.hidden=compareProfiles;info.classList.add('fleet-profile-more');info.prepend(document.createTextNode('Подробнее'));info.setAttribute('aria-label','Подробнее о профиле '+cxpName(profile));footer.append(info)}card.append(footer);
   }
   const selected=profileRoot.querySelector('.cxprof.act:not([data-auto])');if(selected)selected.parentElement.prepend(selected);
-  const reserveCard=profileRoot.querySelector('.cxprof[data-auto]');if(reserveCard){reserveCard.parentElement.insertBefore(el('div','fleet-profile-service-heading','Служебные режимы'),reserveCard);reserveCard.classList.add('fleet-profile-service');reserveCard.querySelector('.cxps').title=reserveCard.querySelector('.cxps').textContent;reserveCard.append(el('span','fleet-profile-auto','Автоматически'))}
   filterProfiles();repaintProfileResults();
  }
  const originalProfileRender=cxpRender;
@@ -1255,7 +1212,7 @@ JS = r'''
 
  // Общий компонент профилей двух сторон включается только при наличии API профилей.
  let mirrorState=null,mirrorMounted=false,mirrorEngine='codex',mirrorBusy=false,mirrorTaskTimer=null,mirrorUpdateTimer=null;
- const mirrorInfo={claude:new Set(),codex:new Set()},mirrorNames={claude:'Claude',codex:'Codex'},mirrorButtons={},mirrorReserves={};
+ const mirrorInfo={claude:new Set(),codex:new Set()},mirrorNames={claude:'Claude',codex:'Codex'},mirrorButtons={};
  function mirrorAccept(state){if(!state?.available||!state.engines?.claude||!state.engines?.codex)return;if(mirrorState&&state.revision<mirrorState.revision)return;if(mirrorState&&state.revision===mirrorState.revision&&state.snapshot_ts&&mirrorState.snapshot_ts&&state.snapshot_ts<mirrorState.snapshot_ts)return;mirrorState=state;clearTimeout(mirrorUpdateTimer);if(state.updating)mirrorUpdateTimer=setTimeout(mirrorLoad,1000);if(['approved','running'].includes(state.task?.status)){if(!mirrorTaskTimer)mirrorTaskTimer=setTimeout(()=>{mirrorTaskTimer=null;if(!document.hidden)mirrorLoad()},2500)}else{clearTimeout(mirrorTaskTimer);mirrorTaskTimer=null}if(!mirrorMounted)mountMirrorProfiles();paintMirrorWorkplace();if(!menu.hidden)cxpRender()}
  async function mirrorLoad(){try{const response=await fetch(API+'profiles',{headers:{'X-CC-Token':TOKEN}});if(response.ok)mirrorAccept(await response.json())}catch(_){}}
  function mirrorTheme(){menu.dataset.engine=mirrorEngine;putText(paletteHeading.querySelector('h2'),'Профили '+mirrorNames[mirrorEngine]);menu.setAttribute('aria-label','Выбор профиля '+mirrorNames[mirrorEngine]);for(const tab of paletteHeading.querySelectorAll('[data-mirror-tab]'))tab.setAttribute('aria-selected',String(tab.dataset.mirrorTab===mirrorEngine))}
@@ -1267,19 +1224,16 @@ JS = r'''
  let nativeMirrorOpen=null;
  function mountMirrorProfiles(){
   mirrorMounted=true;nativeMirrorOpen=cxMenuOpen;document.body.classList.add('fleet-mirror');
-  const originalNtApply=ntApply;ntApply=function(data){originalNtApply(data);paintMirrorWorkplace()};
-  const originalNtRender=ntRender;ntRender=function(){originalNtRender();const body=document.getElementById('ntPopB');let node=body.querySelector('.ntsec');while(node){const next=node.nextElementSibling;node.remove();if(next?.classList.contains('ntsec'))break;node=next}const note=el('div','ntnote','Резерв настраивается отдельно в профилях Claude и Codex.');body.querySelector('.cxbrow')?.after(note)};
   new MutationObserver(()=>{paintMirrorWorkplace();if(menu.hidden)mirrorButtons[mirrorEngine]?.focus({preventScroll:true})}).observe(menu,{attributes:true,attributeFilter:['hidden']});
   const profileTabs=el('div','mirror-profile-tabs');profileTabs.setAttribute('role','tablist');profileTabs.setAttribute('aria-label','Исполнитель');
   for(const e of ['claude','codex']){const b=el('button','',mirrorNames[e]);b.type='button';b.dataset.mirrorTab=e;b.setAttribute('role','tab');b.addEventListener('click',()=>mirrorOpen(e));b.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const next=['ArrowLeft','Home'].includes(event.key)?'claude':'codex';mirrorOpen(next);profileTabs.querySelector('[data-mirror-tab="'+next+'"]').focus()}});profileTabs.append(b)}paletteHeading.querySelector('.fleet-eyebrow').replaceWith(profileTabs);
   for(const e of ['claude','codex']){
    const tile=liveNodes[e],footer=el('div','mirror-profile-footer'),holder=el('div','mirror-profile-holder');tile.dataset.provider=e;
-   let group,button,reserveGroup;
-   if(e==='codex'){group=document.getElementById('cxGrp');button=document.getElementById('cxBtn');reserveGroup=document.getElementById('ntGrp');holder.append(group)}
-   else{button=document.getElementById('cxBtn').cloneNode(true);for(const node of [button,...button.querySelectorAll('[id]')])if(node.id)node.id='mirrorClaude'+node.id;button.addEventListener('click',()=>{if(!menu.hidden&&mirrorEngine==='claude')cxMenuClose();else mirrorOpen('claude')});holder.append(button);reserveGroup=document.getElementById('ntGrp').cloneNode(true);for(const node of [reserveGroup,...reserveGroup.querySelectorAll('[id]')])if(node.id)node.id='mirrorClaude'+node.id;reserveGroup.hidden=false}
-   button.classList.add('mirror-profile-button');button.setAttribute('aria-label','Выбор профиля '+mirrorNames[e]);button.setAttribute('aria-controls','cxMenu');mirrorButtons[e]=button;reserveGroup.classList.add('mirror-reserve-group');reserveGroup.hidden=false;mirrorReserves[e]=reserveGroup;
-   reserveGroup.addEventListener('click',event=>{const toggle=event.target.closest('.ntbtn'),settings=event.target.closest('.ntgbtn');if(!toggle&&!settings)return;event.preventDefault();event.stopImmediatePropagation();if(settings)mirrorOpen(e,'reserve');else if(mirrorState.engines[e].role==='reserve')mirrorStop(e);else mirrorApply(e,'reserve')},true);
-   footer.append(holder,reserveGroup);tile.append(footer);
+   let group,button;
+   if(e==='codex'){group=document.getElementById('cxGrp');button=document.getElementById('cxBtn');holder.append(group)}
+   else{button=document.getElementById('cxBtn').cloneNode(true);for(const node of [button,...button.querySelectorAll('[id]')])if(node.id)node.id='mirrorClaude'+node.id;button.addEventListener('click',()=>{if(!menu.hidden&&mirrorEngine==='claude')cxMenuClose();else mirrorOpen('claude')});holder.append(button)}
+   button.classList.add('mirror-profile-button');button.setAttribute('aria-label','Выбор профиля '+mirrorNames[e]);button.setAttribute('aria-controls','cxMenu');mirrorButtons[e]=button;
+   footer.append(holder);tile.append(footer);
   }
   const summary=el('span','mirror-pair-summary');summary.id='mirrorPairSummary';liveHead.append(summary);const taskButton=el('button','mirror-task-button');taskButton.id='mirrorTaskButton';taskButton.type='button';taskButton.hidden=true;taskButton.onclick=mirrorShowTask;liveHead.append(taskButton);
   const savedCxbRender=cxbRender;cxbRender=function(force){savedCxbRender(force);if(cxbData?.profile_system)mirrorAccept(cxbData.profile_system)};
@@ -1293,13 +1247,12 @@ JS = r'''
  }
  function paintMirrorWorkplace(){
   if(!mirrorState||!mirrorMounted)return;
-  for(const e of ['claude','codex']){const state=mirrorState.engines[e],button=mirrorButtons[e],group=mirrorReserves[e];putText(button.querySelector('.cxbtnname'),state.label);button.title='Профиль '+mirrorNames[e]+': '+state.label;button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(!menu.hidden&&mirrorEngine===e));button.dataset.role=state.role;group.classList.toggle('res',state.role==='reserve');const toggle=group.querySelector('.ntbtn');if(ntData){const connected=!!ntData.connected,ready=!!ntData.reserve?.ready;group.classList.toggle('bad',!connected);const dot=group.querySelector('.cxdot');if(dot)dot.className='cxdot '+(connected?'on':'err');toggle.classList.toggle('dis',!ready&&state.role!=='reserve');toggle.setAttribute('aria-disabled',String(!ready&&state.role!=='reserve'))}toggle.classList.toggle('res',state.role==='reserve');toggle.setAttribute('aria-checked',String(state.role==='reserve'));toggle.setAttribute('aria-label','Резерв '+mirrorNames[e]);toggle.title=state.role==='reserve'?'Выключить резерв '+mirrorNames[e]:'Включить резерв '+mirrorNames[e]+' · '+mirrorNames[e==='claude'?'codex':'claude']+' будет на паузе';putText(group.querySelector('.ntname'),'Резерв');group.querySelector('.ntgbtn').setAttribute('aria-label','Настройки резерва '+mirrorNames[e]);}
-  const route=mirrorState.leader?mirrorNames[mirrorState.leader]+' → '+mirrorNames[mirrorState.follower]+' · один ведущий':mirrorState.service?mirrorNames[mirrorState.service.engine]+' · '+(mirrorState.service.kind==='reserve'?'резерв':'аварийный режим'):'Самостоятельные профили';putText(document.getElementById('mirrorPairSummary'),route);const task=mirrorState.task,taskButton=document.getElementById('mirrorTaskButton');taskButton.hidden=!task;taskButton.dataset.status=task?.status||'';putText(taskButton,task?({pending:'Подтвердить шаг',approved:'Шаг подтверждён',running:'Шаг выполняется',done:'Результат шага',cancelled:'Шаг отклонён',uncertain:'Проверить исполнителя'}[task.status]||'Шаг')+' · '+mirrorNames[task.leader]+' → '+mirrorNames[task.follower]:'');
+  for(const e of ['claude','codex']){const state=mirrorState.engines[e],button=mirrorButtons[e];putText(button.querySelector('.cxbtnname'),state.label);button.title='Профиль '+mirrorNames[e]+': '+state.label;button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(!menu.hidden&&mirrorEngine===e));button.dataset.role=state.role;}
+  const route=mirrorState.leader?mirrorNames[mirrorState.leader]+' → '+mirrorNames[mirrorState.follower]+' · один ведущий':'Самостоятельные профили';putText(document.getElementById('mirrorPairSummary'),route);const task=mirrorState.task,taskButton=document.getElementById('mirrorTaskButton');taskButton.hidden=!task;taskButton.dataset.status=task?.status||'';putText(taskButton,task?({pending:'Подтвердить шаг',approved:'Шаг подтверждён',running:'Шаг выполняется',done:'Результат шага',cancelled:'Шаг отклонён',uncertain:'Проверить исполнителя'}[task.status]||'Шаг')+' · '+mirrorNames[task.leader]+' → '+mirrorNames[task.follower]:'');
  }
  function mirrorDetails(p){
   const state=mirrorState.engines[mirrorEngine],other=mirrorNames[mirrorEngine==='claude'?'codex':'claude'];
-  const reserve=p.kind==='reserve'?'<div class="mirror-auto-settings"><label><input type="checkbox" data-mirror-setting="auto" '+(state.auto.enabled?'checked':'')+'> Автоматически, когда '+other+' недоступен</label><small>Без ограничения срока. Возврат к прежнему сценарию — после восстановления другой модели.</small><button type="button" data-mirror-action="agent-settings">Общие настройки агента</button></div>':'';
-  return '<div class="cxpinfo"><div class="mirror-flow">'+p.flow.map(x=>'<span>'+acctEsc(x)+'</span>').join('<i>→</i>')+'</div><p><b>Может:</b> '+acctEsc(p.can)+'</p><p><b>Ограничения:</b> '+acctEsc(p.cannot)+'</p><p><b>Когда выбрать:</b> '+acctEsc(p.when)+'</p>'+reserve+'</div>';
+  return '<div class="cxpinfo"><div class="mirror-flow">'+p.flow.map(x=>'<span>'+acctEsc(x)+'</span>').join('<i>→</i>')+'</div><p><b>Может:</b> '+acctEsc(p.can)+'</p><p><b>Ограничения:</b> '+acctEsc(p.cannot)+'</p><p><b>Когда выбрать:</b> '+acctEsc(p.when)+'</p></div>';
  }
  function paintMirrorPalette(){
   if(!mirrorState)return;mirrorTheme();const scroll=profileBody.scrollTop,state=mirrorState.engines[mirrorEngine],e=mirrorEngine,focus=document.activeElement,focusCard=focus?.closest('[data-profile-id]'),focusId=focusCard?.dataset.profileId,focusAction=focus?.dataset.mirrorAction,focusSetting=focus?.dataset.mirrorSetting;menu.dataset.compare=String(compareProfiles);
@@ -1308,78 +1261,32 @@ JS = r'''
   const cards=normal.map(p=>{const selected=p.id===state.base_selected,expanded=compareProfiles||mirrorInfo[e].has(p.id),status=selected?(state.applied===false?'Текущие права':!['solo','leader'].includes(state.role)?'Базовый профиль':'Выбран'):(p.builtin?'Встроенный':'Свой профиль');return '<div class="cxprof fleet-profile-card'+(selected?' act':'')+'" role="radio" tabindex="0" aria-checked="'+selected+'" data-id="'+acctEsc(p.id)+'" data-profile-id="'+acctEsc(p.id)+'" data-kind="'+(p.kind==='orchestrator'?'team':'solo')+'" data-info-open="'+expanded+'"><div class="fleet-profile-card-head"><span class="cxpr" aria-hidden="true"></span><span class="fleet-profile-status">'+status+'</span>'+(p.builtin?'':'<button type="button" class="cxpx" data-mirror-action="delete" aria-label="Удалить профиль">×</button>')+'</div><span class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(p.title)+'</span></span><span class="cxps">'+acctEsc(p.description)+'</span><span class="fleet-profile-index" hidden>'+acctEsc(p.can+' '+p.cannot+' '+p.when+' '+(p.kind==='orchestrator'?'Оркестратор':''))+'</span><span class="fleet-profile-meta"><span>'+(p.kind==='orchestrator'?'Ведущий → исполнитель':'Самостоятельно')+'</span><span>'+({read:'С подтверждением шагов',write:'Рабочая папка',full:'Полный доступ'}[p.access]||'')+'</span></span>'+(expanded?mirrorDetails(p):'')+'</span><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected&&['solo','leader'].includes(state.role)&&state.applied!==false?'Работает сейчас':'Выбрать →')+'</span><button type="button" class="cxpi fleet-profile-more" data-mirror-action="info" aria-expanded="'+expanded+'" '+(compareProfiles?'hidden':'')+'>Подробнее ⌄</button></div></div>'}).join('');
   const services=state.profiles.filter(p=>['reserve','emergency'].includes(p.kind));
   const serviceHtml=services.map(p=>{const active=state.role===p.kind,expanded=compareProfiles||mirrorInfo[e].has(p.id);return '<section class="mirror-service '+(p.kind==='emergency'?'cxemg':'cxprof rsv fleet-profile-service')+'" '+(p.kind==='reserve'?'data-auto="1"':'')+' data-profile-id="'+p.id+'"><div class="mirror-service-copy"><strong>'+acctEsc(p.title)+'</strong><div class="cxps">'+acctEsc(p.description)+'</div>'+(active?'<span class="mirror-service-state">Включён'+(mirrorState.service.source==='auto'?' автоматически':' вручную')+'</span>':'')+(active&&state.until?'<small>До отключения: '+new Date(state.until*1000).toLocaleTimeString('ru-RU')+'</small>':'')+(expanded?mirrorDetails(p):'')+'</div><div class="mirror-service-actions"><button type="button" data-mirror-action="'+(active?'stop':'apply')+'">'+(active?'Выключить':'Включить…')+'</button><button type="button" data-mirror-action="info" aria-expanded="'+expanded+'">Подробнее ⌄</button></div></section>'}).join('');
-  profileRoot.innerHTML='<div class="cxplist">'+cards+'</div><div class="fleet-profile-service-heading">Служебные режимы '+mirrorNames[e]+'</div>'+serviceHtml;
+  profileRoot.innerHTML='<div class="cxplist">'+cards+'</div>'+(serviceHtml?'<div class="fleet-profile-service-heading">Служебные режимы '+mirrorNames[e]+'</div>'+serviceHtml:'');
   filterProfiles();repaintProfileResults();profileBody.scrollTop=scroll;paintMirrorWorkplace();if(!menu.hidden){cxMenuPlace();if(focusId){const card=profileRoot.querySelector('[data-profile-id="'+focusId+'"]'),target=focusAction?card?.querySelector('[data-mirror-action="'+focusAction+'"]'):focusSetting?card?.querySelector('[data-mirror-setting="'+focusSetting+'"]'):card;target?.focus({preventScroll:true})}}
  }
  function mirrorProfileClick(event){
   const card=event.target.closest('[data-profile-id]');if(!card)return;event.stopImmediatePropagation();if(event.target.closest('.mirror-auto-settings label'))return;const action=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction,id=card.dataset.profileId;
   if(action==='info'){mirrorInfo[mirrorEngine].has(id)?mirrorInfo[mirrorEngine].delete(id):mirrorInfo[mirrorEngine].add(id);cxpRender();return}
-  if(action==='agent-settings'){cxMenuClose();ntOpen();return}
   if(action==='delete'){if(confirm('Удалить этот свой профиль?'))mirrorRequest(mirrorEngine,'delete',{id});return}
   if(action==='stop'){mirrorStop(mirrorEngine);return}
   if(action==='apply'||(!card.classList.contains('mirror-service')&&!event.target.closest('.cxpinfo')))mirrorApply(mirrorEngine,id);
  }
  async function mirrorRequest(engine,action,body,revision=mirrorState.revision){
   if(mirrorBusy)return;
-  if(((action==='apply'&&body.id==='reserve')||(action==='config'&&body.enabled))&&body.confirm!==true&&body.confirm!=='подтверждаю'){cxMenuClose();mirrorConfirm(engine,'reserve',null,action,body,revision);return}
   mirrorBusy=true;menu.setAttribute('aria-busy','true');
-  try{const response=await fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...body,revision})}),result=await response.json();if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id||'reserve',result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Действие выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
+  try{const response=await fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...body,revision})}),result=await response.json();if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id,result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Действие выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
  }
  function mirrorApply(engine,id,confirmation=''){return mirrorRequest(engine,'apply',{id,confirm:confirmation})}
  function mirrorStop(engine){if(mirrorState.service?.kind==='emergency'&&!confirm('Выключить аварийный режим '+mirrorNames[engine]+' и восстановить прежний сценарий?'))return;return mirrorRequest(engine,'stop',{})}
  function mirrorShowTask(){const task=mirrorState.task;if(!task)return;cxMenuClose();acctShow('<h3>'+acctEsc(mirrorNames[task.leader]+' → '+mirrorNames[task.follower])+'</h3><p>Права шага: '+acctEsc({read:'чтение',dev:'дев',full:'полные'}[task.rights]||task.rights)+'</p><pre class="mirror-task-text">'+acctEsc(task.text)+'</pre>'+(task.result?'<h4>Результат</h4><pre class="mirror-task-text">'+acctEsc(task.result)+'</pre>':'')+(task.error?'<p>'+acctEsc(task.error)+'</p>':'')+(task.status==='pending'?(task.rights==='full'?'<label>Для полных прав введи «подтверждаю»<input id="mirrorTaskWord" class="dlginp" autocomplete="off"></label>':'')+'<div class="modalfoot"><button id="mirrorTaskReject" class="ghostbtn">Отклонить</button><button id="mirrorTaskApprove">Отправить исполнителю</button></div>':'<div class="modalfoot"><button id="mirrorTaskClose">Закрыть</button></div>'));document.getElementById('mirrorTaskClose')?.addEventListener('click',acctClose);for(const [id,approve] of [['mirrorTaskReject',false],['mirrorTaskApprove',true]])document.getElementById(id)?.addEventListener('click',async()=>{try{const response=await fetch(API+'profiles/task/confirm',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({id:task.id,approve,confirm:document.getElementById('mirrorTaskWord')?.value||''})}),result=await response.json();if(result.state)mirrorAccept(result.state);toast(result.message);if(result.ok)acctClose()}catch(_){toast('Не удалось подтвердить шаг. Обнови данные перед повтором.')}})}
- let reserveConfirmation=null;
- function reserveConfirmOpen(engine,action,body,revision){
-  if(reserveConfirmation?.engine===engine&&reserveConfirmation.action===action){reserveConfirmation.close(false,true);return}
-  reserveConfirmation?.close(false,false);
-  const anchor=mirrorReserves[engine]?.querySelector('.ntbtn');if(!anchor)return;
-  const dialog=el('div','reserve-confirm');dialog.id='reserveConfirmPopover';dialog.dataset.engine=engine;
-  dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','false');dialog.setAttribute('aria-labelledby','reserveConfirmTitle');
-  dialog.innerHTML='<span class="reserve-confirm-tip" aria-hidden="true"></span><h3 id="reserveConfirmTitle">'+(action==='config'?'Включить авторезерв?':'Включить резерв?')+'</h3><div class="modalfoot"><button type="button" id="reserveConfirmNo">Нет</button><button type="button" id="reserveConfirmYes">Да</button></div>';
-  document.body.append(dialog);
-  const no=dialog.querySelector('#reserveConfirmNo'),yes=dialog.querySelector('#reserveConfirmYes'),events=new AbortController();let answered=false,frame=0;
-  const previousAttrs=new Map(['aria-expanded','aria-controls','aria-haspopup'].map(name=>[name,anchor.getAttribute(name)]));
-  anchor.setAttribute('aria-expanded','true');anchor.setAttribute('aria-controls',dialog.id);anchor.setAttribute('aria-haspopup','dialog');
-  const finish=(approved,restoreFocus=true)=>{
-   if(answered)return;answered=true;events.abort();observer.disconnect();cancelAnimationFrame(frame);dialog.remove();
-   for(const [name,value] of previousAttrs){if(value===null)anchor.removeAttribute(name);else anchor.setAttribute(name,value)}
-   reserveConfirmation=null;
-   if(restoreFocus&&anchor.isConnected)anchor.focus({preventScroll:true});
-   if(approved)mirrorRequest(engine,action,{...body,confirm:true},revision);
-  };
-  const viewport=()=>{const v=visualViewport,left=v?.offsetLeft||0,top=v?.offsetTop||0;return {left,top,right:left+(v?.width||innerWidth),bottom:top+(v?.height||innerHeight)}};
-  const place=()=>{
-   frame=0;const r=anchor.getBoundingClientRect(),v=viewport();
-   if(!anchor.isConnected||!r.width||!r.height||r.bottom<=v.top||r.top>=v.bottom||r.right<=v.left||r.left>=v.right){finish(false,false);return}
-   const w=dialog.offsetWidth,h=dialog.offsetHeight,gap=10,pad=12,below=v.bottom-r.bottom,above=r.top-v.top;
-   const side=below>=h+gap+pad||below>=above?'below':'above';
-   const x=Math.max(v.left+pad,Math.min(r.right-w,v.right-w-pad));
-   const y=Math.max(v.top+pad,Math.min(side==='below'?r.bottom+gap:r.top-h-gap,v.bottom-h-pad));
-   dialog.dataset.side=side;dialog.style.left=x+'px';dialog.style.top=y+'px';
-   dialog.style.setProperty('--reserve-tip-x',Math.max(14,Math.min(r.left+r.width/2-x,w-14))+'px');
-  };
-  const schedule=()=>{if(!frame)frame=requestAnimationFrame(place)};
-  const observer=new ResizeObserver(schedule);observer.observe(anchor);observer.observe(dialog);
-  no.onclick=()=>finish(false);yes.onclick=()=>finish(true);
-  document.addEventListener('pointerdown',event=>{if(!dialog.contains(event.target)&&!anchor.contains(event.target))finish(false,false)},{capture:true,signal:events.signal});
-  document.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();finish(false)}},{capture:true,signal:events.signal});
-  window.addEventListener('scroll',schedule,{capture:true,passive:true,signal:events.signal});window.addEventListener('resize',schedule,{signal:events.signal});
-  visualViewport?.addEventListener('resize',schedule,{signal:events.signal});visualViewport?.addEventListener('scroll',schedule,{signal:events.signal});
-  reserveConfirmation={engine,action,close:finish};
-  const r=anchor.getBoundingClientRect(),v=viewport();if(r.top<v.top+12||r.bottom>v.bottom-12)anchor.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
-  place();if(!answered)no.focus({preventScroll:true});requestAnimationFrame(()=>{if(!answered)no.focus({preventScroll:true})});
- }
  function mirrorConfirm(engine,id,word,action='apply',body={id},revision=mirrorState.revision){
-  if(id==='reserve'){reserveConfirmOpen(engine,action,body,revision);return}
-  const p=mirrorState.engines[engine].profiles.find(p=>p.id===id),impact=id==='reserve'?'Другая модель будет на паузе. Без ограничения срока. После выключения вернётся прежний сценарий.':'Full работает самостоятельно со всеми доступными инструментами, командами и файлами.';acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(p.title)+(action==='config'?' · автоматически':'')+'</h3><p>'+impact+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы подтвердить изменение сценария для '+mirrorNames[engine]+'.</p><input id="mirrorConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="mirrorConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="mirrorConfirmApply" disabled>Применить</button></div></div>');
+  const p=mirrorState.engines[engine].profiles.find(p=>p.id===id),impact='Full работает самостоятельно со всеми доступными инструментами, командами и файлами.';acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(p.title)+(action==='config'?' · автоматически':'')+'</h3><p>'+impact+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы подтвердить изменение сценария для '+mirrorNames[engine]+'.</p><input id="mirrorConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="mirrorConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="mirrorConfirmApply" disabled>Применить</button></div></div>');
   const input=document.getElementById('mirrorConfirmWord'),apply=document.getElementById('mirrorConfirmApply');input.addEventListener('input',()=>apply.disabled=input.value.trim().toLocaleLowerCase('ru')!==word);input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!apply.disabled)apply.click()});document.getElementById('mirrorConfirmCancel').onclick=()=>{acctClose();mirrorButtons[engine].focus()};apply.onclick=()=>{const text=input.value;acctClose();mirrorRequest(engine,action,{...body,confirm:text},revision)};setTimeout(()=>input.focus(),30);
  }
- // Единое центральное окно двух исполнителей и настроек резерва.
- let monoView='profiles',monoSignature='',monoAgentReady=false;
- const monoAgentBody=document.getElementById('ntPopB'),monoAgentHome=document.getElementById('ntPop');
+ // Единое центральное окно двух исполнителей. [notion-ai] Настроек резерва больше нет.
+ let monoView='profiles',monoSignature='';
  const monoRawOpen=cxMenuOpen;let monoPendingOpen=null;
  cxMenuOpen=function(){if(!mirrorMounted){monoPendingOpen=['codex'];mirrorLoad();return}mirrorOpen('codex')};
- ntOpen=function(){if(!mirrorMounted){monoPendingOpen=['codex','reserve'];mirrorLoad();return}mirrorOpen(mirrorEngine,'reserve')};
 
  const monoOriginalFilter=filterProfiles,monoOriginalResults=repaintProfileResults;
  filterProfiles=function(){
@@ -1391,12 +1298,11 @@ JS = r'''
  }
  repaintProfileResults=function(){
   if(!mirrorMounted)return monoOriginalResults();
-  if(monoView!=='profiles'){paletteEmpty.hidden=true;putText(paletteCount,'Резерв Claude и Codex');return}
+  if(monoView!=='profiles'){paletteEmpty.hidden=true;return}
   const cards=[...profileRoot.querySelectorAll('.fleet-profile-card')],reserves=[...profileRoot.querySelectorAll('.mono-reserve')],visible=cards.filter(node=>!node.hidden).length,services=reserves.filter(node=>!node.hidden).length;
-  paletteEmpty.hidden=visible+services>0;putText(paletteCount,(profileQuery.trim()?'Найдено: '+visible+' из '+cards.length:cards.length+' рабочих профиля')+' · резервов: '+services);
+  paletteEmpty.hidden=visible+services>0;putText(paletteCount,profileQuery.trim()?'Найдено: '+visible+' из '+cards.length:cards.length+' рабочих профиля');
  }
 
- function monoParkAgent(){if(monoAgentBody.parentElement!==monoAgentHome)monoAgentHome.append(monoAgentBody)}
  function monoCenter(){
   menu.classList.toggle('fleet-profile-desktop',!mobileConsole.matches);
   if(mobileConsole.matches){menu.style.top='var(--fleet-visual-top,0px)';menu.style.left='0';menu.style.right='0';menu.style.bottom='auto';menu.style.width='100%';menu.style.height=menu.style.maxHeight='var(--fleet-visual-height,100dvh)';return}
@@ -1406,13 +1312,13 @@ JS = r'''
  cxMenuPlace=monoCenter;
  mirrorTheme=function(){
   menu.dataset.engine='both';menu.dataset.view=monoView;menu.classList.add('mono-profile-window');
-  putText(paletteHeading.querySelector('h2'),monoView==='reserve'?'Настройки резерва':'Профили работы');
-  menu.setAttribute('aria-label',monoView==='reserve'?'Настройки резерва Claude и Codex':'Профили Claude и Codex');
+  putText(paletteHeading.querySelector('h2'),'Профили работы');
+  menu.setAttribute('aria-label','Профили Claude и Codex');
   paletteHeading.querySelector('.mirror-profile-tabs')?.setAttribute('hidden','');
   paletteTools.hidden=monoView!=='profiles';compareButton.hidden=true;
  }
  mirrorOpen=function(engine,info){
-  mirrorEngine=engine;menu.dataset.returnEngine=engine;monoView=info==='reserve'?'reserve':'profiles';compareProfiles=false;resetProfileSearch();monoSignature='';mirrorTheme();
+  mirrorEngine=engine;menu.dataset.returnEngine=engine;monoView='profiles';compareProfiles=false;resetProfileSearch();monoSignature='';mirrorTheme();
   if(menu.hidden)nativeMirrorOpen();else cxpRender();monoCenter();
  }
  function monoDetails(profile){
@@ -1424,41 +1330,22 @@ JS = r'''
   const status=selected?(state.applied===false?'Текущие права':effective?'Работает сейчас':'Базовый профиль'):profile.kind==='full'?'Полный доступ':'Чтение + папка обмена';
   return '<div class="cxprof fleet-profile-card'+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+profile.id+'" data-id="'+profile.id+'" role="radio" aria-checked="'+selected+'" tabindex="0"><div class="mono-mode-head"><span class="mono-mode-kind">'+(profile.kind==='full'?'FULL':'ОРКЕСТРАТОР')+'</span><span class="mono-mode-status">'+status+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(profile.title)+'</span></span><span class="cxps">'+acctEsc(profile.description)+'</span><span class="fleet-profile-index" hidden>'+acctEsc(profile.can+' '+profile.cannot+' '+profile.when)+'</span>'+(info?monoDetails(profile):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(effective?'Выбран':'Выбрать →')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
  }
- function monoReserve(engine,state,settings){
-  const profile=state.profiles.find(p=>p.id==='reserve'),active=state.role==='reserve';
-  if(settings)return '<section class="mono-reserve-config" data-engine="'+engine+'" data-profile-id="reserve"><div class="mono-reserve-status">'+(active?'Резерв включён':'Резерв выключен')+'<span>Без ограничения срока</span></div><label class="mono-auto"><input type="checkbox" data-mirror-setting="auto" data-engine="'+engine+'" '+(state.auto.enabled?'checked':'')+'> <span>Включать автоматически, когда '+mirrorNames[engine==='claude'?'codex':'claude']+' недоступен</span></label><p class="mono-note">После восстановления другой модели автоматический резерв вернёт прежний сценарий.</p><div class="mono-reserve-actions"><button type="button" data-mirror-action="'+(active?'stop':'apply')+'">'+(active?'Выключить резерв':'Включить вручную…')+'</button></div></section>';
-  return '<section class="mirror-service mono-reserve" data-engine="'+engine+'" data-profile-id="reserve"><div class="mono-reserve-copy"><strong>'+acctEsc(profile.title)+'</strong><div class="cxps">'+(active?'Включён · другая модель на паузе':'Без ограничения срока · другая модель на паузе при включении')+'</div></div><div class="mirror-service-actions"><button type="button" data-mirror-action="'+(active?'stop':'apply')+'">'+(active?'Выключить':'Включить…')+'</button><button type="button" data-mirror-action="reserve-settings" aria-label="Настройки резерва '+mirrorNames[engine]+'">Настройки</button></div></section>';
- }
- function monoAgentLayout(){
-  const note=[...monoAgentBody.querySelectorAll(':scope > .ntnote')].find(n=>n.textContent.includes('Резерв и аварийный'));note?.remove();
-  const first=monoAgentBody.querySelector(':scope > .ntsec');
-  if(first){const help=el('details','mono-notion-help');help.append(el('summary','','Как подключить Notion'));let node=first;while(node){const next=node.nextElementSibling;help.append(node);node=next}monoAgentBody.append(help)}
- }
- function monoNotionStatus(){
-  const node=document.getElementById('monoNotionStatus');if(node)putText(node,ntData?.connected?'Notion подключён'+(ntData.agent?.name?' · '+ntData.agent.name:''):'Notion не подключён');
-  const login=document.getElementById('ntLoginV');if(login&&ntData){login.className=ntData.connected?'ok':'bad';putText(login,tr(ntData.connected?'ntLoginOk':'ntLoginBad'))}
- }
  paintMirrorPalette=function(){
   if(!mirrorState)return;mirrorTheme();
   const signature=JSON.stringify([monoView,mirrorState.revision,mirrorState.service,mirrorState.engines]);
-  if(signature===monoSignature){monoNotionStatus();monoCenter();return}monoSignature=signature;
+  if(signature===monoSignature){monoCenter();return}monoSignature=signature;
   const focus=document.activeElement,focusId=focus?.id,focusCard=focus?.closest('[data-profile-id]'),focusEngine=focus?.dataset.engine||focusCard?.dataset.engine,focusProfile=focusCard?.dataset.profileId,action=focus?.dataset.mirrorAction,setting=focus?.dataset.mirrorSetting;
-  monoParkAgent();
+  
   let html='<div class="mono-provider-grid">';
   for(const engine of ['claude','codex']){
    const state=mirrorState.engines[engine];html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="Профили '+mirrorNames[engine]+'"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+acctEsc(state.label)+'</span></header>';
-   html+=monoView==='profiles'?'<div class="cxplist" role="radiogroup" aria-label="Рабочий профиль '+mirrorNames[engine]+'">'+state.profiles.filter(p=>p.kind!=='reserve').map(p=>monoCard(engine,p,state)).join('')+'</div>'+monoReserve(engine,state,false):monoReserve(engine,state,true);
+   html+='<div class="cxplist" role="radiogroup" aria-label="Рабочий профиль '+mirrorNames[engine]+'">'+state.profiles.map(p=>monoCard(engine,p,state)).join('')+'</div>';
    html+='</section>';
   }
   html+='</div>';
-  if(monoView==='reserve')html+='<section class="mono-agent"><header><strong>Общий Notion-агент</strong><span id="monoNotionStatus"></span></header><div id="monoAgentSlot"></div></section>';
-  html+='<div class="mono-window-note">'+(monoView==='profiles'?'Ведущая указана первой. В оркестраторе каждый шаг подтверждает человек.':'Резерв работает без срока. Другая модель остаётся на паузе до возврата прежнего сценария.')+'</div>';
+  html+='<div class="mono-window-note">'+'Ведущая указана первой. В оркестраторе каждый шаг подтверждает человек.'+'</div>';
   profileRoot.innerHTML=html;
-  if(monoView==='reserve'){
-   document.getElementById('monoAgentSlot').append(monoAgentBody);
-   if(!monoAgentReady&&ntData){ntRender();monoAgentReady=true}monoNotionStatus();
-  }
-  putText(paletteCurrent,monoView==='profiles'?'У каждой модели: 2 профиля + резерв':'Без таймеров');putText(paletteCount,monoView==='profiles'?'Claude + Codex · единый выбор':'Резерв Claude и Codex');putText(paletteHelp,'Esc — закрыть');
+  putText(paletteCurrent,'У каждой модели: Full и Оркестратор');putText(paletteCount,'Claude + Codex · единый выбор');putText(paletteHelp,'Esc — закрыть');
   paletteEmpty.hidden=true;if(monoView==='profiles')filterProfiles();repaintProfileResults();
   if(focusId&&document.getElementById(focusId))document.getElementById(focusId).focus({preventScroll:true});
   else if(focusEngine&&focusProfile){const card=profileRoot.querySelector('[data-engine="'+focusEngine+'"][data-profile-id="'+focusProfile+'"]'),target=action?card?.querySelector('[data-mirror-action="'+action+'"]'):setting?card?.querySelector('[data-mirror-setting="'+setting+'"]'):card;target?.focus({preventScroll:true})}
@@ -1467,22 +1354,17 @@ JS = r'''
  mirrorProfileClick=function(event){
   const card=event.target.closest('[data-profile-id]');if(!card)return;event.stopImmediatePropagation();if(event.target.closest('.mono-auto'))return;
   const engine=card.dataset.engine||mirrorEngine,action=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction,id=card.dataset.profileId;
-  if(action==='reserve-settings'){mirrorOpen(engine,'reserve');return}
   if(action==='info'){mirrorInfo[engine].has(id)?mirrorInfo[engine].delete(id):mirrorInfo[engine].add(id);monoSignature='';cxpRender();return}
   if(action==='stop'){mirrorStop(engine);return}
   if(action==='apply'||card.matches('.fleet-profile-card')&&!event.target.closest('.cxpinfo'))mirrorApply(engine,id);
  }
  const monoMount=mountMirrorProfiles;mountMirrorProfiles=function(){
   monoMount();nativeMirrorOpen=monoRawOpen;cxMenuPlace=monoCenter;cxMenuOpen=function(){mirrorOpen('codex')};
-  const originalWorkplace=paintMirrorWorkplace;paintMirrorWorkplace=function(){originalWorkplace();for(const engine of ['claude','codex']){mirrorButtons[engine].setAttribute('aria-expanded',String(!menu.hidden&&monoView==='profiles'));mirrorReserves[engine].querySelector('.ntgbtn').setAttribute('aria-expanded',String(!menu.hidden&&monoView==='reserve'))}};
+  const originalWorkplace=paintMirrorWorkplace;paintMirrorWorkplace=function(){originalWorkplace();for(const engine of ['claude','codex']){mirrorButtons[engine].setAttribute('aria-expanded',String(!menu.hidden&&monoView==='profiles'))}};
   for(const engine of ['claude','codex']){
    mirrorButtons[engine].addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();if(!menu.hidden&&monoView==='profiles')cxMenuClose();else mirrorOpen(engine)},true);
-   mirrorReserves[engine].querySelector('.ntgbtn').addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();mirrorOpen(engine,'reserve')},true);
   }
-  const renderAgent=ntRender;ntRender=function(){renderAgent();monoAgentLayout();monoNotionStatus()};
-  const applyAgent=ntApply;ntApply=function(data){applyAgent(data);if(monoView==='reserve'&&!menu.hidden&&!monoAgentReady&&ntData){ntRender();monoAgentReady=true;monoCenter()}monoNotionStatus()};
-  ntOpen=function(){mirrorOpen(mirrorEngine,'reserve')};
-  const close=cxMenuClose;cxMenuClose=function(...args){monoParkAgent();monoSignature='';close(...args)};
+  const close=cxMenuClose;cxMenuClose=function(...args){monoSignature='';close(...args)};
   new MutationObserver(()=>{if(!menu.hidden&&monoView==='profiles'&&matchMedia('(pointer:fine)').matches)profileRoot.querySelector('.fleet-profile-card.act[data-engine="'+mirrorEngine+'"]')?.focus({preventScroll:true})}).observe(menu,{attributes:true,attributeFilter:['hidden']});
   monoSignature='';paintMirrorPalette();if(monoPendingOpen){const pending=monoPendingOpen;monoPendingOpen=null;mirrorOpen(...pending)}
  }
@@ -1496,7 +1378,7 @@ JS = r'''
  const manualCurrent=()=>mirrorState?.manual_scenario?.choices||{claude:null,codex:null};
  paletteTools.remove();paletteFooter.remove();
  const manualThemeBefore=mirrorTheme;
- mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,monoView==='reserve'?'Без таймеров':'Full или Оркестратор');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля')};
+ mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,'Full или Оркестратор');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля')};
  function manualSync(){
   if(!manualDraft||!manualDirty){manualDraft={...manualCurrent()};manualRevision=mirrorState.revision;manualDirty=false}
  }
@@ -1510,7 +1392,7 @@ JS = r'''
   if(manualRevision!==mirrorState.revision)return {valid:false,text:'Профиль изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
   const leader=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
   if(leader){const other=manualOther(leader);return manualDraft[other]==='executor'?{valid:true,text:mirrorNames[leader]+' → '+mirrorNames[other]+' · выполнение шагов подключено'}:{valid:false,text:mirrorNames[leader]+' — оркестратор. Подключи '+mirrorNames[other]+' для выполнения подтверждённых шагов.'}}
-  if(full&&roles.length===1){const reserve=!manualDirty&&mirrorState.service?.engine===full&&mirrorState.service?.kind==='reserve';return {valid:true,text:mirrorNames[full]+' Full · '+(reserve?'задачи через Notion':'самостоятельно')+'; '+mirrorNames[manualOther(full)]+' не участвует'}};
+  if(full&&roles.length===1)return {valid:true,text:mirrorNames[full]+' Full · самостоятельно; '+mirrorNames[manualOther(full)]+' не участвует'};
   return {valid:false,text:'Выбери Full или Оркестратор. До применения текущая работа продолжается.'};
  }
  function manualSelect(engine,role){
@@ -1525,11 +1407,10 @@ JS = r'''
   manualDraft={...manualDraft,[engine]:manualDraft[engine]==='executor'?null:'executor'};
   manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
  }
- function manualCardTitle(engine,role){return mirrorNames[engine]+(role==='reserve'?' + Notion · резерв':role==='orchestrator'?' · оркестратор':' Full · самостоятельно');}
+ function manualCardTitle(engine,role){return mirrorNames[engine]+(role==='orchestrator'?' · оркестратор':' Full · самостоятельно');}
  function manualRoleCard(engine,role){
   const state=mirrorState.engines[engine],id=role==='full'?engine+'_solo_full':'orchestrator',p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]===role,reason=manualReason(engine,role),info=mirrorInfo[engine].has(id),current=state.selected===id&&['solo','leader'].includes(state.role),label=role==='full'?mirrorNames[engine]+' Full':mirrorNames[engine]+' · оркестратор';
-  const reserve=role==='full'&&mirrorState.service?.engine===engine&&mirrorState.service?.kind==='reserve'&&state.selected===id;
-  const copy=role==='full'?(reserve?'Передаёт задачи Notion-агенту, внедряет и проверяет результат. Полные доступные права.':'Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.'):'Планирует и проверяет работу. Вторая модель выполняет шаги после твоего подтверждения.';
+  const copy=role==='full'?'Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.':'Планирует и проверяет работу. Вторая модель выполняет шаги после твоего подтверждения.';
   return '<div class="cxprof fleet-profile-card manual-role full-choice'+(role==='orchestrator'?' orchestrator-choice':'')+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="'+role+'" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="full-choice-top"><span class="full-choice-check" aria-hidden="true">'+(selected?'✓':'')+'</span><span class="full-choice-badge">'+(reason?'Заблокирован':selected?'Выбран':current?'Текущая сессия':role==='full'?'Full':'Оркестратор')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(label)+'</span></span><span class="cxps">'+copy+'</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(reason?'Недоступен при выбранном оркестраторе':selected?(role==='orchestrator'?'Нажми повторно, чтобы снять':manualDirty?'Выбран для применения':'Действующий профиль'):'Нажми, чтобы выбрать')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
  }
  function manualCompanionPanel(engine){
@@ -1539,7 +1420,7 @@ JS = r'''
  }
  const manualPaletteBefore=paintMirrorPalette;
  paintMirrorPalette=function(){
-  if(!mirrorState)return;if(monoView==='reserve'){manualPaletteBefore();return}manualSync();mirrorTheme();monoParkAgent();
+  if(!mirrorState)return;manualSync();mirrorTheme();
   const scroll=profileBody.scrollTop,focused=document.activeElement,focusedCard=focused?.closest('[data-manual-role]'),focusEngine=focusedCard?.dataset.engine,focusRole=focusedCard?.dataset.manualRole,focusInfo=focused?.dataset.mirrorAction==='info',focusAction=focused?.dataset.manualAction;
   const status=manualStatus(),recovering=!!mirrorState.recovery?.blocked,dirty=manualDirty||recovering,signature=JSON.stringify([mirrorState.revision,mirrorState.updating,recovering,manualDraft,mirrorInfo.claude.size,mirrorInfo.codex.size,mirrorBusy]);
   if(recovering)status.text='Автоматические перезапуски остановлены. Выбери профиль и повтори восстановление подключения.';
@@ -1561,13 +1442,11 @@ JS = r'''
   const action=event.target.closest('[data-manual-action]')?.dataset.manualAction;
   if(action){event.stopImmediatePropagation();if(mirrorBusy)return;if(action==='apply'){manualApplyScenario();return}if(action==='companion'){manualCompanion(event.target.closest('[data-companion-engine]').dataset.companionEngine);return}manualDraft=action==='restore'?{...manualCurrent()}:{claude:null,codex:null};manualRevision=mirrorState.revision;manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();return}
   const card=event.target.closest('[data-manual-role]');if(!card)return;event.stopImmediatePropagation();const engine=card.dataset.engine,role=card.dataset.manualRole,sub=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction;
-  if(sub==='reserve-settings'){mirrorOpen(engine,'reserve');return}
   if(sub==='info'){const id=card.dataset.profileId;mirrorInfo[engine].has(id)?mirrorInfo[engine].delete(id):mirrorInfo[engine].add(id);monoSignature='';cxpRender();return}
   if(!event.target.closest('.cxpinfo'))manualSelect(engine,role);
  }
  const manualApplyBefore=mirrorApply;
- mirrorApply=function(engine,id,confirmation=''){if(id!=='reserve'&&monoView==='profiles'&&!menu.hidden){manualSelect(engine,id.endsWith('_solo_full')?'full':id);return Promise.resolve()}return manualApplyBefore(engine,id,confirmation)};
- profileRoot.addEventListener('keydown',event=>{const card=event.target.closest('.mono-reserve[data-manual-role]');if(monoView!=='profiles'||!card||event.target!==card||!['Enter',' '].includes(event.key))return;event.preventDefault();event.stopImmediatePropagation();manualSelect(card.dataset.engine,'reserve')},true);
+ mirrorApply=function(engine,id,confirmation=''){if(monoView==='profiles'&&!menu.hidden){manualSelect(engine,id.endsWith('_solo_full')?'full':id);return Promise.resolve()}return manualApplyBefore(engine,id,confirmation)};
  async function manualApplyScenario(confirmation='',choices={...manualDraft},revision=manualRevision){
   if(mirrorBusy||!manualStatus().valid)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
   try{
@@ -1580,8 +1459,7 @@ JS = r'''
  }
  function manualConfirmScenario(choices,revision,word){
   const engine=manualEngines.find(e=>choices[e]),name=manualCardTitle(engine,choices[engine]),other=mirrorNames[manualOther(engine)];cxMenuClose();
-  if(choices[engine]==='reserve'){mirrorConfirm(engine,'reserve',null,'apply',{id:'reserve'},revision);return}
-  acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(name)+'</h3><p>'+other+' не участвует в этом сценарии. '+(choices[engine]==='reserve'?'Резерв с Notion работает без ограничения срока.':'Работает только '+mirrorNames[engine]+' с полными доступными правами.')+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы применить профиль Full.</p><input id="manualConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="manualConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="manualConfirmApply" disabled>Применить профиль</button></div></div>');
+  acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(name)+'</h3><p>'+other+' не участвует в этом сценарии. '+'Работает только '+mirrorNames[engine]+' с полными доступными правами.'+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы применить профиль Full.</p><input id="manualConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="manualConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="manualConfirmApply" disabled>Применить профиль</button></div></div>');
   const input=document.getElementById('manualConfirmWord'),button=document.getElementById('manualConfirmApply');input.oninput=()=>button.disabled=input.value.trim().toLocaleLowerCase('ru')!==word;input.onkeydown=event=>{if(event.key==='Enter'&&!button.disabled)button.click()};document.getElementById('manualConfirmCancel').onclick=()=>{acctClose();mirrorOpen(engine)};button.onclick=()=>{const value=input.value;acctClose();manualApplyScenario(value,choices,revision).then(()=>mirrorOpen(engine))};setTimeout(()=>input.focus(),30);
  }
 

@@ -56,7 +56,7 @@ class Page(unittest.TestCase):
         # «Удалить Codex целиком» — в самом низу окна ⚙, после секции аккаунтов; подтверждение словом, как у удаления аккаунта
         page = L.PAGE
         self.assertLess(page.index('id="cxAccW"'), page.index('id="cxWipeW"'))
-        self.assertLess(page.index('id="cxWipeW"'), page.index('id="ntPop"'))
+        self.assertNotIn('id="ntPop"', page)  # [notion-ai] блока резерва Notion больше нет
         m = re.search(r"function cxWipe\(\)\{(.*?)\n\}\n", page, re.S)
         self.assertTrue(m)
         self.assertIn("acctPost('chatgpt/wipe',{confirm:inp.value})", m.group(1))
@@ -832,164 +832,10 @@ class ConsoleColors(unittest.TestCase):
         self.assertIn("background:#7f7f7f", rows[0])
 
 
-class NotionBlock(unittest.TestCase):
-    """Блок Notion в шапке левее кнопки Codex: переключатель, шестерёнка и маршрут сохранения."""
-
-    def test_block_sits_left_of_codex_group_and_no_card_under_accounts(self):
-        page = L.PAGE
-        self.assertIn('id="ntGrp"', page)
-        self.assertLess(page.index('id="ntGrp"'), page.index('id="cxGrp"'))
-        for need in ('id="ntBtn"', 'role="switch"', 'id="ntGear"', 'id="ntPop"'):
-            self.assertIn(need, page)
-        # старой плитки среди аккаунтов нет
-        self.assertNotIn("notionCard", page)
-        self.assertNotIn(".card.notion", page)
-        self.assertIn("ntApply(d.notion)", page)
-
-    def test_every_nt_text_has_both_languages(self):
-        ru, en = i18n_block("ru"), i18n_block("en")
-        keys = lambda b: set(re.findall(r"^\s*(nt[A-Za-z0-9]+):", b, re.M))
-        self.assertTrue(keys(ru), "в ru нет ключей nt*")
-        self.assertEqual(keys(ru), keys(en))
-
-    def test_setup_steps_have_no_personal_names(self):
-        # инструкция «с нуля» уходит в публичный репозиторий: ни настоящей ссылки агента
-        blob = i18n_block("ru") + i18n_block("en")
-        self.assertNotRegex(blob, r"agent://[A-Za-z0-9]")  # «agent://…» как подсказка формата — можно, настоящий id — нет
-        # сама команда стоит в разметке окна (не в словаре) и одна на оба языка
-        self.assertEqual(L.PAGE.count("claude mcp add --transport http notion https://mcp.notion.com/mcp"), 1)
-
-    def test_only_one_popup_open_at_a_time(self):
-        # каждое из окон закрывает окно Notion при открытии, а оно — их
-        page = L.PAGE
-        for fn in ("cxPopOpen", "cxMenuOpen", "cxQOpen"):
-            m = re.search(r"function %s\([^)]*\)\{(.*?)\n\}" % fn, page, re.S)
-            self.assertTrue(m, fn)
-            self.assertIn("ntClose()", m.group(1), fn)
-        self.assertIn("ntPop", re.search(r"addEventListener\('pointerdown'.*?\}\);", page, re.S).group(0))
-
-    def test_mobile_row_codex_not_squeezed_below_280(self):
-        # на телефоне блок Notion держит размер, а Codex не сжимается меньше 280 px: не хватает места — уходит на свою строку
-        # (иначе при шапке из индикатора, переключателя и ⚙ кнопки Codex налезают друг на друга)
-        self.assertIn("html:root:root .ntgrp{flex:none}", L.PAGE)
-        self.assertIn("html:root:root .cxgrp{flex:1 1 280px;min-width:0}", L.PAGE)
-        self.assertIn("html:root:root .hdrctl{flex:1 1 100%;min-width:0;flex-wrap:wrap;justify-content:flex-end}", L.PAGE)
 
 
-class NotionReservePage(unittest.TestCase):
-    """Секция «Резерв» в окне Notion: две галочки (авто и аварийный), пояснение про переключатель, строка состояния и живой опрос."""
-
-    def test_two_checkboxes_and_status_line_in_popup(self):
-        page = L.PAGE
-        for need in ('id="ntResAuto"', 'id="ntResEmg"', 'id="ntResSt"'):
-            self.assertIn(need, page)
-        # ручной резерв — только переключателем в шапке: галочки «вручную» в окне больше нет
-        self.assertNotIn('id="ntResManual"', page)
-        # две оставшиеся галочки идут в одном теле запроса сохранения и не трогают ручной резерв
-        self.assertIn("reserve:{auto:$('#ntResAuto').checked,auto_emergency:$('#ntResEmg').checked}", page)
-
-    def test_emergency_checkbox_needs_auto(self):
-        # «сразу включать аварийный режим» не имеет смысла без «включать само»: недоступна и при отрисовке, и при клике
-        self.assertIn("e.disabled=!rv.auto", L.PAGE)
-        self.assertIn("$('#ntResEmg').disabled=!body.reserve.auto", L.PAGE)
-
-    def test_header_switch_is_the_reserve_and_icon_is_only_an_indicator(self):
-        page = L.PAGE
-        self.assertIn("b.classList.toggle('res',res)", page)
-        self.assertIn("$('#ntBtnName').textContent=tr('ntBtnRes')", page)
-        # иконка — не кнопка и ни на что не нажимается; переключатель — кнопка role=switch
-        self.assertIn('<span id="ntInd" class="hdrgear ntind" role="img"', page)
-        self.assertIn('id="ntBtn" class="hdrgear ntbtn" type="button" role="switch"', page)
-        self.assertNotIn("ntInd').addEventListener", page)
-        # точка индикатора: зелёная — подключён, красная — нужен вход
-        self.assertIn("$('#ntDot').className='cxdot '+(ok?'on':'err')", page)
-
-    def test_status_poll_is_light_and_stops_with_the_window(self):
-        page = L.PAGE
-        self.assertIn("fetch(API+'notion?token='+TOKEN)", page)  # а не весь снимок аккаунтов
-        self.assertIn("setInterval(ntRefresh,4000)", page)       # пока окно открыто
-        close = re.search(r"function ntClose\(\)\{(.*?)\n\}", page, re.S).group(1)
-        self.assertIn("clearInterval(ntPollT)", close)           # закрыли — опрос снят
-        self.assertIn("setInterval(ntRefresh,15000)", page)      # кнопка в шапке тоже живая
-
-    def test_idle_text_tells_when_auto_is_armed(self):
-        self.assertIn("tr(rv.auto?'ntResIdleAuto':'ntResIdle')", L.PAGE)
-
-    def test_reserve_texts_have_no_personal_names_or_internal_words(self):
-        blob = i18n_block("ru") + i18n_block("en")
-        for line in re.findall(r"^\s*(ntRes\w*:.*)$", blob, re.M):
-            self.assertNotRegex(line, r"(?i)\b(прод|дев|хаб|prod|dev|hub)\b", line)
 
 
-class ReserveProfileAndPausePage(unittest.TestCase):
-    """Профиль «Резерв» в меню Codex и баннер паузы резерва: оба языка, без ручного выбора, понятные подписи."""
-
-    KEYS = ("ntResSwNote", "ntResConfirm", "ntSwTipOff", "ntSwTipOn", "ntSwTipAuto", "cxpN_reserve", "cxpS_reserve", "cxpS_reserveOn", "ccpResTitle", "ccpResSub", "ccpHintResOff")
-
-    def test_new_texts_exist_in_both_languages_and_are_not_empty(self):
-        for lang in ("ru", "en"):
-            blk = i18n_block(lang)
-            for k in self.KEYS:
-                m = re.search(r"^\s*%s:'(.+)',?$" % k, blk, re.M)
-                self.assertTrue(m, "%s нет в %s" % (k, lang))
-                self.assertGreater(len(m.group(1)), 3 if k == "cxpN_reserve" else 8, k)  # имя профиля короткое
-
-    def test_new_texts_have_no_internal_words_or_personal_names(self):
-        blob = i18n_block("ru") + i18n_block("en")
-        for k in self.KEYS:
-            line = re.search(r"^\s*%s:.*$" % k, blob, re.M).group(0)
-            self.assertNotRegex(line, r"(?i)\b(прод|дев|хаб|prod|dev|hub)\b", line)
-            self.assertNotRegex(line, r"agent://[A-Za-z0-9]")
-
-    def test_reserve_card_is_last_and_cannot_be_picked_by_hand(self):
-        page = L.PAGE
-        card = page[page.index("const rsv=`"):][:900]
-        self.assertIn('data-id="reserve" data-auto="1"', card)
-        self.assertIn('aria-disabled="true"', card)
-        self.assertIn("${items}${rsv}", page)  # после обычных профилей, внутри того же radiogroup
-        # клик и клавиши по такой карточке только поясняют, профиль не применяют
-        self.assertEqual(page.count("if(r.dataset.auto){toast(tr('cxpS_reserve'));return;}"), 2)
-        for handler in ("const r=e.target.closest('.cxprof');if(r){if(r.dataset.auto)",):
-            self.assertIn(handler, page)
-
-    def test_reserve_card_active_state_comes_from_bridge_profile(self):
-        page = L.PAGE
-        self.assertRegex(page, r"const rs=[^;\n]*profile\s*===?\s*'reserve'")
-        self.assertIn("tr(rs?'cxpS_reserveOn':'cxpS_reserve')", page)
-        self.assertIn("rsv${rs?' act':''}", page)
-
-    def test_header_names_reserve_when_bridge_runs_on_it(self):
-        self.assertIn("b&&b.profile==='reserve'?tr('cxpN_reserve')", L.PAGE)
-
-    def test_reserve_is_not_a_builtin_card_the_meta_stays_two(self):
-        import cc_codex_bridge as br
-        self.assertNotIn("reserve", [p for p, _ in br.BUILTIN_PROFILES])
-        meta = L.PAGE[L.PAGE.index("const CXP_META="):][:600]
-        self.assertNotIn("reserve", meta)
-
-    def test_pause_banner_has_its_own_reserve_branch_with_emergency_exit(self):
-        page = L.PAGE
-        branch = re.search(r"if\(pause\.kind==='reserve'\)\{(.*?)\}", page, re.S)
-        self.assertTrue(branch)
-        for need in ("ccpResTitle", "ccpResSub", "act:'off'", "ccpHintResOff"):
-            self.assertIn(need, branch.group(1))
-        # без будильника: у паузы резерва нет «подъём в …», ветка стоит раньше обычных
-        self.assertLess(page.index("pause.kind==='reserve'"), page.index("tr('ccpBtnOff')", page.index("pause.kind==='reserve'")))
-
-    def test_switch_explains_what_reserve_mode_means(self):
-        self.assertIn("<div class=\"ntnote\">${tr('ntResSwNote')}</div>", L.PAGE)
-        self.assertIn(".ntnote{", L.PAGE)
-        # перед включением — окно подтверждения с пояснением, что значит резервный режим
-        for lang, need in (("ru", ("Точно перейти в резервный режим?", "Claude встанет на паузу", "Codex и Notion-агент", "Выключишь переключатель")),
-                           ("en", ("Really switch to reserve mode?", "Claude is paused", "Codex and the Notion agent", "Turn the switch off"))):
-            conf = re.search(r"^\s*ntResConfirm:'(.+)',?$", i18n_block(lang), re.M).group(1)
-            for part in need:
-                self.assertIn(part, conf, lang)
-
-    def test_reserve_card_styles_exist(self):
-        page = L.PAGE
-        for need in ('.cxprof[data-id="reserve"]{--pc:', ".cxprof.rsv:not(.act){opacity:.65;cursor:default}"):
-            self.assertIn(need, page)
 
 
 NT_JS = """
@@ -1050,13 +896,6 @@ class NotionInstantAndFrame(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         page = L.PAGE
-        i, j = page.index("let ntData=null,ntPrevRes"), page.index("// строка «что с резервом сейчас»")
-        path = os.path.join(TMP, "nt_apply.js")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(NT_JS % page[i:j])
-        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=30)
-        assert r.returncode == 0, r.stderr
-        cls.o = json.loads(r.stdout)
         i, j = page.index("let ccpData=null"), page.index("function ccpTick(){")
         path = os.path.join(TMP, "banner.js")
         with open(path, "w", encoding="utf-8") as f:
@@ -1066,138 +905,20 @@ class NotionInstantAndFrame(unittest.TestCase):
         cls.b = json.loads(r.stdout)
 
     # --- переключатель в шапке = ручной резерв; иконка N = только индикатор ---
-    def _run_toggle(self, reserve, confirm_answer, notion_after):
-        m = re.search(r"async function ntToggle\(\)\{.*?\n\}\n", L.PAGE, re.S)
-        self.assertTrue(m)
-        js = (
-            "let ntData={available:true,connected:true,reserve:%s};\n"
-            "const seen=[];const asked=[];const toasts=[];function ntAfter(){}function ntSync(){}const toast=t=>toasts.push(t);const tr=k=>k;\n"
-            "const confirm=t=>{asked.push(t);return %s;};\n"
-            "function ntApply(n){seen.push(JSON.parse(JSON.stringify(n)));ntData=n;}\n"
-            "const posted=[];const acctPost=async(u,b)=>{posted.push([u,b]);return {ok:true,notion:%s};};\n"
-            % (json.dumps(reserve), "true" if confirm_answer else "false", json.dumps(notion_after))
-            + m.group(0) +
-            "ntToggle().then(()=>console.log(JSON.stringify({seen,posted,asked,toasts})));\n"
-        )
-        path = os.path.join(TMP, "nt_toggle.js")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(js)
-        r = subprocess.run(["node", path], capture_output=True, text=True, timeout=30)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        return json.loads(r.stdout)
 
-    def test_turning_reserve_on_asks_first_and_posts_only_manual(self):
-        r0 = {"active": False, "ready": True, "manual": False, "auto": True, "claude": "up"}
-        after = {"available": True, "connected": True, "reserve": dict(r0, active=True, manual=True, why="manual")}
-        out = self._run_toggle(r0, True, after)
-        self.assertEqual(out["asked"], ["ntResConfirm"])                       # сначала окно с пояснением
-        self.assertEqual(out["posted"], [["notion/save", {"reserve": {"manual": True}}]])  # на сервер уходит только «вручную»
-        first = out["seen"][0]                                                # показ ДО ответа сервера (мгновенный отклик)
-        self.assertEqual((first["reserve"]["manual"], first["reserve"]["active"], first["reserve"]["why"]), (True, True, "manual"))
 
-    def test_declined_confirm_changes_nothing(self):
-        r0 = {"active": False, "ready": True, "manual": False, "claude": "up"}
-        out = self._run_toggle(r0, False, {})
-        self.assertEqual(out["asked"], ["ntResConfirm"])
-        self.assertEqual((out["seen"], out["posted"]), ([], []))              # ни показа, ни запроса: Claude не остановлен
 
-    def test_not_ready_reserve_does_not_ask_and_explains(self):
-        r0 = {"active": False, "ready": False, "manual": False, "claude": "up"}
-        out = self._run_toggle(r0, True, {})
-        self.assertEqual((out["asked"], out["seen"], out["posted"]), ([], [], []))
-        self.assertEqual(out["toasts"], ["ntResNotReady"])
 
-    def test_turning_off_needs_no_confirmation_and_clears_manual_at_once_keeping_auto(self):
-        r0 = {"active": True, "ready": True, "manual": True, "auto": True, "why": "manual", "claude": "up"}
-        after = {"available": True, "connected": True, "reserve": dict(r0, active=False, manual=False, why="")}
-        out = self._run_toggle(r0, False, after)                              # confirm даже «нет» не мешает: выключение подтверждения не требует
-        self.assertEqual(out["asked"], [])
-        first = out["seen"][0]
-        self.assertEqual((first["reserve"]["manual"], first["reserve"]["active"], first["reserve"]["auto"]), (False, False, True))
-        self.assertEqual(out["posted"], [["notion/save", {"reserve": {"manual": False}}]])
 
-    def test_turning_off_manual_while_limits_are_over_keeps_reserve_active_by_auto(self):
-        r0 = {"active": True, "ready": True, "manual": True, "auto": True, "why": "manual", "claude": "down"}
-        out = self._run_toggle(r0, True, {"available": True, "connected": True, "reserve": dict(r0, manual=False, why="claude_down")})
-        first = out["seen"][0]["reserve"]
-        self.assertEqual((first["manual"], first["active"], first["why"]), (False, True, "claude_down"))
 
     # --- рамка блока ---
-    def test_group_classes_follow_state(self):
-        o = self.o
-        self.assertEqual(o["idle"]["g"], "")              # подключён, резерва нет: рамки нет совсем
-        self.assertEqual(o["bad"]["g"], "bad")            # нет связи: красная
-        self.assertEqual(o["res"]["g"], "res")            # идёт резерв: зелёная
-        self.assertEqual(o["res"]["b"], "res")            # подпись переключателя тоже зелёная
-        self.assertEqual(o["manual"]["g"], "res")
 
-    def test_indicator_dot_shows_only_connection(self):
-        o = self.o
-        self.assertEqual(o["idle"]["dot"], "cxdot on")
-        self.assertEqual(o["bad"]["dot"], "cxdot err")
-        self.assertEqual(o["manual"]["dot"], "cxdot on")  # резерв точку не трогает: она про подключение
 
-    def test_switch_state_follows_manual_flag_and_ready(self):
-        o = self.o
-        self.assertEqual((o["idle"]["checked"], o["idle"]["disabled"]), ("false", "false"))
-        self.assertEqual((o["manual"]["checked"], o["manual"]["disabled"]), ("true", "false"))
-        self.assertEqual((o["res"]["checked"], o["res"]["disabled"]), ("false", "false"))   # включился сам — переключатель ручной, он «выкл»
-        self.assertEqual((o["notReady"]["checked"], o["notReady"]["disabled"]), ("false", "true"))
-        self.assertIn("dis", o["notReady"]["b"])
-        self.assertEqual(o["notReady"]["tip"], "ntResNotReady")
-        self.assertEqual((o["manualLost"]["checked"], o["manualLost"]["disabled"]), ("true", "false"))  # агент пропал, а галочка осталась: выключить можно
-        self.assertEqual(o["idle"]["tip"], "ntSwTipOff")
-        self.assertEqual(o["manual"]["tip"], "ntSwTipOn")
-        self.assertEqual(o["res"]["tip"], "ntSwTipAuto")
 
-    def test_frame_is_drawn_on_both_buttons_of_the_group_and_beats_skins(self):
-        css = L.PAGE
-        rules = re.findall(r"^(html:root \.ntgrp[^{]*)\{([^}]*)\}$", css, re.M)
-        sel = {a: b for a, b in rules}
-        # без резерва рамка есть — обычная серая рамка скина, как у группы Codex; своего «прозрачного» правила у блока нет
-        self.assertNotIn("html:root .ntgrp .hdrgear", sel)
-        self.assertNotIn("border-color:transparent", "".join(sel.values()))
-        # обе кнопки группы (переключатель и ⚙) красятся одним правилом по классу группы:
-        # зелёная рамка — ТОЛЬКО при включённом резерве; «просто включён» цвета не меняет; нет связи — красная; жёлтого нет совсем
-        self.assertIn("rgba(52,192,124", sel["html:root .ntgrp.res .hdrgear"])
-        self.assertIn("var(--bad)", sel["html:root .ntgrp.bad .hdrgear"])
-        self.assertNotIn("html:root .ntgrp.enab .hdrgear", sel)
-        self.assertNotIn("--warn", "".join(sel.values()))
-        self.assertIn(".ntbtn.res{color:var(--ok)}", css)
-        self.assertNotIn(".ntbtn.res{color:var(--warn)}", css)
-        self.assertNotIn(".ntbtn.res .ntsw::after{background:var(--warn)}", css)
-        # правила стоят позже всех скинов и в ТОЙ ЖЕ специфичности, что и их :hover (0,3,1) — выигрывают порядком
-        # (правило «.hdrgear.ntbtn{color}» у blocks красит только текст, рамку и тень не трогает — в счёт не идёт)
-        # старые рамки по кнопке (они красили только переключатель и не доходили до ⚙) убраны
-        for old in ('.ntbtn[aria-checked="true"]{border-color', ".ntbtn.bad{border-color", ".ntbtn.res{border-color"):
-            self.assertNotIn(old, css)
-        self.assertNotIn(".ntgbtn[aria-expanded=\"true\"]{border-color", css)  # открытое ⚙ рамку группы не перекрашивает
 
     # --- тосты о смене режима ---
-    def test_toast_only_after_a_human_action(self):
-        o = self.o
-        self.assertEqual(o["toastsWithoutClick"], 0)
-        self.assertEqual(o["toastOff"], ["ntResOffToast(false)"])
-        self.assertEqual(o["toastOn"], ["ntResOnToast"])
-        self.assertEqual(o["toastDown"], ["ntResOffToast(true)"])  # лимиты ещё кончились: честный текст
-        self.assertEqual(o["noRepeat"], 3)
 
-    def test_every_change_syncs_banner_right_away_and_again_later(self):
-        o = self.o
-        self.assertEqual(o["syncNow"], ["load", "cxb!"])       # баннер паузы и имя профиля в шапке Codex — сразу, без ожидания опросов
-        self.assertEqual(o["timerMs"], [2500])                 # и ровно один догоняющий вызов
-        self.assertEqual(o["syncLater"], ["refresh", "load", "cxb!"])  # блок Notion, баннер и шапка Codex — после долгих шагов (пауза, профиль, перезапуск консоли)
-        page = L.PAGE
-        for fn in ("ntToggle", "ntResSave", "ntSave"):
-            body = re.search(r"(?:async )?function %s\([^)]*\)\{(.*?)\n\}\n" % fn, page, re.S).group(1)
-            self.assertIn("ntSync()", body, fn)
-            self.assertIn("ntAfter()", body, fn)
 
-    def test_switching_shows_result_on_screen_without_waiting_for_server(self):
-        body = re.search(r"async function ntToggle\(\)\{(.*?)\n\}\n", L.PAGE, re.S).group(1)
-        self.assertIn("ntApply(Object.assign({},prev,{reserve:Object.assign({},rv,{manual:next,active:act", body)
-        self.assertLess(body.index("confirm(tr('ntResConfirm'))"), body.index("ntApply("))  # сначала вопрос, потом показ
-        self.assertIn("ntActAt=0;ntApply(prev)", body)  # неудачное сохранение откатывает показ без тоста о смене режима
 
     # --- баннер паузы резерва ---
     def test_banner_before_first_refusal_explains_without_a_timer(self):
@@ -1242,7 +963,7 @@ class NotionInstantAndFrame(unittest.TestCase):
     def test_new_texts_exist_in_both_languages(self):
         for lang in ("ru", "en"):
             blk = i18n_block(lang)
-            for k in ("ccpResGrace", "ccpResGraceNow", "ccpResGraceL", "ccpResLocked", "ntResOnToast", "ntResOffToast"):
+            for k in ("ccpResGrace", "ccpResGraceNow", "ccpResGraceL", "ccpResLocked"):
                 m = re.search(r"^\s*%s:(.+),?$" % k, blk, re.M)
                 self.assertTrue(m, "%s нет в %s" % (k, lang))
                 self.assertGreater(len(m.group(1)), 12, k)
@@ -1264,13 +985,6 @@ class NotionRoute(unittest.TestCase):
         with open(cls.creds, "w") as f:
             json.dump({"mcpOAuth": {"notion|h": {"serverName": "notion", "accessToken": "SECRET-N", "refreshToken": "SECRET-R"}}}, f)
         cls.keep = (L.cc_notion.CREDS, L.cc_notion.CONFIG)
-        # резерв при сохранении сразу «тикает»: настоящее сообщение в Telegram и настоящий аварийный режим тесту ни к чему
-        cls.keep2 = (L.cc_notion.NOTIFY, L.cc_notion.EMERGENCY, L.cc_notion.LEVEL, L.cc_notion.BASE)
-        cls.sent = []
-        L.cc_notion.NOTIFY = cls.sent.append
-        L.cc_notion.EMERGENCY = None
-        L.cc_notion.LEVEL = lambda: {"ok": True, "level": "none", "pause": {}}
-        L.cc_notion.BASE = cls.dir
         L.cc_notion.CREDS = lambda: cls.creds
         cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), L.H)
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
@@ -1281,7 +995,6 @@ class NotionRoute(unittest.TestCase):
         cls.srv.shutdown()
         cls.srv.server_close()
         L.cc_notion.CREDS, L.cc_notion.CONFIG = cls.keep
-        L.cc_notion.NOTIFY, L.cc_notion.EMERGENCY, L.cc_notion.LEVEL, L.cc_notion.BASE = cls.keep2
 
     def setUp(self):
         c = L.cfg()
@@ -1300,23 +1013,6 @@ class NotionRoute(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
 
-    def test_every_save_runs_the_reserve_tick_right_away(self):
-        """Тумблер, имя, ссылка и галочки — любое сохранение сразу запускает такт резерва (а не ждёт опроса раз в 30 с)."""
-        ticks = []
-        keep = L.cc_notion.tick
-        L.cc_notion.tick = lambda: ticks.append(1)
-        try:
-            for body in ({"enabled": False}, {"name": "x"}, {"reserve": {"manual": False}}, {"clear_url": True}):
-                before = len(ticks)
-                code, _ = self.post(body)
-                self.assertEqual(code, 200, body)
-                self.assertEqual(len(ticks), before + 1, body)
-            before = len(ticks)
-            code, _ = self.post({"name": "y" * 500})  # непринятое поле — сохранения нет, такт не нужен
-            self.assertEqual(code, 400)
-            self.assertEqual(len(ticks), before)
-        finally:
-            L.cc_notion.tick = keep
 
     def test_save_returns_public_without_secrets_and_without_enabled(self):
         code, out = self.post({"name": "Helper", "url": "agent://s/a"})
@@ -1359,29 +1055,7 @@ class NotionRoute(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}")
 
-    def test_reserve_flags_saved_and_returned(self):
-        self.post({"name": "Helper", "url": "agent://s/a"})
-        code, out = self.post({"reserve": {"manual": True, "auto": True, "auto_emergency": False}})
-        self.assertEqual(code, 200)
-        self.assertEqual(L.cfg()["notion_agent"]["reserve"], {"manual": True, "auto": True, "auto_emergency": False})
-        rv = out["notion"]["reserve"]
-        self.assertTrue(rv["manual"] and rv["auto"])
-        self.assertFalse(rv["auto_emergency"])
-        self.assertNotIn("agent://", json.dumps(out))
 
-    def test_reserve_switch_roundtrip_manual_on_then_off(self):
-        # переключатель резерва в шапке: включил — резерв сразу активен и Claude на паузе; выключил — сразу снят, авто-галочка цела
-        self.post({"name": "Helper", "url": "agent://s/a"})
-        self.post({"reserve": {"auto": True, "auto_emergency": False}})
-        code, out = self.post({"reserve": {"manual": True}})
-        self.assertEqual(code, 200)
-        self.assertTrue(out["notion"]["reserve"]["active"])
-        self.assertTrue(out["notion"]["reserve"]["manual"])
-        code, out = self.post({"reserve": {"manual": False}})
-        self.assertEqual(code, 200)
-        self.assertEqual(L.cfg()["notion_agent"]["reserve"], {"manual": False, "auto": True, "auto_emergency": False})
-        self.assertFalse(out["notion"]["reserve"]["active"])        # Claude работает
-        self.assertTrue(out["notion"]["reserve"]["auto"])
 
     def test_old_enabled_key_in_config_is_dropped_on_next_save(self):
         c = L.cfg()
@@ -1391,31 +1065,30 @@ class NotionRoute(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertNotIn("enabled", L.cfg()["notion_agent"])
 
-    def test_manual_reserve_is_active_in_the_same_answer(self):
-        # быстрый случай (без аварийного режима): ответ уже с новым состоянием, страница не ждёт опроса
-        self.post({"name": "Helper", "url": "agent://s/a"})
-        code, out = self.post({"reserve": {"manual": True}})
-        self.assertEqual(code, 200)
-        self.assertTrue(out["notion"]["reserve"]["active"])
-        self.assertEqual(out["notion"]["role"], "reserve")
-        code, out = self.post({"reserve": {"manual": False}})
-        self.assertFalse(out["notion"]["reserve"]["active"])
 
-    def test_bad_reserve_is_400_and_config_untouched(self):
-        self.post({"name": "Helper", "url": "agent://s/a"})
-        for bad in ({"manual": "yes"}, {"zzz": True}, "on", [True]):
-            code, out = self.post({"reserve": bad})
-            self.assertEqual((code, out["field"]), (400, "reserve"), bad)
-        self.assertNotIn("reserve", L.cfg()["notion_agent"])
 
     def test_light_get_returns_public_state_without_secrets(self):
         self.post({"name": "Helper", "url": "agent://s/a"})
         code, out = self.get()
         self.assertEqual(code, 200)
-        self.assertIn("reserve", out)
+        self.assertNotIn("reserve", out)  # [notion-ai] резерва больше нет
         self.assertEqual(out["agent"], {"name": "Helper", "set": True})
         self.assertNotIn("agent://", json.dumps(out))
         self.assertNotIn("SECRET", json.dumps(out))
+
+    def test_reserve_is_gone_key_rejected_and_old_flags_dropped(self):
+        # [notion-ai] резерв убран: ключ reserve не принимается, старые галочки из config.json уходят при сохранении
+        c = L.cfg()
+        c["notion_agent"] = {"name": "Helper", "url": "agent://s/a", "reserve": {"manual": True, "auto": True}}
+        L.jsave(L.CONFIG, c)
+        code, out = self.post({"reserve": {"manual": True}})
+        self.assertFalse(out.get("ok"))  # 200 «Резерв убран из панели.» (cc_fleet) или 400 field=reserve (cc_limits)
+        self.assertIn("reserve", L.cfg()["notion_agent"])  # отказ ничего не пишет
+        code, out = self.post({"name": "Helper2"})
+        self.assertEqual(code, 200)
+        self.assertNotIn("reserve", L.cfg()["notion_agent"])
+        self.assertNotIn("reserve", out["notion"])
+        self.assertEqual(out["notion"]["role"], "helper")
 
     def test_light_get_needs_auth(self):
         self.assertEqual(self.get(auth=False)[0], 403)

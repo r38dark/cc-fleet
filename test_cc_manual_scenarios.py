@@ -23,9 +23,9 @@ class ManualPolicy(unittest.TestCase):
 
     def test_full_reserve_and_explicit_orchestrator_pair_are_accepted(self):
         valid=[]
-        for a,b in itertools.product((None,'full','reserve','orchestrator','executor'),repeat=2):
+        for a,b in itertools.product((None,'full','reserve','orchestrator','executor'),repeat=2):  # [notion-ai] reserve больше не принимается
             if validate_choices(dict(claude=a,codex=b))[0]:valid.append((a,b))
-        self.assertCountEqual(valid,[(None,'full'),('full',None),(None,'reserve'),('reserve',None),('orchestrator','executor'),('executor','orchestrator')])
+        self.assertCountEqual(valid,[(None,'full'),('full',None),('orchestrator','executor'),('executor','orchestrator')])
 
     def test_invalid_selections_and_revisions_do_not_modify_state(self):
         state=ProfileState();before=state.export()
@@ -69,20 +69,6 @@ class ManualPolicy(unittest.TestCase):
             self.assertEqual(native.plan(state,follower)['task_rights'],'dev')
             self.assertEqual(ProfileState.from_data(state.export()).manual_choices,choices)
 
-    def test_manual_and_automatic_reserve_restore_the_entire_pair(self):
-        for automatic in (False,True):
-            state=legacy_pair_state('claude');pair=dict(claude='orchestrator',codex='executor')
-            if automatic:
-                state.configure('codex',True,confirm='подтверждаю')
-                state.availability['claude']=False;state.reconcile_availability()
-            else:state.apply_scenario(dict(claude=None,codex='reserve'),'подтверждаю',state.revision)
-            self.assertEqual(state.public()['manual_scenario']['choices'],dict(claude=None,codex='reserve'))
-            state=ProfileState.from_data(state.export())
-            if automatic:
-                state.availability['claude']=True;state.reconcile_availability()
-            else:state.stop_service('codex',state.revision)
-            self.assertEqual(state.manual_choices,pair);self.assertEqual(state.leader,'claude')
-            self.assertEqual(state.selected['codex'],'executor')
 
     def test_old_one_engine_route_cannot_implicitly_assign_executor(self):
         state=ProfileState();before=state.export()

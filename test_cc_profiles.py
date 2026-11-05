@@ -55,26 +55,13 @@ class ProfileTests(unittest.TestCase):
         before=self.p.state.export();self.native.fail=True;r=self.action('claude','orchestrator');self.assertFalse(r['ok']);self.assertEqual(self.p.state.export(),before);self.assertEqual(self.native.model['codex'],'gpt-test');self.assertTrue(self.native.rollbacks);self.assertFalse(self.p.pending.exists());self.assertEqual(json.loads(self.p.path.read_text())['core'],before)
     def test_interrupted_transaction_recovers_before_allowing_input(self):
         before=self.p.state.export();atomic(self.p.pending,dict(before=before,after=before,managed=self.p.managed,changed=['codex'],captured=self.native.capture(['codex'])));self.assertFalse(self.p.input_allowed('codex'));self.p.recover();self.assertTrue(self.p.input_allowed('codex'));self.assertTrue(self.native.rollbacks)
-    def test_reserve_stops_opposite_input_and_restores_previous_pair(self):
-        self.action('codex','orchestrator');self.assertTrue(self.action('claude','reserve','подтверждаю')['ok']);self.assertFalse(self.p.input_allowed('codex'));self.assertTrue(self.p.input_allowed('claude'));r=self.p.action('claude','stop',dict(revision=self.p.state.revision));self.assertTrue(r['ok']);self.assertEqual(self.p.state.leader,'codex');self.assertTrue(self.p.input_allowed('codex'))
     def test_stale_request_has_no_console_effect(self):
         rev=self.p.state.revision;self.action('claude','orchestrator');n=len(self.native.applied);r=self.p.action('codex','apply',dict(id='orchestrator',revision=rev));self.assertTrue(r['conflict']);self.assertEqual(n,len(self.native.applied))
-    def test_manual_reserve_has_no_expiry_or_interrupt(self):
-        self.action('claude','orchestrator');self.action('codex','reserve','подтверждаю');n=len(self.native.applied)
-        self.native.busy_value=True;interrupted=[];self.native.interrupt=lambda e:interrupted.append(e)
-        self.now+=365*86400;self.p.tick();self.assertEqual(self.p.state.service['kind'],'reserve');self.assertEqual(interrupted,[]);self.assertEqual(len(self.native.applied),n);self.assertEqual(self.p.state.until,0)
     def test_removed_profiles_have_no_runtime_side_effects(self):
         for e in ['claude','codex']:
             for pid in [e,'emergency','custom-old']:
                 n=len(self.native.applied);self.assertFalse(self.action(e,pid,'аварийный')['ok']);self.assertEqual(len(self.native.applied),n)
 
-    def test_unknown_limits_and_hold_do_not_trigger_reserve(self):
-        self.p.action('claude','config',dict(enabled=True,emergency=False,confirm='подтверждаю'));self.native.statuses=dict(claude='unknown',codex='down');self.now+=121;self.p.tick();self.now+=121;self.p.tick();self.assertIsNone(self.p.state.service)
-        self.native.statuses['claude']='up';self.p.tick();self.now+=119;self.p.tick();self.assertIsNone(self.p.state.service);self.now+=2;self.p.tick();self.assertEqual(self.p.state.service['engine'],'claude')
-    def test_explicit_auto_reserve_can_start_from_full_without_timer(self):
-        self.p.action('codex','config',dict(enabled=True,emergency=False,confirm='подтверждаю'));self.native.statuses=dict(claude='down',codex='up');self.p.tick();self.now+=121;self.p.tick();self.assertEqual(self.p.state.service['kind'],'reserve');self.assertEqual(self.p.state.until,0)
-    def test_manually_stopped_auto_does_not_restart_until_recovery(self):
-        self.p.action('claude','config',dict(enabled=True,emergency=False,confirm='подтверждаю'));self.native.statuses['codex']='down';self.p.tick();self.now+=121;self.p.tick();self.assertIsNotNone(self.p.state.service);self.p.action('claude','stop',{});self.now+=200;self.p.tick();self.assertIsNone(self.p.state.service)
 
 class GateTests(unittest.TestCase):
     def setUp(self):self.policy=dict(cwd='/safe/work',access='write',write_roots=['/safe/work'],read_roots=['/safe/work','/project'])

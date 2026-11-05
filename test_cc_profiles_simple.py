@@ -20,8 +20,8 @@ class SimpleProfiles(unittest.TestCase):
     def test_exact_symmetric_catalog(self):
         for engine in ['claude','codex']:
             profiles=self.state.definitions(engine)
-            self.assertEqual([p['id'] for p in profiles],[engine+'_solo_full','orchestrator','reserve'])
-            self.assertEqual([p['kind'] for p in profiles],['full','orchestrator','reserve'])
+            self.assertEqual([p['id'] for p in profiles],[engine+'_solo_full','orchestrator'])  # [notion-ai] резерва больше нет
+            self.assertEqual([p['kind'] for p in profiles],['full','orchestrator'])
             self.assertEqual(profiles[0]['access'],'full');self.assertEqual(profiles[1]['access'],'read')
             self.assertEqual(profiles[1]['task_rights'],'dev')
             self.assertTrue(profiles[1]['title'].startswith('Claude → Codex' if engine=='claude' else 'Codex → Claude'))
@@ -41,22 +41,8 @@ class SimpleProfiles(unittest.TestCase):
                 before=self.state.public();self.assertFalse(self.state.apply(engine,profile,'аварийный')['ok']);self.assertEqual(self.state.public(),before)
             self.assertFalse(self.state.configure(engine,True,True,'аварийный')['ok'])
 
-    def test_reserve_never_expires_even_with_old_deadline(self):
-        for engine in ['claude','codex']:
-            self.state.apply(engine,'reserve','подтверждаю');self.state.until=1001;self.now+=10**8
-            view=self.state.public();self.assertEqual(view['service']['kind'],'reserve');self.assertEqual(view['engines'][engine]['until'],0)
-            self.state.stop_service(engine)
 
-    def test_auto_reserve_restores_on_recovery_not_elapsed_time(self):
-        self.state.configure('codex',True,False,'подтверждаю');self.state.set_availability('claude',False)
-        self.assertEqual(self.state.public()['service']['engine'],'codex');self.now+=10**8;self.assertIsNotNone(self.state.public()['service'])
-        self.state.set_availability('claude',True);self.assertIsNone(self.state.public()['service'])
 
-    def test_only_one_leading_direction_and_reserve_restores_it(self):
-        for engine in ['claude','codex']:
-            self.state.apply(engine,'orchestrator');self.assertEqual(self.state.public()['leader'],engine)
-        self.state.apply('claude','reserve','подтверждаю');self.assertEqual(self.state.public()['engines']['codex']['role'],'paused')
-        self.state.stop_service('claude');self.assertEqual(self.state.public()['leader'],'codex')
 
     def test_legacy_stored_state_is_normalized_without_runtime_work(self):
         old=ProfileState().export();old['selected']=dict(claude='claude',codex='old-custom');old['last_solo']=dict(old['selected']);old['until']=1

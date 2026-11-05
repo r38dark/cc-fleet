@@ -52,8 +52,8 @@ EXEC_PROMPT = {
 }
 
 
-AG_TEXT = dict(run='работает', lead='ведущий', exec='исполнитель', reserve='резерв', pause='пауза', limit='лимит', off='выкл')
-ROLE_STATE = dict(solo='run', leader='lead', executor='exec', reserve='reserve', paused='pause')
+AG_TEXT = dict(run='работает', lead='ведущий', exec='исполнитель', pause='пауза', limit='лимит', off='выкл')
+ROLE_STATE = dict(solo='run', leader='lead', executor='exec', paused='pause')
 FOLLOWERS = ('codex',)   # исполнители Notion AI; «Notion AI → Claude» убран по просьбе Дениса
 
 
@@ -827,7 +827,7 @@ PICKER_JS = r'''
    return html+'</section>';
   }
   paintMirrorPalette=function(){
-   if(!mirrorState)return;if(monoView==='reserve'){menu.classList.remove('nai-cols3');manualPaletteBefore();return}manualSync();mirrorTheme();monoParkAgent();menu.classList.add('nai-cols3');
+   if(!mirrorState)return;manualSync();mirrorTheme();menu.classList.add('nai-cols3');
    const scroll=profileBody.scrollTop,focused=document.activeElement,focusedCard=focused?.closest('[data-manual-role]'),focusEngine=focusedCard?.dataset.engine,focusRole=focusedCard?.dataset.manualRole,focusInfo=focused?.dataset.mirrorAction==='info',focusAction=focused?.dataset.manualAction;
    const n=nai(),status=manualStatus(),recovering=!!mirrorState.recovery?.blocked,dirty=manualDirty||recovering,signature=JSON.stringify([mirrorState.revision,mirrorState.updating,recovering,manualDraft,mirrorInfo.claude.size,mirrorInfo.codex.size,mirrorInfo.notion.size,mirrorBusy,n.active,n.kind,n.follower,n.ready,n.step&&[n.step.id,n.step.status],mirrorState.engines.claude.label,mirrorState.engines.codex.label]);
    if(recovering)status.text='Автоматические перезапуски остановлены. Выбери профиль и повтори восстановление подключения.';
@@ -925,7 +925,6 @@ UI = r'''
 .nai-seg.on .nai-nm{color:rgb(var(--c))}
 .nai-seg.on .nai-dot{background:rgb(var(--c));border-color:rgb(var(--c));box-shadow:0 0 0 3px rgba(var(--c),.2)}
 .nai-seg.on .nai-st{color:rgba(var(--c),.85)}
-.nai-seg.s-reserve .nai-dot{background:linear-gradient(90deg,rgb(var(--c)) 50%,transparent 50%)}
 .nai-seg.s-limit .nai-st{color:#ef8f8f}
 .nai-seg.s-limit .nai-dot{border-style:dashed}
 .nai-seg:hover{background:rgba(var(--c),.09)}

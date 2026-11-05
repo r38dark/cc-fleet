@@ -34,8 +34,7 @@ class NativeProfiles:
             state.selected['codex'] = 'orchestrator'
             state.leader = 'codex'
         # Только принимаем существующую сессию; права применяются по явному выбору.
-        legacy = self.notion.reserve_conf(self.notion.CONFIG() or {})
-        state.auto['codex'] = dict(enabled=legacy['auto'] and not legacy['auto_emergency'], emergency=False)
+        # [notion-ai] автоматического резерва нет: старые галочки из config.json не читаем
         return state
 
     def busy(self):
@@ -43,9 +42,6 @@ class NativeProfiles:
         if self.ns.get('_busy_tick'):self.ns['_busy_tick'](self.ns['screen_hardcopy']())
         bridge_busy = self.bridge.BRIDGE.busy() and self.manager.input_allowed('codex')
         return bool(self.codex.busy() or bridge_busy or self.ns['session_busy']())
-
-    def reserve_ready(self):
-        return self.notion._ready(self.notion.CONFIG() or {})
 
     def plan(self, state, e):
         data=state.public()['engines'][e];profile=next(p for p in state.definitions(e) if p['id']==data['base_selected'])
@@ -64,9 +60,6 @@ class NativeProfiles:
             out=self.manager.exchange(e)/'outbox/task.md'
             return prefix+f'Ты ведущий, {op} исполнитель. Проект самостоятельно не изменяй. Один проверяемый шаг запиши в {out}; первая строка права: чтение / дев / полные. Шаг уходит исполнителю только после подтверждения человека в балансере. Не вызывай второго исполнителя самостоятельно и не создавай встречные связки. После получения результата проверь его относительно цели и подготовь следующий шаг либо сообщи итог.'
         if data['role']=='executor':return prefix+f'Ты исполнитель {op}. Выполняй только подтверждённый шаг и его ограничения. Не делегируй задачу ведущему или другим агентам. Верни проверенный результат и проверки.'
-        if data['role']=='reserve':
-            cause=op+(' отключён человеком вручную' if state.service.get('source')=='manual' else ' недоступен по подтверждённым данным лимитов')
-            return prefix+self.notion.reserve_note(self.notion.CONFIG() or {},cause)
         return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. Другой исполнитель и Notion-агент не используются. Согласование изменений с человеком сохраняется; секреты не выводи.'
 
     def claude_policy(self, state):
@@ -99,7 +92,6 @@ class NativeProfiles:
             for directory in (out.parent.parent,out.parent,out):
                 if directory.is_symlink():raise ProfileError('exchange_symlink_rejected')
             if e=='codex':self.ns['cc_codex'].own(str(out))
-        if after.service and after.service['kind']=='reserve' and not self.reserve_ready():raise ProfileError('reserve_not_ready')
         if after.service and after.service.get('access')=='full' and after.service!=before.service:
             engine=after.service['engine']
             actual_full=(captured.get('codex_settings',{}).get('access')=='full' and captured.get('codex_sandbox')=='danger-full-access' if engine=='codex'
@@ -357,7 +349,7 @@ class Profiles:
             elif action=='delete':result=candidate.delete(e,body.get('id'),body.get('revision'))
             else:return dict(ok=False,message='Неизвестное действие.')
             if not result.get('ok'):return result
-            message='Настройки резерва сохранены.' if action=='config' else 'Предыдущий сценарий восстановлен.' if action=='stop' else 'Профиль применён к консоли.'
+            message='Предыдущий сценарий восстановлен.' if action=='stop' else 'Профиль применён к консоли.'
             original=self.state
             result=self.transition(candidate,message,e if action=='apply' and not self.managed[e] else None,recover_blocked=True)
             if result.get('ok') and action=='delete' and e=='codex':
@@ -436,8 +428,7 @@ def bind(ns, inputs):
     original_mcp=console.MCP
     def codex_mcp():
         if not profiles.managed['codex']:return original_mcp()
-        args=native.original_notion_args() if profiles.state.service and profiles.state.service['engine']=='codex' and profiles.state.service['kind']=='reserve' else []
-        return args+['-c','sandbox_workspace_write.writable_roots='+json.dumps([str(profiles.exchange('codex')/'outbox')]),'-c','developer_instructions='+json.dumps(native.prompt(profiles.state,'codex'),ensure_ascii=False)]
+        return ['-c','sandbox_workspace_write.writable_roots='+json.dumps([str(profiles.exchange('codex')/'outbox')]),'-c','developer_instructions='+json.dumps(native.prompt(profiles.state,'codex'),ensure_ascii=False)]
     console.MCP=codex_mcp;bridge.MCP_ARGS=codex_mcp
     ns['FLEET_ROTATION'].suspended=lambda:not profiles.input_allowed('codex')
     console.PRESERVE_THREAD=lambda:profiles.managed['codex']
@@ -452,8 +443,6 @@ def bind(ns, inputs):
     def notion_public(lv=None):
         data=native.original_notion_public(lv)
         if not data.get('available'):data=dict(available=True,connected=False,agent=dict(name='',set=False))
-        state=profiles.state;active=bool(state.service and state.service['engine']=='codex' and state.service['kind']=='reserve');auto=state.auto['codex']
-        data['reserve']=dict(ready=native.reserve_ready(),active=active,manual=active and state.service.get('source')=='manual',auto=auto['enabled'],auto_emergency=auto['emergency'],claude=profiles.avail['claude']['status'],why=state.service.get('source') if active else '')
         return data
     notion.public=notion_public;notion.tick=profiles.tick;notion.start=profiles.start
     # Native emergency changes are coordinated synchronously by a profile transaction.
