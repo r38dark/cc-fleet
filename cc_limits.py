@@ -2301,8 +2301,9 @@ def _nowhere_text(accs, act, act_free=False):
         head = f"⛔ Claude: {act} слетел в Free, остальные недоступны — переключаться некуда, жду, пока освободится другой."
     elif lvl == "week" and not override:
         head = (f"⏸ Claude: неделя {act} — {w}% (потолок {cap:.0f}%), переключаться некуда — Claude встаёт на паузу. "
-                "Поднимется сам, когда освободится другой аккаунт или сбросится неделя; продолжить сразу — "
-                "«Отключить паузу» на панели.")
+                "Поднимется сам, когда освободится другой аккаунт или сбросится неделя"
+                # [notion-ai] на 100% недели настоящий лимит исчерпан — отключать паузу бесполезно
+                + ("." if w >= 100 else "; продолжить сразу — «Отключить паузу» на панели."))
     elif lvl in WEEK_LEVELS:
         head = (f"⚠️ Claude: неделя {act} — {w}%, переключаться некуда. Балансер не остановит заполнение "
                 "до 100% — работаешь на свой страх и риск.")
@@ -4613,6 +4614,7 @@ const I18N={
   ccpBtnOn:'Включить паузу',
   ccpHintOff:thr=>`Claude продолжит сразу, сверх порога ${thr}%`,
   ccpHintHardOff:'следующее сообщение не встанет в очередь',
+  ccpHintLimitOut:'настоящий лимит аккаунта исчерпан — отключать паузу бесполезно, Claude продолжит сам после сброса',
   ccpHintOnHard:'окно забито — пауза встанет сразу',
   ccpHintOnFree:'окно уже свободно — пауза просто снова начнёт работать',
   ccpErr:e=>'не получилось: '+e,
@@ -5126,6 +5128,7 @@ const I18N={
   ccpBtnOn:'Enable pause',
   ccpHintOff:thr=>`Claude continues right away, past the ${thr}% threshold`,
   ccpHintHardOff:'the next message will not be queued',
+  ccpHintLimitOut:'the real account limit is used up — disabling the pause would not help; Claude resumes by itself after the reset',
   ccpHintOnHard:'window is full — the pause starts right away',
   ccpHintOnFree:'window is already free — the pause simply works again',
   ccpErr:e=>'failed: '+e,
@@ -7233,6 +7236,9 @@ function ccpRender(){
   // без таймера: сброс окна активного тут ни при чём — балансер уходит на свободный сразу
   sub=tr('ccpGateSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),d.autoswitch!==false,ses);
  }
+ // [notion-ai] у активного исчерпан настоящий лимит (сессия или неделя 100%) — «Отключить паузу» ничего не даст: кнопку прячем
+ const aa=(d.accounts||{})[d.active]||{};
+ if(action&&action.act==='off'&&(aa.pct>=100||aa.wpct>=100))action={act:'',label:'',hint:tr('ccpHintLimitOut')};
  const chips=Object.entries(d.accounts||{}).map(([n,a])=>
   '<span class="ccp-chip'+(a.usable===false?' hot':'')+'">'+ccpEsc(n)
   +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b>'
@@ -7242,8 +7248,8 @@ function ccpRender(){
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
   +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')
   +'</div>'
-  +(action?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+action.act+'\',this)">'
-    +action.label+'</button><span class="ccp-hint">'+ccpEsc(action.hint)+'</span></div>':'')
+  +(action?'<div class="ccp-actions">'+(action.act?'<button type="button" class="ccp-btn" onclick="ccpToggle(\''+action.act+'\',this)">'
+    +action.label+'</button>':'')+'<span class="ccp-hint">'+ccpEsc(action.hint)+'</span></div>':'')
   +'</div>'
   +(timer?'<div class="ccp-timer" data-until="'+timer+'"'+(mode==='pause'&&pause.kind==='reserve'?' data-grace="1"':'')+'><div class="t">'+ccpLeft(timer)+'</div>'
     +'<div class="l">'+tlabel+'</div></div>':'');
