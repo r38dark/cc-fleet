@@ -521,8 +521,9 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-compact-account>*{grid-row:1;min-width:0}
 .fleet-compact-account.codex{--live-accent:var(--fleet-accent)}
 .fleet-compact-name{grid-column:1;color:var(--live-accent);font-weight:600;font-size:13px;min-width:60px;max-width:200px;overflow:hidden;text-overflow:ellipsis}
-.fleet-compact-window[data-window="session"]{grid-column:2}.fleet-compact-window[data-window="week"]{grid-column:3}
-.fleet-compact-warning{grid-column:4;color:var(--warn);font-size:10px}.fleet-compact-warning:empty{display:none}
+.fleet-compact-window[data-window="session"]{grid-column:4}.fleet-compact-window[data-window="week"]{grid-column:5}
+.fleet-compact-model,.fleet-compact-effort{display:inline-flex;align-items:center;gap:6px;min-width:0}.fleet-compact-model{grid-column:2}.fleet-compact-effort{grid-column:3}.fleet-compact-model b,.fleet-compact-effort b{font-size:12px;font-weight:600;color:var(--txt);padding:2px 5px;border-radius:4px;background:color-mix(in srgb,var(--live-accent) 12%,transparent)}
+.fleet-compact-warning{grid-column:6;color:var(--warn);font-size:10px}.fleet-compact-warning:empty{display:none}
 .fleet-compact-window{display:inline-flex;align-items:center;gap:6px;flex:none}
 .fleet-compact-label{color:var(--fleet-muted);font-size:11px}
 .fleet-compact-used{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--txt);padding:2px 5px;border-radius:4px;background:color-mix(in srgb,var(--live-accent) 12%,transparent)}
@@ -539,7 +540,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 /* [notion-ai] аккордеон активных моделей: строки в общей рамке, раскрытая строка — плитка на том же месте */
 html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetActiveSummary,html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-footer{display:none!important}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-fold{border:1px solid var(--fleet-line);border-radius:9px;background:var(--card)}
-html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{display:grid;grid-template-columns:minmax(0,max-content) max-content max-content minmax(0,1fr) auto;column-gap:24px;row-gap:0;padding:0 13px}
+html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{display:grid;grid-template-columns:minmax(0,max-content) max-content max-content max-content max-content minmax(0,1fr) auto;column-gap:20px;row-gap:0;padding:0 13px}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc{display:contents}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{grid-column:1/-1;margin:6px -7px}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:not(.open)>.fleet-live-account,html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open>.fleet-compact-account{display:none!important}
@@ -547,7 +548,7 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc+.fleet-acc>.fleet-
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{cursor:pointer;min-height:40px;box-sizing:border-box;border-radius:6px}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:hover .fleet-acc-chev{color:var(--txt)}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-visible{outline:2px solid var(--live-accent);outline-offset:-2px}
-.fleet-acc-chev{grid-column:5;grid-row:1;justify-self:end;color:var(--fleet-muted);font-size:14px;line-height:1;padding:0 2px}
+.fleet-acc-chev{grid-column:7;grid-row:1;justify-self:end;color:var(--fleet-muted);font-size:14px;line-height:1;padding:0 2px}
 .fleet-compact-name::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--live-accent);margin-right:7px;vertical-align:2px}
 html.ag-pause-claude .fleet-compact-account.claude .fleet-compact-name::after,
 html.ag-pause-codex .fleet-compact-account.codex .fleet-compact-name::after,
@@ -947,6 +948,8 @@ JS = r'''
  for(const engine of ['claude','codex']){
   const compact=el('span','fleet-compact-account '+engine);compact.dataset.engine=engine;
   compact.append(el('strong','fleet-compact-name'),el('span','fleet-compact-warning'));
+  const modelBrief=el('span','fleet-compact-model'),effortBrief=el('span','fleet-compact-effort');
+  modelBrief.append(el('span','fleet-compact-label','Модель'),el('b','','—'));effortBrief.append(el('span','fleet-compact-label','Effort'),el('b','','—'));compact.append(modelBrief,effortBrief);
   for(const kind of ['session','week']){
    const window=el('span','fleet-compact-window');window.dataset.window=kind;
    window.append(el('span','fleet-compact-label',kind==='session'?'5ч':'Неделя'),el('b','fleet-compact-used','—'),el('span','fleet-compact-range','Время не получено'));compact.append(window);
@@ -964,6 +967,14 @@ JS = r'''
   identity.addEventListener('click',event=>{event.preventDefault();const selected=engine==='claude'?document.querySelector('#cards .card.active'):document.querySelector('#cxcards .card.fleet-active');(selected||document.querySelector(identity.getAttribute('href')))?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'})});
   liveRows.append(tile);liveNodes[engine]=tile;
  }
+ // Значения в свёрнутой строке повторяют существующие элементы выбора; на переключение не влияют.
+ function syncCompactModel(engine){
+  const source=engine==='claude'?claudeModel:codexModel,compact=compactNodes[engine];
+  const model=source.querySelector('.cxmodn')?.textContent?.trim(),effort=source.querySelector('.cxmode')?.textContent?.trim();
+  putText(compact.querySelector('.fleet-compact-model b'),model&&model!=='Модель Claude'?model:'—');
+  putText(compact.querySelector('.fleet-compact-effort b'),effort||'—');
+ }
+ for(const engine of ['claude','codex']){const source=engine==='claude'?claudeModel:codexModel;new MutationObserver(()=>syncCompactModel(engine)).observe(source,{childList:true,characterData:true,subtree:true});syncCompactModel(engine)}
  // [notion-ai] Аккордеон: у каждой модели своя строка; щелчок по строке раскрывает её плитку на том же месте,
  // щелчок по имени в плитке (⌃) сворачивает обратно. Общие «Развернуть/Свернуть» убраны; что раскрыто — localStorage cc_acc_open.
  // Строку и плитку Notion AI cc_notion_ai добавляет позже — их раскладывает MutationObserver.

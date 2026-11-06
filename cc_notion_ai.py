@@ -983,7 +983,7 @@ html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{gr
 .fleet-live-account.notion .mirror-profile-button .cxbtnname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .fleet-compact-account.notion{--live-accent:#a78bfa}
 .fleet-compact-account.notion .fleet-compact-window[data-window="model"]{grid-column:2}.fleet-compact-account.notion .fleet-compact-window[data-window="effort"]{grid-column:3}
-.fleet-compact-account.notion .nai-cs{grid-column:4;color:var(--fleet-muted);overflow:hidden;text-overflow:ellipsis}
+.fleet-compact-account.notion .nai-cs{grid-column:6;color:var(--fleet-muted);overflow:hidden;text-overflow:ellipsis}
 @media(max-width:640px){html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{grid-column:1/-1;grid-row:3}}
 #naiModelQ{--fleet-accent:#a78bfa;--fleet-accent-soft:#2a2346;overflow:auto}
 #naiModelQ .cxqm small{margin-left:auto;font-size:10px;color:var(--fleet-muted);white-space:nowrap}
@@ -1084,7 +1084,7 @@ function build(){
  tile.innerHTML='<a class="fleet-live-identity" href="#fleetNotion"><strong class="fleet-live-name">Notion AI</strong><span class="fleet-live-email nai-mail"></span></a>'
   +'<div class="fleet-provider-controls"><button type="button" class="hdrgear cxmodbtn fleet-model-tile" id="naiModelTile" aria-haspopup="dialog" aria-expanded="false">'+svg('fleetClaudeModel')+'<span class="cxmodn">Модель Notion AI</span><span class="cxmode"></span></button>'
   +'<button type="button" class="hdrgear fleet-provider-gear" id="naiCardGear" title="Настройки Notion AI" aria-label="Настройки Notion AI">'+svg('fleetGeneralGear')+'</button></div>'
-  +'<div class="nai-live-note"><a class="nai-credits-link" href="https://app.notion.com/space/09c55b37d4588114831c0003c4956da3" target="_blank" rel="noopener noreferrer">Открыть Notion ↗</a><span>Для лимитов: Settings → Notion AI → Me</span></div>'
+  +'<div class="nai-live-note"><a class="nai-credits-link" href="https://app.notion.com/space/09c55b37d4588114831c0003c4956da3" target="_blank" rel="noopener noreferrer">Открыть Notion ↗</a></div>'
   +'<div class="mirror-profile-footer"><div class="mirror-profile-holder"><button type="button" class="hdrgear cxbtn mirror-profile-button" id="naiProfileBtn" aria-haspopup="true" aria-controls="cxMenu">'+ICON+'<i class="cxdot"></i><span class="cxbtnname">Notion AI</span><span class="nai-chev" aria-hidden="true">⌄</span></button></div></div>';
  tile.querySelector('.mirror-profile-footer').append(tile.querySelector('.fleet-provider-controls'),tile.querySelector('.nai-live-note'));
  rows.appendChild(tile);

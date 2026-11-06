@@ -253,11 +253,12 @@ class TestModelCard(unittest.TestCase):
     def test_page_has_card_without_time(self):
         import re
         ui = M.UI
-        for k in ('id="fleetNotion"', 'naiModelTile', 'naiModelQ', "notion-ai/model", 'fleet-compact-account notion', 'nai-credits-link', 'Settings → Notion AI → Me'):
+        for k in ('id="fleetNotion"', 'naiModelTile', 'naiModelQ', "notion-ai/model", 'fleet-compact-account notion', 'nai-credits-link'):
             self.assertIn(k, ui.replace("tile.id='fleetNotion'", 'id="fleetNotion"'), k)
         card = ui[ui.index('Карточка «Notion AI» в «Активных аккаунтах»'):ui.index('Вкладка «Notion AI» в консоли')]
         self.assertNotIn('fleet-live-meter', card)  # ни 5 часов, ни недели
         self.assertNotIn('Без лимитов по времени', card)
+        self.assertNotIn('Для лимитов: Settings', card)
         self.assertIn('https://app.notion.com/space/09c55b37d4588114831c0003c4956da3', card)
         self.assertIn("CustomEvent('nai-state'", ui)
         self.assertIn("'/api/notion-ai/model'", open(M.__file__, encoding='utf-8').read())
