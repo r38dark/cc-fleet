@@ -978,6 +978,7 @@ html.nai-nosub .fleet-brand-sub{display:none!important}
 .fleet-live-account.notion .fleet-live-name::before{background:#a78bfa}
 html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{grid-column:3/5;grid-row:1;align-self:center;display:flex;flex-direction:column;gap:2px;min-width:0}
 .nai-live-note b{font-size:12px;font-weight:600;color:var(--txt)}.nai-live-note span{font-size:11px;color:var(--fleet-muted);line-height:1.35}
+.nai-live-note .nai-credits-link{display:inline-flex;align-items:center;align-self:flex-start;min-height:36px;padding:0 11px;border:1px solid rgba(167,139,250,.55);border-radius:7px;color:#d5c7ff;background:rgba(167,139,250,.09);font:600 12px system-ui,-apple-system,sans-serif;text-decoration:none}.nai-live-note .nai-credits-link:hover{background:rgba(167,139,250,.18)}.nai-live-note .nai-credits-link:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
 .fleet-live-account.notion .mirror-profile-button{border-color:color-mix(in srgb,#a78bfa 40%,var(--fleet-line))}
 .fleet-live-account.notion .mirror-profile-button .cxbtnname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .fleet-compact-account.notion{--live-accent:#a78bfa}
@@ -1063,7 +1064,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')closePop()})
 function boot(){place();paint();load()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }catch(e){console.warn('notion-ai',e)}})();
-// [notion-ai] Карточка «Notion AI» в «Активных аккаунтах»: модель и effort постоянного чата. Лимитов и времени у Notion AI нет.
+// [notion-ai] Карточка «Notion AI» в «Активных аккаунтах»: модель, профиль и ссылка на пространство.
 (function(){try{
 var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),tok=(typeof TOKEN!=='undefined'?TOKEN:''),api=base+'notion-ai/model';
 var st=null,md=null,tile=null,compact=null,q=null,job='',jobT=0,msg='',bad=false,loading=false,asked=0,hid=[];
@@ -1083,7 +1084,7 @@ function build(){
  tile.innerHTML='<a class="fleet-live-identity" href="#fleetNotion"><strong class="fleet-live-name">Notion AI</strong><span class="fleet-live-email nai-mail"></span></a>'
   +'<div class="fleet-provider-controls"><button type="button" class="hdrgear cxmodbtn fleet-model-tile" id="naiModelTile" aria-haspopup="dialog" aria-expanded="false">'+svg('fleetClaudeModel')+'<span class="cxmodn">Модель Notion AI</span><span class="cxmode"></span></button>'
   +'<button type="button" class="hdrgear fleet-provider-gear" id="naiCardGear" title="Настройки Notion AI" aria-label="Настройки Notion AI">'+svg('fleetGeneralGear')+'</button></div>'
-  +'<div class="nai-live-note"><b>Без лимитов по времени</b><span>Модель и effort — для постоянного чата Notion AI (Telegram и консоль панели).</span></div>'
+  +'<div class="nai-live-note"><a class="nai-credits-link" href="https://app.notion.com/space/09c55b37d4588114831c0003c4956da3" target="_blank" rel="noopener noreferrer">Открыть Notion ↗</a><span>Для лимитов: Settings → Notion AI → Me</span></div>'
   +'<div class="mirror-profile-footer"><div class="mirror-profile-holder"><button type="button" class="hdrgear cxbtn mirror-profile-button" id="naiProfileBtn" aria-haspopup="true" aria-controls="cxMenu">'+ICON+'<i class="cxdot"></i><span class="cxbtnname">Notion AI</span><span class="nai-chev" aria-hidden="true">⌄</span></button></div></div>';
  tile.querySelector('.mirror-profile-footer').append(tile.querySelector('.fleet-provider-controls'),tile.querySelector('.nai-live-note'));
  rows.appendChild(tile);
@@ -1117,7 +1118,7 @@ function paintQ(){
  if(more.length)h+='<details class="nai-more"'+(more.some(function(m){return m.label===cur})?' open':'')+'><summary>Другие модели ('+more.length+')</summary><div class="cxqlist">'+more.map(item).join('')+'</div></details>';
  h+='<div class="cxqh">Уровень рассуждений (effort)</div><div class="cxqeff" role="radiogroup" aria-label="Effort Notion AI">';
  h+=effs.length?effs.map(function(e){return '<button type="button" class="cxqe'+(e===f?' on':'')+'" role="radio" aria-checked="'+(e===f)+'" data-effort="'+esc(e)+'"'+(job?' disabled':'')+'>'+esc(e)+'</button>'}).join(''):'<span class="cxsub">Недоступно для этой модели</span>';
- h+='</div><p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||'Меняется прямо в постоянном чате Notion AI и действует со следующего сообщения. Лимитов по времени у Notion AI нет.')+'</p>';
+ h+='</div><p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||'Меняется в постоянном чате Notion AI и действует со следующего сообщения. Лимиты проверяйте в настройках Notion AI.')+'</p>';
  q.querySelector('.cxpbody').innerHTML=h}
 function fetchModel(){return fetch(api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){if(j&&j.ok){md=j;if(j.hidden)hid=j.hidden;if(j.pending&&!job){job=j.pending;loading=true;poll()}paintTile();paintQ()}}).catch(function(){})}
 function poll(){clearTimeout(jobT);if(!job)return;jobT=setTimeout(function(){fetch(base+'notion-ai/send/'+job,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
