@@ -732,14 +732,21 @@ html.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::after{co
 
 
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{padding-left:8px}
+/* Ровная рамка по всей ширине и одинаковые компактные шевроны. */
+html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{padding-left:0;padding-right:0}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{padding-left:14px;padding-right:14px}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:6px 0}
+.fleet-acc-chev{display:block;width:7px;height:7px;padding:0;margin:0 3px 4px 0;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);font-size:0}
+.fleet-acc.open .fleet-live-name::after{content:"";width:6px;height:6px;margin-left:9px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(225deg);vertical-align:0}
+@media(max-width:900px){html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{padding-left:14px;padding-right:32px}.fleet-acc-chev{right:18px;top:16px}}
 /* Управление аккаунтами свёрнуто до явного открытия. */
 .fleet-accounts-fold>.fleet-accounts-intro{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:48px;padding:10px 14px;margin:0;cursor:pointer;list-style:none;border:1px solid var(--fleet-line);border-radius:9px;background:var(--card)}
 .fleet-accounts-fold>.fleet-accounts-intro::-webkit-details-marker{display:none}
 .fleet-accounts-fold>.fleet-accounts-intro:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
 .fleet-accounts-fold[open]>.fleet-accounts-intro{margin-bottom:18px}
 .fleet-accounts-heading{display:block;color:var(--txt);font-size:18px;font-weight:550;line-height:1.35;margin-top:3px}
-.fleet-accounts-chevron{font-size:19px;color:var(--fleet-muted);line-height:1}
-.fleet-accounts-fold[open] .fleet-accounts-chevron{transform:rotate(180deg)}
+.fleet-accounts-chevron{flex:none;width:8px;height:8px;margin:0 4px 5px 0;color:var(--fleet-muted);border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg)}
+.fleet-accounts-fold[open] .fleet-accounts-chevron{transform:rotate(225deg);margin-bottom:0}
 html:root:root.ag-live-claude #fleetActiveAccounts .fleet-compact-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-compact-account.codex,html:root:root.ag-live-notion #fleetActiveAccounts .fleet-compact-account.notion{box-shadow:inset 0 0 0 1px #49d6aa}
 html:root:root.ag-live-claude #fleetActiveAccounts .fleet-live-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-live-account.codex,html:root:root.ag-live-notion #fleetActiveAccounts .fleet-live-account.notion{border-color:#49d6aa}
 
@@ -851,7 +858,7 @@ JS = r'''
  send.textContent='↑';send.title='Отправить в выбранную консоль · Enter';send.setAttribute('aria-label','Отправить в выбранную консоль');
  input.title='Enter — отправить · Shift+Enter — новая строка';
  const accFold=el('details','fleet-accounts-fold');accFold.id='fleetAccountsFold';
- const intro=el('summary','fleet-accounts-intro');intro.innerHTML='<span class="fleet-accounts-title"><span class="fleet-eyebrow">УПРАВЛЕНИЕ АККАУНТАМИ</span><span class="fleet-accounts-heading">Лимиты и переключения</span></span><span class="fleet-accounts-chevron" aria-hidden="true">⌄</span>';
+ const intro=el('summary','fleet-accounts-intro');intro.innerHTML='<span class="fleet-accounts-title"><span class="fleet-eyebrow">УПРАВЛЕНИЕ АККАУНТАМИ</span><span class="fleet-accounts-heading">Лимиты и переключения</span></span><span class="fleet-accounts-chevron" aria-hidden="true"></span>';
  accFold.append(intro,claude,codex);accountArea.append(accFold);
  try{accFold.open=localStorage.getItem('cc_accounts_open')==='1'}catch(e){}
  accFold.addEventListener('toggle',()=>{try{localStorage.setItem('cc_accounts_open',accFold.open?'1':'0')}catch(e){}});
@@ -1012,7 +1019,7 @@ JS = r'''
   for(const compact of liveFold.querySelectorAll('.fleet-compact-account[data-engine]')){
    const engine=compact.dataset.engine;if(!ACC_ORDER.includes(engine))continue;
    const wrap=accWrap(engine);if(compact.parentNode!==wrap)wrap.prepend(compact);
-   if(!compact.dataset.acc){compact.dataset.acc='1';compact.setAttribute('role','button');compact.tabIndex=0;const chev=el('span','fleet-acc-chev','⌄');chev.setAttribute('aria-hidden','true');compact.append(chev)}
+   if(!compact.dataset.acc){compact.dataset.acc='1';compact.setAttribute('role','button');compact.tabIndex=0;const chev=el('span','fleet-acc-chev');chev.setAttribute('aria-hidden','true');compact.append(chev)}
    accPaint(wrap);
   }
   for(const tile of liveRows.querySelectorAll('.fleet-live-account[data-engine]')){
