@@ -42,6 +42,11 @@ html:not(.conly) #cards,html:not(.conly) #cxcards{height:auto!important;max-heig
 html:root:root .fleet-section .card{position:relative;height:auto;min-width:0;min-height:200px;margin:0!important;border:1px solid var(--fleet-line);border-radius:12px;padding:15px 17px!important;background:var(--card);box-shadow:none;display:flex;flex-direction:column;container-type:normal}
 html:root:root #fleetClaude .card.active{border-color:color-mix(in srgb,var(--fleet-claude) 50%,var(--fleet-line));background:linear-gradient(120deg,var(--fleet-claude-soft),var(--card) 70%)}
 html:root:root #fleetCodex .card.fleet-active{border-color:color-mix(in srgb,var(--fleet-accent) 64%,var(--fleet-line));background:linear-gradient(120deg,var(--fleet-accent-soft),var(--card) 65%);box-shadow:none}
+/* На паузе выбранный аккаунт остаётся выбранным, но не изображается работающим. */
+html:root:root #fleetClaude .card.active.fleet-paused,html:root:root #fleetCodex .card.fleet-active.fleet-paused{border-color:var(--fleet-line);background:var(--card);box-shadow:none}
+.fleet-section .fleet-card-state.paused{background:color-mix(in srgb,var(--fleet-muted) 15%,var(--card));color:var(--txt);font-weight:650;gap:7px}
+.fleet-section .fleet-card-state.paused::before{content:"";display:inline-block;flex:none;width:11px;height:13px;border-radius:1px;background:linear-gradient(90deg,currentColor 0 35%,transparent 35% 65%,currentColor 65% 100%)}
+.fleet-section .fleet-paused .fleet-card-footer .btn-sw:disabled{display:none}
 html:root:root .fleet-section .card:has(.fleet-card-details[open]){z-index:35}
 .fleet-section .card .top{display:flex;align-items:flex-start;gap:8px;flex-wrap:nowrap;padding-right:22px;min-height:38px;margin:0 0 6px}.fleet-identity{min-width:0;flex:1}.fleet-titleline{display:flex;align-items:center;gap:6px;min-width:0}.fleet-account-name{font-size:13px;font-weight:620;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;letter-spacing:0}.fleet-section .card .email{display:block;font-size:10px;font-weight:400;color:var(--fleet-faint);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;max-width:100%}
 html:root:root .fleet-section .tag.plan,html:root:root .fleet-section .tag.free{font-size:9px;font-weight:450;border:1px solid var(--fleet-line);border-radius:4px;padding:1px 5px;color:var(--fleet-muted);background:transparent;text-transform:capitalize;line-height:1.2;letter-spacing:0}.fleet-section .fleet-active-label{display:none}.fleet-section .tag.pin{position:static;transform:none;display:none;box-shadow:none}
@@ -544,6 +549,16 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:hover 
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-visible{outline:2px solid var(--live-accent);outline-offset:-2px}
 .fleet-acc-chev{grid-column:5;grid-row:1;justify-self:end;color:var(--fleet-muted);font-size:14px;line-height:1;padding:0 2px}
 .fleet-compact-name::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--live-accent);margin-right:7px;vertical-align:2px}
+/* Пауза не должна выглядеть как цветная работающая карточка. */
+html:root:root.ag-pause-claude #fleetActiveAccounts .fleet-live-account.claude,
+html:root:root.ag-pause-codex #fleetActiveAccounts .fleet-live-account.codex,
+html:root:root.ag-pause-notion #fleetActiveAccounts .fleet-live-account.notion{background:var(--card);border-color:var(--fleet-line)}
+html:root:root.ag-pause-claude #fleetActiveAccounts .fleet-live-account.claude .mirror-profile-button,
+html:root:root.ag-pause-codex #fleetActiveAccounts .fleet-live-account.codex .mirror-profile-button,
+html:root:root.ag-pause-notion #fleetActiveAccounts .fleet-live-account.notion .mirror-profile-button{border-color:var(--fleet-line)}
+html.ag-pause-claude .fleet-compact-account.claude .fleet-compact-name::after,
+html.ag-pause-codex .fleet-compact-account.codex .fleet-compact-name::after,
+html.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::after{content:" · пауза";color:var(--fleet-muted);font-weight:500}
 .fleet-acc.open .fleet-live-identity{cursor:pointer}
 .fleet-acc.open .fleet-live-name::after{content:"⌃";display:inline-block;margin-left:7px;color:var(--fleet-muted);font-weight:400;font-size:12px;vertical-align:-2px}
 .fleet-acc.open .fleet-live-identity:hover .fleet-live-name::after{color:var(--txt)}
@@ -722,6 +737,21 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-
 
 
 
+/* Профиль и модель — в одной нижней строке; на телефоне они тоже рядом. */
+html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:minmax(160px,1fr) minmax(150px,210px) minmax(200px,270px);grid-template-areas:"identity session week" "profile profile profile"}
+html:root:root #fleetActiveAccounts .mirror-profile-footer{grid-area:profile;grid-column:1/-1;display:flex;justify-content:flex-start;gap:8px}
+html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:0 1 410px;max-width:410px;min-width:0}
+html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-provider-controls{flex:0 1 210px;width:210px;max-width:210px;min-width:0}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{grid-column:2/4;grid-row:1}
+@media(max-width:640px){
+ html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"identity identity" "session week" "profile profile"}
+ html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:1 1 50%;max-width:none}
+ html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-provider-controls{flex:1 1 50%;width:auto;max-width:none}
+ html:root:root #fleetActiveAccounts .mirror-profile-footer .mirror-profile-button{height:auto;min-height:34px}
+ html:root:root #fleetActiveAccounts .mirror-profile-button .cxbtnname{white-space:normal;line-height:1.25;overflow-wrap:anywhere}
+ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{grid-column:1/-1;grid-row:2}
+}
+
 '''
 
 JS = r'''
@@ -883,6 +913,7 @@ JS = r'''
    const reset=row.querySelector('.lbl')?.lastElementChild;if(!reset)return;
    paintWindowReset(reset,ordered[i],ordered[i]?.mins===10080?1:0);reset.title=reset.textContent;
   });
+  const paused=isActive&&document.documentElement.classList.contains('ag-pause-'+engine);card.classList.toggle('fleet-paused',paused);
   let text='В ожидании',tone='',caption='Запас лимита';
   if(a.loading){text='Проверка данных';caption='Обновляем лимиты'}
   else if(a.error||a.login_required||a.stale||a.lapsed){text='Нужна проверка';tone='problem';caption='Подробности в меню ⋯'}
@@ -890,6 +921,7 @@ JS = r'''
   else if(a.reached||session?.pct>=100||week?.pct>=100){text='Лимит '+(week?.pct>=100?'недели':'сессии');tone='limited';caption='Время сброса указано выше'}
   else if(engine==='codex'&&rotationData?.next===slot){text='Следующий';tone='next';caption='Кандидат для переключения'}
   else if(session?.pct==null&&week?.pct==null){text='Нет данных';caption='Ожидаем данные лимитов'}
+  if(paused){const issue=!!(a.error||a.login_required||a.stale||a.lapsed);text=issue?'На паузе · нужна проверка':'На паузе · выбран';tone='paused';caption=issue?'Проверь данные в меню ⋯':'Агент на паузе';}
   const state=card.querySelector('.fleet-card-state');state.className='fleet-card-state'+(tone?' '+tone:'');putText(state,text);putText(card.querySelector('.fleet-card-caption'),caption);
  }
  // Сводка, модель и настройки каждого провайдера собраны в одну плитку.
@@ -1221,12 +1253,13 @@ JS = r'''
   const d=snapshot||((typeof lastSnap!=='undefined'&&lastSnap)||{}),rows=Object.entries(d.accounts||{});
   document.querySelectorAll('#cards > .card').forEach((card,i)=>{if(rows[i])decorateCard(card,rows[i][1],rows[i][0],'claude')});
   putText(ch.querySelector('.fleet-count'),countText(rows.length));
-  const current=rows.find(([,a])=>a.active);putText(claudeNote,current?'Сейчас: '+(current[1].label||current[1].name||current[0]):'Активный аккаунт не выбран');
+  const current=rows.find(([,a])=>a.active);putText(claudeNote,current?(document.documentElement.classList.contains('ag-pause-claude')?'Выбран: ':'Сейчас: ')+(current[1].label||current[1].name||current[0]):'Активный аккаунт не выбран');
   const accounts=(typeof cxData!=='undefined'&&cxData?.accounts)||[];
   document.querySelectorAll('#cxcards > .card').forEach((card,i)=>{if(accounts[i])decorateCard(card,accounts[i],accounts[i].slot,'codex')});
   putText(xh.querySelector('.fleet-count'),countText(accounts.length));
   const add=document.querySelector('#cx .cxhead .hdrgear');if(add){xh.querySelector('.fleet-add-codex')?.remove();add.classList.add('fleet-add-codex');xh.append(add)}
  }
+ window.addEventListener('nai-state',()=>refreshVisuals()); // состояние паузы меняется независимо от данных аккаунтов
  const originalCards=renderCards;renderCards=function(d){originalCards(d);refreshVisuals(d)};
  const previousCodexRender=cxRender;cxRender=function(){previousCodexRender();refreshVisuals()};
  document.addEventListener('click',event=>{document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
@@ -1393,7 +1426,7 @@ JS = r'''
    if(e==='codex'){group=document.getElementById('cxGrp');button=document.getElementById('cxBtn');holder.append(group)}
    else{button=document.getElementById('cxBtn').cloneNode(true);for(const node of [button,...button.querySelectorAll('[id]')])if(node.id)node.id='mirrorClaude'+node.id;button.addEventListener('click',()=>{if(!menu.hidden&&mirrorEngine==='claude')cxMenuClose();else mirrorOpen('claude')});holder.append(button)}
    button.classList.add('mirror-profile-button');button.setAttribute('aria-label','Выбор профиля '+mirrorNames[e]);button.setAttribute('aria-controls','cxMenu');mirrorButtons[e]=button;
-   footer.append(holder);tile.append(footer);
+   footer.append(holder,tile.querySelector('.fleet-provider-controls'));tile.append(footer);
   }
   const summary=el('span','mirror-pair-summary');summary.id='mirrorPairSummary';liveHead.append(summary);const taskButton=el('button','mirror-task-button');taskButton.id='mirrorTaskButton';taskButton.type='button';taskButton.hidden=true;taskButton.onclick=mirrorShowTask;liveHead.append(taskButton);
   const savedCxbRender=cxbRender;cxbRender=function(force){savedCxbRender(force);if(cxbData?.profile_system)mirrorAccept(cxbData.profile_system)};
