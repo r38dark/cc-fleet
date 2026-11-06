@@ -646,7 +646,7 @@ class Ask(Rollout):
 
 
 class Routes(unittest.TestCase):
-    def get(self, query, snap=None, bin_="/x/codex"):
+    def get(self, query, snap=None, bin_="/x/codex", claude_running=True):
         got = []
 
         class Fake:
@@ -661,13 +661,21 @@ class Routes(unittest.TestCase):
         with mock.patch.object(L, "codex_bin", return_value=bin_), \
                 mock.patch.object(C, "snapshot", return_value=snap), \
                 mock.patch.object(C, "status", return_value={"available": True, "running": snap is not None}), \
-                mock.patch.object(L, "console_snapshot", return_value=("claude screen", "claude history")):
+                mock.patch.object(L, "console_snapshot", return_value=("claude screen", "claude history")), \
+                mock.patch.object(L, "_current_screen_pid", return_value="123" if claude_running else None), \
+                mock.patch.object(L, "console_frozen_snapshot", return_value=("last screen", "last history", 12345)), \
+                mock.patch.object(L, "console_idle_reason", return_value="stopped"):
             L.H.do_GET(Fake())
         return got[0]
 
     def test_claude_console_unchanged(self):
         code, d = self.get("history=1")
-        self.assertEqual((code, d), (200, {"ok": True, "current": "claude screen", "history": "claude history"}))
+        self.assertEqual((code, d), (200, {"ok": True, "current": "claude screen", "history": "claude history", "running": True}))
+
+    def test_claude_stopped_shows_saved_screen(self):
+        code, d = self.get("history=1", claude_running=False)
+        self.assertEqual((code, d), (200, {"ok": True, "current": "last screen", "history": "last history",
+                                          "running": False, "idle": "stopped", "stopped": 12345}))
 
     def test_unknown_session_falls_back_to_claude(self):
         self.assertEqual(self.get("s=bash")[1]["current"], "claude screen")
@@ -817,3 +825,19 @@ class Page(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ClaudeFrozenSnapshot(unittest.TestCase):
+    def test_snapshot_from_previous_log_and_missing_log(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "console.log")
+            with mock.patch.object(L, "CONSOLE_LOG", path):
+                self.assertEqual(L.console_frozen_snapshot(True), ("", "", 0))
+                with open(path + ".prev", "wb") as f:
+                    f.write("Последний экран\r\n\x1b[31mкрасный\x1b[0m".encode())
+                cur, history, stopped = L.console_frozen_snapshot(True)
+                self.assertIn("Последний экран", cur)
+                self.assertIn("красный", cur)
+                self.assertIn("color", cur)
+                self.assertEqual(history, "")
+                self.assertGreater(stopped, 0)
+                self.assertIsNone(L.console_frozen_snapshot(False)[1])

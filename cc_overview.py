@@ -531,6 +531,24 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(min-width:641px) and (max-width:900px){.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(90px,1fr) minmax(145px,175px) 145px 245px;gap:10px}}
 @media(max-width:640px){.fleet-live-timezone{font-size:9px}.fleet-live-summary{padding:10px 30px 10px 10px}.fleet-compact-account{flex-wrap:wrap;gap:7px 10px}.fleet-compact-name{flex-basis:100%;max-width:100%}.fleet-compact-window{flex-basis:100%;gap:6px}.fleet-compact-range{font-size:11px;gap:4px}.fleet-compact-name{font-size:12px}.fleet-live-fold[open]>.fleet-live-rows{padding:0;gap:7px}.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(0,1fr) 82px 110px;gap:4px 10px}.fleet-live-meter-label{flex-wrap:wrap;gap:3px}.fleet-live-meter-label b{font-size:12px}.fleet-live-reset{flex-basis:100%;flex-wrap:wrap;gap:2px;font-size:10px;line-height:1.35}.fleet-live-reset time{white-space:normal}.fleet-live-reset-label{font-size:9px}}
 .fleet-live-fold:not([open])>.fleet-live-footer{display:none!important}
+/* [notion-ai] аккордеон активных моделей: строки в общей рамке, раскрытая строка — плитка на том же месте */
+html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetActiveSummary,html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-footer{display:none!important}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-fold{border:1px solid var(--fleet-line);border-radius:9px;background:var(--card)}
+html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{display:grid;grid-template-columns:minmax(0,max-content) max-content max-content minmax(0,1fr) auto;column-gap:24px;row-gap:0;padding:0 13px}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc{display:contents}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{grid-column:1/-1;margin:6px -7px}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:not(.open)>.fleet-live-account,html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open>.fleet-compact-account{display:none!important}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc+.fleet-acc>.fleet-compact-account{border-top:1px solid var(--fleet-line)}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{cursor:pointer;min-height:40px;box-sizing:border-box;border-radius:6px}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:hover .fleet-acc-chev{color:var(--txt)}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-visible{outline:2px solid var(--live-accent);outline-offset:-2px}
+.fleet-acc-chev{grid-column:5;grid-row:1;justify-self:end;color:var(--fleet-muted);font-size:14px;line-height:1;padding:0 2px}
+.fleet-compact-name::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--live-accent);margin-right:7px;vertical-align:2px}
+.fleet-acc.open .fleet-live-identity{cursor:pointer}
+.fleet-acc.open .fleet-live-name::after{content:"⌃";display:inline-block;margin-left:7px;color:var(--fleet-muted);font-weight:400;font-size:12px;vertical-align:-2px}
+.fleet-acc.open .fleet-live-identity:hover .fleet-live-name::after{color:var(--txt)}
+@media(max-width:900px){html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{grid-template-columns:minmax(0,1fr);column-gap:0;padding:0 12px}html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{position:relative;padding:9px 24px 9px 0}.fleet-acc-chev{position:absolute;right:2px;top:12px}}
+@media(max-width:640px),(max-width:1000px) and (pointer:coarse){html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{padding:0 10px}html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:8px -4px}}
 @media(max-width:640px){.fleet-live-summary{grid-template-columns:minmax(0,1fr);padding:10px}.fleet-live-expand{grid-column:1;grid-row:auto;justify-self:end;min-height:28px;padding:3px 0 0}.fleet-live-collapse{min-height:30px}.fleet-live-footer{padding-right:10px}}
 
 /* Mobile controls belong to the terminal surface, not to the provider tabs. */
@@ -883,15 +901,11 @@ JS = r'''
  const liveExpand=el('span','fleet-live-toggle fleet-live-expand','Развернуть');liveExpand.setAttribute('aria-hidden','true');liveSummary.append(liveExpand);
  const liveCollapse=el('button','fleet-live-toggle fleet-live-collapse','Свернуть');liveCollapse.id='fleetActiveCollapse';liveCollapse.type='button';liveCollapse.setAttribute('aria-controls','fleetLiveRows');liveCollapse.setAttribute('aria-expanded','true');
  const liveFooter=el('div','fleet-live-footer');liveFooter.append(liveCollapse);
- const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows,liveFooter);liveStrip.append(liveHead,liveFold);term.before(liveStrip);
+ const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows,liveFooter);liveStrip.append(liveHead,liveFold);term.after(liveStrip);
  liveCollapse.addEventListener('click',()=>{liveFold.open=false;liveSummary.focus({preventScroll:true})});
- liveFold.addEventListener('toggle',()=>{if(mobileConsole.matches){if(!liveFold.open)liveFold.open=true;return}if(liveFold.open&&document.activeElement===liveSummary)liveCollapse.focus({preventScroll:true})});
- let activeCardsOnMobile=false,desktopActiveOpen=liveFold.open;
- function placeActiveAccounts(){
-  if(mobileConsole.matches){if(!activeCardsOnMobile)desktopActiveOpen=liveFold.open;term.after(liveStrip);liveFold.open=true}
-  else{term.before(liveStrip);if(activeCardsOnMobile)liveFold.open=desktopActiveOpen}
-  activeCardsOnMobile=mobileConsole.matches;
- }
+ liveFold.addEventListener('toggle',()=>{if(!liveFold.open)liveFold.open=true});  // [notion-ai] общий «Свернуть» убран: сворачивается каждая строка (аккордеон ниже)
+ // [notion-ai] полоса активных моделей — под консолью и на компьютере, и на телефоне
+ function placeActiveAccounts(){term.after(liveStrip);liveFold.open=true}
  placeActiveAccounts();mobileConsole.addEventListener('change',placeActiveAccounts);
  hdr.querySelector('.hdrctl').append(document.getElementById('cxInst'));
  const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
@@ -922,6 +936,49 @@ JS = r'''
   identity.addEventListener('click',event=>{event.preventDefault();const selected=engine==='claude'?document.querySelector('#cards .card.active'):document.querySelector('#cxcards .card.fleet-active');(selected||document.querySelector(identity.getAttribute('href')))?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'center'})});
   liveRows.append(tile);liveNodes[engine]=tile;
  }
+ // [notion-ai] Аккордеон: у каждой модели своя строка; щелчок по строке раскрывает её плитку на том же месте,
+ // щелчок по имени в плитке (⌃) сворачивает обратно. Общие «Развернуть/Свернуть» убраны; что раскрыто — localStorage cc_acc_open.
+ // Строку и плитку Notion AI cc_notion_ai добавляет позже — их раскладывает MutationObserver.
+ const ACC_ORDER=['claude','codex','notion'];let accOpen={};
+ try{accOpen=JSON.parse(localStorage.getItem('cc_acc_open')||'{}')||{}}catch(e){accOpen={}}
+ liveStrip.classList.add('fleet-acc-mode');liveFold.open=true;
+ function accWrap(engine){
+  let wrap=liveRows.querySelector(':scope>.fleet-acc[data-engine="'+engine+'"]');
+  if(!wrap){wrap=el('div','fleet-acc');wrap.dataset.engine=engine;const next=ACC_ORDER.slice(ACC_ORDER.indexOf(engine)+1).map(e=>liveRows.querySelector(':scope>.fleet-acc[data-engine="'+e+'"]')).find(Boolean);liveRows.insertBefore(wrap,next||null)}
+  return wrap;
+ }
+ function accPaint(wrap){
+  const open=!!accOpen[wrap.dataset.engine],compact=wrap.querySelector(':scope>.fleet-compact-account'),identity=wrap.querySelector(':scope>.fleet-live-account .fleet-live-identity');
+  wrap.classList.toggle('open',open);
+  if(compact){compact.setAttribute('aria-expanded',String(open));compact.setAttribute('aria-label','Развернуть: '+compact.querySelector('.fleet-compact-name')?.textContent)}
+  if(identity){identity.setAttribute('aria-expanded',String(open));identity.title='Свернуть строку'}
+ }
+ function accOrganize(){
+  for(const compact of liveFold.querySelectorAll('.fleet-compact-account[data-engine]')){
+   const engine=compact.dataset.engine;if(!ACC_ORDER.includes(engine))continue;
+   const wrap=accWrap(engine);if(compact.parentNode!==wrap)wrap.prepend(compact);
+   if(!compact.dataset.acc){compact.dataset.acc='1';compact.setAttribute('role','button');compact.tabIndex=0;const chev=el('span','fleet-acc-chev','⌄');chev.setAttribute('aria-hidden','true');compact.append(chev)}
+   accPaint(wrap);
+  }
+  for(const tile of liveRows.querySelectorAll('.fleet-live-account[data-engine]')){
+   const engine=tile.dataset.engine;if(!ACC_ORDER.includes(engine))continue;
+   const wrap=accWrap(engine);if(tile.parentNode!==wrap)wrap.append(tile);accPaint(wrap);
+  }
+ }
+ function accSet(engine,open,focus){
+  accOpen[engine]=open;try{localStorage.setItem('cc_acc_open',JSON.stringify(accOpen))}catch(e){}
+  const wrap=liveRows.querySelector(':scope>.fleet-acc[data-engine="'+engine+'"]');if(!wrap)return;accPaint(wrap);
+  if(focus)(open?wrap.querySelector('.fleet-live-identity'):wrap.querySelector('.fleet-compact-account'))?.focus({preventScroll:true});
+ }
+ // capture: щелчок по имени плитки только сворачивает — прежние переходы (к карточке, на вкладку Notion AI) не срабатывают
+ liveRows.addEventListener('click',event=>{
+  const compact=event.target.closest('.fleet-compact-account[data-acc]');if(compact){accSet(compact.dataset.engine,true,event.detail===0);return}
+  const identity=event.target.closest('.fleet-live-identity'),tile=identity&&identity.closest('.fleet-acc>.fleet-live-account');
+  if(tile){event.preventDefault();event.stopPropagation();accSet(tile.dataset.engine,false,event.detail===0)}
+ },true);
+ liveRows.addEventListener('keydown',event=>{const compact=event.target.closest&&event.target.closest('.fleet-compact-account[data-acc]');if(compact&&(event.key==='Enter'||event.key===' ')){event.preventDefault();accSet(compact.dataset.engine,true,true)}});
+ const accObserver=new MutationObserver(accOrganize);accObserver.observe(liveSummary,{childList:true});accObserver.observe(liveRows,{childList:true});
+ accOrganize();
  function placePanel(panel,anchor,width){
   const r=anchor.getBoundingClientRect(),w=Math.min(width,innerWidth-24),top=Math.min(r.bottom+8,Math.max(12,innerHeight-240));
   panel.style.width=w+'px';panel.style.top=Math.round(top)+'px';panel.style.left=Math.max(12,Math.min(Math.round(r.right-w),innerWidth-w-12))+'px';panel.style.right='auto';panel.style.bottom='auto';panel.style.maxHeight=Math.max(120,innerHeight-top-12)+'px';
@@ -1140,7 +1197,7 @@ JS = r'''
   putText(compact.querySelector('.fleet-compact-name'),provider+' · '+name);
   compact.querySelector('.fleet-compact-name').title=provider+' · '+name+(account?.email?' · '+account.email:'');
   putText(compact.querySelector('.fleet-compact-warning'),issue?(account.stale?'устарело':'проверить'):'');
-  node.title=provider+' · '+name+(account?.email?' · '+account.email:'')+' · открыть полную карточку'+(issue?' · '+issue:'');
+  node.title=provider+' · '+name+(account?.email?' · '+account.email:'')+(issue?' · '+issue:'');
   windows.forEach((window,i)=>{
    paintCompactWindow(compact.querySelectorAll('.fleet-compact-window')[i],window,i);
    const meter=node.querySelectorAll('.fleet-live-meter')[i],pct=Number.isFinite(window?.pct)?window.pct:null;

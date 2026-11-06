@@ -1489,6 +1489,53 @@ def _console_feed():
         _console_offset += len(data)
 
 
+def console_idle_reason():
+    """Подпись в пустой консоли Claude (сессии нет). cc_notion_ai подменяет: «включён профиль Notion AI…»."""
+    return "Claude сейчас не запущен — консоль появится, когда сессию Claude запустят."
+
+
+# Последний экран остановленной сессии: console.log.prev разбирается один раз (кэш по mtime+size),
+# хвост не больше CONSOLE_FROZEN_MAX — инцидент 12.07: многомегабайтный лог через pyte вешал сервер.
+CONSOLE_FROZEN_MAX = 1536 * 1024
+_frozen_lock = threading.Lock()
+_frozen = {"key": None, "current": "", "history": ""}
+
+
+def _frozen_cols(data):
+    # ширину мёртвой сессии уже не спросить у pty — берём по самой длинной линии ─ (Claude рисует её во всю ширину)
+    txt = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", data[-300000:]).decode("utf-8", "replace")
+    runs = [len(m) for m in re.findall("─{40,}", txt)]
+    return max(40, min(400, max(runs))) if runs else 120
+
+
+def console_frozen_snapshot(want_history=False):
+    path = CONSOLE_LOG + ".prev"
+    try:
+        st = os.stat(path)
+    except OSError:
+        return "", ("" if want_history else None), 0
+    key = (st.st_mtime_ns, st.st_size)
+    with _frozen_lock:
+        if _frozen["key"] != key:
+            try:
+                with open(path, "rb") as f:
+                    if st.st_size > CONSOLE_FROZEN_MAX:
+                        f.seek(st.st_size - CONSOLE_FROZEN_MAX)
+                    data = f.read()
+                cols = _frozen_cols(data)
+                scr = pyte.HistoryScreen(cols, 50, history=CONSOLE_HISTORY_LINES)
+                pyte.ByteStream(scr).feed(data)
+                cur = list(zip(scr.display, (_row_html(scr.buffer[y], cols) for y in range(scr.lines))))
+                while cur and not cur[-1][0].strip():
+                    cur.pop()
+                _frozen.update(key=key, current="\n".join(h for _, h in cur),
+                               history="\n".join(_row_html(line, cols) for line in scr.history.top))
+            except Exception as e:
+                print("console: последний экран не разобран:", type(e).__name__, flush=True)
+                _frozen.update(key=key, current="", history="")
+        return _frozen["current"], (_frozen["history"] if want_history else None), int(st.st_mtime)
+
+
 def console_snapshot(want_history=False):
     # want_history=False (дефолт, дёргается раз в 2с с фронта) — рендерит ТОЛЬКО
     # текущий экран (десятки строк, дёшево). history.top растёт до 2000 строк и
@@ -2854,8 +2901,15 @@ class H(BaseHTTPRequestHandler):
                     if snap[1] is not None:
                         resp["history"] = snap[1]
                 return self._send(200, resp)
-            current_html, history_html = console_snapshot(want_history=bool(q.get("history")))
-            resp = {"ok": True, "current": current_html}
+            # При остановленной сессии не читать живой лог: показываем сохранённый экран и причину остановки.
+            running = _current_screen_pid(cfg().get("screen_session", "claude")) is not None
+            if running:
+                current_html, history_html = console_snapshot(want_history=bool(q.get("history")))
+                resp = {"ok": True, "current": current_html, "running": True}
+            else:
+                current_html, history_html, stopped = console_frozen_snapshot(want_history=bool(q.get("history")))
+                resp = {"ok": True, "current": current_html, "running": False,
+                        "idle": console_idle_reason(), "stopped": stopped}
             if history_html is not None:
                 resp["history"] = history_html
             return self._send(200, resp)
@@ -3346,6 +3400,9 @@ html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:r
 .tzval{margin:0;padding:0 4px;min-width:48px;background:transparent;border:0;color:var(--mut);font-family:inherit;font-size:12.5px;font-weight:600;text-align:center;cursor:pointer}
 .tzval:hover{color:var(--txt)}
 .termdot.err{background:var(--bad);margin:0}
+.termdot.idle{background:#6b7280;margin:0}
+.termidle{position:sticky;bottom:0;white-space:normal;font:13px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#d6dbe4;background:rgba(23,27,35,.96);border:1px solid #3a4250;border-radius:8px;padding:9px 12px;margin-top:10px}
+.termidle[hidden]{display:none}
 .termbox{background:#0b0d10;border:1px solid #232a36;border-radius:8px;padding:10px 12px;overflow-x:hidden;overflow-y:auto;margin:0;font:11px/1.3 ui-monospace,Consolas,monospace;font-size:calc(11px*var(--tz,1));color:#c8d0dc;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:#3a3f4b #14171c}
 .termbox::-webkit-scrollbar{width:9px}
 .termbox::-webkit-scrollbar-track{background:#14171c}
@@ -3903,7 +3960,7 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
  <div class="cxcons" id="cxCons" hidden><div class="cxcmsg" id="cxConsMsg"></div><div class="cxcsub" id="cxConsSub"></div><button type="button" id="cxConsGo"></button></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
-<span id="termCurrent">Загрузка…</span></pre>
+<span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden></div></pre>
 </div>
 <div class="toolrow"><div class="tgrp">
 <div id="mrow" class="mrowslim"></div>
@@ -4933,7 +4990,7 @@ function termCols(){
 function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
 let CONS='claude',consShown='claude',cxConsRun=null;
-let consoleRequestSeq=0,consoleAppliedSeq=0;
+let consoleRequestSeq=0,consoleAppliedSeq=0,consIdle='';
 try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
 function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}
 async function ccConsoleHistory(){
@@ -4971,6 +5028,7 @@ async function ccConsole(){
   if(s==='codex'&&(d.ok!==true||typeof d.running!=='boolean')){dot.className='termdot err';return;}
   consoleAppliedSeq=requestSeq;
   if(s==='codex'){
+   $('#termIdle').hidden=true;
    cxConsUi(d);
    if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
    else if(cxAutoGo&&d.available!==false&&d.ok!==false){cxAutoGo=false;cxConsAct('start',true);}  // один раз за загрузку страницы
@@ -4981,6 +5039,14 @@ async function ccConsole(){
   }else{
    if(!d.ok||d.current==null){dot.className='termdot err';return;}
    dot.className='termdot';
+   // сессии Claude нет (напр. профиль «Notion AI · только он»): сервер отдаёт последний экран остановленной
+   // сессии (не обновляется) — показываем его и плашку «почему»; при переходе туда/обратно подтягиваем прокрутку заново
+   const idle=d.running===false?String(d.stopped||0):'';
+   if(idle!==consIdle){consIdle=idle;$('#termHistory').innerHTML='';ccConsoleHistory();}
+   const note=$('#termIdle');note.hidden=!idle;
+   if(idle){dot.className='termdot idle';let t=d.idle||'Claude сейчас не запущен.';
+    if(d.stopped){const at=new Date(d.stopped*1000);t+=' Показан последний экран Claude на '+at.toLocaleTimeString('ru-RU', {timeZone:'Asia/Irkutsk',hour:'2-digit',minute:'2-digit'})+', он не обновляется.';}
+    note.textContent='⏸ '+t;}
   }
   const atBottom=box.scrollTop+box.clientHeight>=box.scrollHeight-20;
   $('#termCurrent').innerHTML=fitSep(d.current||'');
@@ -5073,7 +5139,7 @@ function consTabs(){
  if(key!==consShown){
   consShown=key;cxConsRun=null;
   $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
-  $('#cxCons').hidden=true;$('#ctStop').hidden=$('#ctCompact').hidden=$('#ctNew').hidden=true;$('#cTabs').classList.remove('cacts');$('.termwrap').classList.remove('hascacts');
+  $('#cxCons').hidden=$('#termIdle').hidden=true;$('#ctStop').hidden=$('#ctCompact').hidden=$('#ctNew').hidden=true;$('#cTabs').classList.remove('cacts');$('.termwrap').classList.remove('hascacts');
   STICK=true;ccConsoleHistory();ccConsole();
  }
 }

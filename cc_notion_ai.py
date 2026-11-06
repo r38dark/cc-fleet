@@ -928,6 +928,12 @@ UI = r'''
 .nai-seg.on .nai-st{color:rgba(var(--c),.85)}
 .nai-seg.s-limit .nai-st{color:#ef8f8f}
 .nai-seg.s-limit .nai-dot{border-style:dashed}
+/* [notion-ai] модель на паузе: вместо точки — значок паузы (две полоски) в шапке, на вкладке консоли, в строке, в плитке и на кнопке профиля */
+.nai-seg.s-pause{--pz:rgba(var(--c),.9)}
+html:root:root.ag-pause-claude .fleet-console-toolbar #ctClaude::before,html:root:root.ag-pause-claude .fleet-live-account.claude .fleet-live-name::before,html:root:root.ag-pause-claude .fleet-live-account.claude .cxdot,html:root:root.ag-pause-claude .fleet-compact-account.claude .fleet-compact-name::before{--pz:var(--fleet-claude,#e7af85)}
+html:root:root.ag-pause-codex .fleet-console-toolbar #ctCodex::before,html:root:root.ag-pause-codex .fleet-live-account.codex .fleet-live-name::before,html:root:root.ag-pause-codex .fleet-live-account.codex .cxdot,html:root:root.ag-pause-codex .fleet-compact-account.codex .fleet-compact-name::before{--pz:var(--fleet-accent,#45d6ab)}
+html:root:root.ag-pause-notion .fleet-console-toolbar #ctNotion::before,html:root:root.ag-pause-notion .fleet-live-account.notion .fleet-live-name::before,html:root:root.ag-pause-notion .fleet-live-account.notion .cxdot,html:root:root.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::before{--pz:#a78bfa}
+.nai-seg.s-pause .nai-dot,html:root:root.ag-pause-claude .fleet-console-toolbar #ctClaude::before,html:root:root.ag-pause-claude .fleet-live-account.claude .fleet-live-name::before,html:root:root.ag-pause-claude .fleet-live-account.claude .cxdot,html:root:root.ag-pause-claude .fleet-compact-account.claude .fleet-compact-name::before,html:root:root.ag-pause-codex .fleet-console-toolbar #ctCodex::before,html:root:root.ag-pause-codex .fleet-live-account.codex .fleet-live-name::before,html:root:root.ag-pause-codex .fleet-live-account.codex .cxdot,html:root:root.ag-pause-codex .fleet-compact-account.codex .fleet-compact-name::before,html:root:root.ag-pause-notion .fleet-console-toolbar #ctNotion::before,html:root:root.ag-pause-notion .fleet-live-account.notion .fleet-live-name::before,html:root:root.ag-pause-notion .fleet-live-account.notion .cxdot,html:root:root.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::before{width:7px!important;height:8px!important;border:0!important;border-radius:1px!important;box-shadow:none!important;animation:none!important;background:linear-gradient(90deg,var(--pz) 0 2.4px,transparent 2.4px 4.6px,var(--pz) 4.6px 7px)!important}
 .nai-seg:hover{background:rgba(var(--c),.09)}
 .nai-seg.on:hover{background:rgba(var(--c),.2)}
 .nai-seg:focus-visible{outline:2px solid rgba(var(--c),.85);outline-offset:-2px}
@@ -1027,7 +1033,7 @@ function agState(k){var a=st&&st.agents&&st.agents[k];if(a)return a;if(k==='noti
 function wrapped(){var h1=document.getElementById('h1'),hdr=document.querySelector('.hdr');if(!h1||!h1.offsetParent||!bar.offsetParent)return false;var a=h1.getBoundingClientRect(),b=bar.getBoundingClientRect(),btns=bar.parentNode,l=btns&&btns.lastElementChild,r=hdr?hdr.getBoundingClientRect():null;
  return b.top>=a.bottom-2||(l&&r&&l.getBoundingClientRect().right>r.right+1)}
 function fit(){var cl=document.documentElement.classList;for(var i=0;i<LEVELS.length;i++){var lv=LEVELS[i];bar.className='nai-ag'+(lv?' '+lv:'');cl.toggle('nai-nosub',lv.indexOf('nosub')>=0);if(!wrapped())break}}
-function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});btn.disabled=busy;fit()}
+function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;document.documentElement.classList.toggle('ag-pause-'+a[0],g.state==='pause');s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});btn.disabled=busy;fit()}
 // [notion-ai] Баннер только для шага: ждёт подтверждения или выполняется. Состояние агентов — в блоке шапки.
 function paint(){var f=orch()?names[st.follower]:'',s=orch()&&st.step,pend=pending(),run=!!(s&&(s.status==='approved'||s.status==='running'));paintAgents();banner.hidden=!(pend||run);
  var msg=pend?'🧩 <b>Шаг Notion AI → '+esc(f)+' ждёт подтверждения.</b> Подтверди здесь или кнопкой в Telegram.':run?'⏳ <b>'+esc(names[s.follower]||f)+' выполняет шаг Notion AI.</b> Результат придёт в Telegram.':'';
@@ -1964,6 +1970,16 @@ def install(ns, profiles):
                 result = dict(ok=False, message='Не выполнено: ' + type(exc).__name__, state=nai.public())
             return self._send(200, result)
 
+    base_idle = ns.get('console_idle_reason')
+
+    def console_idle_reason():
+        # пустая консоль Claude: при профиле Notion AI это норма — так и пишем, вместо чёрного окна
+        if nai.active() and not nai.executor('claude'):
+            return ('Claude сейчас остановлен: включён профиль «%s». Пока он включён, консоли Claude нет — это нормально. '
+                    'Что делает Notion AI, видно на вкладке «Notion AI».' % nai.title())
+        return base_idle() if base_idle else ''
+
+    ns['console_idle_reason'] = console_idle_reason
     ns['H'] = NotionAIHandler
     ns['PAGE'] = inject(ns['PAGE'])
     ns['NOTION_AI'] = nai
