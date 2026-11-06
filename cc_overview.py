@@ -549,13 +549,6 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:hover 
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-visible{outline:2px solid var(--live-accent);outline-offset:-2px}
 .fleet-acc-chev{grid-column:5;grid-row:1;justify-self:end;color:var(--fleet-muted);font-size:14px;line-height:1;padding:0 2px}
 .fleet-compact-name::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--live-accent);margin-right:7px;vertical-align:2px}
-/* Пауза не должна выглядеть как цветная работающая карточка. */
-html:root:root.ag-pause-claude #fleetActiveAccounts .fleet-live-account.claude,
-html:root:root.ag-pause-codex #fleetActiveAccounts .fleet-live-account.codex,
-html:root:root.ag-pause-notion #fleetActiveAccounts .fleet-live-account.notion{background:var(--card);border-color:var(--fleet-line)}
-html:root:root.ag-pause-claude #fleetActiveAccounts .fleet-live-account.claude .mirror-profile-button,
-html:root:root.ag-pause-codex #fleetActiveAccounts .fleet-live-account.codex .mirror-profile-button,
-html:root:root.ag-pause-notion #fleetActiveAccounts .fleet-live-account.notion .mirror-profile-button{border-color:var(--fleet-line)}
 html.ag-pause-claude .fleet-compact-account.claude .fleet-compact-name::after,
 html.ag-pause-codex .fleet-compact-account.codex .fleet-compact-name::after,
 html.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::after{content:" · пауза";color:var(--fleet-muted);font-weight:500}
@@ -737,19 +730,22 @@ html.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::after{co
 
 
 
-/* Профиль и модель — в одной нижней строке; на телефоне они тоже рядом. */
-html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:minmax(160px,1fr) minmax(150px,210px) minmax(200px,270px);grid-template-areas:"identity session week" "profile profile profile"}
-html:root:root #fleetActiveAccounts .mirror-profile-footer{grid-area:profile;grid-column:1/-1;display:flex;justify-content:flex-start;gap:8px}
-html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:0 1 410px;max-width:410px;min-width:0}
+/* Сверху только название и аккаунт; все показатели и управление — ниже. */
+html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:minmax(0,1fr);grid-template-areas:"identity" "profile"}
+html:root:root #fleetActiveAccounts .mirror-profile-footer{grid-area:profile;grid-column:1/-1;display:flex;justify-content:flex-start;gap:10px;min-width:0}
+html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:0 1 360px;max-width:360px;min-width:0}
 html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-provider-controls{flex:0 1 210px;width:210px;max-width:210px;min-width:0}
-html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{grid-column:2/4;grid-row:1}
-@media(max-width:640px){
- html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:"identity identity" "session week" "profile profile"}
- html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:1 1 50%;max-width:none}
- html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-provider-controls{flex:1 1 50%;width:auto;max-width:none}
+html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter{flex:1 1 170px;min-width:0}
+html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter[data-window="week"]{flex-basis:240px}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{flex:1 1 260px;min-width:0}
+@media(max-width:900px){
+ html:root:root #fleetActiveAccounts .mirror-profile-footer{flex-wrap:wrap;gap:10px}
+ html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:1 1 calc(50% - 5px);max-width:none}
+ html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-provider-controls{flex:1 1 calc(50% - 5px);width:auto;max-width:none}
+ html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter,html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter[data-window="week"]{flex:1 1 calc(50% - 5px)}
  html:root:root #fleetActiveAccounts .mirror-profile-footer .mirror-profile-button{height:auto;min-height:34px}
  html:root:root #fleetActiveAccounts .mirror-profile-button .cxbtnname{white-space:normal;line-height:1.25;overflow-wrap:anywhere}
- html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{grid-column:1/-1;grid-row:2}
+ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{flex:1 1 100%}
 }
 
 '''
@@ -1426,7 +1422,7 @@ JS = r'''
    if(e==='codex'){group=document.getElementById('cxGrp');button=document.getElementById('cxBtn');holder.append(group)}
    else{button=document.getElementById('cxBtn').cloneNode(true);for(const node of [button,...button.querySelectorAll('[id]')])if(node.id)node.id='mirrorClaude'+node.id;button.addEventListener('click',()=>{if(!menu.hidden&&mirrorEngine==='claude')cxMenuClose();else mirrorOpen('claude')});holder.append(button)}
    button.classList.add('mirror-profile-button');button.setAttribute('aria-label','Выбор профиля '+mirrorNames[e]);button.setAttribute('aria-controls','cxMenu');mirrorButtons[e]=button;
-   footer.append(holder,tile.querySelector('.fleet-provider-controls'));tile.append(footer);
+   footer.append(holder,tile.querySelector('.fleet-provider-controls'),...tile.querySelectorAll('.fleet-live-meter'));tile.append(footer);
   }
   const summary=el('span','mirror-pair-summary');summary.id='mirrorPairSummary';liveHead.append(summary);const taskButton=el('button','mirror-task-button');taskButton.id='mirrorTaskButton';taskButton.type='button';taskButton.hidden=true;taskButton.onclick=mirrorShowTask;liveHead.append(taskButton);
   const savedCxbRender=cxbRender;cxbRender=function(force){savedCxbRender(force);if(cxbData?.profile_system)mirrorAccept(cxbData.profile_system)};

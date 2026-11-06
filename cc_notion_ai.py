@@ -1085,7 +1085,7 @@ function build(){
   +'<button type="button" class="hdrgear fleet-provider-gear" id="naiCardGear" title="Настройки Notion AI" aria-label="Настройки Notion AI">'+svg('fleetGeneralGear')+'</button></div>'
   +'<div class="nai-live-note"><b>Без лимитов по времени</b><span>Модель и effort — для постоянного чата Notion AI (Telegram и консоль панели).</span></div>'
   +'<div class="mirror-profile-footer"><div class="mirror-profile-holder"><button type="button" class="hdrgear cxbtn mirror-profile-button" id="naiProfileBtn" aria-haspopup="true" aria-controls="cxMenu">'+ICON+'<i class="cxdot"></i><span class="cxbtnname">Notion AI</span><span class="nai-chev" aria-hidden="true">⌄</span></button></div></div>';
- tile.querySelector('.mirror-profile-footer').appendChild(tile.querySelector('.fleet-provider-controls'));
+ tile.querySelector('.mirror-profile-footer').append(tile.querySelector('.fleet-provider-controls'),tile.querySelector('.nai-live-note'));
  rows.appendChild(tile);
  q=document.createElement('div');q.className='cxpop cxquick fleet-quick-panel';q.id='naiModelQ';q.setAttribute('role','dialog');q.setAttribute('aria-label','Модель и effort Notion AI');q.hidden=true;q.innerHTML='<div class="cxpbody"></div>';document.body.appendChild(q);
  tile.querySelector('.fleet-live-identity').addEventListener('click',function(e){e.preventDefault();var t=$i('ctNotion');if(t&&!t.hidden)t.click();var b=$i('termBox');if(b)b.scrollIntoView({block:'center',behavior:'smooth'})});
