@@ -227,6 +227,165 @@ class T(unittest.TestCase):
         try:
             r=s.nai.off(notify=False);s.assertFalse(r['ok']);s.assertTrue(s.nai.active())
         finally:M._run=old
+    def handoff_test_setup(s):
+        old_timeout, old_delay = M.HANDOFF_READY_TIMEOUT, M.HANDOFF_ENTER_DELAY
+        s.addCleanup(setattr, M, 'HANDOFF_READY_TIMEOUT', old_timeout)
+        s.addCleanup(setattr, M, 'HANDOFF_ENTER_DELAY', old_delay)
+        M.HANDOFF_READY_TIMEOUT, M.HANDOFF_ENTER_DELAY = 1, 0.01
+        folder = Path(s.d) / 'profile_exchange/codex/outbox/agent_handoff'
+        folder.mkdir(parents=True)
+        for name in ('claude.md', 'codex.md', 'notion.md'):
+            (folder / name).write_text(name)
+        s.ns['screen_hardcopy'] = lambda: '❯ ready'
+        return folder
+ 
+    def handoff_stuff(s):
+        return [x for x in s.runs if x[:2] == ['screen', '-S'] and 'stuff' in x]
+ 
+    def test_handoff_claude_text_is_safe(s):
+        folder = s.handoff_test_setup()
+        text = s.nai.handoff_sync_text('claude')
+        s.assertTrue(text.isascii())
+        s.assertIn(str(folder), text)
+        s.assertFalse(any(ord(c) in {36, 92, 94, 34, 39, 96} or ord(c) < 32 or ord(c) == 127 for c in text))
+ 
+    def test_handoff_claude_screen_delivery(s):
+        s.handoff_test_setup()
+        s.assertTrue(s.nai.handoff_sync('claude'))
+        calls = s.handoff_stuff()
+        s.assertEqual(len(calls), 2)
+        s.assertEqual(calls[0][:7], ['screen', '-S', 'darqai', '-p', '0', '-X', 'stuff'])
+        s.assertEqual(calls[0][-1], s.nai.handoff_sync_text('claude'))
+        s.assertEqual(calls[1][-1], '\r')
+        s.assertEqual(s.tg, [])
+        s.assertEqual(s.sent, [])
+ 
+    def test_handoff_claude_timeout(s):
+        s.handoff_test_setup()
+        s.ns['screen_hardcopy'] = lambda: 'loading'
+        s.assertFalse(s.nai.handoff_sync('claude'))
+        s.assertEqual(s.handoff_stuff(), [])
+        s.assertFalse((Path(s.d) / 'profile_runtime/handoff-sync.json').exists())
+ 
+    def test_handoff_deduplicates_other_notes(s):
+        folder = s.handoff_test_setup()
+        s.assertTrue(s.nai.handoff_sync('claude'))
+        s.assertFalse(s.nai.handoff_sync('claude'))
+        (folder / 'claude.md').write_text('own note changed significantly')
+        s.assertFalse(s.nai.handoff_sync('claude'))
+        s.assertEqual(len(s.handoff_stuff()), 2)
+        (folder / 'codex.md').write_text('another note with changed length')
+        s.assertTrue(s.nai.handoff_sync('claude'))
+        s.assertEqual(len(s.handoff_stuff()), 4)
+ 
+    def test_handoff_disabled(s):
+        s.handoff_test_setup()
+        (Path(s.d) / 'handoff_sync.disabled').touch()
+        s.assertFalse(s.nai.handoff_sync('claude'))
+        s.assertEqual(s.handoff_stuff(), [])
+        s.assertEqual(s.tg, [])
+        s.assertEqual(s.sent, [])
+ 
+    def test_handoff_codex_delivery(s):
+        s.handoff_test_setup()
+        calls = []
+        class Console:
+            def send_input(self, text):
+                calls.append(text)
+                return True, ''
+        s.ns['cc_codex_console'] = Console()
+        s.assertTrue(s.nai.handoff_sync('codex'))
+        s.assertFalse(s.nai.handoff_sync('codex'))
+        s.assertEqual(len(calls), 1)
+        s.assertIn('[Панель]', calls[0])
+        s.assertIn('Прочитай', calls[0])
+        s.assertEqual(s.tg, [])
+        s.assertEqual(s.sent, [])
+ 
+    def test_handoff_codex_missing_module(s):
+        s.handoff_test_setup()
+        s.ns.pop('cc_codex_console', None)
+        s.assertFalse(s.nai.handoff_sync('codex'))
+        s.assertFalse((Path(s.d) / 'profile_runtime/handoff-sync.json').exists())
+ 
+    def test_handoff_notion_delivery(s):
+        s.handoff_test_setup()
+        s.assertTrue(s.nai.handoff_sync('notion'))
+        s.assertEqual(len(s.posts), 1)
+        s.assertTrue(s.posts[0].startswith('[Панель '))
+        s.assertIn('не вызывай', s.posts[0])
+        s.assertEqual(s.tg, [])
+        s.assertEqual(s.sent, [])
+ 
+    def test_handoff_scenario_success_and_failure(s):
+        calls = []
+        s.nai.handoff_sync = lambda target: calls.append(target)
+        body = {'choices': {'claude': 'full', 'codex': None}, 'confirm': 'подтверждаю', 'revision': 1}
+        s.assertTrue(s.p.apply_scenario(body)['ok'])
+        s.assertEqual(calls, ['claude'])
+        calls.clear()
+        s.p.scenario_result = {'ok': False}
+        s.assertFalse(s.p.apply_scenario(body)['ok'])
+        s.assertEqual(calls, [])
+ 
+    def test_handoff_on_and_rollback(s):
+        calls = []
+        s.nai.handoff_sync = lambda target: calls.append(target)
+        s.claude[0] = False
+        s.assertTrue(s.nai.on(by='откат переключения')['ok'])
+        s.assertEqual(calls, [])
+        s.assertTrue(s.nai.off(notify=False, restore_claude=False)['ok'])
+        s.assertTrue(s.nai.on(by='панель')['ok'])
+        s.assertEqual(calls, ['notion'])
+ 
+    def test_handoff_off_started(s):
+        calls = []
+        s.nai.handoff_sync = lambda target: calls.append(target)
+        s.assertTrue(s.nai.on()['ok'])
+        calls.clear()
+        s.assertTrue(s.nai.off(notify=False)['ok'])
+        s.assertEqual(calls, ['claude'])
+ 
+    def test_handoff_catches_sender_exception(s):
+        s.handoff_test_setup()
+        class Console:
+            def send_input(self, text):
+                raise RuntimeError('test')
+        s.ns['cc_codex_console'] = Console()
+        s.assertFalse(s.nai.handoff_sync('codex'))
+        s.assertFalse((Path(s.d) / 'profile_runtime/handoff-sync.json').exists())
+        s.assertEqual(s.tg, [])
+        s.assertEqual(s.sent, [])
+ 
+    def test_handoff_lock_busy(s):
+        s.handoff_test_setup()
+        s.nai._sync_lock = threading.Lock()
+        s.nai._sync_lock.acquire()
+        try:
+            s.assertFalse(s.nai.handoff_sync('notion'))
+        finally:
+            s.nai._sync_lock.release()
+        s.assertEqual(s.posts, [])
+ 
+    def test_handoff_rejects_unsafe_claude_input(s):
+        s.handoff_test_setup()
+        for c in (chr(36), chr(92), chr(94), chr(34), chr(39), chr(96), '\n', 'я'):
+            s.assertFalse(s.nai.handoff_send_claude('test' + c))
+        s.assertEqual(s.handoff_stuff(), [])
+ 
+    def test_handoff_send_failure_does_not_save(s):
+        s.handoff_test_setup()
+        s.nai.handoff_send_claude = lambda text: False
+        s.assertFalse(s.nai.handoff_sync('claude'))
+        s.assertFalse((Path(s.d) / 'profile_runtime/handoff-sync.json').exists())
+ 
+    def test_handoff_empty_notes(s):
+        folder = s.handoff_test_setup()
+        (folder / 'codex.md').unlink()
+        (folder / 'notion.md').unlink()
+        s.assertFalse(s.nai.handoff_sync('claude'))
+        s.assertEqual(s.handoff_stuff(), [])
+
     def test_auto_blocked(s):
         s.nai.on(); s.assertFalse(s.p.transition('X', M.AUTO_MESSAGE)['ok'])
 
