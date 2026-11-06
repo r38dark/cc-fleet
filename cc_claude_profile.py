@@ -87,7 +87,13 @@ class ClaudeProfile:
         effort=effort or history_effort or self.ns['session_effort'](model)
         if not model or re.search(r'\s',model):raise ProfileError('claude_model_unknown')
         if effort is not None and effort not in ('low','medium','high','xhigh','max'):raise ProfileError('claude_effort_unknown')
+        telegram_channel = any(argv[i] == '--channels' and i+1 < len(argv) and argv[i+1] == 'plugin:telegram@claude-plugins-official' for i in range(len(argv)))
+        try:
+            sandbox_root = b'IS_SANDBOX=1' in Path('/proc/'+pid+'/environ').read_bytes().split(b'\0')
+        except OSError:
+            sandbox_root = False
         return dict(pid=pid, thread_id=tid, history=str(history), cwd=cwd, model=model, effort=effort,
+                    telegram_channel=telegram_channel, sandbox_root=sandbox_root,
                     bypass='--dangerously-skip-permissions' in argv or any(argv[i]=='--permission-mode' and i+1<len(argv) and argv[i+1]=='bypassPermissions' for i in range(len(argv))))
 
     def command(self, snapshot, policy, prompt):
@@ -107,7 +113,11 @@ class ClaudeProfile:
             if value in flags:i+=1;continue
             cleaned.append(value);i+=1
         if not cleaned:raise ProfileError('claude_binary_missing')
-        argv = ['env', 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1']+cleaned
+        environment = ['env', 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1']
+        if snapshot.get('sandbox_root') and 'IS_SANDBOX=1' not in cleaned:environment.append('IS_SANDBOX=1')
+        argv = environment+cleaned
+        if snapshot.get('telegram_channel') and '--channels' not in cleaned:
+            argv += ['--channels', 'plugin:telegram@claude-plugins-official']
         argv += ['--resume', snapshot['thread_id'], '--model', snapshot['model'], '--permission-mode', 'bypassPermissions' if policy['access']=='full' else 'dontAsk']
         if snapshot.get('effort'):argv += ['--effort', snapshot['effort']]
         argv += ['--settings', str(self.runtime/'claude-settings.json'), '--system-prompt-snapshot', 'off', '--append-system-prompt', prompt]

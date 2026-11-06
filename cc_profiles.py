@@ -77,7 +77,14 @@ class NativeProfiles:
             out['codex_runtime']=self.codex.active_settings()
             out['codex_sandbox']=self.codex.status().get('sandbox')
         if 'claude' in changed:
-            try:out['claude']=self.claude.capture()
+            try:
+                out['claude']=self.claude.capture()
+                expected = getattr(self, '_handoff_snapshot', None)
+                if expected:
+                    if out['claude'].get('thread_id') != expected.get('thread_id'):raise ProfileError('claude_history_unknown')
+                    out['claude']['model'], out['claude']['effort'] = expected['model'], expected.get('effort')
+                if getattr(self, '_handoff_telegram', False):out['claude']['telegram_channel'] = True
+                if getattr(self, '_handoff_sandbox_root', False):out['claude']['sandbox_root'] = True
             except ProfileError as exc:
                 if str(exc)!='claude_console_missing':raise
                 out['claude_absent']=True

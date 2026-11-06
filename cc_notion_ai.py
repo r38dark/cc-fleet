@@ -13,6 +13,7 @@ profiles.tasks.ask(исполнитель) → /root/notion_ai_inbox/step_<id>.m
 Выключение (кнопкой или выбором любого профиля Claude/Codex) возвращает всё как было.
 Состояние: BASE/notion_ai_mode.json (его же читают мост и /root/start_claude.sh), шаг — BASE/notion_ai_step.json."""
 import json
+import os
 import re
 import subprocess
 import threading
@@ -79,6 +80,7 @@ class NotionAI:
         base = Path(ns['BASE'])
         self.path = base / 'notion_ai_mode.json'
         self.step_path = base / 'notion_ai_step.json'
+        self.handoff_claude_path = base / 'profile_runtime' / 'last-claude-session.json'
         self.lock = threading.RLock()
         self.step_lock = threading.RLock()
         self.data = self._load()
@@ -251,10 +253,73 @@ class NotionAI:
     def claude_snapshot(self):
         try:
             s = self.profiles.native.claude.capture()
-            return {k: s.get(k) for k in ('thread_id', 'history', 'cwd', 'model', 'effort')}
+            return {k: s.get(k) for k in ('thread_id', 'history', 'cwd', 'model', 'effort', 'bypass', 'telegram_channel', 'sandbox_root')}
         except Exception as exc:
             print('notion-ai: снимок Claude не получен: %s' % exc, flush=True)
             return None
+
+    def handoff_valid_snapshot(self, snapshot):
+        if not isinstance(snapshot, dict):return False
+        tid, model = snapshot.get('thread_id'), snapshot.get('model')
+        if not isinstance(tid, str) or not UUID_RE.fullmatch(tid):return False
+        if not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', model):return False
+        if snapshot.get('effort') not in (None, 'low', 'medium', 'high', 'xhigh', 'max'):return False
+        try:
+            history = Path(snapshot.get('history') or '')
+            cwd = snapshot.get('cwd') or ''
+            configured = self.ns['cfg']().get('transcripts_dir')
+            root = Path(self.ns.get('SETTINGS') or '/root/.claude/settings.json').parent / 'projects'
+            directory = Path(configured) if configured else root / re.sub(r'[^A-Za-z0-9]', '-', cwd)
+            directory = directory.resolve(strict=True)
+            return history.is_file() and history.resolve(strict=True) == directory / (tid + '.jsonl') and Path(cwd).is_dir()
+        except (OSError, ValueError, TypeError):return False
+
+    def handoff_snapshot_save(self, snapshot):
+        if self.handoff_valid_snapshot(snapshot):
+            atomic(self.handoff_claude_path, snapshot)
+            return True
+        return False
+
+    def handoff_snapshot_load(self):
+        try:
+            snapshot = json.loads(self.handoff_claude_path.read_text())
+        except (OSError, ValueError):return None
+        return snapshot if self.handoff_valid_snapshot(snapshot) else None
+
+    def handoff_start_staging(self, snapshot):
+        # No Telegram listener and no tasks: only pre-open the chosen session.
+        if not self.handoff_valid_snapshot(snapshot) or self.claude_running():
+            raise NAIError('Нужная беседа Claude недоступна или консоль уже занята.')
+        binary = self.ns.get('CLAUDE_BIN') or '/root/.npm-global/bin/claude'
+        env = ['HOME=/root', 'USER=root', 'SHELL=/bin/bash', 'LANG=en_US.UTF-8',
+               'PATH=/root/.bun/bin:/root/.npm-global/bin:/usr/local/bin:/usr/bin:/bin',
+               'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1']
+        args = ['systemd-run','--quiet','--unit=cc-handoff-claude-staging','--collect',
+                '--property=KillMode=control-group','--working-directory='+snapshot['cwd'], '--',
+                '/usr/bin/screen','-U','-D','-mS',self.screen(),'/usr/bin/env',*env,binary,
+                '--resume',snapshot['thread_id'],'--model',snapshot['model'],'--permission-mode','dontAsk',
+                '--settings',json.dumps({'enabledPlugins':{'telegram@claude-plugins-official':False}}, separators=(',',':'))]
+        if snapshot.get('effort'):args += ['--effort',snapshot['effort']]
+        rc, _ = _run(args, 30)
+        if rc:raise NAIError('Не удалось открыть сохранённую беседу Claude.')
+        for _ in range(100):
+            time.sleep(.5)
+            try:
+                live = self.profiles.native.claude.capture()
+                text = self.ns['screen_hardcopy']().lower()
+                if live.get('thread_id') == snapshot['thread_id'] and ('bypass permissions' in text or 'shift+tab to cycle' in text or '❯' in text):
+                    return True
+            except Exception:pass
+        raise NAIError('Claude не подтвердил готовность нужной беседы.')
+
+    def handoff_stop_staging(self):
+        _run(['screen','-S',self.screen(),'-X','quit'], 15)
+        _run(['systemctl','stop','cc-claude-profile-console.service'], 20)
+        _run(['systemctl','stop','cc-handoff-claude-staging.service'], 20)
+        for _ in range(20):
+            if not self.claude_running():return True
+            time.sleep(.5)
+        return False
 
     def fallback_snapshot(self):
         snap = self.data.get('claude_snapshot')
@@ -405,6 +470,8 @@ class NotionAI:
                 data = dict(active=True, since=time.time(), by=by, kind=kind, follower=follower,
                             claude_was_running=was_running, before=self.labels(),
                             claude_snapshot=self.claude_snapshot() if was_running else None)
+            if not was_active and was_running:
+                self.handoff_snapshot_save(data.get('claude_snapshot'))
             self._save(data)
             self.cancel_pending('профиль изменился')
             try:
@@ -467,7 +534,7 @@ class NotionAI:
             self.tell_codex_chat('⏸ Codex на паузе: включён профиль «%s». Сообщения сюда подождут '
                                  'до выключения профиля. Notion AI отвечает в общем чате.' % t)
 
-    def off(self, reason='выключен на панели', notify=True):
+    def off(self, reason='выключен на панели', notify=True, restore_claude=True):
         with self.lock:
             if not self.active():
                 return dict(ok=True, message='Профиль Notion AI уже выключен.', state=self.public())
@@ -475,16 +542,18 @@ class NotionAI:
                 return dict(ok=False, busy=True, message='Идёт подтверждённый шаг Notion AI — дождись результата.', state=self.public())
             prev, f, t = dict(self.data), self.follower(), self.title()
             self.cancel_pending('профиль Notion AI выключен')
-            _run(['systemctl', 'stop', BRIDGE_UNIT], 40)
+            code, _ = _run(['systemctl', 'stop', BRIDGE_UNIT], 40)
+            if code != 0:
+                return dict(ok=False, message='Мост Telegram не остановился; переключение отменено.', state=self.public())
             self._save(dict(active=False, since=time.time(), last=dict(since=prev.get('since'), reason=reason,
                                                                         kind=prev.get('kind'), follower=prev.get('follower'))))
             if f == 'claude':
                 self.stop_executor_claude(prev)
             codex_ok = self.codex_restore(prev) if f == 'codex' else True
             started = False
-            if prev.get('claude_was_running'):
+            if prev.get('claude_was_running') and restore_claude:
                 started = self.start_claude()
-            self.error = '' if started or not prev.get('claude_was_running') else 'Claude Code не запустился — запусти /root/start_claude.sh.'
+            self.error = '' if started or not prev.get('claude_was_running') or not restore_claude else 'Claude Code не запустился — запусти /root/start_claude.sh.'
             if not codex_ok:
                 self.error = (self.error + ' ' if self.error else '') + 'Codex вернётся к своему профилю, когда консоль освободится.'
             if notify:
@@ -703,21 +772,124 @@ class NotionAI:
             return orig_action(e, act, body)
 
         def apply_scenario(body):
-            if self.active():
-                try:  # пробный прогон: запрос слова подтверждения не должен выключать Notion AI
+            with self.lock, p.lock:
+                if not self.active():
+                    target_claude = bool((body.get('choices') or {}).get('claude'))
+                    if not target_claude or self.claude_running():return orig_scenario(body)
+                    try:
+                        cand = type(p.state).from_data(p.state.export(), p.clock)
+                        dry = cand.apply_scenario(body.get('choices'), body.get('confirm', ''), body.get('revision'))
+                    except Exception:
+                        return dict(ok=False, message='Не удалось проверить сценарий; текущий профиль не изменён.')
+                    if not dry.get('ok'):return dry
+                    if p.transitioning or p.pending.exists() or p.update_active() or self.step_busy() or p.native.busy():
+                        return dict(ok=False, busy=True, message='Дождись завершения работы и повтори переключение.', state=p.public())
+                    snapshot = self.handoff_snapshot_load()
+                    if not snapshot:
+                        return dict(ok=False, message='Не найдена проверенная беседа Claude; текущий профиль не изменён.', state=p.public())
+                    if self.bridge_state(fresh=True) not in ('inactive', 'failed'):
+                        return dict(ok=False, message='Мост Telegram ещё работает; запуск Claude отменён.', state=p.public())
+                    old_choices = dict(p.state.manual_choices)
+                    try:
+                        self.handoff_start_staging(snapshot)
+                        n._handoff_snapshot = snapshot
+                        n._handoff_telegram = bool(snapshot.get('telegram_channel'))
+                        n._handoff_sandbox_root = bool(snapshot.get('sandbox_root'))
+                        result = orig_scenario(body)
+                        if not result.get('ok'):raise NAIError(result.get('message') or 'Профиль Claude не применён.')
+                        captured = n.claude.capture()
+                        if captured.get('thread_id') != snapshot['thread_id']:
+                            raise NAIError('Claude открыл другую беседу; переключение отменено.')
+                        if snapshot.get('telegram_channel') and not captured.get('telegram_channel'):
+                            raise NAIError('Канал Telegram Claude не подтвердился; переключение отменено.')
+                        return result
+                    except Exception as exc:
+                        stopped = self.handoff_stop_staging()
+                        n._handoff_snapshot = None
+                        n._handoff_telegram = False
+                        n._handoff_sandbox_root = False
+                        if stopped and not p.pending.exists():
+                            if p.state.manual_choices != old_choices:
+                                revision = p.public().get('revision')
+                                reverted = orig_scenario(dict(choices=old_choices, revision=revision, confirm='подтверждаю'))
+                                if not reverted.get('ok'):
+                                    return dict(ok=False, message=str(exc)+' Исходный профиль не восстановлен; требуется проверка.', state=p.public())
+                            return dict(ok=False, message=str(exc)+' Исходный профиль сохранён.', state=p.public())
+                        return dict(ok=False, message=str(exc)+' Не удалось подтвердить восстановление; требуется проверка.', state=p.public())
+                    finally:
+                        n._handoff_snapshot = None
+                        n._handoff_telegram = False
+                        n._handoff_sandbox_root = False
+                try:
                     cand = type(p.state).from_data(p.state.export(), p.clock)
                     dry = cand.apply_scenario(body.get('choices'), body.get('confirm', ''), body.get('revision'))
                 except Exception:
-                    dry = dict(ok=True)
-                if not dry.get('ok'):
-                    return dry
+                    return dict(ok=False, message='Не удалось проверить сценарий; Notion AI оставлен включённым.')
+                if not dry.get('ok'):return dry
                 same = body.get('choices') == getattr(p.state, 'manual_choices', None)
-                r = self.off('выбран другой профиль')
-                if not r.get('ok'):
-                    return r
-                if same:
-                    return dict(ok=True, message='Notion AI выключен. Действует прежний профиль.', state=p.public())
-            return orig_scenario(body)
+                target_claude = bool((body.get('choices') or {}).get('claude'))
+                if p.transitioning or p.pending.exists() or p.update_active() or self.step_busy() or p.native.busy():
+                    return dict(ok=False, busy=True, message='Дождись завершения работы и повтори переключение.', state=p.public())
+                if not target_claude:
+                    old_kind, old_follower = self.kind(), self.follower()
+                    old_choices = dict(p.state.manual_choices)
+                    r = self.off('выбран другой профиль', notify=False, restore_claude=False)
+                    if not r.get('ok'):return r
+                    if same:return dict(ok=True, message='Notion AI выключен. Действует прежний профиль.', state=p.public())
+                    try:
+                        result = orig_scenario(body)
+                        if result.get('ok'):return result
+                        msg = result.get('message') or 'Сценарий не применён.'
+                    except Exception as exc:
+                        msg = 'Сценарий не применён: ' + type(exc).__name__
+                    if not self.claude_running() and p.state.manual_choices == old_choices and not p.pending.exists():
+                        restored = self.on(kind=old_kind, follower=old_follower, by='откат переключения', force=True)
+                        if restored.get('ok'):return dict(ok=False, message=msg+' Notion AI восстановлен.', state=p.public())
+                    return dict(ok=False, message=msg+' Не удалось автоматически восстановить Notion AI; требуется проверка.', state=p.public())
+                snapshot = self.handoff_snapshot_load()
+                if not snapshot:
+                    return dict(ok=False, message='Не найдена проверенная беседа Claude. Notion AI оставлен включённым.', state=p.public())
+                if self.claude_running():
+                    return dict(ok=False, message='Claude уже запущен; Notion AI оставлен включённым для проверки.', state=p.public())
+                old_kind, old_follower = self.kind(), self.follower()
+                old_choices = dict(p.state.manual_choices)
+                r = self.off('выбран другой профиль', notify=False, restore_claude=False)
+                if not r.get('ok'):return r
+                result = None
+                try:
+                    if self.bridge_state(fresh=True) not in ('inactive', 'failed'):
+                        raise NAIError('Остановка моста Telegram не подтверждена; запуск Claude отменён.')
+                    self.handoff_start_staging(snapshot)
+                    n._handoff_snapshot = snapshot
+                    n._handoff_telegram = bool(snapshot.get('telegram_channel'))
+                    n._handoff_sandbox_root = bool(snapshot.get('sandbox_root'))
+                    result = p.transition(cand, 'Сценарий применён к консолям.', 'claude', recover_blocked=True) if same else orig_scenario(body)
+                    if not result.get('ok'):raise NAIError(result.get('message') or 'Профиль Claude не применён.')
+                    captured = n.claude.capture()
+                    if captured.get('thread_id') != snapshot['thread_id']:
+                        raise NAIError('Claude открыл другую беседу; переключение отменено.')
+                    if snapshot.get('telegram_channel') and not captured.get('telegram_channel'):
+                        raise NAIError('Канал Telegram Claude не подтвердился; переключение отменено.')
+                    return result
+                except Exception as exc:
+                    stopped = self.handoff_stop_staging()
+                    if stopped:
+                        n._handoff_snapshot = None
+                        n._handoff_telegram = False
+                        n._handoff_sandbox_root = False
+                        if p.state.manual_choices != old_choices:
+                            revision = p.public().get('revision')
+                            reverted = orig_scenario(dict(choices=old_choices, revision=revision, confirm='подтверждаю'))
+                            if not reverted.get('ok'):
+                                return dict(ok=False, message=str(exc) + ' Исходный сценарий не восстановлен; требуется проверка.', state=p.public())
+                        restored = self.on(kind=old_kind, follower=old_follower, by='откат переключения', force=True)
+                        if restored.get('ok'):
+                            return dict(ok=False, message=str(exc) + ' Notion AI восстановлен.', state=p.public())
+                    return dict(ok=False, message=str(exc) + ' Не удалось автоматически восстановить Notion AI; требуется проверка.', state=p.public())
+                finally:
+                    n._handoff_snapshot = None
+                    n._handoff_telegram = False
+                    n._handoff_sandbox_root = False
 
         p.paused, p.public, p.transition = paused, public, transition
         p.action, p.apply_scenario = action, apply_scenario

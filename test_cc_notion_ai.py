@@ -1,4 +1,4 @@
-import json, tempfile, unittest, time
+import json, tempfile, unittest, time, threading
 from pathlib import Path
 import cc_notion_ai as M
 
@@ -33,7 +33,7 @@ class Tasks:
     def ask(s, e, text): s.asked.append((e, text)); return 'РЕЗУЛЬТАТ ' + e
 class Profiles:
     def __init__(s, t):
-        s.transitioning = False; s.pending = Path(t.d)/'pending.json'; s.native = Native(t); s.calls = []
+        s.lock = threading.RLock(); s.transitioning = False; s.pending = Path(t.d)/'pending.json'; s.native = Native(t); s.calls = []
         s.labels = {'claude': 'Claude · не участвует', 'codex': 'Codex Full'}; s.avail = {'claude': {'status': 'up'}, 'codex': {'status': 'up'}}
         s.state = State(); s.clock = time.time; s.tasks = Tasks()
     def update_active(s): return False
@@ -42,7 +42,7 @@ class Profiles:
     def public(s): return {'engines': {e: {'label': l, 'role': 'solo'} for e, l in s.labels.items()}}
     def transition(s, c, m, force=None, recover_blocked=False): s.calls.append(m); return {'ok': True}
     def action(s, e, a, b): s.calls.append('action'); return {'ok': True}
-    def apply_scenario(s, b): s.calls.append('scenario'); return {'ok': True}
+    def apply_scenario(s, b): s.calls.append('scenario'); return getattr(s, 'scenario_result', {'ok': True})
     def exchange(s, e): return Path('/ex')/e
 class H:
     def do_GET(s): pass
@@ -136,8 +136,97 @@ class T(unittest.TestCase):
         s.assertTrue(r.get('confirmation_required')); s.assertTrue(s.nai.active())
         r = s.p.apply_scenario({'choices': {'claude': None, 'codex': 'full'}, 'confirm': 'подтверждаю', 'revision': 1})
         s.assertTrue(r['ok']); s.assertFalse(s.nai.active()); s.assertNotIn('scenario', s.p.calls)
-        s.nai.on(); r = s.p.apply_scenario({'choices': {'claude': 'full', 'codex': None}, 'confirm': 'подтверждаю', 'revision': 1})
-        s.assertTrue(r['ok']); s.assertFalse(s.nai.active()); s.assertIn('scenario', s.p.calls)
+        s.nai.on(); s.claude[0] = False
+        r = s.p.apply_scenario({'choices': {'claude': 'full', 'codex': None}, 'confirm': 'подтверждаю', 'revision': 1})
+        s.assertFalse(r['ok']); s.assertTrue(s.nai.active()); s.assertNotIn('scenario', s.p.calls)
+    def test_missing_snapshot_does_not_stop_bridge(s):
+        s.claude[0] = False; s.nai.on(); before=len(s.runs)
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertTrue(s.nai.active());s.assertFalse(any(a[:3]==['systemctl','stop',M.BRIDGE_UNIT] for a in s.runs[before:]))
+    def test_staging_failure_restores_notion(s):
+        s.claude[0]=False;s.nai.on();s.nai.handoff_snapshot_load=lambda: {'thread_id':'known'}
+        s.nai.bridge_state=lambda fresh=False:'inactive' if not s.nai.active() else 'active'
+        def fail(snapshot):raise M.NAIError('test launch failed')
+        s.nai.handoff_start_staging=fail;s.nai.handoff_stop_staging=lambda:True
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertIn('Notion AI восстановлен',r['message']);s.assertTrue(s.nai.active())
+    def test_confirmed_staging_preserves_snapshot(s):
+        s.claude[0]=False;s.nai.on();snap={'thread_id':'known','telegram_channel':True,'sandbox_root':True}
+        s.nai.handoff_snapshot_load=lambda:snap;s.nai.bridge_state=lambda fresh=False:'inactive' if not s.nai.active() else 'active'
+        s.nai.handoff_start_staging=lambda snapshot:True
+        s.p.native.claude.capture=lambda:dict(snap)
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertTrue(r['ok']);s.assertFalse(s.nai.active());s.assertIn('scenario',s.p.calls)
+        s.assertFalse(s.p.native._handoff_telegram);s.assertFalse(s.p.native._handoff_sandbox_root)
+    def test_codex_to_claude_resumes_known_session(s):
+        s.claude[0]=False;snap={'thread_id':'known','telegram_channel':True,'sandbox_root':True}
+        s.nai.handoff_snapshot_load=lambda:snap;s.nai.bridge_state=lambda fresh=False:'inactive'
+        calls=[];s.nai.handoff_start_staging=lambda snapshot:calls.append(snapshot)
+        s.p.native.claude.capture=lambda:dict(snap)
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertTrue(r['ok']);s.assertEqual(calls,[snap]);s.assertIn('scenario',s.p.calls)
+        s.assertIsNone(s.p.native._handoff_snapshot)
+    def test_codex_to_claude_refuses_active_bridge(s):
+        s.claude[0]=False;s.nai.handoff_snapshot_load=lambda:{'thread_id':'known'}
+        s.nai.bridge_state=lambda fresh=False:'active'
+        s.nai.handoff_start_staging=lambda snapshot:s.fail('started despite active bridge')
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertNotIn('scenario',s.p.calls)
+    def test_codex_to_claude_failure_stops_staging(s):
+        s.claude[0]=False;s.nai.handoff_snapshot_load=lambda:{'thread_id':'known'}
+        s.nai.bridge_state=lambda fresh=False:'inactive'
+        s.nai.handoff_start_staging=lambda snapshot:True
+        stopped=[];s.nai.handoff_stop_staging=lambda:stopped.append(True) or True
+        s.p.scenario_result={'ok':False,'message':'тестовая ошибка'}
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertEqual(stopped,[True]);s.assertFalse(s.nai.active())
+        s.assertIn('Исходный профиль сохранён',r['message'])
+    def test_staging_explicitly_disables_telegram_plugin(s):
+        s.claude[0]=False
+        snap={'thread_id':'known','cwd':s.d,'model':'claude-test','effort':'xhigh'}
+        s.nai.handoff_valid_snapshot=lambda _:True
+        s.ns['screen_hardcopy']=lambda:'❯'
+        s.p.native.claude.capture=lambda:{'thread_id':'known'}
+        s.assertTrue(s.nai.handoff_start_staging(snap))
+        args=next(a for a in s.runs if a[0]=='systemd-run')
+        s.assertNotIn('--channels',args)
+        settings=json.loads(args[args.index('--settings')+1])
+        s.assertIs(settings['enabledPlugins']['telegram@claude-plugins-official'],False)
+    def test_resume_snapshot_validation_and_do_not_overwrite(s):
+        tid='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        history=Path(s.d)/(tid+'.jsonl');history.write_text('test')
+        s.ns['cfg']=lambda:{'screen_session':'darqai','transcripts_dir':s.d}
+        good={'thread_id':tid,'history':str(history),'cwd':s.d,'model':'claude-test','effort':'xhigh'}
+        s.assertTrue(s.nai.handoff_snapshot_save(good));s.assertEqual(s.nai.handoff_snapshot_load(),good)
+        s.assertFalse(s.nai.handoff_snapshot_save(dict(good,thread_id='bad')))
+        s.assertFalse(s.nai.handoff_snapshot_save(dict(good,history='/etc/passwd')))
+        s.assertFalse(s.nai.handoff_snapshot_save(dict(good,model='bad model')))
+        s.assertEqual(s.nai.handoff_snapshot_load(),good)
+    def test_scenario_error_restores_notion(s):
+        s.claude[0]=False;s.nai.on();snap={'thread_id':'known','telegram_channel':True,'sandbox_root':True}
+        s.nai.handoff_snapshot_load=lambda:snap;s.nai.bridge_state=lambda fresh=False:'inactive' if not s.nai.active() else 'active'
+        s.nai.handoff_start_staging=lambda snapshot:True;s.nai.handoff_stop_staging=lambda:True
+        s.p.scenario_result={'ok':False,'message':'ошибка перехода'}
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertTrue(s.nai.active());s.assertIn('Notion AI восстановлен',r['message'])
+        s.assertIsNone(s.p.native._handoff_snapshot);s.assertFalse(s.p.native._handoff_telegram)
+    def test_codex_switch_does_not_start_old_claude(s):
+        s.nai.on();s.assertFalse(s.claude[0]);before=len(s.runs)
+        r=s.p.apply_scenario({'choices':{'claude':None,'codex':'write'},'confirm':'подтверждаю','revision':1})
+        s.assertTrue(r['ok']);s.assertFalse(s.claude[0]);s.assertFalse(any(a[0]=='systemd-run' for a in s.runs[before:]))
+    def test_codex_failure_restores_notion(s):
+        s.claude[0]=False;s.nai.on();s.p.scenario_result={'ok':False,'message':'проверочный отказ'}
+        r=s.p.apply_scenario({'choices':{'claude':None,'codex':'write'},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertTrue(s.nai.active());s.assertIn('Notion AI восстановлен',r['message'])
+    def test_bridge_stop_failure_preserves_notion(s):
+        s.claude[0]=False;s.nai.on();old=M._run
+        def failing(args,timeout=30):
+            if args[:3]==['systemctl','stop',M.BRIDGE_UNIT]:return 1,'failed'
+            return old(args,timeout)
+        M._run=failing
+        try:
+            r=s.nai.off(notify=False);s.assertFalse(r['ok']);s.assertTrue(s.nai.active())
+        finally:M._run=old
     def test_auto_blocked(s):
         s.nai.on(); s.assertFalse(s.p.transition('X', M.AUTO_MESSAGE)['ok'])
 
