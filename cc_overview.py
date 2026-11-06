@@ -731,6 +731,18 @@ html.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::after{co
 
 
 
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{padding-left:8px}
+/* Управление аккаунтами свёрнуто до явного открытия. */
+.fleet-accounts-fold>.fleet-accounts-intro{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:48px;padding:10px 14px;margin:0;cursor:pointer;list-style:none;border:1px solid var(--fleet-line);border-radius:9px;background:var(--card)}
+.fleet-accounts-fold>.fleet-accounts-intro::-webkit-details-marker{display:none}
+.fleet-accounts-fold>.fleet-accounts-intro:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
+.fleet-accounts-fold[open]>.fleet-accounts-intro{margin-bottom:18px}
+.fleet-accounts-heading{display:block;color:var(--txt);font-size:18px;font-weight:550;line-height:1.35;margin-top:3px}
+.fleet-accounts-chevron{font-size:19px;color:var(--fleet-muted);line-height:1}
+.fleet-accounts-fold[open] .fleet-accounts-chevron{transform:rotate(180deg)}
+html:root:root.ag-live-claude #fleetActiveAccounts .fleet-compact-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-compact-account.codex,html:root:root.ag-live-notion #fleetActiveAccounts .fleet-compact-account.notion{box-shadow:inset 0 0 0 1px #49d6aa}
+html:root:root.ag-live-claude #fleetActiveAccounts .fleet-live-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-live-account.codex,html:root:root.ag-live-notion #fleetActiveAccounts .fleet-live-account.notion{border-color:#49d6aa}
+
 /* Сверху только название и аккаунт; все показатели и управление — ниже. */
 html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:minmax(0,1fr);grid-template-areas:"identity" "profile"}
 html:root:root #fleetActiveAccounts .mirror-profile-footer{grid-area:profile;grid-column:1/-1;display:flex;justify-content:flex-start;gap:10px;min-width:0}
@@ -838,10 +850,14 @@ JS = r'''
  if(mobileConsole.matches&&document.documentElement.classList.contains('conly')&&!document.fullscreenElement)setConly(false,false);
  send.textContent='↑';send.title='Отправить в выбранную консоль · Enter';send.setAttribute('aria-label','Отправить в выбранную консоль');
  input.title='Enter — отправить · Shift+Enter — новая строка';
- const intro=el('div','fleet-accounts-intro');intro.innerHTML='<span class="fleet-eyebrow">УПРАВЛЕНИЕ АККАУНТАМИ</span><h2>Лимиты и переключения</h2>';accountArea.prepend(intro);
+ const accFold=el('details','fleet-accounts-fold');accFold.id='fleetAccountsFold';
+ const intro=el('summary','fleet-accounts-intro');intro.innerHTML='<span class="fleet-accounts-title"><span class="fleet-eyebrow">УПРАВЛЕНИЕ АККАУНТАМИ</span><span class="fleet-accounts-heading">Лимиты и переключения</span></span><span class="fleet-accounts-chevron" aria-hidden="true">⌄</span>';
+ accFold.append(intro,claude,codex);accountArea.append(accFold);
+ try{accFold.open=localStorage.getItem('cc_accounts_open')==='1'}catch(e){}
+ accFold.addEventListener('toggle',()=>{try{localStorage.setItem('cc_accounts_open',accFold.open?'1':'0')}catch(e){}});
  const claudeFoot=el('div','fleet-group-footer'),claudeNote=el('span','fleet-group-note');claudeFoot.append(claudeNote,document.getElementById('optWrap'));claude.append(claudeFoot);
  const codexFoot=el('div','fleet-group-footer');codexFoot.append(rotation,xh.querySelector('.switchrow'));codex.append(codexFoot);
- const noteFooter=el('div','fleet-design-note');noteFooter.innerHTML='<span aria-hidden="true">ⓘ</span><p>Проценты показывают использованный лимит. Плановая смена аккаунта — между ответами.</p>';accountArea.append(noteFooter);
+ const noteFooter=el('div','fleet-design-note');noteFooter.innerHTML='<span aria-hidden="true">ⓘ</span><p>Проценты показывают использованный лимит. Плановая смена аккаунта — между ответами.</p>';accFold.append(noteFooter);
  for(const head of [ch,xh]){const count=el('span','fleet-count');head.querySelector('h2').after(count)}
  function countText(n){const k=n%100,m=n%10;return n+' '+(k>=11&&k<=14?'аккаунтов':m===1?'аккаунт':m>=2&&m<=4?'аккаунта':'аккаунтов')}
  function putText(node,value){if(node.textContent!==value)node.textContent=value}
@@ -1089,7 +1105,7 @@ JS = r'''
   catch(err){toast('⚠ '+err.message)}finally{e.target.disabled=false}
  });
  function ownButton(text,action){const button=el('button','ghostbtn',text);button.type='button';button.addEventListener('click',action);return button}
- function toCards(selector,close){close();setTimeout(()=>(document.querySelector(selector+' .card')||document.querySelector(selector))?.scrollIntoView({behavior:'smooth',block:'center'}),80)}
+ function toCards(selector,close){close();accFold.open=true;setTimeout(()=>(document.querySelector(selector+' .card')||document.querySelector(selector))?.scrollIntoView({behavior:'smooth',block:'center'}),80)}
  function paintOwnAccounts(){
   const accounts=Object.keys(lastSnap?.accounts||{}),active=lastSnap?.active;
   claudeOwnAccounts.replaceChildren(el('span','fleet-own-text',accounts.length?'Аккаунты: '+accounts.length+' · сейчас '+(active||'—'):'Аккаунтов пока нет'),

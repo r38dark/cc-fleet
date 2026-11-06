@@ -984,6 +984,7 @@ html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{gr
 .fleet-compact-account.notion{--live-accent:#a78bfa}
 .fleet-compact-account.notion .fleet-compact-window[data-window="model"]{grid-column:2}.fleet-compact-account.notion .fleet-compact-window[data-window="effort"]{grid-column:3}
 .fleet-compact-account.notion .nai-cs{grid-column:6;color:var(--fleet-muted);overflow:hidden;text-overflow:ellipsis}
+.fleet-compact-account.notion .nai-cs:empty{display:none}
 @media(max-width:640px){html:root:root #fleetActiveAccounts .fleet-live-account.notion .nai-live-note{grid-column:1/-1;grid-row:3}}
 #naiModelQ{--fleet-accent:#a78bfa;--fleet-accent-soft:#2a2346;overflow:auto}
 #naiModelQ .cxqm small{margin-left:auto;font-size:10px;color:var(--fleet-muted);white-space:nowrap}
@@ -1034,7 +1035,7 @@ function agState(k){var a=st&&st.agents&&st.agents[k];if(a)return a;if(k==='noti
 function wrapped(){var h1=document.getElementById('h1'),hdr=document.querySelector('.hdr');if(!h1||!h1.offsetParent||!bar.offsetParent)return false;var a=h1.getBoundingClientRect(),b=bar.getBoundingClientRect(),btns=bar.parentNode,l=btns&&btns.lastElementChild,r=hdr?hdr.getBoundingClientRect():null;
  return b.top>=a.bottom-2||(l&&r&&l.getBoundingClientRect().right>r.right+1)}
 function fit(){var cl=document.documentElement.classList;for(var i=0;i<LEVELS.length;i++){var lv=LEVELS[i];bar.className='nai-ag'+(lv?' '+lv:'');cl.toggle('nai-nosub',lv.indexOf('nosub')>=0);if(!wrapped())break}}
-function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;document.documentElement.classList.toggle('ag-pause-'+a[0],g.state==='pause');s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});btn.disabled=busy;fit()}
+function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;document.documentElement.classList.toggle('ag-pause-'+a[0],g.state==='pause');document.documentElement.classList.toggle('ag-live-'+a[0],on);s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});btn.disabled=busy;fit()}
 // [notion-ai] Баннер только для шага: ждёт подтверждения или выполняется. Состояние агентов — в блоке шапки.
 function paint(){var f=orch()?names[st.follower]:'',s=orch()&&st.step,pend=pending(),run=!!(s&&(s.status==='approved'||s.status==='running'));paintAgents();banner.hidden=!(pend||run);
  var msg=pend?'🧩 <b>Шаг Notion AI → '+esc(f)+' ждёт подтверждения.</b> Подтверди здесь или кнопкой в Telegram.':run?'⏳ <b>'+esc(names[s.follower]||f)+' выполняет шаг Notion AI.</b> Результат придёт в Telegram.':'';
@@ -1101,9 +1102,9 @@ function build(){
 function paintTile(){
  if(!build())return;var n=name()||'—',f=effort(),a=agent(),on=['run','lead','exec'].indexOf(a.state)>=0;
  var t=$i('naiModelTile');t.querySelector('.cxmodn').textContent=n;t.querySelector('.cxmode').textContent=f;t.title='Модель Notion AI: '+n+(f?' · '+f:'');t.setAttribute('aria-label',t.title);
- compact.querySelector('.nai-cm').textContent=n;compact.querySelector('.nai-ce').textContent=f||'—';compact.querySelector('.nai-cs').textContent=a.text||'';
+ compact.querySelector('.nai-cm').textContent=n;compact.querySelector('.nai-ce').textContent=f||'—';compact.querySelector('.nai-cs').textContent=(a.text||'')==='работает'?'':(a.text||'');
  tile.querySelector('.nai-mail').textContent=st&&st.email||'постоянный чат';
- var pb=$i('naiProfileBtn');pb.querySelector('.cxbtnname').textContent=a.label||'Notion AI';pb.querySelector('.cxdot').className='cxdot'+(on?' on':'');pb.title='Профиль Notion AI: '+(a.label||'');pb.setAttribute('aria-label',pb.title)}
+ var pb=$i('naiProfileBtn');pb.querySelector('.cxbtnname').textContent=(a.label||'Notion AI').replace(/\s*·\s*работает$/iu,'');pb.querySelector('.cxdot').className='cxdot'+(on?' on':'');pb.title='Профиль Notion AI: '+(a.label||'');pb.setAttribute('aria-label',pb.title)}
 function placeQ(){var t=$i('naiModelTile'),r=t.getBoundingClientRect(),w=Math.min(340,innerWidth-24),top=Math.min(r.bottom+8,Math.max(12,innerHeight-260));
  q.style.width=w+'px';q.style.top=Math.round(top)+'px';q.style.left=Math.max(12,Math.min(Math.round(r.right-w),innerWidth-w-12))+'px';q.style.right='auto';q.style.bottom='auto';q.style.maxHeight=Math.max(160,innerHeight-top-12)+'px'}
 function item(m){var on=m.label===name(),dis=m.disabled||!!job;
