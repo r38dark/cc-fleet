@@ -54,6 +54,26 @@ class Mirror(unittest.TestCase):
         self.assertIn("color", cur)  # цвет сохранён
         self.assertEqual(hist, "")  # прокрутки пока нет
 
+    def test_frozen_screen_of_stopped_console_comes_from_the_log(self):
+        self.write("Последний экран\r\n\x1b[31mкрасный\x1b[0m".encode(), "wb")
+        cur, hist, stopped = C.frozen_snapshot(True)
+        self.assertIn("Последний экран", self.text(cur))
+        self.assertIn("красный", self.text(cur))
+        self.assertIn("color", cur)
+        self.assertEqual(hist, "")
+        self.assertGreater(stopped, 0)
+        self.assertIsNone(C.frozen_snapshot(False)[1])
+
+    def test_frozen_screen_falls_back_to_previous_log_when_new_one_is_empty(self):
+        with open(C._log() + ".prev", "wb") as f:
+            f.write("Прошлый сеанс".encode())
+        open(C._log(), "wb").close()  # свежий запуск ещё ничего не нарисовал
+        self.assertIn("Прошлый сеанс", self.text(C.frozen_snapshot()[0]))
+
+    def test_frozen_screen_without_any_log(self):
+        self.assertEqual(C.frozen_snapshot(True), ("", "", 0))
+        self.assertEqual(C.frozen_snapshot(False), ("", None, 0))
+
     def test_feeds_only_new_bytes(self):
         self.write(b"one\r\n", "wb")
         C.snapshot()
@@ -661,6 +681,7 @@ class Routes(unittest.TestCase):
         with mock.patch.object(L, "codex_bin", return_value=bin_), \
                 mock.patch.object(C, "snapshot", return_value=snap), \
                 mock.patch.object(C, "status", return_value={"available": True, "running": snap is not None}), \
+                mock.patch.object(C, "frozen_snapshot", return_value=("codex last", "codex last history", 777)), \
                 mock.patch.object(L, "console_snapshot", return_value=("claude screen", "claude history")), \
                 mock.patch.object(L, "_current_screen_pid", return_value="123" if claude_running else None), \
                 mock.patch.object(L, "console_frozen_snapshot", return_value=("last screen", "last history", 12345)), \
@@ -689,9 +710,14 @@ class Routes(unittest.TestCase):
         d = self.get("s=codex", snap=("cur", None))[1]
         self.assertNotIn("history", d)
 
-    def test_codex_not_running(self):
+    def test_codex_not_running_shows_last_screen_like_claude(self):
+        d = self.get("s=codex&history=1")[1]
+        self.assertEqual((d["ok"], d["running"], d["current"], d["history"], d["stopped"]),
+                         (True, False, "codex last", "codex last history", 777))
+
+    def test_codex_not_running_without_history_param_has_no_history(self):
         d = self.get("s=codex")[1]
-        self.assertEqual((d["ok"], d["running"], d["current"]), (True, False, None))
+        self.assertEqual((d["running"], d["current"], d["stopped"]), (False, "codex last", 777))
 
     def test_codex_not_installed(self):
         d = self.get("s=codex", bin_=None)[1]
@@ -754,38 +780,42 @@ class CmdRoute(unittest.TestCase):
 
 
 class Page(unittest.TestCase):
-    def test_compact_and_new_buttons_sit_next_to_stop_and_follow_it(self):
-        tabs = L.PAGE[L.PAGE.index('id="cTabs"'):L.PAGE.index('id="cxCons"')]
-        self.assertLess(tabs.index('id="ctStop"'), tabs.index('id="ctCompact"'))
+    def test_compact_and_new_buttons_live_in_the_console_toolbar_without_a_stop_button(self):
+        # Денис 62225: кнопки остановки консоли нет; сжать и новая сессия видны на вкладках Claude DEV, PROD и Codex всегда
+        tabs = L.PAGE[L.PAGE.index('id="cTabs"'):L.PAGE.index('class="tzoom"')]
+        self.assertNotIn('id="ctStop"', L.PAGE)
         self.assertLess(tabs.index('id="ctCompact"'), tabs.index('id="ctNew"'))
         self.assertRegex(tabs, r'id="ctCompact" hidden')
         self.assertRegex(tabs, r'id="ctNew" hidden')
-        self.assertIn("$('#ctCompact').hidden=$('#ctNew').hidden=$('#ctStop').hidden;", L.PAGE)  # видны, пока консоль идёт
+        self.assertIn("const k=consCur(),show=k==='claude'||k==='prod'||k==='codex';", L.PAGE)
+        self.assertIn("$('#ctCompact').hidden=$('#ctNew').hidden=!show;", L.PAGE)
 
     def test_action_buttons_wrap_into_second_row_on_phone_without_clashing_with_card_acts(self):
-        tabs = L.PAGE[L.PAGE.index('id="cTabs"'):L.PAGE.index('id="cxCons"')]
+        tabs = L.PAGE[L.PAGE.index('id="cTabs"'):L.PAGE.index('class="tzoom"')]
         wrap = tabs[tabs.index('<span class="ctacts">'):]
-        for i in ("ctStop", "ctCompact", "ctNew"):
-            self.assertIn('id="%s"' % i, wrap)  # три кнопки действий лежат в одной обёртке
+        for i in ("ctCompact", "ctNew"):
+            self.assertIn('id="%s"' % i, wrap)  # обе кнопки действий лежат в одной обёртке
         self.assertIn(".ctacts{display:contents}", L.PAGE)  # на широком экране обёртка не влияет на раскладку
         self.assertIn("html:root:root .ctabs.cacts .ctacts{display:flex;gap:4px;grid-column:1/-1}", L.PAGE)
         self.assertIn("html:root:root .termwrap.hascacts .termbox{padding-top:92px}", L.PAGE)
         # класс .acts уже занят карточкой аккаунта (flex, отступы, padding у button) — для панели берём свой
         self.assertNotRegex(L.PAGE, r"classList\.(toggle|add|remove)\('(has)?acts'")
-        self.assertIn("$('#cTabs').classList.toggle('cacts',!$('#ctStop').hidden)", L.PAGE)
-        # при смене вкладки (на Claude) прячутся все три кнопки, а не только «стоп»
-        self.assertIn("$('#ctStop').hidden=$('#ctCompact').hidden=$('#ctNew').hidden=true;$('#cTabs').classList.remove('cacts')", L.PAGE)
+        self.assertIn("$('#cTabs').classList.toggle('cacts',show)", L.PAGE)
+        # при смене вкладки состояние кнопок пересчитывается заново (Notion AI — кнопок нет)
+        self.assertIn("$('#termIdle').hidden=true;ctActsSync();", L.PAGE)
 
     def test_buttons_post_to_console_cmd_and_new_asks_first(self):
         self.assertIn("acctPost('chatgpt/console/cmd',{cmd})", L.PAGE)
         self.assertIn("if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;", L.PAGE)
-        self.assertIn("cxConsCmd('compact')", L.PAGE)
-        self.assertIn("cxConsCmd('new')", L.PAGE)
+        # Денис 62218: те же две кнопки стоят и на вкладках Claude DEV/PROD — вкладка Codex по-прежнему идёт в cxConsCmd
+        self.assertIn("return s==='codex'?cxConsCmd(cmd):", L.PAGE)
+        self.assertIn("addEventListener('click',()=>consActCmd('compact'))", L.PAGE)
+        self.assertIn("addEventListener('click',()=>consActCmd('new'))", L.PAGE)
 
     def test_tabs_are_hidden_until_codex_is_available(self):
         self.assertRegex(L.PAGE, r'<div class="ctabs" id="cTabs"[^>]*\bhidden\b')
-        self.assertIn("$('#cTabs').hidden=!av", L.PAGE)  # av = cxConsOn(): Codex установлен и есть вход ChatGPT
-        self.assertIn("function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("$('#cTabs').hidden=!(av||pv)", L.PAGE)  # av = cxConsOn(): Codex установлен и есть вход ChatGPT; pv — подключён Аккаунт PROD
+        self.assertIn("function consCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
 
     def test_tabs_sit_inside_console_block_before_it(self):
         wrap = L.PAGE.index('<div class="termwrap">')
@@ -797,7 +827,9 @@ class Page(unittest.TestCase):
         self.assertIn("html:root:root .iconbtn.ctab,html:root:root .iconbtn.ctstop{height:34px}", phone)
 
     def test_poll_asks_for_selected_session_only(self):
-        self.assertIn("(s==='codex'?'&s=codex':'')", L.PAGE)
+        self.assertIn("function consQuery(s){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='+termCols():'';}", L.PAGE)
+        self.assertEqual(L.PAGE.count("'console?token='+TOKEN+consQuery(s)"), 1)  # опрос экрана
+        self.assertEqual(L.PAGE.count("'&history=1'+consQuery(s)"), 1)  # опрос прокрутки
         self.assertIn("if(s!==consCur())return;", L.PAGE)  # ответ от прежней вкладки отбрасывается
 
     def test_first_poll_waits_for_script_load(self):
@@ -817,10 +849,149 @@ class Page(unittest.TestCase):
         used = set(re.findall(r"tr\('(cxc\w+)'", L.PAGE)) | set(re.findall(r"'(cxcSb\w+)'", L.PAGE))
         self.assertEqual(sorted(used - ru), [])
 
+    def test_one_idle_plate_for_all_three_consoles(self):
+        page = L.PAGE
+        for gone in ('id="cxCons"', 'id="prodCons"', 'cxConsMsg', 'prodConsUi', 'class="cxcons"'):
+            self.assertNotIn(gone, page)  # центральные надписи убраны: «не запущена» теперь везде серая плашка снизу
+        self.assertIn('id="termIdle"', page)
+        self.assertIn('id="termIdleGo"', page)
+        for who in ("'Claude',null", "'Claude на PROD'", "'Codex'"):
+            self.assertIn(who, page)  # Claude, PROD и Codex рисуют плашку одной функцией
+        self.assertEqual(page.count('function idleUi('), 1)
+        self.assertEqual(page.count("$('#termIdle').hidden=true"), 1)  # сброс только при смене вкладки
+
+    def test_plate_goes_to_the_bottom_when_there_is_no_screen_to_show(self):
+        page = L.PAGE
+        self.assertIn(".termbox.termempty{display:flex;flex-direction:column}", page)
+        self.assertIn(".termbox.termempty .termidle{margin-top:auto}", page)
+        self.assertIn("box.classList.toggle('termempty',!$('#termIdle').hidden&&!$('#termCurrent').textContent.trim()&&!$('#termHistory').textContent.trim());", page)
+        # признак ставится после того, как экран выведен, иначе он смотрел бы на прошлый опрос
+        self.assertLess(page.index("$('#termCurrent').innerHTML=fitSep(d.current||'');"), page.index("box.classList.toggle('termempty'"))
+
     def test_console_input_is_explained_on_the_page(self):
         m = re.search(r"cxcSub:\(sb,cwd\)=>'([^']*)", L.PAGE)
         self.assertIn("Ввод — под выбранной консолью", m.group(1))
         self.assertIn('id="fleetInput"', L.PAGE)
+
+
+class Paused(unittest.TestCase):
+    """Пауза профиля замораживает процесс Codex (SIGSTOP); консоль должна это знать, а не выглядеть живой."""
+
+    def setUp(self):
+        import signal
+        import subprocess
+        self.signal = signal
+        self.base = tempfile.mkdtemp(prefix="pause_", dir=TMP)
+        os.makedirs(os.path.join(self.base, "profile_runtime"))
+        p = mock.patch.object(C, "BASE", self.base)
+        p.start()
+        self.addCleanup(p.stop)
+        self.child = subprocess.Popen(["sleep", "60"])
+        self.addCleanup(lambda: (self.child.kill(), self.child.wait()))
+
+    def _state(self):
+        with open("/proc/%d/stat" % self.child.pid) as f:
+            return f.read().rsplit(")", 1)[1].split()
+
+    def _wait_state(self, want):
+        import time
+        for _ in range(100):
+            if (self._state()[0] == "T") == want:
+                return
+            time.sleep(0.02)
+        self.fail("процесс не перешёл в нужное состояние")
+
+    def _write(self, rows):
+        with open(os.path.join(self.base, "profile_runtime", "codex-paused.json"), "w") as f:
+            json.dump(rows, f)
+
+    def test_frozen_process_is_reported_and_thawed_one_is_not(self):
+        start = self._state()[19]
+        self._write([{"pid": self.child.pid, "start": start}])
+        self.assertFalse(C.frozen())  # процесс жив и не заморожен: файл сам по себе ничего не значит
+        self.child.send_signal(self.signal.SIGSTOP)
+        self._wait_state(True)
+        self.assertTrue(C.frozen())
+        self.child.send_signal(self.signal.SIGCONT)
+        self._wait_state(False)
+        self.assertFalse(C.frozen())
+
+    def test_stale_file_does_not_count(self):
+        self.child.send_signal(self.signal.SIGSTOP)
+        self._wait_state(True)
+        self._write([{"pid": self.child.pid, "start": "1"}])  # тот же pid, но другой процесс (время старта не совпало)
+        self.assertFalse(C.frozen())
+        dead = self.child.pid + 100000
+        self._write([{"pid": dead, "start": "1"}])  # процесса нет — файл остался после остановки консоли
+        self.assertFalse(C.frozen())
+
+    def test_missing_or_broken_file_means_not_paused(self):
+        self.assertFalse(C.frozen())
+        path = os.path.join(self.base, "profile_runtime", "codex-paused.json")
+        for raw in ("", "{", "{}", "null", '[{"pid": "x"}]', '[1, "a", null]', '[{"pid": 1}]'):
+            with open(path, "w") as f:
+                f.write(raw)
+            self.assertFalse(C.frozen(), raw)
+
+    def test_status_carries_paused_only_for_a_running_console(self):
+        self.child.send_signal(self.signal.SIGSTOP)
+        self._wait_state(True)
+        self._write([{"pid": self.child.pid, "start": self._state()[19]}])
+        with mock.patch.object(C, "BIN", return_value="/x/codex"), mock.patch.object(C, "PLAN", return_value=("read-only", "/w", None)):
+            with mock.patch.object(C, "_pid", return_value="77"):
+                st = C.status()
+                self.assertIs(st.get("paused"), True)
+                self.assertIs(st.get("frozen"), True)  # процесс и правда остановлен сигналом
+            with mock.patch.object(C, "_pid", return_value=None):
+                st = C.status()
+                self.assertFalse(st["running"])
+                self.assertNotIn("paused", st)  # консоль остановлена: это «не запущена», а не «на паузе»
+                self.assertNotIn("frozen", st)
+
+    def test_profile_pause_shows_even_when_the_process_was_restarted_unfrozen(self):
+        # страница сама запускает консоль Codex при открытии вкладки: новый процесс не заморожен, а профиль всё ещё «пауза»
+        with mock.patch.object(C, "BIN", return_value="/x/codex"), mock.patch.object(C, "PLAN", return_value=("read-only", "/w", None)), \
+                mock.patch.object(C, "_pid", return_value="77"):
+            self.assertNotIn("paused", C.status())  # профиль не против, процесс жив
+            with mock.patch.object(C, "PAUSED", lambda: True):
+                st = C.status()
+                self.assertIs(st.get("paused"), True)
+                self.assertNotIn("frozen", st)  # заморозки нет — страница не должна утверждать обратное
+            with mock.patch.object(C, "PAUSED", mock.Mock(side_effect=RuntimeError("профили не готовы"))):
+                self.assertNotIn("paused", C.status())  # сбой профилей не ломает опрос консоли
+
+    def test_stopped_console_under_a_paused_profile_is_marked_so_the_page_does_not_autostart_it(self):
+        with mock.patch.object(C, "BIN", return_value="/x/codex"), mock.patch.object(C, "PLAN", return_value=("read-only", "/w", None)), \
+                mock.patch.object(C, "_pid", return_value=None):
+            self.assertNotIn("profile_paused", C.status())
+            with mock.patch.object(C, "PAUSED", lambda: True):
+                st = C.status()
+            self.assertIs(st.get("profile_paused"), True)
+            self.assertFalse(st["running"])
+            self.assertNotIn("paused", st)  # «на паузе» — про запущенную консоль; остановленная остаётся «не запущена»
+            with mock.patch.object(C, "PAUSED", mock.Mock(side_effect=RuntimeError("профили не готовы"))):
+                self.assertNotIn("profile_paused", C.status())
+
+    def test_page_does_not_start_codex_by_itself_while_the_profile_holds_the_pause(self):
+        page = L.PAGE
+        self.assertIn("else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true);}", page)
+        self.assertEqual(page.count("cxConsAct('start',true)"), 1)  # автозапуск один, и он за условием
+        self.assertIn("(d.profile_paused&&!cxStarting?' '+tr('cxcPausedOff'):'')", page)  # плашка объясняет, почему не запустилась
+        self.assertEqual(len(re.findall(r"cxcPausedOff:'", page)), 2)
+        self.assertIn("$('#termIdleGo').addEventListener('click',async()=>{const b=$('#termIdleGo'),w=b.dataset.go;", page)
+        self.assertIn("window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start');else prodStart();", page)  # кнопкой — по-прежнему можно, но после окна «Точно?» (62045)
+
+    def test_profiles_hand_their_pause_role_to_the_console(self):
+        src = open(os.path.join(os.path.dirname(os.path.abspath(C.__file__)), "cc_profiles.py"), encoding="utf-8").read()
+        self.assertIn("console.PAUSED=lambda:profiles.paused('codex')", src)  # без этого плашка видна только у замороженного процесса
+
+    def test_page_shows_the_plate_for_a_paused_console_without_a_start_button(self):
+        page = L.PAGE
+        self.assertIn("d.running===false?String(d.stopped||0):d.paused?'paused':''", page)  # idleUi считает паузу поводом для плашки
+        self.assertIn("d.running&&d.paused?tr('cxcPaused')+(d.frozen?' '+tr('cxcFrozen'):'')", page)  # про заморозку — только если она есть
+        self.assertEqual(len(re.findall(r"cxcPaused:'", page)), 2)  # русский и английский тексты
+        self.assertEqual(len(re.findall(r"cxcFrozen:'", page)), 2)
+        self.assertIn("'Codex',d.running?null:{id:'codex'", page)  # кнопки у «на паузе» нет: процесс жив, запуск ничего не даст
 
 
 if __name__ == "__main__":

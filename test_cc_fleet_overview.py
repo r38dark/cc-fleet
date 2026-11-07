@@ -262,7 +262,7 @@ class Routes(unittest.TestCase):
         ns={'H':H,'PAGE':'<html><head></head><body></body></html>','BASE':str(rotation_obj.path.parent),
             'cc_codex':codex,'cc_codex_console':con,'cc_codex_bridge':rotation_obj.bridge,'codex_bin':lambda:'/fake'}
         import cc_profiles
-        profile_stub=types.SimpleNamespace(transitioning=False,public=lambda:{'ok':True,'available':True},input_allowed=lambda e:True,action=lambda *a:{'ok':True},apply_scenario=mock.Mock(return_value={'ok':True}),tasks=types.SimpleNamespace(confirm=lambda body:{'ok':True}))
+        profile_stub=types.SimpleNamespace(transitioning=False,public=lambda:{'ok':True,'available':True},input_allowed=lambda e:True,console_allowed=lambda e:True,side_active=lambda e:False,paused=lambda e:False,pending=types.SimpleNamespace(exists=lambda:False),action=lambda *a:{'ok':True},apply_scenario=mock.Mock(return_value={'ok':True}),tasks=types.SimpleNamespace(confirm=lambda body:{'ok':True}))
         ns['TEST_PROFILES']=profile_stub
         with mock.patch.object(cc_profiles,'bind',return_value=profile_stub):cc_fleet.install(ns)
         h=ns['H']();h.path=path;h.authorized=authed

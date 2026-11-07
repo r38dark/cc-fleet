@@ -275,9 +275,8 @@ class Page(unittest.TestCase):
         poll = re.search(r"async function ccConsole\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
         self.assertIn("cxConsAct('start',true)", poll)
         self.assertRegex(poll, r"d\.running\)cxAutoGo=false")  # уже работала — дальше остановка осознанная
-        # после ручной остановки сама не поднимается, пока страницу не перезагрузят
-        stop = re.search(r"\$\('#ctStop'\)\.addEventListener\('click'[^\n]*", L.PAGE).group(0)
-        self.assertIn("cxAutoGo=false", stop)
+        # кнопки остановки консоли нет (Денис 62225): ручной остановки нет, флаг сбрасывается только при запуске
+        self.assertNotIn("id=\"ctStop\"", L.PAGE)
         self.assertIn("cxAutoGo=false;cxConsAct('start',true)", poll)  # флаг гаснет ДО запроса: опрос раз в 2 с не запустит дважды
         self.assertIn("cxcStarting", i18n_block("ru"))
 
@@ -308,8 +307,8 @@ class Page(unittest.TestCase):
     def test_codex_console_tab_needs_an_account(self):
         # «Удалить Codex целиком» оставляет бинарь, но убирает входы: вкладка консоли Codex после этого не нужна
         self.assertIn("function cxAvail()", L.PAGE)
-        self.assertIn("function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
-        self.assertIn("const av=cxAvail(),cur=consCur();", L.PAGE)
+        self.assertIn("function consCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("const av=cxAvail(),pv=prodAvail(),cur=consCur();", L.PAGE)
 
     def test_texts_in_both_languages(self):
         keys = {lang: set(re.findall(r"^\s{2}(cx\w*):", i18n_block(lang), re.M)) for lang in ("ru", "en")}
@@ -538,6 +537,8 @@ function cxLimAcc(){return ACC;}
 async function acctPost(p,b){posts.push([p,b]);return{ok:true,message:'ok'};}
 const toast=()=>{};
 async function cxLoad(){}
+const asked=[];
+const window={fleetAsk:async(a,t,y)=>{asked.push(t);return true}};
 %s
 const ms=[
  {id:'m1',name:'M1',efforts:['low','high'],default_effort:'low',is_default:true,fast:'priority'},
@@ -558,6 +559,7 @@ const pick=c=>({name:c.name,eff:c.eff,ef:c.ef,known:c.known});
  els['#cxQ'].hidden=false;
  await cxQSet(null,'ultra');                    // то же усилие: ничего не шлём, но панель закрывается
  o.posts=posts.map(p=>[p[0],p[1]]);
+ o.asked=asked.length;
  o.closedOnSame=els['#cxQ'].hidden;
  ACC={slot:'s',models:ms,model:'m1',effort:'',fast:false};
  cxQRender();o.html=els['#cxQb'].innerHTML;
@@ -718,6 +720,9 @@ class QuickSwitch(unittest.TestCase):
             ["chatgpt/prefs", {"slot": "s", "model": "m3", "effort": "", "fast": False}],
             ["chatgpt/prefs", {"slot": "s", "model": "m2", "effort": "high", "fast": True}],
         ])
+
+    def test_change_asks_before_posting(self):
+        self.assertEqual(self.o["asked"], 2)   # Денис 62045: окно «Точно?» перед каждой отправкой, при том же значении не спрашиваем
 
     def test_effort_choice_closes_panel_even_without_change(self):
         self.assertTrue(self.o["closedOnSame"])

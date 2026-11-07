@@ -68,6 +68,18 @@ except Exception:
     return 0
 }
 
+# [remote] 06.11: работа передана на PROD - бота слушает Claude там, здесь новую сессию не создаём.
+remote_on() {
+    python3 -c 'import json,sys
+try:
+    sys.exit(0 if json.load(open(sys.argv[1])).get("active") else 1)
+except Exception:
+    sys.exit(1)' "$(dirname "$CONF")/remote_mode.json" 2>/dev/null || return 1
+    echo "Работа сейчас на PROD - Claude здесь не запускаю: бота Telegram слушает Claude на PROD."
+    echo "Сначала верни работу: кнопка «Вернуть мне» в панели у плитки «Аккаунт PROD». Потом снова $name."
+    return 0
+}
+
 inside_screen() {
     [ -z "$STY" ] && return 1
     echo "Ты ВНУТРИ screen ($STY). Сначала detach: Ctrl+A, потом d. Затем $name."
@@ -81,6 +93,7 @@ case "$name" in
             exec screen -DR "$SESS"
         fi
         notion_ai_on && exit 1
+        remote_on && exit 1
         launch "$CMD --continue || $CMD"
         ;;
     cla)
@@ -94,6 +107,7 @@ case "$name" in
     cln)
         need_screen
         notion_ai_on && exit 1
+        remote_on && exit 1
         if alive; then
             read -r -p "screen $SESS уже существует. Убить и создать новую? [y/N] " ans </dev/tty
             case "$ans" in
@@ -112,6 +126,7 @@ case "$name" in
             exec screen -rd "$SESS"
         fi
         notion_ai_on && exit 1
+        remote_on && exit 1
         screen -S "$SESS" -X quit 2>/dev/null
         sleep 1
         launch "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 $CMD --resume"

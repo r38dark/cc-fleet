@@ -19,6 +19,8 @@ IDLE = 900          # закрыть браузер через 15 минут б�
 POLL = 2.5          # опрос страницы, секунд
 RELOAD = 3600       # перезагрузка страницы раз в час
 KEEP = 160          # сколько записей хранить
+# Поле ввода: личный чат Notion AI или чат пользовательского агента («Chat with <агент>»), 07.11.26
+INPUT = '[contenteditable=true][placeholder^="Ask Notion AI"], [contenteditable=true][placeholder^="Chat with"]'
 
 EXTRACT = r"""()=>{const sc=[...document.querySelectorAll('.notion-scroller.vertical')].find(e=>e.querySelector('[data-agent-service-scroll-anchor]'));
  if(sc&&sc.scrollHeight-sc.scrollTop-sc.clientHeight>40)sc.scrollTop=sc.scrollHeight;
@@ -150,7 +152,7 @@ def session(p, buf):
             raise RuntimeError('чат Notion AI не задан: ⚙ Общие настройки → Notion AI')
         pg.goto(url, wait_until='domcontentloaded', timeout=60000)
         try:
-            pg.get_by_placeholder('Ask Notion AI').first.wait_for(timeout=45000)
+            pg.locator(INPUT).first.wait_for(timeout=45000)
         except Exception:
             if 'login' in pg.url:
                 raise RuntimeError('Нет входа в Notion. Мост notion-delegate переподключится сам.')
@@ -173,7 +175,7 @@ def session(p, buf):
                 last_sig = sig
             if time.time() - started > RELOAD:
                 pg.reload(wait_until='domcontentloaded', timeout=60000)
-                pg.get_by_placeholder('Ask Notion AI').first.wait_for(timeout=45000)
+                pg.locator(INPUT).first.wait_for(timeout=45000)
                 pg.wait_for_timeout(2500); started = time.time()
             time.sleep(POLL)
         log('простой — закрываю браузер')

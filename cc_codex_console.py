@@ -30,6 +30,7 @@ _SANDBOXES = ("read-only", "workspace-write", "danger-full-access")
 APPROVAL = "never"  # никаких запросов подтверждения на экране: их некому нажать, мост ждал бы вечно
 PRESERVE_THREAD = lambda: False
 INPUT_ALLOWED = lambda: True
+PAUSED = lambda: False  # cc_profiles.bind подставляет: роль Codex в профиле балансера «пауза»
 MCP = lambda: []  # cc_limits: ключи `-c` с инструментами Notion-агента (пусто вне резерва); сменились — консоль перезапускается
 PROMPT_WAIT = 25  # после старта ждём, пока консоль нарисует поле ввода, секунд
 START_WAIT = 40  # консоль должна принять сообщение (начать ход), секунд
@@ -120,6 +121,26 @@ def _meta():
     return cc_codex.jload(_meta_path(), {}) or {}
 
 
+def frozen():
+    """Процесс Codex заморожен паузой профиля: cc_profiles._codex_pause шлёт SIGSTOP и пишет pid и время старта
+    в profile_runtime/codex-paused.json. Верим только живому процессу: состояние T и то же время старта
+    (файл после остановки консоли остаётся со старым pid, pid мог достаться другому процессу)."""
+    try:
+        with open(os.path.join(BASE, "profile_runtime", "codex-paused.json")) as f:
+            rows = json.load(f)
+    except (OSError, ValueError):
+        return False
+    for row in rows if isinstance(rows, list) else []:
+        try:
+            with open("/proc/%d/stat" % int(row["pid"])) as f:
+                tail = f.read().rsplit(")", 1)[1].split()
+            if tail[0] == "T" and tail[19] == str(row["start"]):
+                return True
+        except (OSError, ValueError, KeyError, IndexError, TypeError):
+            continue
+    return False
+
+
 def status():
     b = BIN()
     if not b:
@@ -127,10 +148,21 @@ def status():
     pid = _pid()
     sandbox, cwd, slot = PLAN()
     st = {"available": True, "running": bool(pid), "plan_sandbox": sandbox, "plan_cwd": cwd, "plan_slot": slot}
+    try:
+        profile_paused = bool(PAUSED())
+    except Exception:
+        profile_paused = False
+    if profile_paused:
+        st["profile_paused"] = True  # и у остановленной консоли: страница по этому признаку не запускает её сама
     if pid:
         meta = _meta()
         if meta.get("pid") == pid:
             st.update(sandbox=meta.get("sandbox"), cwd=meta.get("cwd"), started=meta.get("started"))
+        fr = frozen()
+        if fr:
+            st["frozen"] = True
+        if fr or profile_paused:
+            st["paused"] = True  # пауза по профилю: процесс могли запустить заново и он уже не заморожен — плашка всё равно нужна
     return st
 
 
@@ -913,6 +945,51 @@ def _dims(pid):
 def _reset(pid, cols, rows):
     _m.update(pid=pid, screen=pyte.HistoryScreen(cols, rows, history=HISTORY_LINES), offset=0, geom=(cols, rows))
     _m["stream"] = pyte.ByteStream(_m["screen"])
+
+
+FROZEN_MAX = 1536 * 1024  # хвост лога остановленной консоли, который разбираем (как у консоли Claude)
+_fz_lock = threading.Lock()
+_fz = {"key": None, "current": "", "history": ""}
+
+
+def frozen_snapshot(want_history=False):
+    """→ (экран HTML, скроллбэк HTML | None, время последнего вывода): последний экран остановленной консоли.
+    Берётся из лога screen (после остановки он остаётся; при новом запуске уходит в .prev). Лога нет → ("", ""/None, 0).
+    Разбор кэшируется по (файл, mtime, размер): страница опрашивает раз в 2 с."""
+    log = _log()
+    path = None
+    for p in (log, log + ".prev"):
+        try:
+            if os.path.getsize(p) > 0:
+                path = p
+                break
+        except OSError:
+            pass
+    if not path:
+        return "", ("" if want_history else None), 0
+    try:
+        st = os.stat(path)
+    except OSError:
+        return "", ("" if want_history else None), 0
+    key = (path, st.st_mtime_ns, st.st_size)
+    with _fz_lock:
+        if _fz["key"] != key:
+            try:
+                with open(path, "rb") as f:
+                    if st.st_size > FROZEN_MAX:
+                        f.seek(st.st_size - FROZEN_MAX)
+                    data = f.read()
+                scr = pyte.HistoryScreen(COLS, ROWS, history=HISTORY_LINES)
+                pyte.ByteStream(scr).feed(data)
+                cur = list(zip(scr.display, (ROW_HTML(scr.buffer[y], COLS) for y in range(ROWS))))
+                while cur and not cur[-1][0].strip():
+                    cur.pop()
+                _fz.update(key=key, current="\n".join(h for _, h in cur),
+                           history="\n".join(ROW_HTML(line, COLS) for line in scr.history.top))
+            except Exception as e:
+                print("codex-console: последний экран не разобран:", type(e).__name__, flush=True)
+                _fz.update(key=key, current="", history="")
+        return _fz["current"], (_fz["history"] if want_history else None), int(st.st_mtime)
 
 
 def snapshot(want_history=False):

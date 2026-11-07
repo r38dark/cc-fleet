@@ -385,12 +385,50 @@ def _tg(text, force=False):
         _log("телеграм: не отправилось (%s)" % e)
 
 
+def _handoff_instead():
+    """(True, причина) — вместо паузы идёт передача на Claude PROD (cc_remote_auto.request_handoff). Любой сбой — (False, ""): пауза как раньше."""
+    try:
+        import cc_remote_auto
+        return cc_remote_auto.request_handoff()
+    except Exception as e:
+        _log("передача на PROD вместо паузы недоступна (%s)" % e)
+        return False, ""
+
+
+def handoff_pending():
+    """Запрос на передачу вместо паузы отправлен и ждёт панель (для ответа отправителю в очереди)."""
+    try:
+        import cc_remote_auto
+        return cc_remote_auto.pending()
+    except Exception:
+        return False
+
+
+def release_for_remote():
+    """Передача на PROD началась: уже стоящую паузу по лимитам снимаем — Claude DEV остановит передача, будить его будильником нечем.
+    Паузу резерва не трогаем. → True, если пауза стояла и снята."""
+    st = load()
+    if not st.get("active") or st.get("kind") == "reserve":
+        return False
+    st.update(active=False, cleared_at=_now(), released_for="remote")
+    st.pop("remote_hold", None)
+    save(st)
+    _log("пауза снята: работа передана на Claude PROD")
+    return True
+
+
 def cmd_set(a):
     if load().get("override"):
         # паузу отключили кнопкой — автоматические постановки (очередь, хук) молчат,
         # пока её не включат обратно или окно не отпустит само (см. cmd_wake)
         _log("пауза отключена вручную — не ставлю (%s)" % (a.reason or "лимиты"))
         return 0
+    if not getattr(a, "no_handoff", False):
+        # автопередача включена и Claude PROD свободен — пауза не нужна: просим панель передать работу сразу
+        handed, why = _handoff_instead()
+        if handed:
+            _log("пауза не ставится — работа уходит на Claude PROD (%s)" % why)
+            return 0
     ls = level_state()
     week = not ls.get("stale") and ls.get("level") == "week"
     iso, who = (a.resume_at, "") if a.resume_at else nearest_reset(week)
@@ -472,6 +510,15 @@ def _notion_ai_active():
         return False
 
 
+def _remote_active():
+    """[remote] Работа передана на Claude PROD: Claude DEV остановлен, его не будим."""
+    try:
+        with open(os.path.join(BASE, "remote_mode.json"), encoding="utf-8") as f:
+            return bool(json.load(f).get("active"))
+    except Exception:
+        return False
+
+
 def cmd_wake(a):
     st = load()
     if st.get("override"):
@@ -487,6 +534,13 @@ def cmd_wake(a):
         return 0
     if st.get("kind") == "reserve":
         return 0  # пауза резерва (Codex + Notion-агент вместо Claude) держится, пока человек не снимет галочку
+    if _remote_active():
+        # [remote] работа на PROD: пауза держится, будильник сработает после возврата (первым же запуском cron)
+        if not st.get("remote_hold"):
+            st["remote_hold"] = _now()
+            save(st)
+            _log("работа на PROD — Claude не бужу, пауза снимется после возврата")
+        return 0
     if _notion_ai_active():
         # [notion-ai] 06.11: будильник снял паузу и разбудил Claude при профиле Notion AI — второй слушатель бота.
         # Пока профиль включён, пауза держится; снимется первым же запуском cron после выключения профиля.
@@ -525,6 +579,7 @@ def cmd_wake(a):
 
     st.update(active=False, resumed_at=_now(), last_gate=line)
     st.pop("nai_hold", None)
+    st.pop("remote_hold", None)
     save(st)
     _log("пауза снята автоматически: %s" % line)
     stood = _dur(_now() - float(st.get("since") or _now()))
@@ -589,6 +644,10 @@ def cmd_off(a):
               cleared_at=_now())
     st.pop("nai_hold", None)
     save(st)
+    if _remote_active():
+        # [remote] работа на PROD: Claude DEV остановлен, будить и писать в общий чат не нужно; отключение запомнено
+        _log("пауза отключена вручную (%s), работа на PROD — Claude не бужу, в Telegram не пишу" % (a.by or "?"))
+        return 0
     if _notion_ai_active():
         # [notion-ai] 06.11: при профиле Notion AI Claude не запущен — «пауза отключена» в общий чат и подъём лишние.
         # Отключение запомнено: вернётся вместе с Claude после выключения профиля.
@@ -612,7 +671,7 @@ def cmd_on(a):
     ls = level_state()
     _log("пауза снова включена вручную (%s)" % (a.by or "?"))
     if not ls.get("stale") and ls.get("level") in ("hard", "week"):
-        return cmd_set(argparse.Namespace(reason="включена вручную", resume_at="",
+        return cmd_set(argparse.Namespace(reason="включена вручную", resume_at="", no_handoff=True,
                                           note="окно забито (%s)" % (ls.get("line") or "")))
     _tg("⏸ Claude: пауза снова работает — встанет, когда активный упрётся в сессионное окно, "
         "а переключаться будет некуда"
@@ -656,7 +715,7 @@ def main():
     s.add_argument("--reason", default="")
     s.add_argument("--resume-at", default="", dest="resume_at")
     s.add_argument("--note", default="")
-    s.set_defaults(fn=cmd_set)
+    s.set_defaults(fn=cmd_set, no_handoff=True)  # пауза вручную из консоли — ровно пауза; «вместо паузы на PROD» — только для хуков и очереди
 
     s = sub.add_parser("status")
     s.add_argument("--json", action="store_true")

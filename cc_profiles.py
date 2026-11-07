@@ -37,11 +37,25 @@ class NativeProfiles:
         # [notion-ai] автоматического резерва нет: старые галочки из config.json не читаем
         return state
 
+    def _remote(self):
+        # Пока работа на PROD, слот Claude в профилях — Claude на PROD: локальную консоль не трогаем.
+        rm=self.ns.get('REMOTE_MODE')
+        return rm if rm is not None and rm.active() else None
+
+    def _announce(self, state, strict=True):
+        rm=self.ns['REMOTE_MODE'];role=self.plan(state,'claude')['role']
+        if role not in rm.ROLE_TEXT:return
+        ok=False
+        try:ok=rm.announce_role(role)
+        except Exception:pass
+        if not ok and strict:raise ProfileError('claude_prod_role_failed')
+
     def busy(self):
         # A paused queue worker may be alive while waiting; it must not prevent unpausing.
         if self.ns.get('_busy_tick'):self.ns['_busy_tick'](self.ns['screen_hardcopy']())
         bridge_busy = self.bridge.BRIDGE.busy() and self.manager.input_allowed('codex')
-        return bool(self.codex.busy() or bridge_busy or self.ns['session_busy']())
+        remote=self._remote()
+        return bool(self.codex.busy() or bridge_busy or self.ns['session_busy']() or remote and remote.prod_busy())
 
     def plan(self, state, e):
         data=state.public()['engines'][e];profile=next(p for p in state.definitions(e) if p['id']==data['base_selected'])
@@ -76,7 +90,9 @@ class NativeProfiles:
             out['codex_settings']={k:settings.get(k) for k in ('mode','access','task_rights','profile','workdir','project')}
             out['codex_runtime']=self.codex.active_settings()
             out['codex_sandbox']=self.codex.status().get('sandbox')
-        if 'claude' in changed:
+        remote=self._remote()
+        if 'claude' in changed and remote:out['claude_remote']=dict(tg=remote.tg())
+        elif 'claude' in changed:
             try:
                 out['claude']=self.claude.capture()
                 expected = getattr(self, '_handoff_snapshot', None)
@@ -104,8 +120,11 @@ class NativeProfiles:
             actual_full=(captured.get('codex_settings',{}).get('access')=='full' and captured.get('codex_sandbox')=='danger-full-access' if engine=='codex'
                          else captured.get('claude',{}).get('bypass',False))
             if not actual_full:raise ProfileError('full_access_not_active')
-        if 'claude' in changed:Path(self.claude_work).mkdir(parents=True,exist_ok=True)
-        if 'claude' in changed:
+        if 'claude' in changed and 'claude_remote' in captured:
+            rm=self.ns['REMOTE_MODE']
+            if self.plan(after,'claude')['role'] in rm.ROLE_TEXT and not rm.prod_ready():raise ProfileError('claude_prod_not_ready')
+        if 'claude' in changed and 'claude_remote' not in captured:Path(self.claude_work).mkdir(parents=True,exist_ok=True)
+        if 'claude' in changed and 'claude_remote' not in captured:
             if captured.get('claude_absent'):
                 if not self.claude_policy(after)['paused']:raise ProfileError('claude_history_unknown')
             else:self.claude.prepare(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
@@ -172,7 +191,8 @@ class NativeProfiles:
                 for key in ('model','effort','thread_id'):
                     if saved.get(key) and current.get(key)!=saved[key]:raise ProfileError('codex_'+key+'_changed')
             if plan['role']=='paused':self._codex_pause(True)
-        if 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
+        if 'claude' in changed and 'claude_remote' in captured:self._announce(after)
+        elif 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
 
     def rollback(self, before, changed, captured):
         self._codex_pause(False)
@@ -189,7 +209,8 @@ class NativeProfiles:
                 ok,_=self.ensure_codex()
                 if not ok:raise ProfileError('rollback_codex_failed')
             if self.plan(before,'codex')['role']=='paused':self._codex_pause(True)
-        if 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(before),self.prompt(before,'claude'))
+        if 'claude' in changed and 'claude_remote' in captured:self._announce(before,strict=False)
+        elif 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(before),self.prompt(before,'claude'))
 
     def recovery_matches(self,before,changed,captured):
         """Clear a stale barrier only after a read-only check of the old runtime."""
@@ -204,7 +225,9 @@ class NativeProfiles:
                 if any(current.get(key)!=captured['codex_runtime'].get(key) for key in ('thread_id','model','effort','cwd')):return False
                 if not self.codex.verify_ready(wait=False)[0]:return False
             if 'claude' in changed:
-                if captured.get('claude_absent'):
+                if 'claude_remote' in captured:
+                    if not self.ns['REMOTE_MODE'].prod_ready():return False
+                elif captured.get('claude_absent'):
                     try:self.claude.process()
                     except ProfileError as exc:
                         if str(exc)!='claude_console_missing':return False
@@ -231,9 +254,13 @@ class NativeProfiles:
             good.append(not(row.get('login_required') or row.get('lapsed') or row.get('reached') or row.get('usage_allowed') is False or any(float(w.get('pct') or 0)>=100 for w in row.get('windows') or [])))
         return dict(claude=claude,codex=('up' if any(good) else 'down') if good else 'unknown')
 
+SIDE_IDLE = 90    # побочная беседа: сколько секунд тишины после ответа держать вкладку проснувшейся
+SIDE_MAX = 1800   # жёсткий потолок окна, даже если консоль всё ещё отвечает
+
 class Profiles:
     def __init__(self, base, native, clock=time.time):
         self.base=Path(base);self.native=native;native.manager=self;self.clock=clock;self.lock=threading.RLock();self.transitioning=False;self.error='';self.managed={'claude':False,'codex':False};self.worker=None;self.avail={e:dict(status='unknown',since=clock()) for e in ENGINES};self.tasks=None
+        self.side={};self.side_busy={}  # побочная беседа: движок -> dict(since,until); движок -> функция «сейчас отвечает»
         self.path=self.base/'work_profiles.json';self.pending=self.base/'profile-transition.json'
         if self.path.exists():
             raw=json.loads(self.path.read_text());self.state=ProfileState.from_data(raw['core'],clock);self.managed.update(raw.get('managed') or {})
@@ -256,6 +283,62 @@ class Profiles:
 
     def input_allowed(self,e):
         return not self.transitioning and not self.paused(e) and not self.pending.exists()
+
+    # Побочная беседа: человек пишет в вкладку, которую профиль держит на паузе. Окно открывается только по его
+    # подтверждению, будит один движок и закрывается само после ответа. Мосты и ротация Codex остаются на input_allowed.
+    def side_active(self,e):
+        return e in self.side
+
+    def console_allowed(self,e):
+        return self.input_allowed(e) or (e in self.side and not self.transitioning and not self.pending.exists())
+
+    def _claude_policy_file(self):
+        path=self.native.claude.runtime/'claude-policy.json'
+        return path if path.exists() else None
+
+    def side_open(self,e):
+        if e not in ENGINES:return False,'Неизвестная консоль.'
+        if self.transitioning or self.pending.exists():return False,'Идёт переключение профиля. Повтори чуть позже.'  # не ждём замок смены профиля
+        with self.lock:
+            if self.transitioning or self.pending.exists():return False,'Идёт переключение профиля. Повтори чуть позже.'
+            if not self.paused(e):return True,''
+            now=self.clock()
+            if e in self.side:
+                self.side[e]['until']=now+SIDE_IDLE;return True,''
+            try:
+                if e=='codex':self.native._codex_pause(False)
+                else:
+                    path=self._claude_policy_file()
+                    if path:atomic(path,dict(self.native.claude_policy(self.state),paused=False,reserve=False,access='read',write_roots=[]))
+            except Exception as exc:
+                return False,'Не удалось разбудить: '+type(exc).__name__
+            self.side[e]=dict(since=now,until=now+SIDE_IDLE)
+            return True,''
+
+    def side_close(self,e):
+        with self.lock:
+            self.side.pop(e,None)
+            if not self.paused(e) or self.transitioning or self.pending.exists():return
+            try:
+                if e=='codex':self.native._codex_pause(True)
+                else:
+                    path=self._claude_policy_file()
+                    if path:atomic(path,self.native.claude_policy(self.state))
+            except Exception as exc:
+                print('side: не удалось вернуть паузу %s: %r'%(e,exc),flush=True)
+
+    def side_tick(self):
+        if not self.side or not self.lock.acquire(blocking=False):return  # идёт смена профиля — она сама сбросит окна
+        try:
+            for e in list(self.side):
+                if not self.paused(e):
+                    self.side.pop(e,None);continue
+                w=self.side[e];now=self.clock()
+                try:busy=bool(self.side_busy.get(e,lambda:False)())
+                except Exception:busy=False
+                if busy and now-w['since']<SIDE_MAX:w['until']=max(w['until'],now+SIDE_IDLE)
+                if now>=w['until'] or now-w['since']>=SIDE_MAX:self.side_close(e)
+        finally:self.lock.release()
 
     def public(self):
         with self.lock:
@@ -302,7 +385,7 @@ class Profiles:
         if not changed:
             self.state=candidate;self.save();return dict(ok=True,message=message,state=self.public())
         if self.native.busy() or self.tasks and self.tasks.busy():return dict(ok=False,busy=True,message='Сейчас идёт ответ или подтверждённый шаг. Профили можно менять после его завершения.')
-        self.transitioning=True;old_managed=dict(self.managed);captured=None
+        self.transitioning=True;self.side.clear();old_managed=dict(self.managed);captured=None
         try:
             captured=self.native.capture(changed);self.native.preflight(before,candidate,changed,captured)
             atomic(self.pending,dict(before=before.export(),after=candidate.export(),managed=old_managed,changed=changed,captured=captured))
@@ -316,7 +399,7 @@ class Profiles:
                 code=str(exc)
                 failed['failure']=dict(type=type(exc).__name__,code=code if re.fullmatch(r'[a-z_]+',code) else None)
                 atomic(self.pending,failed)
-            reasons={'codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели, затем включи резерв.','reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.'}
+            reasons={'codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели, затем включи резерв.','reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.','claude_prod_not_ready':'Claude на PROD не отвечает или не запущен. Проверь вкладку «Claude PROD» и повтори выбор.','claude_prod_role_failed':'Не удалось сообщить роль Claude на PROD. Проверь связь с PROD и повтори выбор.'}
             self.error='Переключение отменено. '+reasons.get(str(exc),'Консоль не подтвердила применение профиля; проверь её экран перед повтором.')
             revoked=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active() and self.pending.exists())
             if revoked:
@@ -390,7 +473,7 @@ class Profiles:
         if raw.get('recovery_attempts',0)>=1 and not manual:
             self._block_recovery();return False
         raw['recovery_attempts']=raw.get('recovery_attempts',0)+1;atomic(self.pending,raw)
-        self.transitioning=True
+        self.transitioning=True;self.side.clear()
         try:
             if forward:self.native.apply(before,self.state,raw['changed'],raw['captured'])
             else:self.native.rollback(before,raw['changed'],raw['captured'])
@@ -400,6 +483,8 @@ class Profiles:
         finally:self.transitioning=False
 
     def tick(self):
+        try:self.side_tick()
+        except Exception as exc:print('side: сбой проверки окна: %r'%(exc,),flush=True)
         if not self.lock.acquire(blocking=False):return
         try:
             if self.pending.exists():self.recover();return
@@ -439,7 +524,9 @@ def bind(ns, inputs):
     console.MCP=codex_mcp;bridge.MCP_ARGS=codex_mcp
     ns['FLEET_ROTATION'].suspended=lambda:not profiles.input_allowed('codex')
     console.PRESERVE_THREAD=lambda:profiles.managed['codex']
-    console.INPUT_ALLOWED=lambda:profiles.input_allowed('codex')
+    console.INPUT_ALLOWED=lambda:profiles.console_allowed('codex')  # ввод человека; мосты и ротация ниже остаются на input_allowed
+    console.PAUSED=lambda:profiles.paused('codex') and not profiles.side_active('codex')
+    profiles.side_busy=dict(codex=console.busy,claude=lambda:ns['session_busy']())
     bridge.DISPATCH_ALLOWED=lambda:profiles.input_allowed('codex')
     bridge.TAKE_DRAFT_ALLOWED=lambda:not profiles.managed['codex']
     bridge.RESERVE_NOTE=lambda:native.prompt(profiles.state,'codex') if profiles.managed['codex'] else native.original_notion_note()
@@ -457,10 +544,19 @@ def bind(ns, inputs):
     bridge.PROFILE_APPLIED=console.apply_plan
     def send(engine,text):
         if engine=='codex':bridge.BRIDGE.enqueue_work(('text',text));return
+        rm=ns.get('REMOTE_MODE')
+        if rm is not None and rm.active():
+            ok,_=rm.prod_send(text,wait=900,cancel=profiles.tasks.cancel)
+            if not ok:raise ProfileError('claude_input_rejected')
+            return
         ok,_=inputs.send('claude',text,'profile-'+uuid.uuid4().hex)
         if not ok:raise ProfileError('claude_input_rejected')
     def ask(engine,text):
         if engine=='codex':return console.ask(text,abort=profiles.tasks.cancel)[0]
+        rm=ns.get('REMOTE_MODE')
+        if rm is not None and rm.active():
+            try:return rm.prod_ask(text,profiles.tasks.cancel)
+            except RuntimeError as exc:raise ProfileError(str(exc))
         snapshot=native.claude.capture();history=Path(snapshot['history']);offset=history.stat().st_size;carry=b'';send(engine,text);deadline=time.monotonic()+6*3600;started=False
         while time.monotonic()<deadline:
             if profiles.tasks.cancel.is_set():raise ProfileError('step_cancelled_at_expiry')

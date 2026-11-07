@@ -12,6 +12,7 @@ import cc_codex_bridge
 import cc_codex_console
 import cc_codex_emergency
 import cc_notion
+import cc_remote
 import cc_lock
 import cc_poll
 import cc_update
@@ -2774,6 +2775,8 @@ def pause_state():
             sys.path.insert(0, BASE)
         import pause_ctl  # данные модуль читает с диска на каждый вызов — кэш не мешает
         d = pause_ctl.level_state()
+        # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем (Денис 62292)
+        d["remote"] = pause_ctl._remote_active()
         d["ok"] = True
         return d
     except Exception as e:
@@ -2865,6 +2868,12 @@ class H(BaseHTTPRequestHandler):
             snap["config"]["codex_hidden"] = list(cfg().get("codex_hidden") or [])  # [notion-ai] модели Codex, убранные из быстрого меню
             snap["model"] = model_info()
             snap["notion"] = cc_notion.public()
+            snap["remote"] = cc_remote.cached()
+            try:
+                import cc_remote_mode
+                snap["remote_mode"] = cc_remote_mode.public()
+            except Exception:
+                snap["remote_mode"] = {}  # [remote] аккаунты на чужих серверах: только показ, в автовыборе не участвуют
             return self._send(200, snap)
         if u.path == "/api/pause":
             if not self._authed():
@@ -2900,6 +2909,12 @@ class H(BaseHTTPRequestHandler):
                     resp["current"] = snap[0]
                     if snap[1] is not None:
                         resp["history"] = snap[1]
+                else:
+                    # остановлена: как у Claude — последний экран из лога и время, когда он остановился
+                    cur, hist, stopped = cc_codex_console.frozen_snapshot(want_history=bool(q.get("history")))
+                    resp.update(current=cur, stopped=stopped)
+                    if hist is not None:
+                        resp["history"] = hist
                 return self._send(200, resp)
             # При остановленной сессии не читать живой лог: показываем сохранённый экран и причину остановки.
             running = _current_screen_pid(cfg().get("screen_session", "claude")) is not None
@@ -3378,7 +3393,8 @@ button:disabled{opacity:.35;cursor:default}
 .tzoom{position:absolute;top:7px;right:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
 /* вкладки консолей Claude | Codex: слева над консолью, без своей плашки; показываются, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:transparent}
-.ctabs[hidden],.ctstop[hidden],.cxcons[hidden]{display:none}
+.ctabs[hidden],.ctstop[hidden],.ctab[hidden]{display:none}
+@media(max-width:520px){.ctab .ctlong{display:none}}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
 .iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
 .iconbtn.ctab.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
@@ -3390,11 +3406,6 @@ html:root:root .iconbtn.ctab[data-s="codex"]{--tc:104,154,236;--tt:#aac6f6;--ton
 html:root:root .iconbtn.ctab[data-s]:hover{background:transparent;border-color:rgb(var(--tc));color:var(--tt)}
 html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:rgb(var(--tc));color:var(--ton);box-shadow:none;text-shadow:none}
 .termwrap.hastabs .termbox{padding-top:42px}
-.cxcons{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:48px 18px 18px;text-align:center;pointer-events:none}
-.cxcons>*{pointer-events:auto}
-.cxcmsg{font-size:14px;font-weight:600;color:var(--txt)}
-.cxcsub{max-width:420px;font-size:12.5px;line-height:1.45;color:var(--mut);overflow-wrap:anywhere}
-.cxcons button{margin-top:6px;padding:9px 20px}
 .hdrl{display:flex;align-items:center;gap:10px;min-width:0}
 .hdrgear:disabled svg{animation:ccspin .8s linear infinite}
 .tzval{margin:0;padding:0 4px;min-width:48px;background:transparent;border:0;color:var(--mut);font-family:inherit;font-size:12.5px;font-weight:600;text-align:center;cursor:pointer}
@@ -3402,7 +3413,13 @@ html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:r
 .termdot.err{background:var(--bad);margin:0}
 .termdot.idle{background:#6b7280;margin:0}
 .termidle{position:sticky;bottom:0;white-space:normal;font:13px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#d6dbe4;background:rgba(23,27,35,.96);border:1px solid #3a4250;border-radius:8px;padding:9px 12px;margin-top:10px}
-.termidle[hidden]{display:none}
+.termidle{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px}
+.termidle span{flex:1 1 240px;min-width:0}
+.termidle button{flex:none;padding:6px 16px;margin:0}
+.termidle[hidden],.termidle button[hidden]{display:none}
+/* экрана нет (PROD ещё не запускали, у Codex нет лога): sticky не к чему прижимать — плашку опускаем вниз колонкой */
+.termbox.termempty{display:flex;flex-direction:column}
+.termbox.termempty .termidle{margin-top:auto}
 .termbox{background:#0b0d10;border:1px solid #232a36;border-radius:8px;padding:10px 12px;overflow-x:hidden;overflow-y:auto;margin:0;font:11px/1.3 ui-monospace,Consolas,monospace;font-size:calc(11px*var(--tz,1));color:#c8d0dc;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:#3a3f4b #14171c}
 .termbox::-webkit-scrollbar{width:9px}
 .termbox::-webkit-scrollbar-track{background:#14171c}
@@ -3956,11 +3973,10 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
- <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude">Claude</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctStop" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
- <div class="cxcons" id="cxCons" hidden><div class="cxcmsg" id="cxConsMsg"></div><div class="cxcsub" id="cxConsSub"></div><button type="button" id="cxConsGo"></button></div>
+ <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
-<span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden></div></pre>
+<span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden><span id="termIdleTxt"></span><button type="button" id="termIdleGo" hidden></button></div></pre>
 </div>
 <div class="toolrow"><div class="tgrp">
 <div id="mrow" class="mrowslim"></div>
@@ -4058,6 +4074,19 @@ const I18N={
   delGo:'Удалить навсегда',
   delWorking:'Удаляю…',
   cancel:'Отмена',
+  askYes:'Да',
+  askCompact:'Сжать контекст Claude (/compact)?',
+  askProdCompact:'Сжать контекст Claude PROD (/compact)?',
+  confirmNewProd:'Начать новую сессию Claude PROD (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли PROD. Продолжить?',
+  askCxCompact:'Сжать контекст Codex (/compact)?',
+  askStartCx:'Запустить консоль Codex?',
+  askStartProd:'Запустить консоль PROD?',
+  askOptOn:'Включить оптимизацию переключений лимитов? Ручные переключения аккаунтов Claude будут заблокированы.',
+  askOptOff:'Выключить оптимизацию переключений лимитов? Ручные переключения аккаунтов Claude снова станут доступны.',
+  askRelogin:'Войти заново в этот аккаунт? Запустится новый вход: понадобятся ссылка и код.',
+  askRenew:'Отметить, что подписка продлена, и проверить вход?',
+  askCxPref:'Применить выбор модели Codex для этого аккаунта?',
+  askCxSet:w=>'Применить для Codex: '+w+'?',
   relTitle:'Войти заново',
   relStep1:email=>`Открой ссылку и войди под ${email}`,
   relHint:'Если браузер предлагает другой аккаунт — выбери «Использовать другой аккаунт».',
@@ -4466,6 +4495,10 @@ const I18N={
   cxcSub:(sb,cwd)=>'Ввод — под выбранной консолью. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
   cxcStart:'Запустить',
   cxcStarting:'Запускаю консоль Codex…',
+  cxcShown:(who,at)=>'Показан последний экран '+who+' на '+at+', он не обновляется.',
+  cxcPaused:'Codex на паузе: профиль балансера его не использует, ввод не принимается.',
+  cxcFrozen:'Процесс заморожен, экран не обновляется.',
+  cxcPausedOff:'Профиль балансера держит Codex на паузе, поэтому сам он не запускается: только кнопкой.',
   cxcStopTip:'Остановить консоль Codex',
   cxcCompactTip:'Сжать контекст (/compact)',
   cxcNewTip:'Новая сессия Codex',
@@ -4527,6 +4560,19 @@ const I18N={
   delGo:'Delete for good',
   delWorking:'Deleting…',
   cancel:'Cancel',
+  askYes:'Yes',
+  askCompact:'Compact the Claude context (/compact)?',
+  askProdCompact:'Compact the Claude PROD context (/compact)?',
+  confirmNewProd:'Start a new Claude PROD session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the PROD console. Continue?',
+  askCxCompact:'Compact the Codex context (/compact)?',
+  askStartCx:'Start the Codex console?',
+  askStartProd:'Start the PROD console?',
+  askOptOn:'Enable limit optimization? Manual switching of Claude accounts will be blocked.',
+  askOptOff:'Disable limit optimization? Manual switching of Claude accounts will be available again.',
+  askRelogin:'Sign in to this account again? A new sign-in starts: you will need the link and the code.',
+  askRenew:'Mark the subscription as renewed and check the sign-in?',
+  askCxPref:'Apply the Codex model choice for this account?',
+  askCxSet:w=>'Apply for Codex: '+w+'?',
   relTitle:'Log in again',
   relStep1:email=>`Open the link and sign in as ${email}`,
   relHint:'If the browser offers another account, choose “Use another account”.',
@@ -4935,6 +4981,10 @@ const I18N={
   cxcSub:(sb,cwd)=>'Use the input below the selected console. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
   cxcStart:'Start',
   cxcStarting:'Starting the Codex console…',
+  cxcShown:(who,at)=>'Showing the last '+who+' screen from '+at+'; it is not updating.',
+  cxcPaused:'Codex is paused: the balancer profile does not use it, input is not accepted.',
+  cxcFrozen:'The process is frozen, the screen is not updating.',
+  cxcPausedOff:'The balancer profile keeps Codex paused, so it does not start by itself: use the button.',
   cxcStopTip:'Stop the Codex console',
   cxcCompactTip:'Compact context (/compact)',
   cxcNewTip:'New Codex session',
@@ -4990,13 +5040,29 @@ function termCols(){
 function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
 let CONS='claude',consShown='claude',cxConsRun=null;
-let consoleRequestSeq=0,consoleAppliedSeq=0,consIdle='';
-try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
-function consCur(){return CONS==='codex'&&cxAvail()?'codex':'claude';}
+let consoleRequestSeq=0,consoleAppliedSeq=0,consIdle='',consProdRun=false,prodStarting=false;
+// серая плашка «консоль не запущена» под последним экраном — общая для Claude, Claude на PROD и Codex:
+// причина, время последнего экрана и (у PROD и Codex) кнопка запуска; пока консоль идёт, плашки нет
+function idleUi(d,dot,txt,who,go){
+ const idle=d.running===false?String(d.stopped||0):d.paused?'paused':'';  // остановлена — по времени остановки; заморожена паузой профиля — своя метка
+ if(idle!==consIdle){consIdle=idle;$('#termHistory').innerHTML='';ccConsoleHistory();}
+ const note=$('#termIdle'),b=$('#termIdleGo');note.hidden=!idle;
+ if(!idle)return;
+ dot.className='termdot idle';
+ let t=txt;
+ if(d.stopped){const at=new Date(d.stopped*1000).toLocaleTimeString('ru-RU',{timeZone:'Asia/Irkutsk',hour:'2-digit',minute:'2-digit'});t+=' '+tr('cxcShown',who,at);}
+ $('#termIdleTxt').textContent='⏸ '+t;
+ b.hidden=!go;
+ if(go){b.textContent=go.label;b.disabled=!!go.disabled;b.dataset.go=go.id;}
+}
+try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
+function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
+function consCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
+function consQuery(s){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='+termCols():'';}
 async function ccConsoleHistory(){
  const s=consCur();
  try{
-  const r=await fetch(API+'console?token='+TOKEN+'&history=1'+(s==='codex'?'&s=codex':''));const d=await r.json();
+  const r=await fetch(API+'console?token='+TOKEN+'&history=1'+consQuery(s));const d=await r.json();
   if(s!==consCur())return;  // пока шёл запрос, переключили вкладку
   if(d.ok&&d.history!=null){const box=$('#termBox');$('#termHistory').innerHTML=fitSep(d.history);box.scrollTop=box.scrollHeight;}
  }catch(e){}
@@ -5005,51 +5071,56 @@ function cxConsSb(sb){return tr(sb==='workspace-write'?'cxcSbWrite':sb==='danger
 // «не запущена» / кнопка остановки — для вкладки Codex
 let cxAutoGo=true;  // вкладка Codex сама запускает консоль (как у Claude); после остановки или ошибки — только кнопкой
 let cxStarting=false;
+// «Сжать контекст» и «Новая сессия» в панели консоли на вкладках Claude DEV, Claude PROD и Codex (Денис 62218, 62225): видны всегда, сессия не запущена — нажатие вернёт понятную ошибку.
+// Кнопки «Остановить консоль» нет (Денис 62225): консоль Codex запускается сама и гасится профилем.
+function ctActsSync(){const k=consCur(),show=k==='claude'||k==='prod'||k==='codex';
+ $('#ctCompact').hidden=$('#ctNew').hidden=!show;
+ $('#cTabs').classList.toggle('cacts',show);$('.termwrap').classList.toggle('hascacts',show);
+ if(show)for(const [id,t] of [['#ctCompact',k==='codex'?'cxcCompactTip':'compactTitle'],['#ctNew',k==='codex'?'cxcNewTip':'newSessionTitle']]){const b=$(id);b.title=tr(t);b.setAttribute('aria-label',tr(t));}}
 function cxConsUi(d){
  if(!d||d.ok!==true||typeof d.running!=='boolean')return;
- const on=consCur()==='codex'&&d.available!==false;
- $('#ctStop').hidden=!(on&&d.running);
- $('#ctCompact').hidden=$('#ctNew').hidden=$('#ctStop').hidden;
- $('#cTabs').classList.toggle('cacts',!$('#ctStop').hidden);$('.termwrap').classList.toggle('hascacts',!$('#ctStop').hidden);
- if(on&&d.running)$('#ctStop').title=tr('cxcStopTip')+' — '+cxConsSb(d.sandbox);
- const ov=$('#cxCons');
- ov.hidden=!(on&&!d.running);
- if(!ov.hidden){
-  $('#cxConsMsg').textContent=tr(cxStarting?'cxcStarting':'cxcOff');
-  $('#cxConsSub').textContent=tr('cxcSub',cxConsSb(d.plan_sandbox),d.plan_cwd||'');
-  $('#cxConsGo').textContent=tr('cxcStart');
- }
+ ctActsSync();
 }
 async function ccConsole(){
  const box=$('#termBox'),dot=$('#termDot'),s=consCur(),requestSeq=++consoleRequestSeq;
+ ctActsSync();
  try{
-  const r=await fetch(API+'console?token='+TOKEN+(s==='codex'?'&s=codex':''));const d=await r.json();
+  const r=await fetch(API+'console?token='+TOKEN+consQuery(s));const d=await r.json();
   if(s!==consCur()||requestSeq<consoleAppliedSeq)return;
-  if(s==='codex'&&(d.ok!==true||typeof d.running!=='boolean')){dot.className='termdot err';return;}
-  consoleAppliedSeq=requestSeq;
-  if(s==='codex'){
-   $('#termIdle').hidden=true;
-   cxConsUi(d);
-   if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
-   else if(cxAutoGo&&d.available!==false&&d.ok!==false){cxAutoGo=false;cxConsAct('start',true);}  // один раз за загрузку страницы
-   if(!d.ok){dot.className='termdot err';return;}
+  if(s==='prod'){  // Claude на сервере PROD: живой экран; остановлен — последний сохранённый экран и плашка
+   consoleAppliedSeq=requestSeq;
+   if(!d.ok){  // нет связи: экран не трогаем, плашка только объясняет
+    dot.className='termdot err';consIdle='x';
+    $('#termIdleTxt').textContent='⏸ '+(d.message||d.error||'Нет связи с сервером PROD.');$('#termIdleGo').hidden=true;$('#termIdle').hidden=false;
+    return;
+   }
    dot.className='termdot';
-   if(d.current==null){$('#termCurrent').innerHTML='';$('#termHistory').innerHTML='';cxConsRun=null;return;}
-   if(d.started!==cxConsRun){cxConsRun=d.started;ccConsoleHistory();}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку
+   const go=d.starting||prodStarting;
+   if(d.running){if(!consProdRun){consProdRun=true;ccConsoleHistory();}}else consProdRun=false;
+   idleUi(d,dot,go?'Запускаю Claude на PROD…':(d.idle||'Claude на PROD не запущен.')+' Запускается без Telegram. Когда работу передают на PROD, он запускается сам.','Claude на PROD',d.running?null:{id:'prod',label:'Запустить',disabled:!!go});
   }else{
-   if(!d.ok||d.current==null){dot.className='termdot err';return;}
-   dot.className='termdot';
-   // сессии Claude нет (напр. профиль «Notion AI · только он»): сервер отдаёт последний экран остановленной
-   // сессии (не обновляется) — показываем его и плашку «почему»; при переходе туда/обратно подтягиваем прокрутку заново
-   const idle=d.running===false?String(d.stopped||0):'';
-   if(idle!==consIdle){consIdle=idle;$('#termHistory').innerHTML='';ccConsoleHistory();}
-   const note=$('#termIdle');note.hidden=!idle;
-   if(idle){dot.className='termdot idle';let t=d.idle||'Claude сейчас не запущен.';
-    if(d.stopped){const at=new Date(d.stopped*1000);t+=' Показан последний экран Claude на '+at.toLocaleTimeString('ru-RU', {timeZone:'Asia/Irkutsk',hour:'2-digit',minute:'2-digit'})+', он не обновляется.';}
-    note.textContent='⏸ '+t;}
+   if(s==='codex'&&(d.ok!==true||typeof d.running!=='boolean')){dot.className='termdot err';return;}
+   consoleAppliedSeq=requestSeq;
+   if(s==='codex'){
+    cxConsUi(d);
+    if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
+    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
+    if(!d.ok){dot.className='termdot err';return;}
+    dot.className='termdot';
+    if(d.running){if(d.started!==cxConsRun){cxConsRun=d.started;ccConsoleHistory();}}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку
+    else cxConsRun=null;
+    idleUi(d,dot,d.running&&d.paused?tr('cxcPaused')+(d.frozen?' '+tr('cxcFrozen'):''):tr(cxStarting?'cxcStarting':'cxcOff')+'. '+tr('cxcSub',cxConsSb(d.plan_sandbox),d.plan_cwd||'')+(d.profile_paused&&!cxStarting?' '+tr('cxcPausedOff'):''),'Codex',d.running?null:{id:'codex',label:tr('cxcStart'),disabled:cxStarting});
+   }else{
+    if(!d.ok||d.current==null){dot.className='termdot err';return;}
+    dot.className='termdot';
+    // сессии Claude нет (напр. профиль «Notion AI · только он»): сервер отдаёт последний экран остановленной
+    // сессии (не обновляется) — показываем его и плашку «почему»; при переходе туда/обратно подтягиваем прокрутку заново
+    idleUi(d,dot,d.idle||'Claude сейчас не запущен.','Claude',null);
+   }
   }
   const atBottom=box.scrollTop+box.clientHeight>=box.scrollHeight-20;
   $('#termCurrent').innerHTML=fitSep(d.current||'');
+  box.classList.toggle('termempty',!$('#termIdle').hidden&&!$('#termCurrent').textContent.trim()&&!$('#termHistory').textContent.trim());
   if(atBottom)box.scrollTop=box.scrollHeight;
  }catch(e){dot.className='termdot err';}
 }
@@ -5126,20 +5197,19 @@ document.addEventListener('keydown',e=>{
 });
 document.documentElement.removeAttribute('data-skin');{const box=$('#termBox');box.scrollTop=box.scrollHeight;}
 function consTabs(){
- const av=cxAvail(),cur=consCur();
- $('#cTabs').hidden=!av;$('.termwrap').classList.toggle('hastabs',av);
- [['claude','#ctClaude'],['codex','#ctCodex']].forEach(([k,id])=>{
+ const av=cxAvail(),pv=prodAvail(),cur=consCur();
+ $('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;
+ [['claude','#ctClaude'],['prod','#ctProd'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
   b.classList.toggle('on',on);b.setAttribute('aria-selected',on);
   b.title=on?'':tr('cxcSw')+b.textContent;
  });
- $('#ctStop').setAttribute('aria-label',tr('cxcStopTip'));
- for(const [id,k] of [['#ctCompact','cxcCompactTip'],['#ctNew','cxcNewTip']]){const b=$(id);b.title=tr(k);b.setAttribute('aria-label',tr(k));}
+ ctActsSync();  // подсказки кнопок — по текущей вкладке (раньше здесь жёстко стояли подсказки Codex)
  const key=cur;
  if(key!==consShown){
-  consShown=key;cxConsRun=null;
+  consShown=key;cxConsRun=null;consProdRun=false;
   $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
-  $('#cxCons').hidden=$('#termIdle').hidden=true;$('#ctStop').hidden=$('#ctCompact').hidden=$('#ctNew').hidden=true;$('#cTabs').classList.remove('cacts');$('.termwrap').classList.remove('hascacts');
+  consIdle='';$('#termIdle').hidden=true;ctActsSync();
   STICK=true;ccConsoleHistory();ccConsole();
  }
 }
@@ -5149,8 +5219,8 @@ function consPick(k){
 }
 $('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(b&&b.dataset.s!==consCur())consPick(b.dataset.s);});
 async function cxConsAct(path,quiet){
- const g=$('#cxConsGo'),st=$('#ctStop');g.disabled=true;st.disabled=true;
- cxStarting=path==='start';if(cxStarting)$('#cxConsMsg').textContent=tr('cxcStarting');
+ const g=$('#termIdleGo');g.disabled=true;
+ cxStarting=path==='start';if(cxStarting&&!$('#termIdle').hidden)$('#termIdleTxt').textContent='⏸ '+tr('cxcStarting');
  try{
   const r=await acctPost('chatgpt/console/'+path,{});
   if(!(r.ok&&quiet))toast(r.ok?r.message:'⚠ '+r.message);
@@ -5158,13 +5228,20 @@ async function cxConsAct(path,quiet){
   $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
   await ccConsole();ccConsoleHistory();
  }catch(e){toast('⚠ '+e);}
- cxStarting=false;g.disabled=false;st.disabled=false;
+ cxStarting=false;g.disabled=false;
 }
-$('#cxConsGo').addEventListener('click',()=>cxConsAct('start'));
-$('#ctStop').addEventListener('click',()=>{if(confirm(tr('cxcStopQ'))){cxAutoGo=false;cxConsAct('stop');}});
+async function prodStart(){
+ prodStarting=true;$('#termIdleTxt').textContent='⏸ Запускаю Claude на PROD…';$('#termIdleGo').disabled=true;
+ try{const r=await fetch(API+'remote/console/start',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:'{}'});const j=await r.json();if(!j.ok)toast('⚠ '+(j.message||'Не запустилось'));}
+ catch(e){toast('⚠ Панель не ответила');}
+ prodStarting=false;ccConsole();
+}
+// одна кнопка в плашке: что она запускает, решает вкладка (ставит idleUi)
+$('#termIdleGo').addEventListener('click',async()=>{const b=$('#termIdleGo'),w=b.dataset.go;if(w!=='codex'&&w!=='prod')return;if(!await window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start');else prodStart();});
 async function cxConsCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Codex
+ if(cmd==='compact'&&!await window.fleetAsk($('#ctCompact'),tr('askCxCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;
- const bs=[$('#ctCompact'),$('#ctNew'),$('#ctStop')];bs.forEach(b=>b.disabled=true);
+ const bs=[$('#ctCompact'),$('#ctNew')];bs.forEach(b=>b.disabled=true);
  try{
   const r=await acctPost('chatgpt/console/cmd',{cmd});
   toast(r.ok?'✅ '+r.message:'⚠ '+r.message);
@@ -5172,8 +5249,18 @@ async function cxConsCmd(cmd){  // «Сжать контекст» / «Нова�
  }catch(e){toast('⚠ '+e);}
  bs.forEach(b=>b.disabled=false);
 }
-$('#ctCompact').addEventListener('click',()=>cxConsCmd('compact'));
-$('#ctNew').addEventListener('click',()=>cxConsCmd('new'));
+async function prodSessionCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Claude PROD: команда вводится в консоль PROD, как её набрал бы человек
+ const b=$(cmd==='compact'?'#ctCompact':'#ctNew');
+ if(cmd==='compact'&&!await window.fleetAsk(b,tr('askProdCompact'),tr('askYes')))return;
+ if(cmd==='new'&&!confirm(tr('confirmNewProd')))return;
+ try{
+  const r=await fetch(API+'console/input?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:'prod',text:cmd==='compact'?'/compact':'/clear'})});
+  const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+(d.message||''));
+ }catch(e){toast('⚠ '+e)}
+}
+function consActCmd(cmd){const s=consCur();return s==='codex'?cxConsCmd(cmd):s==='prod'?prodSessionCmd(cmd):sessionCmd(cmd,$(cmd==='compact'?'#ctCompact':'#ctNew'));}
+$('#ctCompact').addEventListener('click',()=>consActCmd('compact'));
+$('#ctNew').addEventListener('click',()=>consActCmd('new'));
 setTimeout(()=>{ccConsoleHistory();ccConsole();},0);setInterval(ccConsole,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
 function tone(p){return p==null?'na':p<60?'ok':p<85?'warn':'bad'}
@@ -5202,7 +5289,7 @@ function renderCards(d){
  $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>{
   const plan=a.plan==='free'?'<span class="tag free">FREE</span> ':a.plan?'<span class="tag plan">'+a.plan.toUpperCase()+'</span> ':'';
   const icons=a.active?`<div class="iconrow">
-    <button class="iconbtn" title="${tr('compactTitle')}" onclick="sessionCmd('compact')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button>
+    <button class="iconbtn" title="${tr('compactTitle')}" onclick="sessionCmd('compact',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button>
     <button class="iconbtn" title="${tr('newSessionTitle')}" onclick="sessionCmd('new')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button>
    </div>`:'';
   const lp=!!a.lapsed;  // слетел с Pro на Free: опрос остановлен до «Я продлил»
@@ -5217,7 +5304,7 @@ function renderCards(d){
    ${a.error&&!lp?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour&&!lp?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <div class="acts">${lp&&!a.active?'':`<button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>`}
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
-   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}')">${tr('relogin')}</button>
+   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="reloginAsk('${n}',this)">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
   </div>`;
  }).join('');
@@ -5366,7 +5453,8 @@ async function sw(n){
  const r=await fetch(API+'switch?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
  const d=await r.json();toast(d.ok?'✅ '+d.message.split('\n')[0]:'⚠ '+d.message);load();
 }
-async function sessionCmd(cmd){
+async function sessionCmd(cmd,btn){
+ if(cmd==='compact'&&!await window.fleetAsk(btn,tr('askCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('confirmNewSession')))return;
  try{
   const r=await fetch(API+'session?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd})});
@@ -5391,8 +5479,11 @@ $('#wkPause').addEventListener('change',async e=>{
 $('#thrMinus').addEventListener('click',()=>setThr(THR-5));
 $('#thrPlus').addEventListener('click',()=>setThr(THR+5));
 $('#opt').addEventListener('change',async e=>{
- await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({optimize:e.target.checked})});
- toast(e.target.checked?tr('optOn'):tr('optOff'));load();
+ const box=e.target,on=box.checked;box.checked=!on;
+ if(!await window.fleetAsk(box.closest('label,.switchrow')||box,tr(on?'askOptOn':'askOptOff'),tr('askYes')))return;
+ box.checked=on;
+ await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({optimize:on})});
+ toast(on?tr('optOn'):tr('optOff'));load();
 });
 async function recheck(n,btn){
  btn.disabled=true;const orig=btn.innerHTML;btn.innerHTML='<span class="rn-t">'+tr('checking')+'</span>';
@@ -5405,6 +5496,7 @@ async function recheck(n,btn){
 // «Войти заново» — боковая панель (#acctScrim.side): ссылка входа + поле для кода.
 // Без новой вкладки и prompt(): вкладку блокирует попап-блокер или она открывается
 // не в том профиле браузера, а prompt остаётся на исходной вкладке.
+function reloginAsk(n,btn){window.fleetAsk(btn,tr('askRelogin'),tr('askYes')).then(ok=>{if(ok)relogin(n)})}
 function relogin(n){
  const a=((lastSnap&&lastSnap.accounts)||{})[n]||{};
  const who=a.email&&a.email!=='?'?a.email:n;
@@ -5588,9 +5680,9 @@ function cxSelects(a){
  const eOpts=`<option value=""${ef?'':' selected'}>${acctEsc(tr('cxEffort')+': '+tr('cxDefault')+(cur.default_effort?' ('+cur.default_effort+')':''))}</option>`
   +efs.map(e=>`<option value="${acctEsc(e)}"${e===ef?' selected':''}>${acctEsc(tr('cxEffort')+': '+e)}</option>`).join('');
  return`<div class="cxsel">
-   <select class="dlginp" id="cxm-${sl}" title="${tr('cxModelTip')}" aria-label="${tr('cxModelTip')}" onchange="cxPref('${sl}')">${mOpts}</select>
-   ${efs.length?`<select class="dlginp" id="cxe-${sl}" title="${tr('cxEffortTip')}" aria-label="${tr('cxEffortTip')}" onchange="cxPref('${sl}')">${eOpts}</select>`:''}
-   <label class="cxfast${canFast?'':' off'}" title="${acctEsc(canFast?tr('cxFastTip'):tr('cxFastNa'))}"><input type="checkbox" id="cxf-${sl}"${a.fast&&canFast?' checked':''}${canFast?'':' disabled'} onchange="cxPref('${sl}')"><span>${tr('cxFast')}</span></label>
+   <select class="dlginp" id="cxm-${sl}" title="${tr('cxModelTip')}" aria-label="${tr('cxModelTip')}" onchange="cxPref('${sl}',this)">${mOpts}</select>
+   ${efs.length?`<select class="dlginp" id="cxe-${sl}" title="${tr('cxEffortTip')}" aria-label="${tr('cxEffortTip')}" onchange="cxPref('${sl}',this)">${eOpts}</select>`:''}
+   <label class="cxfast${canFast?'':' off'}" title="${acctEsc(canFast?tr('cxFastTip'):tr('cxFastNa'))}"><input type="checkbox" id="cxf-${sl}"${a.fast&&canFast?' checked':''}${canFast?'':' disabled'} onchange="cxPref('${sl}',this)"><span>${tr('cxFast')}</span></label>
   </div>`;
 }
 function cxNeedsRenew(a){return!!a.lapsed||(!!a.sub_until&&new Date(a.sub_until)-Date.now()<=0);}
@@ -5615,7 +5707,7 @@ function cxCard(a){
   <div class="top"><span class="email">${who} ${plan}${a.lapsed?'':cxSubChip(a)}</span><div class="hdrright">${rg}</div></div>
   ${notes}${bars}${cr?`<div class="cxsub" style="margin-top:8px">${cr}</div>`:''}
   ${a.login_required?'':cxSelects(a)}
-  <div class="acts">${cxAuthChip(a)}${cxNeedsRenew(a)&&!a.login_required?`<button class="btn-relogin" title="${acctEsc(tr('cxRenewTip'))}" onclick="cxRenew('${sl}',this)">✅ ${tr('cxRenewBtn')}</button>`:''}<button class="btn-relogin" onclick="cxAdd('${sl}')">${tr('cxRelogin')}</button>
+  <div class="acts">${cxAuthChip(a)}${cxNeedsRenew(a)&&!a.login_required?`<button class="btn-relogin" title="${acctEsc(tr('cxRenewTip'))}" onclick="cxRenew('${sl}',this)">✅ ${tr('cxRenewBtn')}</button>`:''}<button class="btn-relogin" onclick="cxReloginAsk('${sl}',this)">${tr('cxRelogin')}</button>
    <button class="btn-relogin" title="${acctEsc(tr('cxLaunchTip'))}" onclick="cxLaunch('${sl}',this)">${tr('cxLaunch')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="cxDel('${sl}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
  </div>`;
@@ -6265,6 +6357,7 @@ async function cxQSet(model,effort){
  let ef=effort===null?c.ef:effort;
  if(ef&&mod.efforts&&!mod.efforts.includes(ef))ef='';  // у другой модели может не быть такого усилия — сбрасываем, чтобы сервер не отказал
  if(mid===curM&&ef===c.ef){if(effort!==null)cxQClose();return;}
+ if(!await window.fleetAsk($('#cxMod'),tr('askCxSet',model!==null?mid+(ef&&ef!==c.ef?' · '+ef:''):ef),tr('askYes')))return;
  const fast=!!(a.fast&&mod.fast);
  cxQBusy=true;$('#cxQ').classList.add('busy');
  try{const r=await acctPost('chatgpt/prefs',{slot:a.slot,model:mid,effort:ef,fast});toast(r.ok===false?'⚠ '+r.message:r.message);}
@@ -6357,6 +6450,7 @@ async function cxLoad(refresh){
  finally{cxBusy=false;if(cxAgain){cxAgain=false;cxLoad(true);}}
 }
 async function cxRenew(slot,btn){
+ if(!await window.fleetAsk(btn,tr('askRenew'),tr('askYes')))return;
  const orig=btn?btn.textContent:'';
  if(btn){btn.disabled=true;btn.textContent=tr('cxRenewing');}
  try{const r=await acctPost('chatgpt/renew',{slot});toast(r.message);}
@@ -6365,8 +6459,9 @@ async function cxRenew(slot,btn){
  cxLoad();
 }
 function cxLaunch(slot,btn){const a=cxAcc(slot);if(a&&a.launch)acctCopy(btn,a.launch);}
-async function cxPref(slot){
+async function cxPref(slot,src){
  const a=cxAcc(slot);if(!a)return;
+ if(!await window.fleetAsk(src&&(src.closest('label')||src),tr('askCxPref'),tr('askYes'))){cxRender();return;}
  const m=$('#cxm-'+slot),e=$('#cxe-'+slot),f=$('#cxf-'+slot);
  const ms=a.models||[];
  const mod=ms.find(x=>x.id===m.value)||ms.find(x=>x.is_default)||null;
@@ -6384,6 +6479,7 @@ function cxStop(slot,cancel){
  if(cancel)acctPost('chatgpt/login/cancel',{slot}).catch(()=>{});
 }
 // slot не задан — новая карточка, задан — перелогин существующей
+function cxReloginAsk(slot,btn){window.fleetAsk(btn,tr('askRelogin'),tr('askYes')).then(ok=>{if(ok)cxAdd(slot)})}
 function cxAdd(slot){
  if(slot){
   const a=cxAcc(slot)||{};
@@ -6546,6 +6642,8 @@ function ccpRender(){
  // приоритет: пауза отключена кнопкой > пауза (в ней уже есть будильник) >
  // переключаться некуда > активный забит
  const mode=pause.override?'off':pause.active?'pause':lvl;
+ // [remote] работа на Claude PROD: лимиты DEV не значат «переключаться некуда» — переключились туда (Денис 62292)
+ if(d.remote&&['hard','week','weekrisk','gate'].includes(mode)){el.hidden=true;return;}
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);
  let title,sub,timer=null,tlabel='',action=null;
@@ -6950,6 +7048,16 @@ try{if(sessionStorage.getItem('cc_upd_reopen')){sessionStorage.removeItem('cc_up
 import cc_fleet
 cc_fleet.install(globals())
 
+def _remote_loop():
+    # [remote] лимиты удалённых аккаунтов (прод друга) раз в минуту; кэш внутри держит 3 минуты
+    while True:
+        try:
+            cc_remote.refresh_all()
+        except Exception as e:
+            print("remote: ошибка опроса", e, flush=True)
+        time.sleep(60)
+
+
 if __name__ == "__main__":
     try:
         made = {n: s for n, s in ensure_cmd_links().items() if s != "есть"}
@@ -6959,6 +7067,7 @@ if __name__ == "__main__":
         print("команды cl/cla/cln/clw/cxw: ошибка", e, flush=True)
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
+    threading.Thread(target=_remote_loop, daemon=True, name="cc-remote-loop").start()
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
     cc_codex_emergency.start()  # аварийный режим: после перезапуска довести до рабочего состояния или снять, запустить сторож срока
     cc_backup.start(lambda: PROFILES, BACKUP_DIR, lambda: cfg().get("profile_backup", True) is not False)  # копии профилей аккаунтов

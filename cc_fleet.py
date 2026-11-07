@@ -13,6 +13,103 @@ import cc_codex_rotation
 import cc_codex_models
 import cc_overview
 
+# Побочная беседа: ответ должен прийти туда же, откуда написали, а основная работа остаться нетронутой.
+SIDE_LABEL = '[побочный вопрос из консоли: ответь здесь, в консоли, не в Telegram; основную работу и файлы дела не трогай] '
+SLASH_COMMAND = re.compile(r'(/[A-Za-z][A-Za-z0-9_-]{0,79})(?:[ \t]+(.*))?')   # как в _claude и cc_codex_console.send_input
+
+
+START_SIDE = '/root/start_claude_side.sh'            # побочная сессия Claude без Telegram, только чтение
+SIDE_CLAUDE_FLAG = '/opt/cc-limits/side_claude.json'  # пишет скрипт запуска, стирает сам Claude при выходе
+SIDE_READY = ('for shortcuts', 'bypass permissions', '❯')   # признаки готового приглашения ввода на экране Claude
+SIDE_START_WAIT = 45
+SIDE_TG_MARK = 'claude-plugins-official/telegram'   # процесс плагина Telegram: в побочной сессии его быть не должно (R2-3)
+SIDE_TG_SETTLE = 3                                  # плагин поднимается чуть позже приглашения ввода — даём ему время показаться
+
+
+def claude_alive(ns):
+    """Есть ли screen-сессия Claude (основная или побочная): по ней вкладка и ввод работают одинаково."""
+    screen = ns['cfg']().get('screen_session', 'claude')
+    try:
+        out = subprocess.run(['screen', '-ls'], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return ('.' + screen + '\t') in out or ('.' + screen + ' ') in out
+
+
+def side_claude_flag():
+    """Идёт ли побочная сессия: флаг от скрипта запуска и нет плагина Telegram (у основного Claude он работает,
+    так что устаревший флаг после перезапуска основного метку не включает)."""
+    if not os.path.exists(SIDE_CLAUDE_FLAG):
+        return False
+    try:
+        return subprocess.run(['pgrep', '-f', 'claude-plugins-official/telegram'], capture_output=True, timeout=10).returncode != 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _claude_prompt_ready(ns):
+    screen = ns['cfg']().get('screen_session', 'claude')
+    path = os.path.join(ns['BASE'], '.side-ready-%d' % os.getpid())
+    try:
+        if subprocess.run(['screen', '-S', screen, '-p', '0', '-X', 'hardcopy', path], capture_output=True, timeout=10).returncode:
+            return False
+        with open(path, encoding='utf-8', errors='replace') as stream:
+            shown = stream.read()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return any(mark in shown for mark in SIDE_READY)
+
+
+def _telegram_plugin_running():
+    try:
+        return subprocess.run(['pgrep', '-f', SIDE_TG_MARK], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _quit_side(ns):
+    """Гасит побочную сессию (screen) и её плагин; основной Claude к этому моменту остановлен."""
+    screen = ns['cfg']().get('screen_session', 'claude')
+    for cmd in (['screen', '-S', screen, '-X', 'quit'], ['pkill', '-f', SIDE_TG_MARK]):
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    try:
+        os.unlink(SIDE_CLAUDE_FLAG)
+    except OSError:
+        pass
+
+
+def start_side_claude(ns):
+    """Запускает побочную сессию Claude на dev, если основной остановлен. Возвращает (ok, сообщение).
+    Основной Claude, уже работающий в том же screen, не трогаем: тогда ничего не запускаем и сообщаем, что запуск не нужен."""
+    if claude_alive(ns):
+        return True, ''
+    try:
+        result = subprocess.run(['systemd-run', '--scope', '--quiet', '--unit', 'claude-side-%d' % int(time.time()), START_SIDE],
+                                capture_output=True, text=True, timeout=90)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, 'Не удалось запустить побочную сессию Claude: ' + type(exc).__name__
+    if result.returncode:
+        return False, 'Побочная сессия Claude не запущена (код %d). Бот Telegram и основная работа не затронуты.' % result.returncode
+    deadline = time.time() + SIDE_START_WAIT
+    while time.time() < deadline:
+        if claude_alive(ns) and _claude_prompt_ready(ns):
+            time.sleep(SIDE_TG_SETTLE)
+            if _telegram_plugin_running():
+                # --settings не отключил плагин: второй опрос бота украл бы сообщения у ведущего — гасим сразу
+                _quit_side(ns)
+                return False, 'Побочная сессия Claude поднялась вместе с плагином Telegram — остановил её, чтобы не отбирать бота у ведущего. Основная работа не затронута.'
+            return True, ''
+        time.sleep(1.5)
+    return False, 'Побочная сессия Claude запустилась, но не готова принять ввод за %d с. Повтори чуть позже.' % SIDE_START_WAIT
+
 
 class ConsoleInput:
     def __init__(self, ns):
@@ -21,7 +118,7 @@ class ConsoleInput:
         self.receipts = {}
         self.lock = threading.Lock()
 
-    def send(self, session, text, request_id):
+    def send(self, session, text, request_id, side=False):
         if session not in self.locks:
             return False, 'Неизвестная консоль.'
         if not isinstance(text, str) or not text.strip() or len(text.encode('utf-8')) > 48000:
@@ -30,6 +127,7 @@ class ConsoleInput:
             return False, 'Неверный идентификатор отправки.'
         text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text.replace('\r\n', '\n').replace('\r', '\n')).strip()
         digest = hashlib.sha256(text.encode()).hexdigest()
+        payload = text if not side or SLASH_COMMAND.fullmatch(text) else SIDE_LABEL + text   # слэш-команды остаются командами
         key = session, request_id
         with self.lock:
             previous = self.receipts.get(key)
@@ -43,9 +141,9 @@ class ConsoleInput:
         uncertain = False
         try:
             if session == 'codex':
-                result = self.ns['cc_codex_console'].send_input(text)
+                result = self.ns['cc_codex_console'].send_input(payload)
             else:
-                result = self._claude(text)
+                result = self._claude(payload)
         except Exception as exc:
             uncertain = True
             result = False, 'Не удалось передать ввод: '+type(exc).__name__+'. Проверь консоль перед повтором.'
@@ -175,14 +273,45 @@ def install(ns):
                     return self._send(200, models.start())
                 if path.startswith('/api/profiles/'):
                     parts = path.split('/')
+                    rm = ns.get('REMOTE_MODE')
+                    routed = rm.scenario_route(body) if rm is not None and path == '/api/profiles/scenario/apply' else None
+                    if routed is not None:
+                        if routed.get('ok'):
+                            routed['state'] = profiles.public()
+                        return self._send(200, routed)
+                    bad = '' if rm is None or path == '/api/profiles/task/confirm' else (
+                        rm.scenario_guard(body.get('choices')) if path == '/api/profiles/scenario/apply' else rm.action_guard(parts[4] if len(parts)>4 else ''))
+                    if bad:
+                        return self._send(200, dict(ok=False, message=bad))
                     result = (profiles.apply_scenario(body) if path == '/api/profiles/scenario/apply' else
                               profiles.tasks.confirm(body) if path == '/api/profiles/task/confirm' else
                               profiles.action(parts[3] if len(parts)>3 else '',parts[4] if len(parts)>4 else '',body))
                     return self._send(200, result)
                 if path == '/api/console/input':
-                    if body.get('session') in ('claude','codex') and not profiles.input_allowed(body['session']):
-                        return self._send(200, dict(ok=False, message='Консоль не участвует в текущем сценарии. Измени общую схему в выборе профилей.'))
-                    ok, message = inputs.send(body.get('session'), body.get('text'), body.get('request_id'))
+                    session = body.get('session')
+                    if session in ('claude','codex') and not profiles.console_allowed(session):
+                        if profiles.transitioning or profiles.pending.exists():
+                            return self._send(200, dict(ok=False, message='Идёт переключение профиля. Повтори чуть позже.'))
+                        if not profiles.paused(session):
+                            return self._send(200, dict(ok=False, message='Консоль не участвует в текущем сценарии. Измени общую схему в выборе профилей.'))
+                        if not body.get('side'):
+                            # Побочная беседа: на паузе вкладка просыпается только после «Да» в окне на странице.
+                            return self._send(200, dict(ok=False, ask='side', message=('Codex' if session == 'codex' else 'Claude')+' сейчас на паузе: профиль отдал работу другой стороне. Написать ему всё равно? Он ненадолго проснётся, ответит и снова встанет на паузу.'))
+                        ok_side, message_side = profiles.side_open(session)
+                        if not ok_side:
+                            return self._send(200, dict(ok=False, message=message_side))
+                    claude_side = False
+                    if session == 'claude' and not claude_alive(ns):
+                        # Основной Claude остановлен (работа на PROD или режим Notion AI): писать некуда. Побочная сессия
+                        # (без Telegram, только чтение) запускается только после «Да» на странице.
+                        if not body.get('side'):
+                            return self._send(200, dict(ok=False, ask='side', message='Claude DEV сейчас остановлен: основная работа идёт в другом месте. Запустить побочную сессию Claude здесь? Она работает без Telegram и только читает, основную работу не трогает. Перед возвратом работы её остановят.'))
+                        ok_start, message_start = start_side_claude(ns)
+                        if not ok_start:
+                            return self._send(200, dict(ok=False, message=message_start))
+                        claude_side = True
+                    side_now = isinstance(session, str) and (profiles.side_active(session) or claude_side or (session == 'claude' and side_claude_flag()))   # побочная беседа: окно открыто или идёт побочная сессия
+                    ok, message = inputs.send(body.get('session'), body.get('text'), body.get('request_id'), side=side_now)
                 elif path == '/api/console/key':
                     ok, message = inputs.key(body.get('session'), body.get('key'))
                 elif path.endswith('/config'):
@@ -250,6 +379,16 @@ def install(ns):
         cc_notion_ai.install(ns, profiles)
     except Exception as exc:
         print('notion-ai: модуль не подключён: %r' % (exc,), flush=True)
+    try:  # [remote] удалённый аккаунт Claude (PROD): строка, плитка, лимиты
+        import cc_remote_ui
+        ns['PAGE'] = cc_remote_ui.inject(ns['PAGE'])
+    except Exception as exc:
+        print('remote: интерфейс не подключён: %r' % (exc,), flush=True)
+    try:  # [remote] передача работы на удалённый сервер (PROD) и возврат
+        import cc_remote_mode
+        cc_remote_mode.install(ns)
+    except Exception as exc:
+        print('remote: режим передачи не подключён: %r' % (exc,), flush=True)
     ns['FLEET_ROTATION'] = rotation
     ns['FLEET_INPUT'] = inputs
     bridge.PROFILE_APPLIED = console.apply_plan

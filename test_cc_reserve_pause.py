@@ -361,3 +361,52 @@ class NotionAiProfile(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RemoteWork(Base):
+    """[remote] Работа передана на Аккаунт PROD: родной Claude остановлен, будильник и кнопки паузы его не будят."""
+
+    def setUp(self):
+        super().setUp()
+        saved = (pc.session_blocked, pc.week_blocked, pc.level_state)
+        pc.session_blocked = lambda: (False, "окно отпустило")
+        pc.week_blocked = lambda: (False, "неделя отпустила")
+        pc.level_state = lambda: {"line": "acc3 0%"}
+
+        def back():
+            pc.session_blocked, pc.week_blocked, pc.level_state = saved
+        self.addCleanup(back)
+
+    def remote(self, active):
+        put(os.path.join(self.d, "remote_mode.json"), {"active": active, "member": "prod"})
+
+    def test_due_alarm_holds_pause_while_work_is_on_prod_then_lifts_once(self):
+        put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": "session", "resume_at": time.time() - 60})
+        self.remote(True)
+        for _ in range(3):
+            self.assertEqual(pc.cmd_wake(argparse.Namespace(if_due=True)), 0)
+        st = pc.load()
+        self.assertTrue(st["active"])
+        self.assertTrue(st.get("remote_hold"))
+        self.assertEqual((self.wakes, self.tgs), ([], []))
+        self.remote(False)
+        pc.cmd_wake(argparse.Namespace(if_due=True))
+        st = pc.load()
+        self.assertFalse(st["active"])
+        self.assertNotIn("remote_hold", st)
+        self.assertEqual((len(self.wakes), len(self.tgs)), (1, 1))
+
+    def test_pause_off_button_silent_while_work_is_on_prod(self):
+        put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": "session", "resume_at": time.time() + 600})
+        self.remote(True)
+        self.assertEqual(pc.cmd_off(argparse.Namespace(by="панель")), 0)
+        st = pc.load()
+        self.assertEqual((st["active"], st["override"]), (False, True))
+        self.assertEqual((self.wakes, self.tgs), ([], []))
+
+    def test_broken_or_missing_mode_file_does_not_hold(self):
+        put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": "session", "resume_at": time.time() - 60})
+        with open(os.path.join(self.d, "remote_mode.json"), "w") as f:
+            f.write("{oops")
+        pc.cmd_wake(argparse.Namespace(if_due=True))
+        self.assertFalse(pc.load()["active"])

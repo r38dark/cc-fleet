@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 D = "/root/notion_web"
 sys.path.insert(0, D)
 import agent_ops as AO
+import nagents as NA  # агенты Notion для балансера (07.11.26): список, окно чата, создание и настройки
 URL0 = "https://app.notion.com/chat?t=40b55b37d4588006b66400a92e8439da"  # запасной адрес, пока реестр agents.json пуст
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 PORT = 8893
@@ -338,7 +339,7 @@ def rlog(msg):
 def rotation_info():
     r = AO.reg_load(); rd = AO.ready(r)
     return {"agents": len(rd), "max": AO.MAX_AGENTS, "current_since": irk(rd[-1]["active_from"]) if rd else "—",
-            "next_rotation": irk(AO.due_at(r)) if rd else "—", "fails": r.get("fails", 0), "stopped": r.get("next_try", 0) > time.time() + 30 * 86400}
+            "next_rotation": "отключена", "fails": r.get("fails", 0), "stopped": True}
 
 
 def cleanup(pg, a, protect):
@@ -357,6 +358,8 @@ def cleanup(pg, a, protect):
 
 def rotate(force=False):
     """Создать нового агента, проверить его тестовым сообщением, переключить сервис на него; если агентов больше 5 — убрать самого старого."""
+    # [notion-ai] 06.11.26: по просьбе Дениса пересоздание отключено, в том числе вручную.
+    return "пересоздание отключено"
     if not ROT_LOCK.acquire(blocking=False): return "уже идёт"
     try:
         r = AO.reg_load()
@@ -558,6 +561,8 @@ def spool_loop():
 # Профиль балансера «Notion AI · только он»: мост notion-ai-tg.service кладёт сюда сообщения Дениса.
 # Только отправка (ответ Notion AI шлёт сам через notion-ai-reply); Escape не жмём — он может прервать ответ.
 NAI_URL = "https://app.notion.com/chat?t=40c55b37d45880e9b91600a9c9425683"
+# Поле ввода: личный чат Notion AI («Ask Notion AI…») или чат пользовательского агента («Chat with <агент>»), 07.11.26
+NAI_INPUT = '[contenteditable=true][placeholder^="Ask Notion AI"], [contenteditable=true][placeholder^="Chat with"]'
 posts, post_order, post_q = {}, [], []
 post_cv = threading.Condition(threading.Lock())
 
@@ -570,7 +575,7 @@ NAI_NOANIM = """document.addEventListener('DOMContentLoaded',()=>{const s=docume
 
 
 NAI_MODEL = f"{D}/nai_model.json"  # [notion-ai] модель и effort постоянного чата (читает панель, пишет только post_worker)
-NAI_EFFORT_ARIA = {"low": "Low", "medium": "Medium", "high": "High", "extra high": "xHigh", "xhigh": "xHigh", "max": "Max"}
+NAI_EFFORT_ARIA = {"low": "Low", "medium": "Medium", "high": "High", "extra high": "xHigh", "xhigh": "xHigh", "max": "Max", "maximum": "Max"}
 NAI_OTHER = ("Other models", "Другие модели", "Older models", "Старые модели")
 NAI_MENU_JS = """(i)=>{const m=[...document.querySelectorAll('[role=menu]')][i];if(!m)return null;
  return [...m.querySelectorAll('[role=menuitem],[role=menuitemradio],[role=option]')].map(e=>({t:(e.innerText||'').split('\\n').map(s=>s.trim()).filter(Boolean),dis:e.getAttribute('aria-disabled')==='true'}))}"""
@@ -589,6 +594,42 @@ def nai_model_save(st):
     tmp = NAI_MODEL + ".tmp"
     with open(tmp, "w") as f: json.dump(st, f, ensure_ascii=False, indent=1)
     os.chmod(tmp, 0o600); os.replace(tmp, NAI_MODEL)
+
+
+def nai_want_load():
+    try:
+        with open(os.path.join(D, 'nai_want.json'), 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        model = data.get('model', '')
+        effort = data.get('effort', '')
+        if not isinstance(model, str) or not isinstance(effort, str):
+            raise ValueError('invalid values')
+        return {'model': model, 'effort': effort}
+    except Exception:
+        return {'model': '', 'effort': ''}
+
+
+def nai_want_save(model, effort):
+    import tempfile
+    if not isinstance(model, str) or not isinstance(effort, str):
+        raise ValueError('model and effort must be strings')
+    want = nai_want_load()
+    if model and model != want['model']:
+        want['model'] = model
+        if not effort:
+            want['effort'] = ''
+    if effort:
+        want['effort'] = effort
+    want['ts'] = time.time()
+    fd, temp = tempfile.mkstemp(prefix='nai_want-', suffix='.tmp', dir=D)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as file:
+            os.chmod(temp, 0o600)
+            json.dump(want, file, ensure_ascii=False)
+        os.replace(temp, os.path.join(D, 'nai_want.json'))
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
 
 
 def nai_parse(item):
@@ -617,7 +658,7 @@ class NaiWarm:
         try: return self.pg is not None and not self.pg.is_closed() and "login" not in self.pg.url
         except Exception: return False
 
-    def open(self):
+    def open(self, url=None):
         from playwright.sync_api import sync_playwright
         self.close()
         if AUTH["state"] != "ok": raise AuthLost(AUTH_MSG())
@@ -633,11 +674,11 @@ class NaiWarm:
                 self.ctx.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
                 self.ctx.add_init_script(NAI_NOANIM)
                 self.pg = self.ctx.new_page()
-                self.url = nai_url()
+                self.url = url or nai_url()  # чат агента из балансера или главный чат из настроек
                 if not self.url: raise RuntimeError(NAI_NOCHAT)
                 self.pg.goto(self.url, wait_until="domcontentloaded", timeout=45000)
                 try:
-                    self.pg.get_by_placeholder("Ask Notion AI").first.wait_for(timeout=40000)
+                    self.pg.locator(NAI_INPUT).first.wait_for(timeout=40000)
                 except Exception:
                     if "login" in self.pg.url: raise AuthLost("сессия Notion слетела")
                     raise
@@ -647,7 +688,38 @@ class NaiWarm:
         self.opened = time.time()
         try: nai_model_save(self.model_state(self.pg, False))  # [notion-ai] подпись модели для карточки панели
         except Exception as e: print(f"[notion-ai] модель не прочитана: {type(e).__name__}", flush=True)
+        if self.url == nai_url(): self.reapply_want()  # [notion-ai] выбранная человеком модель слетает на Auto при каждом новом открытии страницы
         print(f"[notion-ai] тёплое окно чата открыто за {self.opened - t0:.1f} с", flush=True)
+
+    def reapply_want(self):
+        def report(exc):
+            text = ' '.join(str(exc).split())[:120]
+            print('[notion-ai] возврат модели не удался: ' + type(exc).__name__ + ': ' + text, flush=True)
+        changed = False
+        completed = False
+        try:
+            want = nai_want_load()
+            if not want['model'] and not want['effort']:
+                return
+            st = self.model_state(self.pg, False)
+            if want['model'] and want['model'] != st['model']:
+                self._pick_model(self.pg, want['model'])
+                changed = True
+                st = self.model_state(self.pg, False)
+            if want['effort'] and st['effort'] and want['effort'] != st['effort']:
+                self._pick_effort(self.pg, want['effort'])
+                changed = True
+            completed = True
+        except Exception as exc:
+            report(exc)
+        finally:
+            try:
+                st = self.model_state(self.pg, False)
+                nai_model_save(st)
+                if completed and changed:
+                    print('[notion-ai] модель возвращена: ' + st['model'], flush=True)
+            except Exception as exc:
+                report(exc)
 
     def close(self):
         if self.p is None: return
@@ -661,11 +733,12 @@ class NaiWarm:
     def post(self, pj):
         if AUTH["state"] != "ok": raise AuthLost(AUTH_MSG())
         if disabled(): raise RuntimeError("выключено (DISABLED)")
-        if not self.alive() or self.url != nai_url(): self.open()
-        pg = self.pg; box = pg.get_by_placeholder("Ask Notion AI").first
+        target = pj.get("url") or nai_url()
+        if not self.alive() or self.url != target: self.open(target)
+        pg = self.pg; box = pg.locator(NAI_INPUT).first
         try: box.wait_for(timeout=4000)
         except Exception:
-            self.open(); pg = self.pg; box = pg.get_by_placeholder("Ask Notion AI").first
+            self.open(target); pg = self.pg; box = pg.locator(NAI_INPUT).first
         text = pj["text"]; head = (text.strip().splitlines() or [""])[0][:30]
         box.click(timeout=5000); pg.keyboard.press("Control+A"); pg.keyboard.press("Delete")
         pg.keyboard.insert_text(text); pg.wait_for_timeout(400)
@@ -762,6 +835,8 @@ class NaiWarm:
         if model and st["model"] != model: raise RuntimeError(f"Notion оставил модель «{st['model']}»")
         if effort and st["effort"] != effort: raise RuntimeError(f"Notion оставил effort «{st['effort']}»")
         if model or effort:
+            try: nai_want_save(model, effort)
+            except Exception as e: print(f"[notion-ai] выбор модели не запомнен: {type(e).__name__}", flush=True)
             try:
                 with BROWSER: self.ctx.storage_state(path=f"{D}/state.json")
             except Exception: pass
@@ -812,13 +887,14 @@ def post_worker():
         pj["finished"] = time.time()
 
 
-def submit_post(text):
+def submit_post(text, url=None):
     text = (text or "").strip()
     if not text: raise ValueError("пустое сообщение")
     if len(text) > MAX_TASK: raise ValueError(f"сообщение длиннее {MAX_TASK} символов")
     if disabled(): raise RuntimeError("выключено (DISABLED)")
     if not nai_url(): raise RuntimeError(NAI_NOCHAT)
     pj = {"id": uuid.uuid4().hex[:8], "text": text, "status": "queued", "created": time.time()}
+    if url: pj["url"] = url
     with post_cv:
         if len(post_q) >= 20: raise RuntimeError("очередь сообщений полна (20)")
         posts[pj["id"]] = pj; post_order.append(pj["id"]); post_q.append(pj["id"]); post_cv.notify()
@@ -865,6 +941,18 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/nai/model":  # [notion-ai] модель и effort постоянного чата (последнее прочитанное)
             pend = next((pid for pid in reversed(post_order) if (posts.get(pid) or {}).get("kind") == "model" and posts[pid].get("status") in ("queued", "running")), None)
             return self._send(200, {"ok": True, "state": nai_model_load(), "pending": pend})
+        if self.path == "/agents":  # список агентов (API Notion, только чтение) + модели из настроек + идущие задания
+            try:
+                r = NA.reg_load()
+                return self._send(200, {"ok": True, "agents": NA.list_agents(nai_url()), "models": r.get("models") or [], "models_ts": r.get("models_ts", 0),
+                                        "efforts": NA.EFFORTS, "jobs": [NA.job_public(j) for j in NA.jobs.values() if j["status"] in ("queued", "running") or time.time() - (j.get("finished") or 0) < 120]})
+            except Exception as e: return self._send(200, {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"})
+        m = re.fullmatch(r"/agents/view/([0-9a-f-]{32,36})", self.path)
+        if m:
+            try: return self._send(200, NA.view(m.group(1), nai_url()))
+            except Exception as e: return self._send(200, {"ok": False, "state": "error", "message": f"{type(e).__name__}: {str(e)[:200]}", "rows": []})
+        m = re.fullmatch(r"/agents/job/([0-9a-f]{8})", self.path)
+        if m and m.group(1) in NA.jobs: return self._send(200, NA.job_public(NA.jobs[m.group(1)]))
         m = re.fullmatch(r"/post/([0-9a-f]{8})", self.path)  # [notion-ai]
         if m and m.group(1) in posts: return self._send(200, post_public(posts[m.group(1)]))
         self._send(404, {"error": "not found"})
@@ -878,10 +966,26 @@ class H(BaseHTTPRequestHandler):
             try: return self._send(200, public(submit(d.get("task"), d.get("source") or "http", raw=bool(d.get("raw"))), full=False))
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
         if self.path == "/post":  # [notion-ai] только отправить в постоянный чат Notion AI
-            try: return self._send(200, post_public(submit_post(d.get("text"))))
+            try:
+                url = None
+                if d.get("aid"):  # сообщение агенту из балансера — в его чат, тоже через сайт
+                    a = NA.agent_by(str(d["aid"]), nai_url())
+                    if not a or not a.get("chat"): raise ValueError("у агента нет чата")
+                    url = None if a.get("main") else a["chat"]
+                return self._send(200, post_public(submit_post(d.get("text"), url)))
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
         if self.path == "/nai/model":  # [notion-ai] выбрать модель/effort ({} — перечитать список)
             try: return self._send(200, post_public(submit_model(d)))
+            except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
+        if self.path in ("/agents/create", "/agents/settings", "/agents/sync", "/agents/delete"):
+            if AUTH["state"] != "ok": return self._send(400, {"error": AUTH_MSG()})
+            try:
+                kind = self.path.rsplit("/", 1)[1]
+                kw = {k: str(d.get(k) or "").strip() for k in ("name", "model", "effort", "aid")}
+                kw = {k: v for k, v in kw.items() if v}
+                if kind == "create": kw.pop("aid", None); kw["ssh"] = bool(d.get("ssh"))
+                if kind in ("settings", "delete") and not kw.get("aid"): raise ValueError("нет агента")
+                return self._send(200, NA.job_public(NA.submit(kind, main_url=nai_url(), **kw)))
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
         if self.path == "/relogin":  # [notion-ai] кнопка «Войти в Notion» в панели
             try: start_login(); return self._send(200, {"ok": True, "email": nai_email()})
@@ -890,10 +994,7 @@ class H(BaseHTTPRequestHandler):
             try: put_code(d.get("code")); return self._send(200, {"ok": True})
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
         if self.path == "/rotate":
-            if not AO.ready(AO.reg_load()): return self._send(400, {"error": "реестр агентов пуст"})
-            if ROT_LOCK.locked(): return self._send(400, {"error": "ротация уже идёт"})
-            r = AO.reg_load(); r["next_try"] = 0; r["fails"] = 0; AO.reg_save(r)
-            threading.Thread(target=rotate, kwargs={"force": True}, daemon=True).start(); return self._send(200, {"started": True})
+            return self._send(410, {"error": "пересоздание агентов отключено"})
         if self.path in ("/off", "/on"):
             if self.path == "/off": open(OFF, "w").write("1")
             elif disabled(): os.remove(OFF)
@@ -908,6 +1009,7 @@ if __name__ == "__main__":
         for sub in ("", "/in", "/out"):
             os.makedirs(SPOOL + sub, exist_ok=True); os.chown(SPOOL + sub, pw.pw_uid, pw.pw_gid)
         threading.Thread(target=spool_loop, daemon=True).start()
-    threading.Thread(target=worker, daemon=True).start(); threading.Thread(target=watchdog, daemon=True).start(); threading.Thread(target=rotator, daemon=True).start(); threading.Thread(target=post_worker, daemon=True).start()
+    threading.Thread(target=worker, daemon=True).start(); threading.Thread(target=watchdog, daemon=True).start(); threading.Thread(target=post_worker, daemon=True).start()
+    NA.start()
     print("notion-delegate: слушаю 127.0.0.1:%d" % PORT, flush=True)
     ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()

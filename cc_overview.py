@@ -32,7 +32,7 @@ html:not(.conly) #termBox{height:clamp(360px,41dvh,510px)!important;min-height:3
 .fleet-composer{display:flex;align-items:center;gap:11px;margin:0;padding:11px 20px;border-top:1px solid #263140;background:#101620;color:#dbe3ed;flex:none}
 .fleet-composer::before{content:"›";color:#73dbb7;font:22px ui-monospace,monospace}
 .fleet-composer textarea{flex:1;min-width:0;resize:vertical;min-height:28px;max-height:180px;margin:0;padding:5px 0;background:none;color:#dbe3ed;border:0;outline:0;border-radius:0;font:12px/1.5 ui-monospace,Consolas,monospace}.fleet-composer textarea::placeholder{color:#65768c}.fleet-composer textarea:focus-visible{box-shadow:0 1px #45d6ab}
-.fleet-composer button{margin:0;min-height:0;padding:0;flex:none}.fleet-composer #fleetSend{display:grid;place-items:center;width:29px;height:29px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;font-size:19px;box-shadow:none}.fleet-key{background:transparent!important;color:#73869d!important;border:1px solid #2a3644!important;padding:2px 5px!important;border-radius:4px!important;font:10px ui-monospace,monospace!important}
+.fleet-composer button{margin:0;min-height:0;padding:0;flex:none}.fleet-composer #fleetSend{display:grid;place-items:center;width:29px;height:29px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;font-size:19px;box-shadow:none}.fleet-composer #fleetSend svg{display:block;width:17px;height:17px;pointer-events:none}.fleet-key{background:transparent!important;color:#73869d!important;border:1px solid #2a3644!important;padding:2px 5px!important;border-radius:4px!important;font:10px ui-monospace,monospace!important}
 .fleet-input-status{display:flex;align-items:center;gap:8px;padding:0 18px;min-height:32px;background:#101620;border-top:1px solid #1d2733;font-size:10px;line-height:1.5;color:#8b9bb0;flex:none}.fleet-input-status::before{content:"";width:5px;height:5px;border-radius:50%;background:#4cdbb0;flex:none}.fleet-input-status span:last-child{margin-left:auto;color:#6d839a}
 html:not(.conly) .toolrow{margin:10px 0 0;padding:0 4px;border:0;background:transparent;border-radius:0;gap:8px;min-height:28px}.fleet-model-label{font-size:10px;color:var(--fleet-faint);margin:0 9px 0 0}.toolrow .mbtn,.toolrow .modelbtn,.toolrow #mrow button{font-size:10px;padding:4px 10px;background:transparent;border:1px solid var(--fleet-line);color:var(--mut);box-shadow:none}.toolrow #mrow button.on{background:var(--card);color:var(--txt);border-color:var(--fleet-muted)}.toolrow .efB{font-size:11px}
 #fleetAccounts{margin-top:28px}.fleet-accounts-intro{margin:0 0 20px}.fleet-eyebrow{display:block;font-size:9px;letter-spacing:.16em;font-weight:700;color:var(--fleet-faint)}.fleet-accounts-intro h2{font-size:20px;font-weight:550;letter-spacing:-.35px;margin:4px 0 0}
@@ -242,8 +242,15 @@ html:root:root:not(.conly) .hdr{gap:14px!important}
 html:root:root:not(.conly) .hdr>.hdrl{order:0;flex:1;min-width:0}
 html:root:root:not(.conly) .hdr>.hdrctl{order:1;flex:0 1 auto!important;flex-basis:auto!important;gap:12px!important;min-width:0}
 html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0 0 0 auto;gap:7px!important}
-.hdr #fleetGeneralGear,.hdr #rfBtn{width:32px;height:32px;padding:7px;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--fleet-muted)}
-.hdr #fleetGeneralGear svg,.hdr #rfBtn svg{width:16px;height:16px}
+.hdr #fleetGeneralGear,.hdr #fleetProfilesBtn,.hdr #rfBtn{width:32px;height:32px;padding:7px;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--fleet-muted)}
+.hdr #fleetGeneralGear svg,.hdr #fleetProfilesBtn svg,.hdr #rfBtn svg{width:16px;height:16px}
+/* Денис 62019: кнопка общего окна «Выбор профиля» рядом с шестерёнкой; на широком экране с подписью, на узком только иконка */
+.hdr #fleetProfilesBtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;box-sizing:border-box;cursor:pointer}
+.hdr #fleetProfilesBtn .fleet-hdr-label{display:none;font-size:12px;font-weight:550;line-height:1;white-space:nowrap}
+.hdr #fleetProfilesBtn:hover{border-color:var(--fleet-muted)}.hdr #fleetProfilesBtn[aria-expanded="true"]{color:var(--fleet-accent);border-color:var(--fleet-accent)}
+@media(min-width:901px){.hdr #fleetProfilesBtn{width:auto;padding:0 11px 0 9px}.hdr #fleetProfilesBtn .fleet-hdr-label{display:inline}}
+/* Денис 61908: иконки «Обновить сейчас» в шапке нет, данные и так обновляются сами раз в минуту. Элемент остаётся в разметке: на него ссылаются скрипты страницы. */
+html:root:root .hdr #rfBtn{display:none!important}
 .fleet-live-head{min-height:18px;margin-bottom:6px}
 .fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(175px,210px) 90px 90px;grid-template-areas:"identity controls session week";gap:14px;cursor:default}
 .fleet-live-identity{grid-area:identity;display:block;color:inherit;text-decoration:none;min-width:0;border-radius:4px}
@@ -328,7 +335,7 @@ html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0 0 0 auto;gap
  html:root:root:not(.conly) .hdr>.hdrbtns{order:2}
  .hdr .cxgrp{flex:1;min-width:0;max-width:calc(100% - 160px)}.hdr .cxbtn{max-width:100%;min-width:0;padding-left:2px;padding-right:2px;gap:4px}
  .hdr .cxbtnname{min-width:0;max-width:100%!important;font-size:12px!important;overflow:hidden;text-overflow:ellipsis}
- .hdr #fleetGeneralGear,.hdr #rfBtn{width:29px;height:29px;padding:6px}
+ .hdr #fleetGeneralGear,.hdr #fleetProfilesBtn,.hdr #rfBtn{width:29px;height:29px;padding:6px}
  .fleet-live-account{grid-template-columns:minmax(0,1fr) 72px 72px;grid-template-areas:"identity session week" "controls session week";gap:4px 12px;min-height:70px;padding:8px 11px}
  .fleet-live-email{display:none}.fleet-live-name{font-size:13px;line-height:1.3}
  .fleet-provider-controls{gap:5px;max-width:230px}
@@ -549,10 +556,7 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{cursor
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:hover .fleet-acc-chev{color:var(--txt)}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-visible{outline:2px solid var(--live-accent);outline-offset:-2px}
 .fleet-acc-chev{grid-column:7;grid-row:1;justify-self:end;color:var(--fleet-muted);font-size:14px;line-height:1;padding:0 2px}
-.fleet-compact-name::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--live-accent);margin-right:7px;vertical-align:2px}
-html.ag-pause-claude .fleet-compact-account.claude .fleet-compact-name::after,
-html.ag-pause-codex .fleet-compact-account.codex .fleet-compact-name::after,
-html.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::after{content:" · пауза";color:var(--fleet-muted);font-weight:500}
+.fleet-compact-name::before{content:"";display:inline-block;flex:none;width:6px;height:6px;border-radius:50%;background:var(--live-accent);margin-right:7px;vertical-align:2px}
 .fleet-acc.open .fleet-live-identity{cursor:pointer}
 .fleet-acc.open .fleet-live-name::after{content:"⌃";display:inline-block;margin-left:7px;color:var(--fleet-muted);font-weight:400;font-size:12px;vertical-align:-2px}
 .fleet-acc.open .fleet-live-identity:hover .fleet-live-name::after{color:var(--txt)}
@@ -586,7 +590,17 @@ html.ag-pause-notion .fleet-compact-account.notion .fleet-compact-name::after{co
  html:root:root .fleet-composer #fleetSend{width:32px;height:32px}
  html:root:root .fleet-input-status{min-height:24px;padding:4px 10px;font-size:10px}
  html:root:root .fleet-input-status span:last-child{display:none}
- html:root:root .dock{display:none!important;pointer-events:none!important}
+ html:root:root:not(.conly) .dock{display:none!important;pointer-events:none!important}
+ /* Денис 62019: полный экран на телефоне без нижней кнопки «Аккаунты» — панель была выключена целиком. Язычок стоит над полем ввода (--fleet-dock-lift считает fitDockLift), список открывается касанием. */
+ html.conly:root:root .dockzone{pointer-events:none;height:0}
+ html.conly:root:root .docktab{pointer-events:auto;bottom:calc(var(--fleet-dock-lift,0px) + 8px);padding:7px 14px;font-size:12px;opacity:.92;z-index:41}
+ html.conly:root:root .dockzone:hover .docktab{opacity:.92}html.conly:root:root .dockzone.pin .docktab{opacity:0;pointer-events:none}
+ html.conly:root:root .dockzone .dockpanel{max-height:calc(var(--fleet-visual-height,100dvh) - 16px);overflow:auto;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+ html.conly:root:root .dockzone:hover .dockpanel{transform:translateY(110%);pointer-events:none}html.conly:root:root .dockzone.pin .dockpanel{transform:none;pointer-events:auto}
+ /* Денис 61924: на телефоне окно консоли (вкладки, консоль, ввод) тянется до самого низа экрана, «Активные аккаунты» — ниже, после прокрутки.
+    Высоту считает fitConsoleFill: высота экрана минус верх окна минус поле. Пока она не посчитана (класс fleet-term-fill), остаётся прежняя. */
+ html.fleet-term-fill:root:root:not(.conly) .termwrap{height:var(--fleet-term-fill)!important;min-height:0}
+ html.fleet-term-fill:root:root:not(.conly) .termwrap .fleet-console-viewport{flex:1 1 0;height:auto;min-height:150px}
  html:root:root.conly{height:100%;overflow:hidden}
  html:root:root.conly body{height:var(--fleet-visual-height,100dvh)!important;min-height:0!important;overflow:hidden!important;padding:0!important}
  html:root:root.conly .termwrap{flex:1;min-height:0;min-width:0;margin:0!important;overflow:hidden}
@@ -768,6 +782,173 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .n
  html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{flex:1 1 100%}
 }
 
+/* ===== Активные аккаунты: полоса (референс Дениса 61873) =====
+   Ячейки в ряд, у каждой: статус и имя | Модель, Effort, 5ч, Неделя, дата сброса, стрелка. Рамка активного лежит на границе своей ячейки:
+   без внешней тени и отрицательных отступов, поэтому ничего не перекрывает. Две ячейки в ряд — от 1260 px (см. ниже), уже — по одной. */
+#fleetActiveAccounts{--cal:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='3' width='12' height='11' rx='2'/%3E%3Cpath d='M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4'/%3E%3C/svg%3E")}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:6px}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc{display:block;min-width:0}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open{grid-column:1/-1}
+/* в одну строку идут только аккаунты Claude (Claude DEV и PROD); Codex и Notion AI — каждый на всю ширину (Денис 61881) */
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.codex),
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.notion){grid-column:1/-1}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:0}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc+.fleet-acc>.fleet-compact-account{border-top:1px solid var(--fleet-line)}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{box-sizing:border-box;min-height:42px;padding:0 14px;border:1px solid var(--fleet-line);border-radius:8px;background:rgba(8,10,14,.35);box-shadow:none}
+html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude,
+html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod,
+html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex,
+html:root:root:root.ag-live-notion #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.notion{border-color:#49d6aa;box-shadow:none}
+html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-name::before,
+html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-name::before,
+html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex .fleet-compact-name::before,
+html:root:root:root.ag-live-notion #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.notion .fleet-compact-name::before{background:#49d6aa}
+/* «пауза» словом в строке аккаунта не пишем (Денис 62321): состояние показывает значок ⏸ перед именем */
+html:root:root:root.ag-pause-notion #fleetActiveAccounts .fleet-compact-account.notion .nai-cs{display:none}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"] .fleet-compact-range{display:inline-flex;margin-left:2px;color:var(--fleet-muted)}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model .fleet-compact-label::after,
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort .fleet-compact-label::after,
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="week"] .fleet-compact-label::after,
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="model"] .fleet-compact-label::after,
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="effort"] .fleet-compact-label::after{content:":"}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="week"] .fleet-compact-range::before{content:"";flex:none;width:13px;height:13px;background:var(--fleet-muted);-webkit-mask:var(--cal) center/contain no-repeat;mask:var(--cal) center/contain no-repeat}
+@media(min-width:901px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{display:flex;flex-wrap:nowrap;align-items:center;gap:0 14px;overflow:hidden;white-space:nowrap}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-name{flex:none;display:inline-flex;align-items:center;max-width:none;height:20px;padding-right:14px;border-right:1px solid var(--fleet-line);font-size:13px}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-warning{flex:none}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window{flex:none;display:inline-flex;align-items:center;gap:6px}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="week"] .fleet-compact-range{margin-left:12px;gap:7px}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account .nai-cs{flex:0 1 auto;min-width:0}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc-chev{flex:none;margin:0 3px 4px auto}
+}
+/* Нижняя панель полного экрана: подсказки PROD, Codex и Notion AI (Денис 61924) */
+.dpop .dsub{margin-top:6px;font-size:11.5px;font-weight:500;color:var(--mut)}
+.dchip.dx.paused .dmail,.dchip.paused .dmail{color:var(--mut)}
+.dchip.paused:not(.dx) .dmail::after{content:" · пауза";font-weight:500}
+/* Стрелка «свернуть» у раскрытой плитки стоит там же, где стрелка «развернуть» у свёрнутой ячейки: у правого края, на той же высоте (Денис 61912).
+   Отступы повторяют ячейку при тех же границах ширины: 1260–1579 px плотнее, до 900 px — как на телефоне. Клик по стрелке — это клик по названию, плитка сворачивается. «^» повёрнута на 225°, её видимая часть выше центра коробки, поэтому top на 4.5 px больше, чем у «⌄» (замер по снимку 61912). */
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open>.fleet-live-account{position:relative}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name{padding-right:34px}
+html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name::after{position:absolute;right:17px;top:19px;width:7px;height:7px;margin:0;vertical-align:baseline}
+@media(min-width:1260px) and (max-width:1579px){html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name::after{right:14px}}
+@media(max-width:900px){html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name::after{right:21px;top:20.5px}}
+/* Две ячейки (Claude DEV и PROD) в одной строке, пока хватает места (референс Дениса: обе ячейки при ширине окна ~1280). Ширина ячейки = (окно − 62) / 2.
+   от 1580 px — как есть; 1260–1579 px — плотнее (меньше зазоры и шрифт); 1260–1379 px — ещё и без подписей «Модель:» и «Effort:»; уже — по одной в строке. */
+@media(min-width:1260px){html:root:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:1260px) and (max-width:1579px){
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{padding:0 11px;gap:0 9px}
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-name{padding-right:10px;font-size:12.5px}
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model,
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort,
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window{gap:5px}
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-label{font-size:10.5px}
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model b,
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort b,
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-used{font-size:11.5px;padding:2px 4px}
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-range{font-size:11.5px}
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="week"] .fleet-compact-range{margin-left:8px;gap:5px}
+}
+@media(min-width:1260px) and (max-width:1379px){
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:not(.notion) .fleet-compact-model .fleet-compact-label,
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:not(.notion) .fleet-compact-effort .fleet-compact-label{display:none}
+  /* есть пометка «проверить»/«устарело» — места на дату сброса не хватает, она остаётся в раскрытой плитке */
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:has(.fleet-compact-warning:not(:empty)) .fleet-compact-window[data-window="week"] .fleet-compact-range{display:none}
+}
+
+/* Денис 62019: какой профиль выбран — мелкой строкой под именем в свёрнутой строке аккаунта */
+.fleet-compact-id{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;grid-column:1}
+.fleet-compact-prof{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:13px;font-size:11px;line-height:13px;font-weight:500;color:var(--fleet-muted)}
+.fleet-compact-prof:empty{display:none}
+@media(min-width:901px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-id{flex:0 0 var(--cid);box-sizing:border-box;max-width:none;padding-right:14px;border-right:1px solid var(--fleet-line)}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-id>.fleet-compact-name{flex:none;max-width:none;padding-right:0;border-right:0}
+}
+@media(max-width:900px){
+ .fleet-compact-id{flex:0 0 100%;max-width:100%}
+ .fleet-compact-id>.fleet-compact-name{max-width:100%}
+ .fleet-compact-prof::before{content:"Профиль: "}
+}
+
+/* Денис 62029: колонки свёрнутых строк одной ширины у всех аккаунтов: разделитель после имени и колонки Модель / Effort / 5ч стоят ровно, длинная подпись обрезается многоточием.
+   Ширины — по самым длинным значениям (имя + «пауза», GPT-6.1-Sol, «Модель:» у Notion AI), три диапазона плотности как у ячеек выше. */
+#fleetActiveAccounts.fleet-acc-mode{--cid:172px;--cmod:130px;--ceff:80px;--cses:112px}
+@media(min-width:1380px) and (max-width:1579px){
+ #fleetActiveAccounts.fleet-acc-mode{--cid:160px;--cmod:120px;--ceff:74px;--cses:92px}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{column-gap:7px}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-id{padding-right:10px}
+}
+/* Денис 62135: у Codex сброс 5ч бывает завтра («08.11 00:28»), строка у него на всю ширину, колонке даём место */
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex{--cses:128px}
+@media(min-width:1260px) and (max-width:1379px){#fleetActiveAccounts.fleet-acc-mode{--cid:156px;--cmod:76px;--ceff:42px;--cses:86px}}
+/* Денис 62135: DEV и PROD делят строку пополам; после % окна 5ч стоит время сброса, поэтому подписи колонок убираем и здесь */
+@media(min-width:1380px) and (max-width:1899px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-model .fleet-compact-label,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-effort .fleet-compact-label,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-model .fleet-compact-label,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-effort .fleet-compact-label{display:none}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod{--cmod:80px;--ceff:42px}
+}
+@media(min-width:1380px) and (max-width:1499px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:has(.fleet-compact-warning:not(:empty)) .fleet-compact-window[data-window="week"] .fleet-compact-range{display:none}
+}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model b,
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort b{min-width:0;overflow:hidden;text-overflow:ellipsis}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model,
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort{overflow:hidden}
+@media(min-width:901px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="model"]{flex:0 0 var(--cmod)}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="effort"]{flex:0 0 var(--ceff)}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"]{flex:0 0 var(--cses)}
+}
+@media(max-width:900px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="model"]{flex:0 0 138px}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="effort"]{flex:0 0 90px}
+}
+@media(min-width:641px) and (max-width:900px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"]{flex:0 0 54px}
+}
+
+/* Денис 62181: время сброса окна 5ч («08.11 00:29») налезало на подпись «Неделя»: колонка 5ч была уже своего содержимого (112/92/86/54 px при 120 px текста).
+   Теперь колонка не уже содержимого (min-width = запас под «100%» и самое широкое время), остальное сдвигается вправо. Телефон (до 640 px) не затронут. */
+@media(min-width:641px){
+ #fleetActiveAccounts.fleet-acc-mode{--cses:128px}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"]{flex:0 0 auto;min-width:var(--cses)}
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"] .fleet-compact-range{white-space:nowrap}
+}
+@media(min-width:1260px) and (max-width:1579px){#fleetActiveAccounts.fleet-acc-mode{--cses:118px}}
+@media(min-width:641px) and (max-width:900px){#fleetActiveAccounts.fleet-acc-mode{--cses:0px}}
+/* две плитки в ряд при 1260–1379 px: дата сброса недели остаётся в раскрытой плитке, иначе плитка не помещается */
+@media(min-width:1260px) and (max-width:1379px){
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-window[data-window="week"] .fleet-compact-range,
+ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-window[data-window="week"] .fleet-compact-range{display:none}
+}
+
+/* Денис 62045: единое окно «Точно? Отмена / Да» для кнопок быстрого доступа (window.fleetAsk) */
+.fleet-ask{z-index:60}.fleet-ask[hidden]{display:none}
+.fleet-ask .cxpbody{padding:14px 16px 16px}
+.fleet-ask h3{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--txt)}
+.fleet-ask p{margin:0;font-size:12px;line-height:1.5;color:var(--fleet-muted)}
+.fleet-ask .fa-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.fleet-ask .fa-btns button{height:34px;min-width:80px;padding:0 14px;border-radius:7px;border:1px solid var(--fleet-line);background:var(--bg);color:var(--txt);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.fleet-ask .fa-btns .fa-yes{border-color:var(--fleet-accent);background:var(--fleet-accent-soft)}
+.fleet-ask .fa-btns button:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
+
+/* ===== Единые окна шестерёнок и моделей (Денис 61881): одна прокрутка, окно не сжимается без нужды ===== */
+html:root:root:root .fleet-quick-panel:not([hidden]),html:root:root:root .fleet-settings-panel:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
+html:root:root:root .fleet-quick-panel[hidden],html:root:root:root .fleet-settings-panel[hidden]{display:none}
+html:root:root:root .fleet-quick-panel>.cxpbody,html:root:root:root .fleet-settings-panel>.cxpbody{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--fleet-line) transparent}
+html:root:root:root .fleet-quick-panel .cxqlist{max-height:none;overflow:visible}
+/* списки моделей внутри окон не прокручиваются сами: прокручивается только окно целиком (раньше — полоса в полосе) */
+html:root:root:root .fleet-settings-panel .fleet-model-catalog{max-height:none;overflow:visible}
+html:root:root:root #naiModelQ{overflow:hidden}
+
 '''
 
 JS = r'''
@@ -801,8 +982,8 @@ JS = r'''
  document.getElementById('fleetCxSave').addEventListener('click',async e=>{e.target.disabled=true;try{const d=await post('chatgpt/rotation/config',{threshold:Number(document.getElementById('fleetCxThreshold').value),weekly_cap:Number(document.getElementById('fleetCxCap').value)});toast(d.message);await loadRotation()}catch(err){toast('⚠ '+err.message)}finally{e.target.disabled=false}});
  const stateNode=document.getElementById('fleetInputState'),input=document.getElementById('fleetInput'),send=document.getElementById('fleetSend');
  let sending=false,rotationData=null,lastRequest=null;
- async function post(path,body){const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.message||'Не удалось выполнить действие');return d}
- form.addEventListener('submit',async e=>{e.preventDefault();if(sending||!input.value.trim())return;const text=input.value;const session=typeof consCur==='function'?consCur():'claude';sending=true;send.disabled=true;stateNode.textContent='Отправляю в '+(session==='codex'?'Codex':'Claude')+'…';try{const d=await post('console/input',{session,text,request_id:(lastRequest&&lastRequest.text===text&&lastRequest.session===session?lastRequest.id:(lastRequest={text,session,id:crypto.randomUUID()}).id)});if(input.value===text)input.value='';lastRequest=null;stateNode.textContent=d.message||'Ввод передан в консоль';ccConsole()}catch(err){stateNode.textContent=err.message;toast('⚠ '+err.message)}finally{sending=false;send.disabled=false}});
+ async function post(path,body){const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||!d.ok){const er=Error(d.message||'Не удалось выполнить действие');er.data=d;throw er}return d}
+ form.addEventListener('submit',async e=>{e.preventDefault();if(sending||!input.value.trim())return;const text=input.value;const session=typeof consCur==='function'?consCur():'claude';const rid=(lastRequest&&lastRequest.text===text&&lastRequest.session===session?lastRequest.id:(lastRequest={text,session,id:crypto.randomUUID()}).id);const go=async side=>{sending=true;send.disabled=true;stateNode.textContent='Отправляю в '+(session==='codex'?'Codex':session==='prod'?'Claude PROD':'Claude DEV')+'…';let ask='';try{const body={session,text,request_id:rid};if(side)body.side=true;const d=await post('console/input',body);if(input.value===text)input.value='';lastRequest=null;stateNode.textContent=d.message||'Ввод передан в консоль';ccConsole()}catch(err){if(!side&&err.data&&err.data.ask==='side'){ask=err.data.message||'Вкладка на паузе. Написать ей всё равно?';stateNode.textContent=''}else{stateNode.textContent=err.message;toast('⚠ '+err.message)}}finally{sending=false;send.disabled=false}if(ask){const yes=typeof window.fleetAsk==='function'?await window.fleetAsk(send,ask,'Да, написать'):confirm(ask);if(yes)return go(true);stateNode.textContent='Отменено'}};go(false)});
  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit()}});
  form.querySelector('[data-console-key]').addEventListener('click',async()=>{try{const d=await post('console/key',{session:typeof consCur==='function'?consCur():'claude',key:'escape'});stateNode.textContent=d.message;ccConsole()}catch(e){toast('⚠ '+e.message)}});
  function renderRotation(d){rotationData=d;if(!document.querySelector('.fleet-cx-options:focus-within')){document.getElementById('fleetCxThreshold').value=d.threshold||90;document.getElementById('fleetCxCap').value=d.weekly_cap||99;}document.getElementById('fleetCxOpt').checked=!!d.optimize;rotation.replaceChildren();const text=el('span','',d.message||'Проверка лимитов');rotation.append(text);if(d.next_label)rotation.append(el('span','','Следующий: '+d.next_label));if(d.last_error)rotation.append(el('span','err',d.last_error));
@@ -810,7 +991,7 @@ JS = r'''
   refreshVisuals();
  }
  let refreshing=false;async function loadRotation(){if(refreshing)return;refreshing=true;try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(r.ok)renderRotation(await r.json())}catch(e){}finally{refreshing=false}}
- document.getElementById('fleetCxOpt').addEventListener('change',async e=>{const on=e.target.checked;e.target.disabled=true;try{await post('chatgpt/rotation/config',{optimize:on});await loadRotation()}catch(err){e.target.checked=!on;toast('⚠ '+err.message)}finally{e.target.disabled=false}});
+ document.getElementById('fleetCxOpt').addEventListener('change',async e=>{const box=e.target,on=box.checked;box.checked=!on;if(!await window.fleetAsk(box,(on?'Включить':'Выключить')+' оптимизацию переключений лимитов Codex?',on?'Включить':'Выключить'))return;box.checked=on;box.disabled=true;try{await post('chatgpt/rotation/config',{optimize:on});await loadRotation()}catch(err){box.checked=!on;toast('⚠ '+err.message)}finally{box.disabled=false}});
  const oldCxRender=cxRender;cxRender=function(){oldCxRender();if(rotationData)renderRotation(rotationData);if(typeof cxData!=='undefined'&&cxData&&cxData.loading&&!cxData.accounts.length)document.getElementById('cx').textContent='Загружаем сохранённые аккаунты…'};
  const accLink=document.querySelector('#cxAccW>.cxacch');if(accLink)accLink.title='Аккаунты показаны на главной странице';
  document.getElementById('cxAccW').classList.add('open');
@@ -824,17 +1005,42 @@ JS = r'''
  const headerButtons=hdr.querySelector('.hdrbtns');if(headerButtons)hdr.querySelector('.hdrctl').append(headerButtons);
  const toolbar=el('div','fleet-console-toolbar');toolbar.append(document.getElementById('cTabs'),term.querySelector('.tzoom'));term.prepend(toolbar);
  const consoleFrame=el('div','fleet-console-viewport'),consoleBox=document.getElementById('termBox'),consoleTabs=document.getElementById('cTabs'),consoleZoom=toolbar.querySelector('.tzoom'),consoleActions=consoleTabs.querySelector('.ctacts');
- consoleBox.before(consoleFrame);consoleFrame.append(consoleBox,document.getElementById('cxCons'));
+ consoleBox.before(consoleFrame);consoleFrame.append(consoleBox);
  const mobileConsole=matchMedia('(max-width:640px), (max-width:1000px) and (pointer:coarse)'),legacyDock=document.querySelector('.dock');
  function placeConsoleControls(){
   if(mobileConsole.matches){consoleFrame.append(consoleActions,consoleZoom);input.placeholder='Сообщение в консоль…'}
   else{consoleTabs.append(consoleActions);toolbar.append(consoleZoom);input.placeholder='Сообщение или команда в выбранную консоль…'}
-  legacyDock.inert=mobileConsole.matches;
-  if(mobileConsole.matches){legacyDock.setAttribute('aria-hidden','true');document.getElementById('dockZone').classList.remove('pin')}
+  syncLegacyDock();
+ }
+ function syncLegacyDock(){
+  const off=mobileConsole.matches&&!document.documentElement.classList.contains('conly');
+  legacyDock.inert=off;
+  if(off){legacyDock.setAttribute('aria-hidden','true');document.getElementById('dockZone').classList.remove('pin')}
   else legacyDock.removeAttribute('aria-hidden');
+  fitDockLift();
+ }
+ function fitDockLift(){
+  const root=document.documentElement,c=document.querySelector('.fleet-composer');
+  if(!mobileConsole.matches||!root.classList.contains('conly')||!c){root.style.removeProperty('--fleet-dock-lift');return}
+  const vh=window.visualViewport?.height||innerHeight;root.style.setProperty('--fleet-dock-lift',Math.max(0,Math.round(vh-c.getBoundingClientRect().top))+'px');
  }
  function fitMobileViewport(){const root=document.documentElement;root.style.setProperty('--fleet-visual-height',Math.round(window.visualViewport?.height||innerHeight)+'px');root.style.setProperty('--fleet-visual-top',Math.round(window.visualViewport?.offsetTop||0)+'px')}
  placeConsoleControls();fitMobileViewport();
+ let fillShown=0;
+ function fitConsoleFill(){
+  const root=document.documentElement,wrap=document.querySelector('.termwrap');
+  if(!wrap||!mobileConsole.matches||root.classList.contains('conly')){if(root.classList.contains('fleet-term-fill')){root.classList.remove('fleet-term-fill');root.style.removeProperty('--fleet-term-fill')}fillShown=0;return}
+  const vh=window.visualViewport?.height||innerHeight,top=wrap.getBoundingClientRect().top+window.scrollY,h=Math.max(380,Math.round(vh-top-12));
+  if(document.activeElement===input&&fillShown&&h<fillShown)return; // экранная клавиатура сжала экран: окно не прыгает, пока человек печатает
+  if(h===fillShown&&root.classList.contains('fleet-term-fill'))return;
+  fillShown=h;root.style.setProperty('--fleet-term-fill',h+'px');root.classList.add('fleet-term-fill');
+ }
+ fitConsoleFill();
+ addEventListener('resize',fitConsoleFill);addEventListener('orientationchange',fitConsoleFill);addEventListener('load',fitConsoleFill);window.visualViewport?.addEventListener('resize',fitConsoleFill);
+ mobileConsole.addEventListener('change',()=>{fillShown=0;fitConsoleFill()});
+ if(window.ResizeObserver)new ResizeObserver(fitConsoleFill).observe(hdr);
+ new MutationObserver(()=>{fitConsoleFill();syncLegacyDock()}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+ {const comp=document.querySelector('.fleet-composer');if(comp&&window.ResizeObserver)new ResizeObserver(fitDockLift).observe(comp);addEventListener('resize',fitDockLift);window.visualViewport?.addEventListener('resize',fitDockLift)}
  mobileConsole.addEventListener('change',placeConsoleControls);
  addEventListener('resize',fitMobileViewport);window.visualViewport?.addEventListener('resize',fitMobileViewport);window.visualViewport?.addEventListener('scroll',fitMobileViewport);
  // Nested terminal scroll must not trap a page gesture at either history edge.
@@ -855,7 +1061,7 @@ JS = r'''
  for(const name of ['touchend','touchcancel'])consoleBox.addEventListener(name,()=>{consoleTouch=null},{passive:true});
  // A saved desktop focus mode must not hide the mobile account page on load.
  if(mobileConsole.matches&&document.documentElement.classList.contains('conly')&&!document.fullscreenElement)setConly(false,false);
- send.textContent='↑';send.title='Отправить в выбранную консоль · Enter';send.setAttribute('aria-label','Отправить в выбранную консоль');
+ send.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>';send.title='Отправить в выбранную консоль · Enter';send.setAttribute('aria-label','Отправить в выбранную консоль');
  input.title='Enter — отправить · Shift+Enter — новая строка';
  const accFold=el('details','fleet-accounts-fold');accFold.id='fleetAccountsFold';
  const intro=el('summary','fleet-accounts-intro');intro.innerHTML='<span class="fleet-accounts-title"><span class="fleet-eyebrow">УПРАВЛЕНИЕ АККАУНТАМИ</span><span class="fleet-accounts-heading">Лимиты и переключения</span></span><span class="fleet-accounts-chevron" aria-hidden="true"></span>';
@@ -946,14 +1152,53 @@ JS = r'''
  }
  // Сводка, модель и настройки каждого провайдера собраны в одну плитку.
  const liveStrip=el('section','fleet-active-strip');liveStrip.id='fleetActiveAccounts';liveStrip.setAttribute('aria-label','Активные аккаунты и использованные лимиты');
- const liveHead=el('div','fleet-live-head'),liveHeading=el('span','fleet-live-label fleet-live-heading','Активные аккаунты · использовано лимита');liveHeading.id='fleetActiveHeading';
- liveHead.append(liveHeading,el('span','fleet-live-timezone','Сброс лимитов · Иркутск'));
+ const liveHead=el('div','fleet-live-head'),liveHeading=el('span','fleet-live-label fleet-live-heading','Активные аккаунты');liveHeading.id='fleetActiveHeading';
+ liveHead.append(liveHeading);
  const liveFold=el('details','fleet-live-fold');liveFold.id='fleetActiveFold';
  const liveSummary=el('summary','fleet-live-summary');liveSummary.id='fleetActiveSummary';liveSummary.setAttribute('aria-controls','fleetLiveRows');liveSummary.setAttribute('aria-label','Развернуть активные аккаунты');
  const liveExpand=el('span','fleet-live-toggle fleet-live-expand','Развернуть');liveExpand.setAttribute('aria-hidden','true');liveSummary.append(liveExpand);
  const liveCollapse=el('button','fleet-live-toggle fleet-live-collapse','Свернуть');liveCollapse.id='fleetActiveCollapse';liveCollapse.type='button';liveCollapse.setAttribute('aria-controls','fleetLiveRows');liveCollapse.setAttribute('aria-expanded','true');
  const liveFooter=el('div','fleet-live-footer');liveFooter.append(liveCollapse);
  const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows,liveFooter);liveStrip.append(liveHead,liveFold);term.after(liveStrip);
+
+ // Нижняя панель полного экрана консоли (Денис 61924): старый код рисует в ней только аккаунты Claude (список написан, когда движок был один).
+ // PROD, Codex и Notion AI достраиваем из ячеек полосы «Активные аккаунты»: тот же вид, та же подсказка при наведении.
+ let dockSig='';
+ function dockExtras(){
+  const panel=document.getElementById('dockPanel');if(!panel||typeof col!=='function'||typeof tone!=='function')return;
+  const root=document.documentElement,esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const txt=(n,q)=>{const e=n.querySelector(q);return e?e.textContent.trim():''};
+  const items=[...liveRows.querySelectorAll('.fleet-compact-account')].filter(c=>c.dataset.engine&&c.dataset.engine!=='claude').map(c=>{
+   const eng=c.dataset.engine,nameEl=c.querySelector('.fleet-compact-name'),parts=((nameEl&&nameEl.title)||'').split(' · ');
+   const win=k=>{const w=c.querySelector('.fleet-compact-window[data-window="'+k+'"]');if(!w)return null;const m=/(\d+)\s*%/.exec(txt(w,'.fleet-compact-used'));return {pct:m?+m[1]:null,reset:txt(w,'.fleet-compact-range')}};
+   return {eng,name:nameEl?nameEl.textContent.trim():eng,email:parts.find(x=>x.includes('@'))||'',plan:parts.length>2&&/^[A-Z]{2,6}$/.test(parts[parts.length-1])?parts[parts.length-1]:'',
+    live:root.classList.contains('ag-live-'+eng),pause:root.classList.contains('ag-pause-'+eng),
+    model:txt(c,'.fleet-compact-model b')||txt(c,'[data-window="model"] b'),effort:txt(c,'.fleet-compact-effort b')||txt(c,'[data-window="effort"] b'),ses:win('session'),wk:win('week')}});
+  const claudeLive=root.classList.contains('ag-live-claude'),claudePause=root.classList.contains('ag-pause-claude');
+  panel.querySelectorAll('.dchip:not(.dx)').forEach(c=>{if(c.classList.contains('act'))c.dataset.cur='1';const cur=c.dataset.cur==='1';c.classList.toggle('act',cur&&claudeLive);c.classList.toggle('paused',cur&&claudePause);const pa=c.querySelector('.dpa');if(pa){if(!pa.dataset.t)pa.dataset.t=pa.textContent;pa.textContent=claudeLive?pa.dataset.t:claudePause?'на паузе':'';pa.style.display=claudeLive||claudePause?'':'none';pa.style.color=claudePause&&!claudeLive?'var(--mut)':''}});
+  const sig=JSON.stringify(items);
+  if(sig===dockSig&&panel.querySelector('.dchip.dx'))return;
+  dockSig=sig;panel.querySelectorAll('.dchip.dx').forEach(n=>n.remove());
+  const met=(l,o)=>o&&o.pct!=null?'<span class="dmet"><span class="dtop"><span class="dml">'+l+'</span><b style="color:'+col(o.pct)+'">'+o.pct+'%</b></span><span class="bar dbar"><span class="fill" data-t="'+tone(o.pct)+'" style="width:'+o.pct+'%"></span></span></span>':'';
+  const row=(l,o)=>o&&o.pct!=null?'<div class="row"><div class="lbl"><span>'+l+': <b style="color:'+col(o.pct)+'">'+o.pct+'%</b></span><span>'+esc(o.reset)+'</span></div><div class="bar"><div class="fill" data-t="'+tone(o.pct)+'" style="width:'+o.pct+'%"></div></div></div>':'';
+  panel.insertAdjacentHTML('beforeend',items.map(a=>{
+   const st=a.pause?'на паузе':a.live?'работает':'';
+   return '<div class="dchip dx '+esc(a.eng)+(a.live&&!a.pause?' act':'')+(a.pause?' paused':'')+'"><span class="ddot"></span><span class="dmail">'+esc(a.name)+(a.pause?' · пауза':'')+'</span>'+met(tr('dockSes'),a.ses)+met(tr('dockWeek'),a.wk)
+    +'<div class="dpop"><div class="dpt"><span class="dpe">'+esc(a.email||a.name)+'</span>'+(a.plan?'<span class="tag plan">'+esc(a.plan)+'</span>':'')+(st?'<span class="dpa"'+(a.pause?' style="color:var(--mut)"':'')+'>'+st+'</span>':'')+'</div>'
+    +(a.email?'<div class="dsub">'+esc(a.name)+'</div>':'')+(a.model?'<div class="dsub">Модель: '+esc(a.model)+(a.effort&&a.effort!=='—'?' · Effort: '+esc(a.effort):'')+'</div>':'')+row(tr('session5'),a.ses)+row(tr('week'),a.wk)+'</div></div>'}).join(''));
+ }
+ {const rd=window.renderDock;if(typeof rd==='function')window.renderDock=function(){const r=rd.apply(this,arguments);try{dockExtras()}catch(e){}return r}}
+ {let t=0;const soon=()=>{clearTimeout(t);t=setTimeout(()=>{try{dockExtras()}catch(e){}},300)};
+  new MutationObserver(soon).observe(liveRows,{childList:true,subtree:true,characterData:true});
+  new MutationObserver(soon).observe(document.documentElement,{attributes:true,attributeFilter:['class']});soon()}
+ {const cut=t=>t.replace(/\s*·\s*(самостоятельно|только он)\s*$/,'');let tp=0;
+  const paintProfiles=()=>{for(const c of liveRows.querySelectorAll('.fleet-compact-account')){
+   const nm=c.querySelector('.fleet-compact-name');if(!nm)continue;
+   let id=nm.parentElement;if(!id.classList.contains('fleet-compact-id')){id=el('span','fleet-compact-id');nm.before(id);id.append(nm)}
+   let pf=id.querySelector('.fleet-compact-prof');if(!pf){pf=el('span','fleet-compact-prof');id.append(pf)}
+   const full=(liveRows.querySelector('.fleet-live-account.'+c.dataset.engine+' .cxbtnname')?.textContent||'').trim(),short=cut(full),ttl=full?'Профиль: '+full:'';
+   if(pf.textContent!==short)pf.textContent=short;if(pf.title!==ttl)pf.title=ttl}};
+  new MutationObserver(()=>{clearTimeout(tp);tp=setTimeout(()=>{try{paintProfiles()}catch(e){}},60)}).observe(liveRows,{childList:true,subtree:true,characterData:true});paintProfiles()}
  liveCollapse.addEventListener('click',()=>{liveFold.open=false;liveSummary.focus({preventScroll:true})});
  liveFold.addEventListener('toggle',()=>{if(!liveFold.open)liveFold.open=true});  // [notion-ai] общий «Свернуть» убран: сворачивается каждая строка (аккордеон ниже)
  // [notion-ai] полоса активных моделей — под консолью и на компьютере, и на телефоне
@@ -962,7 +1207,10 @@ JS = r'''
  hdr.querySelector('.hdrctl').append(document.getElementById('cxInst'));
  const gear=document.getElementById('gear'),codexGear=document.getElementById('cxGear'),codexModel=document.getElementById('cxMod');
  const generalGear=el('button','hdrgear fleet-header-icon');generalGear.id='fleetGeneralGear';generalGear.type='button';generalGear.innerHTML=gear.innerHTML;generalGear.title='Общие настройки';generalGear.setAttribute('aria-label','Общие настройки');
- headerButtons.replaceChildren(document.getElementById('rfBtn'),generalGear);hdr.append(headerButtons);
+ const profilesBtn=el('button','hdrgear fleet-header-icon');profilesBtn.id='fleetProfilesBtn';profilesBtn.type='button';profilesBtn.title='Выбор профиля';profilesBtn.setAttribute('aria-label','Выбор профиля');profilesBtn.setAttribute('aria-haspopup','dialog');profilesBtn.setAttribute('aria-expanded','false');
+ profilesBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span class="fleet-hdr-label">Профили</span>';
+ headerButtons.replaceChildren(document.getElementById('rfBtn'),profilesBtn,generalGear);hdr.append(headerButtons);
+ let profileOpener=null;
  const claudeModel=el('button','hdrgear cxmodbtn fleet-model-tile');claudeModel.id='fleetClaudeModel';claudeModel.type='button';claudeModel.setAttribute('aria-haspopup','dialog');claudeModel.setAttribute('aria-expanded','false');
  claudeModel.append(codexModel.querySelector('svg').cloneNode(true),el('span','cxmodn','Модель Claude'),el('span','cxmode'));
  const claudeQ=el('div','cxpop cxquick fleet-quick-panel');claudeQ.id='fleetClaudeQ';claudeQ.setAttribute('role','dialog');claudeQ.setAttribute('aria-label','Модель и рассуждения Claude');claudeQ.hidden=true;
@@ -1001,7 +1249,7 @@ JS = r'''
  // [notion-ai] Аккордеон: у каждой модели своя строка; щелчок по строке раскрывает её плитку на том же месте,
  // щелчок по имени в плитке (⌃) сворачивает обратно. Общие «Развернуть/Свернуть» убраны; что раскрыто — localStorage cc_acc_open.
  // Строку и плитку Notion AI cc_notion_ai добавляет позже — их раскладывает MutationObserver.
- const ACC_ORDER=['claude','codex','notion'];let accOpen={};
+ const ACC_ORDER=['claude','prod','codex','notion'];let accOpen={};
  try{accOpen=JSON.parse(localStorage.getItem('cc_acc_open')||'{}')||{}}catch(e){accOpen={}}
  liveStrip.classList.add('fleet-acc-mode');liveFold.open=true;
  function accWrap(engine){
@@ -1041,10 +1289,40 @@ JS = r'''
  liveRows.addEventListener('keydown',event=>{const compact=event.target.closest&&event.target.closest('.fleet-compact-account[data-acc]');if(compact&&(event.key==='Enter'||event.key===' ')){event.preventDefault();accSet(compact.dataset.engine,true,true)}});
  const accObserver=new MutationObserver(accOrganize);accObserver.observe(liveSummary,{childList:true});accObserver.observe(liveRows,{childList:true});
  accOrganize();
- function placePanel(panel,anchor,width){
-  const r=anchor.getBoundingClientRect(),w=Math.min(width,innerWidth-24),top=Math.min(r.bottom+8,Math.max(12,innerHeight-240));
-  panel.style.width=w+'px';panel.style.top=Math.round(top)+'px';panel.style.left=Math.max(12,Math.min(Math.round(r.right-w),innerWidth-w-12))+'px';panel.style.right='auto';panel.style.bottom='auto';panel.style.maxHeight=Math.max(120,innerHeight-top-12)+'px';
- }
+ // Единое размещение окон у шестерёнок, моделей и настроек (Денис 61881): окно НИКОГДА не режется до «остатка под кнопкой».
+ // Высота — по содержимому, но не больше экрана; ставим под кнопкой, если помещается целиком, иначе над ней, иначе сдвигаем вверх.
+ // Содержимое выросло или уменьшилось после открытия — окно ставится заново (ResizeObserver).
+ const placeState=new WeakMap();
+ window.fleetPlace=function(panel,anchor,width){
+  if(!panel||!anchor||!anchor.getBoundingClientRect)return;
+  const gap=12,vh=innerHeight,vw=innerWidth,r=anchor.getBoundingClientRect(),w=Math.min(width,vw-gap*2);
+  panel.style.width=w+'px';panel.style.right='auto';panel.style.bottom='auto';panel.style.maxHeight=(vh-gap*2)+'px';
+  const h=Math.min(panel.getBoundingClientRect().height,vh-gap*2),below=r.bottom+8,above=r.top-8-h;
+  const top=below+h<=vh-gap?below:above>=gap?above:Math.max(gap,vh-gap-h);
+  panel.style.top=Math.round(top)+'px';panel.style.left=Math.max(gap,Math.min(Math.round(r.right-w),vw-w-gap))+'px';
+  let o=placeState.get(panel);
+  if(!o){o={};placeState.set(panel,o);if(window.ResizeObserver)new ResizeObserver(()=>{if(panel.hidden)return;const hh=panel.getBoundingClientRect().height;if(hh&&Math.abs(hh-o.h)>1)window.fleetPlace(panel,o.a,o.w)}).observe(panel)}
+  o.a=anchor;o.w=width;o.h=h;
+ };
+ function placePanel(panel,anchor,width){window.fleetPlace(panel,anchor,width)}
+ // Денис 62045: кнопка быстрого доступа без «Сохранить» не срабатывает от одного клика. fleetAsk(якорь, вопрос, подпись «Да») → Promise<true|false>.
+ let askEl=null,askRes=null,askAnc=null;
+ function askPlace(){if(!askEl||askEl.hidden)return;const a=askAnc;
+  const ar=a&&a.isConnected?a.getBoundingClientRect():null;
+  if(ar&&ar.width>0&&ar.bottom>0&&ar.top<innerHeight){window.fleetPlace(askEl,a,320);return}
+  const w=Math.min(320,innerWidth-24);askEl.style.width=w+'px';askEl.style.left=Math.max(12,Math.round((innerWidth-w)/2))+'px';askEl.style.top=Math.max(12,Math.round(innerHeight/4))+'px';askEl.style.right='auto';askEl.style.bottom='auto'}
+ function askClose(ok){if(askEl&&!askEl.hidden)askEl.hidden=true;const r=askRes;askRes=null;if(r)r(!!ok)}
+ window.fleetAsk=function(anchor,text,yes){return new Promise(resolve=>{
+  if(askRes)askClose(false);
+  if(!askEl){askEl=document.createElement('div');askEl.className='cxpop fleet-ask';askEl.setAttribute('role','dialog');askEl.setAttribute('aria-label','Подтверждение');askEl.hidden=true;
+   askEl.innerHTML='<div class="cxpbody"><h3>Точно?</h3><p></p><div class="fa-btns"><button type="button" class="fa-no">Отмена</button><button type="button" class="fa-yes">Да</button></div></div>';document.body.appendChild(askEl);
+   askEl.addEventListener('click',e=>{if(e.target.closest('.fa-no'))askClose(false);else if(e.target.closest('.fa-yes'))askClose(true)});
+   askEl.addEventListener('pointerdown',e=>e.stopPropagation());
+   document.addEventListener('pointerdown',e=>{if(askEl&&!askEl.hidden&&!askEl.contains(e.target))askClose(false)},true);
+   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&askEl&&!askEl.hidden){e.stopPropagation();askClose(false)}},true);
+   addEventListener('resize',askPlace)}
+  askRes=resolve;askAnc=anchor||null;askEl.querySelector('p').textContent=text||'';askEl.querySelector('.fa-yes').textContent=yes||'Да';
+  askEl.hidden=false;askPlace();askPlace();askEl.querySelector('.fa-yes').focus({preventScroll:true})})};
  function placeProfilePalette(anchor){
   menu.classList.toggle('fleet-profile-desktop',!mobileConsole.matches);
   if(mobileConsole.matches){menu.style.top='var(--fleet-visual-top,0px)';menu.style.left='0';menu.style.right='0';menu.style.bottom='auto';menu.style.width='100%';menu.style.height=menu.style.maxHeight='var(--fleet-visual-height,100dvh)'}
@@ -1205,6 +1483,7 @@ JS = r'''
  new MutationObserver(paintSettingsState).observe(scrim,{attributes:true,attributeFilter:['hidden']});
  new MutationObserver(paintSettingsState).observe(document.getElementById('cxPop'),{attributes:true,attributeFilter:['hidden']});
  gear.setAttribute('aria-haspopup','dialog');
+ profilesBtn.addEventListener('click',()=>{if(!menu.hidden){cxMenuClose();return}cxPopClose();cxQClose();closeClaudeQ();if(!scrim.hidden)document.getElementById('modalDone').click();profileOpener=profilesBtn;cxMenuOpen()});
  gear.addEventListener('click',()=>{cxPopClose();cxMenuClose();cxQClose();closeClaudeQ();scrim.dataset.view='claude';putText(claudeTitle,'Настройки Claude');common.open=false;paintClaudeLimits();paintOwnAccounts();placePanel(modal,gear,580);paintSettingsState()});
  generalGear.addEventListener('click',()=>{if(!scrim.hidden&&scrim.dataset.view==='general'){document.getElementById('modalDone').click();return}gear.click();scrim.dataset.view='general';putText(claudeTitle,'Общие настройки');common.open=true;placePanel(modal,generalGear,580);paintSettingsState()});
  codexGear.addEventListener('click',()=>{scrim.hidden=true;closeClaudeQ()});
@@ -1216,8 +1495,12 @@ JS = r'''
  if(lastModel)paintClaudeModel(lastModel);
 
  const liveDateOptions={timeZone:'Asia/Irkutsk',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'};
- const liveDateFormats=[new Intl.DateTimeFormat('ru-RU',liveDateOptions),new Intl.DateTimeFormat('ru-RU',{...liveDateOptions,weekday:'long'})];
+ const liveDateFormats=[new Intl.DateTimeFormat('ru-RU',liveDateOptions),new Intl.DateTimeFormat('ru-RU',{...liveDateOptions,weekday:'short'})];
  const liveYearFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',year:'numeric'});
+ const liveClockFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const liveDayFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',day:'2-digit',month:'2-digit'});
+ // Денис 62135: время сброса 5-часового окна по Иркутску сразу после процентов; если сброс не сегодня, перед временем стоит дата.
+ function fiveHourClock(date){const clock=liveClockFormat.format(date),day=liveDayFormat.format(date);return day===liveDayFormat.format(new Date())?clock:day+' '+clock}
  function resetDate(win){
   if(!win?.resets_at)return null;
   const end=new Date(win.resets_at);if(Number.isNaN(end.getTime()))return null;
@@ -1226,27 +1509,32 @@ JS = r'''
  function compactDate(date,withYear,index){
   return liveDateFormats[index].format(date).replaceAll(',','')+(withYear?' '+liveYearFormat.format(date):'');
  }
- function paintWindowReset(root,win,index){
+ function paintWindowReset(root,win,index,short){
   const end=resetDate(win);if(!end){putText(root,'Время не получено');root.removeAttribute('aria-label');return;}
   let text;
+  if(!index&&short){
+   text=end.getTime()>Date.now()?fiveHourClock(end):'сброс';
+   if(root.firstElementChild?.tagName==='TIME'&&root.firstElementChild.dateTime===end.toISOString()&&root.textContent===text)return;
+   const time=el('time','',text);time.dateTime=end.toISOString();root.replaceChildren(time);root.setAttribute('aria-label','Окно 5 часов обновится в '+text+' по Иркутску');root.title='Окно 5 часов обновится в '+text+' (время иркутское)';return;
+  }
   if(index){
    const withYear=liveYearFormat.format(end)!==liveYearFormat.format(new Date());text=compactDate(end,withYear,1);
   }else{
    const minutes=Math.ceil((end.getTime()-Date.now())/60000),hours=Math.floor(minutes/60),rest=minutes%60;
-   text=minutes<=0?'сброс ожидается':'через '+(hours?hours+' ч'+(rest?' ':''):'')+(rest?rest+' мин':'');
+   text=minutes<=0?'сброс ожидается':fiveHourClock(end)+' · через '+(hours?hours+' ч'+(rest?' ':''):'')+(rest?rest+' мин':'');
   }
   if(root.firstElementChild?.tagName==='TIME'&&root.firstElementChild.dateTime===end.toISOString()&&root.textContent===text)return;
   const time=el('time','',text);time.dateTime=end.toISOString();root.replaceChildren(time);
-  root.setAttribute('aria-label','Сброс '+text+(index?'; время иркутское':''));
+  root.setAttribute('aria-label','Сброс '+text+'; время иркутское');
  }
  function paintCompactWindow(root,win,index){
   const pct=Number.isFinite(win?.pct)?win.pct:null;
   putText(root.querySelector('.fleet-compact-used'),pct==null?'—':Math.round(pct)+'%');
   root.dataset.tone=pct==null?'unknown':pct>=99?'bad':pct>=90?'warn':'normal';
-  paintWindowReset(root.querySelector('.fleet-compact-range'),win,index);
+  paintWindowReset(root.querySelector('.fleet-compact-range'),win,index,true);
  }
  function updateLiveAccount(engine,slot,account,pending){
-  const node=liveNodes[engine],provider=engine==='claude'?'Claude':'Codex';
+  const node=liveNodes[engine],provider=engine==='claude'?'Claude DEV':'Codex';
   const windows=engine==='claude'?[account?.five_hour,account?.seven_day]:[account?.windows?.find(w=>w.mins===300),account?.windows?.find(w=>w.mins===10080)];
   const end=resetDate(windows[0]),remaining=end?Math.max(0,Math.ceil((end.getTime()-Date.now())/60000)):null;
   const signature=JSON.stringify([slot,account,pending,remaining,liveYearFormat.format(new Date())]);if(liveSnapshots.get(engine)===signature)return;liveSnapshots.set(engine,signature);
@@ -1353,7 +1641,7 @@ JS = r'''
    for(const [node,inert] of saved.inert)node.inert=inert;
    window.scrollTo(saved.x,saved.y);
    const anotherDialog=['acctScrim','scrim','cxPop'].some(id=>{const node=document.getElementById(id);return node&&!node.hidden&&node.getClientRects().length});
-   if(menu.hidden&&!anotherDialog)document.getElementById((menu.dataset.returnEngine||menu.dataset.engine)==='claude'?'mirrorClaudecxBtn':'cxBtn')?.focus({preventScroll:true});
+   if(menu.hidden&&!anotherDialog)(profileOpener||document.getElementById((menu.dataset.returnEngine||menu.dataset.engine)==='claude'?'mirrorClaudecxBtn':'cxBtn'))?.focus({preventScroll:true});
   }
   if(!menu.hidden)cxMenuPlace();
  }
@@ -1447,7 +1735,7 @@ JS = r'''
  let nativeMirrorOpen=null;
  function mountMirrorProfiles(){
   mirrorMounted=true;nativeMirrorOpen=cxMenuOpen;document.body.classList.add('fleet-mirror');
-  new MutationObserver(()=>{paintMirrorWorkplace();if(menu.hidden)mirrorButtons[mirrorEngine]?.focus({preventScroll:true})}).observe(menu,{attributes:true,attributeFilter:['hidden']});
+  new MutationObserver(()=>{paintMirrorWorkplace();if(menu.hidden)(profileOpener||mirrorButtons[mirrorEngine])?.focus({preventScroll:true})}).observe(menu,{attributes:true,attributeFilter:['hidden']});
   const profileTabs=el('div','mirror-profile-tabs');profileTabs.setAttribute('role','tablist');profileTabs.setAttribute('aria-label','Исполнитель');
   for(const e of ['claude','codex']){const b=el('button','',mirrorNames[e]);b.type='button';b.dataset.mirrorTab=e;b.setAttribute('role','tab');b.addEventListener('click',()=>mirrorOpen(e));b.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const next=['ArrowLeft','Home'].includes(event.key)?'claude':'codex';mirrorOpen(next);profileTabs.querySelector('[data-mirror-tab="'+next+'"]').focus()}});profileTabs.append(b)}paletteHeading.querySelector('.fleet-eyebrow').replaceWith(profileTabs);
   for(const e of ['claude','codex']){
@@ -1473,7 +1761,7 @@ JS = r'''
  function paintMirrorWorkplace(){
   if(!mirrorState||!mirrorMounted)return;
   for(const e of ['claude','codex']){const state=mirrorState.engines[e],button=mirrorButtons[e];putText(button.querySelector('.cxbtnname'),state.label);button.title='Профиль '+mirrorNames[e]+': '+state.label;button.setAttribute('aria-label',button.title);button.setAttribute('aria-expanded',String(!menu.hidden&&mirrorEngine===e));button.dataset.role=state.role;}
-  const route=mirrorState.leader?mirrorNames[mirrorState.leader]+' → '+mirrorNames[mirrorState.follower]+' · один ведущий':'Самостоятельные профили';putText(document.getElementById('mirrorPairSummary'),route);const task=mirrorState.task,taskButton=document.getElementById('mirrorTaskButton');taskButton.hidden=!task;taskButton.dataset.status=task?.status||'';putText(taskButton,task?({pending:'Подтвердить шаг',approved:'Шаг подтверждён',running:'Шаг выполняется',done:'Результат шага',cancelled:'Шаг отклонён',uncertain:'Проверить исполнителя'}[task.status]||'Шаг')+' · '+mirrorNames[task.leader]+' → '+mirrorNames[task.follower]:'');
+  {const ps=document.getElementById('mirrorPairSummary');if(ps){ps.hidden=true;ps.style.display='none';putText(ps,'')}}const task=mirrorState.task,taskButton=document.getElementById('mirrorTaskButton');taskButton.hidden=!task;taskButton.dataset.status=task?.status||'';putText(taskButton,task?({pending:'Подтвердить шаг',approved:'Шаг подтверждён',running:'Шаг выполняется',done:'Результат шага',cancelled:'Шаг отклонён',uncertain:'Проверить исполнителя'}[task.status]||'Шаг')+' · '+mirrorNames[task.leader]+' → '+mirrorNames[task.follower]:'');
  }
  function mirrorDetails(p){
   const state=mirrorState.engines[mirrorEngine],other=mirrorNames[mirrorEngine==='claude'?'codex':'claude'];
@@ -1499,7 +1787,7 @@ JS = r'''
  async function mirrorRequest(engine,action,body,revision=mirrorState.revision){
   if(mirrorBusy)return;
   mirrorBusy=true;menu.setAttribute('aria-busy','true');
-  try{const response=await fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...body,revision})}),result=await response.json();if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id,result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Действие выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
+  try{const send=b=>fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...b,revision})}).then(r=>r.json());let result=await send(body);if(result.confirmation_required&&(action==='apply'||action==='config')&&result.word)result=await send({...body,confirm:result.word});if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id,result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Действие выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
  }
  function mirrorApply(engine,id,confirmation=''){return mirrorRequest(engine,'apply',{id,confirm:confirmation})}
  function mirrorStop(engine){if(mirrorState.service?.kind==='emergency'&&!confirm('Выключить аварийный режим '+mirrorNames[engine]+' и восстановить прежний сценарий?'))return;return mirrorRequest(engine,'stop',{})}
@@ -1585,9 +1873,9 @@ JS = r'''
  }
  const monoMount=mountMirrorProfiles;mountMirrorProfiles=function(){
   monoMount();nativeMirrorOpen=monoRawOpen;cxMenuPlace=monoCenter;cxMenuOpen=function(){mirrorOpen('codex')};
-  const originalWorkplace=paintMirrorWorkplace;paintMirrorWorkplace=function(){originalWorkplace();for(const engine of ['claude','codex']){mirrorButtons[engine].setAttribute('aria-expanded',String(!menu.hidden&&monoView==='profiles'))}};
+  const originalWorkplace=paintMirrorWorkplace;paintMirrorWorkplace=function(){originalWorkplace();for(const engine of ['claude','codex']){mirrorButtons[engine].setAttribute('aria-expanded',String(!menu.hidden&&monoView==='profiles'))}profilesBtn.setAttribute('aria-expanded',String(!menu.hidden&&monoView==='profiles'))};
   for(const engine of ['claude','codex']){
-   mirrorButtons[engine].addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();if(!menu.hidden&&monoView==='profiles')cxMenuClose();else mirrorOpen(engine)},true);
+   mirrorButtons[engine].addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();profileOpener=null;if(!menu.hidden&&monoView==='profiles')cxMenuClose();else mirrorOpen(engine)},true);
   }
   const close=cxMenuClose;cxMenuClose=function(...args){monoSignature='';close(...args)};
   new MutationObserver(()=>{if(!menu.hidden&&monoView==='profiles'&&matchMedia('(pointer:fine)').matches)profileRoot.querySelector('.fleet-profile-card.act[data-engine="'+mirrorEngine+'"]')?.focus({preventScroll:true})}).observe(menu,{attributes:true,attributeFilter:['hidden']});
@@ -1601,6 +1889,7 @@ JS = r'''
  const manualOther=engine=>engine==='claude'?'codex':'claude';
  const manualSame=(a,b)=>manualEngines.every(engine=>a?.[engine]===b?.[engine]);
  const manualCurrent=()=>mirrorState?.manual_scenario?.choices||{claude:null,codex:null};
+ const manualProdNote=()=>{try{return window.fleetRemote&&window.fleetRemote.mode().active?' · Claude работает на PROD':''}catch(_){return ''}};
  paletteTools.remove();paletteFooter.remove();
  const manualThemeBefore=mirrorTheme;
  mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,'Full или Оркестратор');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля')};
@@ -1616,7 +1905,7 @@ JS = r'''
   if(mirrorState.updating)return {valid:false,text:'Завершается обновление панели. Профиль можно применить после проверки.'};
   if(manualRevision!==mirrorState.revision)return {valid:false,text:'Профиль изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
   const leader=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
-  if(leader){const other=manualOther(leader);return manualDraft[other]==='executor'?{valid:true,text:mirrorNames[leader]+' → '+mirrorNames[other]+' · выполнение шагов подключено'}:{valid:false,text:mirrorNames[leader]+' — оркестратор. Подключи '+mirrorNames[other]+' для выполнения подтверждённых шагов.'}}
+  if(leader){const other=manualOther(leader);return manualDraft[other]==='executor'?{valid:true,text:mirrorNames[leader]+' → '+mirrorNames[other]+' · выполнение шагов подключено'+manualProdNote()}:{valid:false,text:mirrorNames[leader]+' — оркестратор. Подключи '+mirrorNames[other]+' для выполнения подтверждённых шагов.'}}
   if(full&&roles.length===1)return {valid:true,text:mirrorNames[full]+' Full · самостоятельно; '+mirrorNames[manualOther(full)]+' не участвует'};
   return {valid:false,text:'Выбери Full или Оркестратор. До применения текущая работа продолжается.'};
  }
@@ -1675,17 +1964,13 @@ JS = r'''
  async function manualApplyScenario(confirmation='',choices={...manualDraft},revision=manualRevision){
   if(mirrorBusy||!manualStatus().valid)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
   try{
-   const response=await fetch(API+'profiles/scenario/apply',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({choices,revision,confirm:confirmation})}),result=await response.json();
-   if(result.confirmation_required){manualConfirmScenario(choices,revision,result.word);return}
+   const send=word=>fetch(API+'profiles/scenario/apply',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({choices,revision,confirm:word})}).then(r=>r.json());
+   let result=await send(confirmation);
+   if(result.confirmation_required&&result.word)result=await send(result.word);
    if(!result.ok){toast(result.message||'Не удалось применить сценарий');if(result.conflict)await mirrorLoad();return}
    manualDirty=false;manualDraft=null;monoSignature='';mirrorAccept(result.state);toast(result.message);cxbLoad(true);
   }catch(_){toast('Не удалось применить профиль. Текущая работа продолжается.')}
   finally{mirrorBusy=false;menu.removeAttribute('aria-busy');monoSignature='';if(!menu.hidden)cxpRender()}
- }
- function manualConfirmScenario(choices,revision,word){
-  const engine=manualEngines.find(e=>choices[e]),name=manualCardTitle(engine,choices[engine]),other=mirrorNames[manualOther(engine)];cxMenuClose();
-  acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(name)+'</h3><p>'+other+' не участвует в этом сценарии. '+'Работает только '+mirrorNames[engine]+' с полными доступными правами.'+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы применить профиль Full.</p><input id="manualConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="manualConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="manualConfirmApply" disabled>Применить профиль</button></div></div>');
-  const input=document.getElementById('manualConfirmWord'),button=document.getElementById('manualConfirmApply');input.oninput=()=>button.disabled=input.value.trim().toLocaleLowerCase('ru')!==word;input.onkeydown=event=>{if(event.key==='Enter'&&!button.disabled)button.click()};document.getElementById('manualConfirmCancel').onclick=()=>{acctClose();mirrorOpen(engine)};button.onclick=()=>{const value=input.value;acctClose();manualApplyScenario(value,choices,revision).then(()=>mirrorOpen(engine))};setTimeout(()=>input.focus(),30);
  }
 
  mirrorLoad();
