@@ -23,17 +23,18 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="ccrs_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        self.saved = (S.KEY_PATH, S.AUTH_FILE, R.MEMBERS_FILE, R.BASE, S.BASE)
+        self.saved = (S.KEY_PATH, S.AUTH_FILE, R.MEMBERS_FILE, R.BASE, S.BASE, R.STATE_FILE)
         S.KEY_PATH = os.path.join(self.tmp, "remote_key")
         S.AUTH_FILE = os.path.join(self.tmp, "ssh", "authorized_keys")
         R.MEMBERS_FILE = os.path.join(self.tmp, "remote_members.json")
+        R.STATE_FILE = os.path.join(self.tmp, "remote_state.json")   # первый опрос пары после «Подключить» пишет сюда, а не в папку репозитория
         S.BASE = R.BASE = self.tmp
         self.addCleanup(self.restore)
         self.calls = []
         S._job.update(state="idle", title="", text="", checks=None)
 
     def restore(self):
-        S.KEY_PATH, S.AUTH_FILE, R.MEMBERS_FILE, R.BASE, S.BASE = self.saved
+        S.KEY_PATH, S.AUTH_FILE, R.MEMBERS_FILE, R.BASE, S.BASE, R.STATE_FILE = self.saved
 
     def ssh(self, replies):
         """Подставной R.ssh_run: ответы по порядку или по подстроке команды."""
