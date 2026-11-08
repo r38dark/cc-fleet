@@ -257,7 +257,7 @@ function paintCard(m){
   +'<label class="fleet-card-auto" title="Когда у Claude DEV закончится лимит, работа сама уйдёт сюда и вернётся после сброса. Codex и агент Notion переключаются вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
   +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: войди заново':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
   +'<button type="button" class="btn-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
-  +'<button type="button" class="btn-sw rm-act" data-target="prod"></button></div>';
+  +'</div>';   // кнопки «Передать работу» в этой карточке нет: она живёт в плитке «Активные аккаунты»
  if(old)old.replaceWith(el);else box.appendChild(el)}
 var hadTab=null;
 // выбор модели и effort Claude на PROD: записывается в настройки там и применяется в запущенной сессии
