@@ -5503,23 +5503,24 @@ async function recheck(n,btn){
 // «Войти заново» — боковая панель (#acctScrim.side): ссылка входа + поле для кода.
 // Без новой вкладки и prompt(): вкладку блокирует попап-блокер или она открывается
 // не в том профиле браузера, а prompt остаётся на исходной вкладке.
-function reloginAsk(n,btn){window.fleetAsk(btn,tr('askRelogin'),tr('askYes')).then(ok=>{if(ok)relogin(n)})}
-function relogin(n){
- const a=((lastSnap&&lastSnap.accounts)||{})[n]||{};
- const who=a.email&&a.email!=='?'?a.email:n;
+// remote=true — Claude на втором сервере (PROD): вход идёт там же, токены остаются на нём
+function reloginAsk(n,btn,remote){window.fleetAsk(btn,tr('askRelogin'),tr('askYes')).then(ok=>{if(ok)relogin(n,remote)})}
+function relogin(n,remote){
+ const a=remote?{}:(((lastSnap&&lastSnap.accounts)||{})[n]||{});
+ const who=remote?'Claude PROD':(a.email&&a.email!=='?'?a.email:n);
  const head=`<h3>${tr('relTitle')}</h3><div class="modalsub"><b>${acctEsc(who)}</b> · ${acctEsc(n)}</div>`;
  $('#acctScrim').classList.add('side');
  acctShow(`${head}<div class="modalsub" id="relWait">${tr('addStarting')}</div><div class="dlgerr" id="acctErr" hidden></div>
   <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button></div>`);
  $('#acctCancel').onclick=acctClose;
  acctBusy=true;
- acctPost('relogin/start',{account:n}).then(d=>{
+ acctPost(remote?'remote/relogin/start':'relogin/start',remote?{}:{account:n}).then(d=>{
   acctBusy=false;
   if(!d.ok){$('#relWait').hidden=true;acctErr(d.message);return;}
-  reloginStep2(n,head,d);
+  reloginStep2(n,head,d,remote);
  }).catch(e=>{acctBusy=false;$('#relWait').hidden=true;acctErr(String(e));});
 }
-function reloginStep2(n,head,d){
+function reloginStep2(n,head,d,remote){
  acctShow(`${head}
   <div class="dlgstep"><i>1</i><span>${tr('relStep1',acctEsc(d.email||n))}</span></div>
   <div class="modalsub" style="margin:0 0 6px">${tr('relHint')}</div>
@@ -5539,11 +5540,11 @@ function reloginStep2(n,head,d){
   if(!code.value.trim()){acctErr(tr('addNeedCode'));return;}
   acctBusy=true;send.disabled=true;send.textContent=tr('relChecking');acctErr('');
   try{
-   const r=await acctPost('relogin/submit',{account:n,code:code.value.trim()});
+   const r=await acctPost(remote?'remote/relogin/submit':'relogin/submit',remote?{code:code.value.trim()}:{account:n,code:code.value.trim()});
    acctBusy=false;
    if(r.ok){acctClose();toast(r.message);load();return;}
    // неудачная попытка на сервере уже сброшена — тот же код второй раз не пройдёт, нужна новая ссылка
-   acctErr(r.message);send.disabled=false;send.textContent=tr('addRestart');send.onclick=()=>relogin(n);
+   acctErr(r.message);send.disabled=false;send.textContent=tr('addRestart');send.onclick=()=>relogin(n,remote);
   }catch(e){acctBusy=false;acctErr(String(e));send.disabled=false;send.textContent=tr('relSubmit');}
  };
  setTimeout(()=>code.focus(),30);

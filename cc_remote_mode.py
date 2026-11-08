@@ -12,6 +12,7 @@ import threading
 import time
 from pathlib import Path
 
+import pexpect
 import cc_remote as R
 
 MODE_FILE = R.BASE + "/remote_mode.json"
@@ -1114,11 +1115,174 @@ def pair(kind, reason="по кнопке в панели", force=False):
         return {"ok": True, "started": True, "message": "Меняю пару (%s): ~1 минута." % (PAIR_NAMES.get(kind) or "снять пару")}
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# Повторный вход в Claude на втором сервере («Войти заново» на карточке Claude PROD): настоящий вход Claude Code идёт
+# на втором сервере в отдельной временной папке HOME (живая сессия Claude там не затрагивается), панель держит ssh-терминал
+# с этим входом между двумя запросами: «получить ссылку» и «отправить код». Новые токены потом заменяют живые файлы
+# ~/.claude/.credentials.json и oauthAccount в ~/.claude.json на втором сервере — токены остаются там, сюда не копируются.
+RELOGIN_TTL = 600
+_relogin = {}
+_relogin_lock = threading.Lock()
+_RELOGIN_URL = r"(https://[^\s\x00-\x1f\x7f]+)"
+_RELOGIN_HOME = re.compile(r"^/tmp/ccfleet-relogin-[0-9a-f]{12}$")
+_EMAIL_OK = re.compile(r"^[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}$")
+
+# выполняется на втором сервере (stdin -> python3 - <HOME>): переносит новый вход из временной папки в живые файлы
+_RELOGIN_INSTALL = r"""
+import json, os, shutil, sys
+home = sys.argv[1]
+def jl(p):
+    with open(p, encoding="utf-8") as f:
+        return json.load(f)
+def jw(p, d, mode):
+    tmp = p + ".tmp-relogin"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)
+try:
+    new = jl(home + "/.claude/.credentials.json")
+except Exception:
+    new = {}
+if not (new.get("claudeAiOauth") or {}).get("accessToken"):
+    print(json.dumps({"ok": False, "error": "no_token"})); sys.exit(0)
+try:
+    oa = jl(home + "/.claude.json").get("oauthAccount")
+except Exception:
+    oa = None
+live = os.path.expanduser("~/.claude/.credentials.json")
+os.makedirs(os.path.dirname(live), exist_ok=True)
+try:
+    old = jl(live)
+    shutil.copy2(live, live + ".bak_relogin")
+except Exception:
+    old = {}
+old["claudeAiOauth"] = new["claudeAiOauth"]   # остальные ключи файла (mcpOAuth и т. п.) остаются как были
+jw(live, old, 0o600)
+cfgp = os.path.expanduser("~/.claude.json")
+try:
+    cfg = jl(cfgp)
+except Exception:
+    cfg = {}
+if oa:
+    cfg["oauthAccount"] = oa
+    mode = (os.stat(cfgp).st_mode & 0o777) if os.path.exists(cfgp) else 0o600
+    jw(cfgp, cfg, mode)
+shutil.rmtree(home, ignore_errors=True)
+print(json.dumps({"ok": True, "email": (oa or {}).get("emailAddress", "")}))
+"""
+
+
+def _relogin_argv(m, remote_cmd):
+    argv = ["ssh", "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new"]
+    if m.get("key"):
+        argv += ["-i", m["key"]]
+    if m.get("port"):
+        argv += ["-p", str(m["port"])]
+    return argv + [m.get("user", "root") + "@" + m["host"], remote_cmd]
+
+
+def _relogin_drop(m=None):
+    st = _relogin.pop("cur", None)
+    if not st:
+        return
+    try:
+        st["child"].close(force=True)
+    except Exception:
+        pass
+    if _RELOGIN_HOME.match(st.get("home") or ""):
+        try:
+            R.ssh_run(m or st.get("member") or {}, "rm -rf -- " + st["home"], timeout=15)
+        except Exception:
+            pass
+
+
+def relogin_sweep():
+    """Брошенная попытка (ссылку взяли, код не ввели) не висит дольше TTL."""
+    with _relogin_lock:
+        st = _relogin.get("cur")
+        if st and time.time() - st["started"] > RELOGIN_TTL:
+            _relogin_drop()
+
+
+def relogin_start():
+    """POST /api/remote/relogin/start -> ссылка входа для второго сервера."""
+    mid = _member_id()
+    m = R.members().get(mid)
+    if not m:
+        return {"ok": False, "message": "Второй сервер не подключён."}
+    with _relogin_lock:
+        _relogin_drop(m)   # если была брошенная попытка — начинаем чисто
+        home = "/tmp/ccfleet-relogin-" + os.urandom(6).hex()
+        email = str((R.cached().get(mid) or {}).get("email") or "")
+        if not _EMAIL_OK.match(email):
+            email = ""
+        remote = ("export PATH=$PATH:/root/.npm-global/bin:/root/.local/bin; mkdir -p %s && cd %s && HOME=%s claude auth login%s"
+                  % (home, home, home, (" --email " + email) if email else ""))
+        argv = _relogin_argv(m, remote)
+        try:
+            child = pexpect.spawn(argv[0], argv[1:], timeout=20, encoding="utf-8", dimensions=(30, 2000))
+            idx = child.expect([_RELOGIN_URL, pexpect.TIMEOUT, pexpect.EOF], timeout=30)
+        except Exception as exc:
+            return {"ok": False, "message": "Не удалось запустить вход на втором сервере: " + type(exc).__name__}
+        if idx != 0:
+            tail = (child.before or "")[-300:].strip()
+            try:
+                child.close(force=True)
+            except Exception:
+                pass
+            R.ssh_run(m, "rm -rf -- " + home, timeout=15)
+            return {"ok": False, "message": "Вход на втором сервере не показал ссылку: " + (tail or "нет ответа (проверь, что Claude Code там установлен)")}
+        url = child.match.group(1).rstrip(").,")
+        _relogin["cur"] = {"child": child, "home": home, "started": time.time(), "member": m}
+    return {"ok": True, "url": url, "email": email}
+
+
+def relogin_submit(code):
+    """POST /api/remote/relogin/submit {code} -> вход завершён, токены на втором сервере обновлены."""
+    code = str(code or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_#./+=~-]{6,600}", code):
+        return {"ok": False, "message": "Вставь код со страницы входа целиком (без пробелов)."}
+    relogin_sweep()
+    with _relogin_lock:
+        st = _relogin.get("cur")
+        if not st:
+            return {"ok": False, "message": "Нет активной попытки входа — начни заново."}
+        m, child, home = st["member"], st["child"], st["home"]
+        try:
+            child.sendline(code)
+            child.expect(pexpect.EOF, timeout=45)
+        except Exception:
+            pass   # успех проверяем по факту наличия файла на втором сервере
+        time.sleep(0.5)
+        rc, out = R.ssh_run(m, "python3 - %s" % home, timeout=40, inp=_RELOGIN_INSTALL)
+        try:
+            res = json.loads(out.strip().splitlines()[-1]) if rc == 0 and out.strip() else None
+        except Exception:
+            res = None
+        if not res or not res.get("ok"):
+            _relogin_drop(m)   # неудачную попытку сбрасываем: тот же код второй раз не пройдёт, нужна новая ссылка
+            return {"ok": False, "message": "Вход не завершился: код мог быть неверным, просроченным или не подтверждён в браузере. Получи новую ссылку и повтори."}
+        _relogin.pop("cur", None)
+        try:
+            child.close(force=True)
+        except Exception:
+            pass
+    email = str(res.get("email") or "")
+    try:
+        R.fetch_limits(_member_id(), force=True)
+    except Exception:
+        pass
+    _notify("🔑 Claude PROD: вход обновлён через панель" + (" (%s)" % email if email else "") + " — токен на втором сервере свежий.")
+    return {"ok": True, "message": "✅ " + (email + " — " if email else "") + "вход выполнен, токен на втором сервере обновлён.", "email": email}
+
+
 def install(ns):
     """Маршруты /api/remote* и подсказка вместо пустой консоли Claude, пока работа на PROD."""
     _NS.update(ns)
     base = ns["H"]
-    posts = ("/api/remote/on", "/api/remote/off", "/api/remote/handoff", "/api/remote/pair", "/api/remote/send", "/api/remote/console/start", "/api/remote/model", "/api/remote/auto")
+    posts = ("/api/remote/on", "/api/remote/off", "/api/remote/handoff", "/api/remote/pair", "/api/remote/send", "/api/remote/console/start", "/api/remote/model", "/api/remote/auto",
+             "/api/remote/relogin/start", "/api/remote/relogin/submit")
 
     class RemoteHandler(base):
         def do_GET(self):
@@ -1186,6 +1350,10 @@ def install(ns):
                              str(body.get("queued") or "")[:12000], body.get("resume") is True, body.get("force") is True)
                 elif path.endswith("/off"):
                     res = off(str(body.get("reason") or "по кнопке в панели")[:80], body.get("force") is True)
+                elif path.endswith("/relogin/start"):
+                    res = relogin_start()
+                elif path.endswith("/relogin/submit"):
+                    res = relogin_submit(body.get("code"))
                 elif path.endswith("/console/start"):
                     res = console_start()
                 elif path.endswith("/model"):

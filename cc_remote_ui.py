@@ -191,6 +191,8 @@ function pGo(){var kind=pSel,was=pKind();if(!kind||pBusy)return;pBusy=true;var y
  }).catch(function(){pBusy=false;pClose();pMine=false;sToast('⚠ Панель не ответила')})}
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-prof');if(!b||!tile||!tile.contains(b))return;e.stopPropagation();if(b.getAttribute('aria-disabled')==='true')return;pOpen(b)});
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-hand,.rm-act');if(!b||b.disabled)return;e.stopPropagation();hOpen(b.dataset.target||'prod',b)});
+// «Войти заново» на карточке Claude PROD: то же окно со ссылкой и кодом, что у обычных аккаунтов, но вход идёт на втором сервере
+document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-relogin');if(!b||b.disabled)return;e.stopPropagation();if(typeof reloginAsk==='function')reloginAsk('prod',b,true)});
 document.addEventListener('change',function(e){var c=e.target;if(c&&c.classList&&c.classList.contains('rm-auto')){var on=c.checked;c.checked=!on;window.fleetAsk(c,(on?'Включить':'Выключить')+' автопередачу работы на PROD при лимитах?',on?'Включить':'Выключить').then(function(ok){if(!ok)return;c.checked=on;c.disabled=true;setAuto(on).then(function(){c.disabled=false}).catch(function(){c.checked=!on;c.disabled=false})})}});
 // для шапки (cc_notion_ai): состояние и переключение передачи
 function autoState(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}return s&&s.remote_mode&&s.remote_mode.auto||{}}
@@ -250,7 +252,8 @@ function paintCard(m){
   +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
   +row('Сессия 5ч',m.five_hour,false)+row('Неделя',m.seven_day,true)
   +'<label class="fleet-card-auto" title="Когда у Claude DEV закончится лимит, работа сама уйдёт сюда и вернётся после сброса. Codex и агент Notion переключаются вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
-  +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?'Проверь сервер PROD':'Claude на сервере PROD · токен остаётся там'))+'</span>'
+  +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: войди заново':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
+  +'<button type="button" class="btn-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
   +'<button type="button" class="btn-sw rm-act" data-target="prod"></button></div>';
  if(old)old.replaceWith(el);else box.appendChild(el)}
 var hadTab=null;

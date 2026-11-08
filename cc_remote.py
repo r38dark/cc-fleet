@@ -35,6 +35,8 @@ def ssh_run(m, remote_cmd, timeout=25, inp=None):
     cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new"]
     if m.get("key"):
         cmd += ["-i", m["key"]]
+    if m.get("port"):
+        cmd += ["-p", str(m["port"])]
     cmd += [m.get("user", "root") + "@" + m["host"], remote_cmd]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
