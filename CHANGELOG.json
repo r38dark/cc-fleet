@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.1",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Не подключённые Codex и Notion AI — «призрачные» плитки",
+        "p": [
+          "Codex и Notion AI, пока не подключены, показаны бледными плитками с кнопкой установки, а не «работает»",
+          "Их вкладки консоли и строки в «Активных аккаунтах» скрыты до подключения",
+          "Одна строка Claude (второго сервера нет) занимает всю ширину блока «Активные аккаунты»"
+        ]
+      },
+      "en": {
+        "t": "Unconnected Codex and Notion AI shown as ghost tiles",
+        "p": [
+          "Until connected, Codex and Notion AI are faded tiles with a set-up button instead of \"working\"",
+          "Their console tabs and rows in \"Active accounts\" are hidden until they are connected",
+          "A lone Claude row (no second server) now spans the full width of \"Active accounts\""
+        ]
+      }
+    },
+    {
       "v": "2.0.0",
       "date": "2026-11-08",
       "ru": {

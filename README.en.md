@@ -934,6 +934,10 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v2.0.1** — Unconnected Codex and Notion AI no longer say "working": while Codex has no accounts and Notion AI is not installed,
+  their header tiles and rows in "Active accounts" are ghosts (faded, dashed) with an offer to connect or install, and their console
+  tabs are hidden. A lone Claude row (no second server) spans the full width of "Active accounts"; once a second server appears the
+  two rows sit side by side.
 - **v2.0.0** — Turnkey install: the 14-step `install.sh` checks every step and follows `docs/INSTALL.md` (preparation, Claude
   accounts, Telegram, Codex, Notion AI, second server, voice; every section has "Step N of M", a check and an "if it failed" table).
   No personal data in the code: name, addresses, chat id and paths come from `config.json`. The "Second server" wizard in General
