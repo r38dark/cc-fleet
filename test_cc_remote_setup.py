@@ -212,6 +212,21 @@ class Connect(Base):
     def replies(self, back="BACK_OK", key=PUB, probe=PROBE_OK):
         return [("echo uid=", (0, probe)), ("ssh-keygen", (0, key + "\n")), ("BACK_OK", (0, back + "\n" if back else "refused")), (None, (0, ""))]
 
+    def test_connect_polls_the_new_pair_at_once(self):
+        polled = []
+        orig = R.fetch_limits
+        R.fetch_limits = lambda mid, force=False: polled.append((mid, force))
+        self.addCleanup(setattr, R, "fetch_limits", orig)
+        self.test_full_connect_writes_pair_and_key()
+        self.assertEqual(polled, [("prod", True)])  # без ожидания минутного цикла в панели сразу появляется карточка второго сервера
+
+    def test_failed_first_poll_does_not_break_connect(self):
+        orig = R.fetch_limits
+        def boom(mid, force=False): raise OSError("нет связи")
+        R.fetch_limits = boom
+        self.addCleanup(setattr, R, "fetch_limits", orig)
+        self.test_full_connect_writes_pair_and_key()
+
     def test_full_connect_writes_pair_and_key(self):
         with self.ssh(self.replies()):
             ok, msg, steps = S.connect(self.fields)

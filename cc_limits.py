@@ -3328,7 +3328,7 @@ class H(BaseHTTPRequestHandler):
 
 
 PAGE = r"""<!doctype html>
-<html lang="ru"><head>
+<html lang="ru"><head><script>try{if(localStorage.getItem('cc_has_prod')!=='1')document.documentElement.classList.add('no-prod')}catch(e){document.documentElement.classList.add('no-prod')}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude — лимиты аккаунтов</title>
@@ -3402,6 +3402,7 @@ button:disabled{opacity:.35;cursor:default}
 /* вкладки консолей Claude | Codex: слева над консолью, без своей плашки; показываются, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:transparent}
 .ctabs[hidden],.ctstop[hidden],.ctab[hidden]{display:none}
+html.no-prod #ctProd,html.no-prod .nai-seg[data-ag="prod"],html.no-prod .fleet-live-account.prod,html.no-prod .fleet-compact-account.prod,html.no-prod .fleet-acc[data-engine="prod"],html.no-prod .nai-h3.t-prod,html.no-prod .rm-hand[data-target="prod"],html.no-prod .tpmi[data-k="prod"]{display:none!important}
 @media(max-width:520px){.ctab .ctlong{display:none}}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
 .iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
@@ -5155,6 +5156,8 @@ function idleUi(P,d,dot,txt,who,go){
 }
 try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
 function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
+// второй сервер не подключён — прячем всё, что с ним связано (вкладка, плашка шапки, карточка, кнопки передачи); запоминаем, чтобы страница не мигала при загрузке
+function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
 function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
 function naiList(){try{return window.naiKeys?window.naiKeys():[]}catch(e){return []}}
 function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[],naiList().map(x=>x.key));}
@@ -5669,7 +5672,7 @@ function renderCards(d){
 function setUpd(ts){const t=tr('updated')+' '+new Date(ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');$('#termDot').title=t;$('#rfBtn').title=tr('refresh')+' · '+t}
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
- lastSnap=d;consFollow(d);
+ lastSnap=d;noProdSync();consFollow(d);
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
  const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
  $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';

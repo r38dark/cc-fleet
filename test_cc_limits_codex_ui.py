@@ -204,7 +204,7 @@ class Page(unittest.TestCase):
         self.assertRegex(page, r"function consFollow\(d\)\{")
         self.assertIn("d.remote_mode.worker", page)
         self.assertIn("{prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[w]||'ctClaude'", page)
-        self.assertRegex(page, r"lastSnap=d;consFollow\(d\);")
+        self.assertRegex(page, r"lastSnap=d;(noProdSync\(\);)?consFollow\(d\);")
         # запоминаем, за кем уже последовали: и в памяти страницы (localStorage может быть закрыт), и в localStorage
         self.assertIn("let consFollowed='',consFollowWait=0;", page)
         self.assertIn("localStorage.setItem('cc_conworker',w)", page)

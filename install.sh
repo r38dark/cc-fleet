@@ -185,7 +185,12 @@ s2() {
     if [ "$NONINTERACTIVE" != "1" ] && [ -z "$BASIC_PASS" ]; then read -r -s -p "   Пароль для входа в панель: " BASIC_PASS; echo; fi
     [ -n "$DOMAIN" ] || fail "домен обязателен для настройки nginx" "укажи домен или ответь «n» на вопрос про nginx"
     [ -n "$BASIC_PASS" ] || fail "пароль для панели обязателен" "задай пароль"
-    ask_yn WANT_HTTPS "Получить бесплатный сертификат HTTPS (Let's Encrypt) сразу?" "y"
+    if [[ "$DOMAIN" =~ ^[0-9.]+$ ]] || [[ "$DOMAIN" == *:* ]]; then
+      info "Вместо домена указан IP-адрес: сертификат HTTPS (Let's Encrypt) для IP не выдаётся — панель будет по http (пароль идёт открытым текстом). Домен и HTTPS можно добавить позже."
+      WANT_HTTPS=n
+    else
+      ask_yn WANT_HTTPS "Получить бесплатный сертификат HTTPS (Let's Encrypt) сразу?" "y"
+    fi
     if yes_ "$WANT_HTTPS"; then ask CERT_EMAIL "Почта для уведомлений Let's Encrypt" "$CERT_EMAIL"; [ -n "$CERT_EMAIL" ] || fail "для сертификата нужна почта" "укажи почту или ответь «n»"; fi
   fi
   echo
@@ -331,9 +336,9 @@ PYEOF
   chmod 600 "$BASE/config.json"
   # настройки Notion AI (имя владельца для записок); существующие не трогаем
   if [ ! -f "$BASE/notion_ai.json" ]; then
-    NAI_CFG="$BASE/notion_ai.json" NAI_OWNER="$OWNER_NAME" python3 - <<'PY'
+    NAI_CFG="$BASE/notion_ai.json" NAI_OWNER="$OWNER_NAME" NAI_VOICE="$(yes_ "$WANT_VOICE" && echo 1 || echo 0)" python3 - <<'PY'
 import json, os
-d = {"chat_url": "", "owner": os.environ["NAI_OWNER"], "notion_email": "", "tg_chat_id": "", "voice": True, "console_tab": True}
+d = {"chat_url": "", "owner": os.environ["NAI_OWNER"], "notion_email": "", "tg_chat_id": "", "voice": os.environ.get("NAI_VOICE") == "1", "console_tab": True}   # голосовые ответы включены, только если голос ставится
 fd = os.open(os.environ["NAI_CFG"], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 os.write(fd, json.dumps(d, ensure_ascii=False, indent=1).encode()); os.close(fd)
 PY
@@ -471,7 +476,8 @@ NGINX
       warn "Панель работает по http. Когда исправишь: certbot --nginx -d $DOMAIN -m $CERT_EMAIL --agree-tos --redirect"
     fi
   else
-    warn "HTTPS не включён: пароль идёт открытым текстом. Включи: certbot --nginx -d $DOMAIN"
+    if [[ "$DOMAIN" =~ ^[0-9.]+$ ]] || [[ "$DOMAIN" == *:* ]]; then warn "HTTPS не включён: вместо домена указан IP, пароль идёт открытым текстом — используй только в доверенной сети. Домен и HTTPS добавишь позже (docs/INSTALL.md, раздел 2)."
+    else warn "HTTPS не включён: пароль идёт открытым текстом. Включи: certbot --nginx -d $DOMAIN"; fi
   fi
   c9 || fail "nginx не в порядке" "посмотри: nginx -t && systemctl status nginx"
   okm "проверено: nginx работает"
@@ -484,7 +490,7 @@ tg_token() {
   [ -n "$t" ] || t="$(json_get "$BASE/config.json" bot_token)"
   echo "$t"
 }
-tg_me() { curl -fsS -m 15 "https://api.telegram.org/bot$1/getMe" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["result"]["username"]) if d.get("ok") else sys.exit(1)'; }
+tg_me() { curl -fsS -m 15 "https://api.telegram.org/bot$1/getMe" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["result"]["username"]) if d.get("ok") else sys.exit(1)' 2>/dev/null; }
 c10() {
   yes_ "$WANT_TG" || return 0
   local t; t="$(tg_token)"; [ -n "$t" ] && tg_me "$t" >/dev/null && [ -n "$(json_get "$BASE/config.json" chat_id)" ]

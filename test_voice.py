@@ -253,6 +253,27 @@ class Installer(unittest.TestCase):
         r, _, _ = self.run_preload(fail_times=2)
         self.assertIn("rc=1", r.stdout)
 
+    def test_installer_turns_the_voice_checkbox_on_in_the_panel(self):
+        d = tempfile.mkdtemp(prefix="vcfg_"); self.addCleanup(shutil.rmtree, d, True)
+        cfg = os.path.join(d, "notion_ai.json")
+        json.dump({"owner": "Аня", "voice": False}, open(cfg, "w"))
+        r = subprocess.run(["bash", "-c", 'source <(sed -n "/^info()/p;/^enable_in_panel()/,/^}/p" "$0"); CC_LIMITS_BASE="$1"; enable_in_panel; echo rc=$?', self.INSTALL, d],
+                           capture_output=True, text=True, timeout=30)
+        self.assertIn("rc=0", r.stdout)
+        self.assertEqual(json.load(open(cfg)), {"owner": "Аня", "voice": True})  # остальные настройки не тронуты
+        empty = tempfile.mkdtemp(prefix="vcfg2_"); self.addCleanup(shutil.rmtree, empty, True)
+        r = subprocess.run(["bash", "-c", 'source <(sed -n "/^info()/p;/^enable_in_panel()/,/^}/p" "$0"); CC_LIMITS_BASE="$1"; enable_in_panel; echo rc=$?', self.INSTALL, empty],
+                           capture_output=True, text=True, timeout=30)
+        self.assertIn("rc=0", r.stdout)                     # панели нет — ничего не создаём и не падаем
+        self.assertEqual(os.listdir(empty), [])
+
+    def test_clean_install_has_voice_off_until_it_is_installed(self):
+        main = open(os.path.join(HERE, "install.sh"), encoding="utf-8").read()
+        self.assertIn('"voice": os.environ.get("NAI_VOICE") == "1"', main)
+        self.assertIn('NAI_VOICE="$(yes_ "$WANT_VOICE"', main)
+        nai = open(os.path.join(HERE, "notion_ai", "install.sh"), encoding="utf-8").read()
+        self.assertIn('"voice": False', nai)
+
     def test_problems_of_the_server_are_reported_with_what_to_do(self):
         d = tempfile.mkdtemp(prefix="vinst_"); self.addCleanup(shutil.rmtree, d, True)
         env = self.env(d)

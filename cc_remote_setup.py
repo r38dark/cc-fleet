@@ -311,6 +311,10 @@ def connect(fields):
     except OSError:
         pass
     step("Пара записана в remote_members.json", True)
+    try:  # первый опрос сразу: карточка второго сервера появляется в панели не через минуту, а сейчас (нет входа Claude — карточка скажет «Войти заново»)
+        R.fetch_limits(mid, True)
+    except Exception:
+        pass
     return True, "Второй сервер подключён.", steps
 
 

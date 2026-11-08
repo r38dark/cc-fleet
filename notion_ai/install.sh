@@ -27,8 +27,12 @@ command -v python3 >/dev/null || die "нет python3"
 
 if [ "${NAI_SKIP_DEPS:-0}" != 1 ] && ! python3 -c "import playwright" 2>/dev/null; then
   log "Ставлю Playwright и Chromium (браузер для чата Notion)…"
-  pip3 install -q playwright 2>/dev/null || pip3 install -q --break-system-packages playwright
-  python3 -m playwright install --with-deps chromium
+  if ! python3 -m pip --version >/dev/null 2>&1; then  # на чистой Ubuntu pip не стоит
+    command -v apt-get >/dev/null || die "нет pip и нет apt-get: поставь python3-pip вручную и запусти снова"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pip >/dev/null || die "не поставился python3-pip (apt-get install -y python3-pip)"
+  fi
+  python3 -m pip install -q playwright 2>/dev/null || python3 -m pip install -q --break-system-packages playwright || die "не поставился Playwright (python3 -m pip install playwright)"
+  python3 -m playwright install --with-deps chromium || die "не скачался Chromium для Playwright: проверь сеть и место на диске"
 fi
 
 log "Файлы сервисов → $W"
@@ -48,7 +52,7 @@ keep "$BASE/cc_notion_ai.py"; install -m 644 "$HERE/../cc_notion_ai.py" "$BASE/c
 if [ ! -f "$BASE/notion_ai.json" ]; then
   NAI_CFG="$BASE/notion_ai.json" python3 - <<'PY'
 import json, os
-d = {"chat_url": "", "owner": "", "notion_email": "", "tg_chat_id": "", "voice": True, "console_tab": True}
+d = {"chat_url": "", "owner": "", "notion_email": "", "tg_chat_id": "", "voice": False, "console_tab": True}   # голос включает voice/install.sh, когда он поставлен
 fd = os.open(os.environ["NAI_CFG"], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 os.write(fd, json.dumps(d, ensure_ascii=False, indent=1).encode()); os.close(fd)
 PY

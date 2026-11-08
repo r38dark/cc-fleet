@@ -79,7 +79,7 @@ class AgainstTheInstaller(unittest.TestCase):
             self.assertIn(default, row.group(0), "в таблице у CC_FLEET_%s не тот умолчательный: %s" % (var, row.group(0)))
 
     def test_sections_the_installer_points_to_exist(self):
-        topics = {"3": "Аккаунты Claude", "4": "Telegram", "5": "Codex", "6": "Notion AI", "7": "Второй сервер"}
+        topics = {"2": "Установка одной командой", "3": "Аккаунты Claude", "4": "Telegram", "5": "Codex", "6": "Notion AI", "7": "Второй сервер"}
         for n in sorted(set(re.findall(r"docs/INSTALL\.md, раздел (\d)", INSTALL))):
             self.assertIn(n, topics, "установщик ссылается на раздел %s" % n)
             self.assertRegex(DOC, r"(?m)^## %s\. .*%s" % (n, topics[n]), "раздел %s не о «%s»" % (n, topics[n]))
