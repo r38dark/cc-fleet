@@ -575,6 +575,8 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-
  html:root:root .fleet-console-toolbar{min-height:40px;padding:0 10px;flex-wrap:nowrap;gap:0}
  html:root:root .fleet-console-toolbar #cTabs{min-height:40px;gap:16px;flex-wrap:nowrap}
  html:root:root .fleet-console-toolbar .ctab{font-size:12px!important;padding:0 4px!important;height:40px!important}
+ html:root:root .fleet-console-toolbar #cTabs{flex:1 1 auto;gap:0}
+ html:root:root .fleet-console-toolbar #cTabs>.ctab{flex:1 1 auto;min-width:0;justify-content:center}
  html:root:root .fleet-console-viewport{position:relative;display:flex;flex-direction:column;flex:none;width:100%;min-width:0;min-height:0;height:clamp(300px,56svh,440px);padding-top:38px;background:var(--fleet-terminal);overflow:hidden}
  html:root:root .fleet-console-viewport>#termBox{flex:1!important;width:100%;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;padding:8px 10px 16px!important;border:0;border-radius:0;overflow:auto;overscroll-behavior-y:auto;touch-action:auto;-webkit-overflow-scrolling:touch;font-size:calc(11px * var(--tz,1));line-height:1.55}
  html:root:root .fleet-console-viewport>.tzoom,html:root:root .fleet-console-viewport>.ctacts{position:absolute;top:3px;z-index:4;display:flex;align-items:center;gap:2px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
@@ -934,7 +936,7 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort{ov
 }
 
 /* единое окно «Точно? Отмена / Да» для кнопок быстрого доступа (window.fleetAsk) */
-.fleet-ask{z-index:60}.fleet-ask[hidden]{display:none}
+.fleet-ask{z-index:100000}.fleet-ask[hidden]{display:none}  /* выше окон плиток агентов (z-index 99999): раньше подтверждение пряталось под ними */
 .fleet-ask .cxpbody{padding:14px 16px 16px}
 .fleet-ask h3{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--txt)}
 .fleet-ask p{margin:0;font-size:12px;line-height:1.5;color:var(--fleet-muted)}

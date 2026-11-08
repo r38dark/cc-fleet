@@ -2,6 +2,80 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.6",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Телефон: вкладки моделей на всю ширину, агенты Notion — в меню",
+        "p": [
+          "Вкладки Claude DEV, PROD, Codex и Notion AI делят весь ряд и больше не уезжают за край экрана",
+          "Нажатие на «Notion AI ▾» открывает меню: сам Notion AI и его агенты, текущий отмечен; на вкладке — имя выбранного агента"
+        ]
+      },
+      "en": {
+        "t": "Phone: model tabs fill the row, Notion agents in a menu",
+        "p": [
+          "The Claude DEV, PROD, Codex and Notion AI tabs share the whole row and no longer run off the screen edge",
+          "Tapping \"Notion AI ▾\" opens a menu with Notion AI and its agents, the current one is marked; the tab shows the chosen agent's name"
+        ]
+      }
+    },
+    {
+      "v": "2.0.5",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Разделённая консоль: «на весь экран», кнопки в шапках, единый масштаб",
+        "p": [
+          "В шапке каждой части — иконка «на весь экран»: часть занимает всю консоль, остальные прячутся (не закрываются), иконка меняется на «вернуть»",
+          "«Сжать контекст» и «Новая сессия» — в шапке каждой части справа от названия, действуют на модель этой части",
+          "«+» и «−» масштаба меняют шрифт во всех частях одинаково (раньше у частей с длинными строками увеличение пропадало)"
+        ]
+      },
+      "en": {
+        "t": "Split console: expand a part, header buttons, uniform zoom",
+        "p": [
+          "Each part header has an expand icon: the part takes the whole console, the others are hidden (not closed); the icon turns into a restore icon",
+          "Compact context and New session sit in each part header, right of the model name, and act on that part's model",
+          "The zoom + and - change the font in every part by the same ratio (long-line parts used to ignore zooming in)"
+        ]
+      }
+    },
+    {
+      "v": "2.0.4",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Консоль Codex не стартует сама; подтверждение «авто» — в окне плитки",
+        "p": [
+          "Запомненная вкладка Codex не выбирается, пока Codex не подключён; его консоль не стартует без входа в ChatGPT",
+          "Подтверждение «Включить/Выключить авто» показывается в том же окне плитки, а не отдельным окном под ним"
+        ]
+      },
+      "en": {
+        "t": "No Codex console autostart; \"auto\" confirmation in the tile window",
+        "p": [
+          "A remembered Codex tab is not selected while Codex is unconnected; its console does not start without a ChatGPT login",
+          "The \"auto\" on/off confirmation is shown inside the tile window instead of a separate window hidden under it"
+        ]
+      }
+    },
+    {
+      "v": "2.0.3",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Разделение консоли не предлагает не подключённые Codex и Notion AI",
+        "p": [
+          "Кнопка разделения и меню частей не показывают Codex и Notion AI, пока те не подключены",
+          "У не подключённого Codex нет кнопки «Codex +» в шапке: мастер открывается с призрачной плитки"
+        ]
+      },
+      "en": {
+        "t": "Split console no longer offers unconnected Codex and Notion AI",
+        "p": [
+          "The split button and the part menus do not list Codex and Notion AI until they are connected",
+          "An unconnected Codex has no \"Codex +\" header button: the wizard opens from its ghost tile"
+        ]
+      }
+    },
+    {
       "v": "2.0.2",
       "date": "2026-11-08",
       "ru": {

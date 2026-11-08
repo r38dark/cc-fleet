@@ -156,12 +156,21 @@ class T(unittest.TestCase):
         src = Path(M.__file__).read_text(encoding='utf-8')
         s.assertIn("[upd,cl,cx,nai,tg].forEach(function(x){if(x)c.append(x)});", src)
         s.assertNotIn("[cl,cx,nai,tg,upd]", src)
+    def test_auto_confirm_is_inside_the_tile_popup(s):
+        # подтверждение «Включить/Выключить авто» — в самом окне плитки, не отдельным окном под ним (владелец 62664)
+        src = Path(M.__file__).read_text(encoding='utf-8')
+        s.assertIn("c.className='nai-cfm'", src)
+        s.assertIn("c.querySelector('.nai-cn').onclick=function(){c.style.display='none';row.style.display='';placePop();setTimeout(function(){c.remove()},0)};", src)
+        s.assertNotIn("window.fleetAsk(this,(on?'Включить':'Выключить')+' автопередачу", src)
+        import cc_overview
+        s.assertIn(".fleet-ask{z-index:100000}", cc_overview.CSS)
     def test_ghost_tiles_ui_is_in_the_page(s):
         import cc_notion_ai as N
         src = Path(N.__file__).read_text(encoding='utf-8')
         for part in ("function linkPop(k,anchor){", "function ghostMark(){", "'ag-unlinked-'+a[0]", ".nai-seg.s-unlinked{",
                      "html.ag-unlinked-codex #ctCodex", "html.ag-unlinked-notion #cTabs .ctab[data-s=\"notion\"]",
-                     "if(agState(s.dataset.ag).state==='unlinked'){linkPop(s.dataset.ag,s);return}"):
+                     "if(agState(s.dataset.ag).state==='unlinked'){linkPop(s.dataset.ag,s);return}",
+                     "if(un!==unSig){unSig=un;try{if(typeof consTabs==='function')consTabs()}catch(_){}}"):
             s.assertIn(part, src, part)
     def test_codex_with_single_account_is_not_paused_by_notion_profile(s):
         class St:
@@ -769,6 +778,19 @@ class TestAgents(unittest.TestCase):
         for needle in ("grp.id='naiGrp'", "grp.classList.toggle('nai-grp-on',L.length>0&&tabOn)", '.nai-grp:not(:has(.ctab:not([hidden])))'):
             self.assertIn(needle, ui)
 
+    def test_phone_notion_tab_opens_a_dropdown_with_the_agents(self):
+        # телефон (62686): вкладки моделей делят ряд, агенты Notion — в выпадающем меню вкладки «Notion AI»
+        import cc_notion_ai as M
+        ui = M.UI
+        for needle in ('<span class="nai-lbl">Notion AI</span><span class="nai-car" aria-hidden="true"></span>',  # подпись вложена: textContent вкладки для частей не меняется
+                       "if(b===tab&&phoneMq.matches&&tabOn&&Object.keys(atabs).length){e.preventDefault();e.stopPropagation();menuToggle();return}",
+                       "function menuOpen(){", "history.pushState({naim:1},'')", "addEventListener('popstate',function(){if(menuBacking)",
+                       "html:root:root .fleet-console-toolbar #cTabs .nai-atab{display:none!important}",
+                       "html:root:root .fleet-console-toolbar .nai-grp.nai-multi .nai-car{display:block;"):
+            self.assertIn(needle, ui)
+        # меню берёт Notion AI и всех агентов; выбор идёт тем же switchTo, что и вкладка
+        self.assertIn("if(!on||aid!==agentAid)switchTo(aid)});", ui)
+
     def test_settings_form_has_the_token_field_as_a_password_input(self):
         import cc_notion_ai as M
         ui = M.CFG_UI
@@ -1060,7 +1082,7 @@ class TestHeaderPopups(unittest.TestCase):
         self.assertIn("document.getElementById('gear')", body)  # ссылка открывает «Настройки» с порогом
         self.assertIn("typeof THR==='number'", self.src)
         self.assertIn('class="nai-bl"', body)  # подписи с многоточием: на узком экране не обрезаются молча
-        self.assertIn("au.onclick=function(){var on=!((rm.auto()||{}).enabled);", body)  # по клику переключает то же, что раньше
+        self.assertIn("au.onclick=function(){var on=!((rm.auto()||{}).enabled)", body)  # по клику переключает то же, что раньше (подтверждение — внутри окна)
 
 
 class TestPopupTail(unittest.TestCase):

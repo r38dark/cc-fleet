@@ -18,7 +18,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.2"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3492,6 +3492,19 @@ html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root 
 .tpmc{flex:none;color:#68ac92}
 .tphd .tpx{margin:0 0 0 auto;padding:0 4px;min-height:0;width:auto;background:none;border:0;color:#7d8ea3;font:16px/1 system-ui,sans-serif;cursor:pointer}
 .tphd .tpx:hover{color:#eaf2fb}
+.tphd .tpacts{flex:none;display:flex;align-items:center;gap:2px;margin-left:4px}
+.tphd .tpab{flex:none;display:grid;place-items:center;width:22px;height:22px;margin:0;padding:0;min-height:0;background:none;border:0;border-radius:5px;color:#7d8ea3;cursor:pointer}
+.tphd .tpab:hover{color:#eaf2fb;background:rgba(255,255,255,.07)}
+.tphd .tpab svg{display:block;width:14px;height:14px;pointer-events:none}
+html:root:root .termwrap.tsplit:not(.nai-on) .fleet-console-toolbar .ctacts{display:none!important}
+.tphd .tpfs{flex:none;display:grid;place-items:center;width:22px;height:22px;margin:0 0 0 auto;padding:0;min-height:0;background:none;border:0;border-radius:5px;color:#7d8ea3;cursor:pointer}
+.tphd .tpfs:hover{color:#eaf2fb;background:rgba(255,255,255,.07)}
+.tphd .tpfs svg{display:block;width:14px;height:14px;pointer-events:none}
+.tphd .tpfs .tpfsx,.tphd .tpfs.on .tpfsi{display:none}
+.tphd .tpfs.on .tpfsx{display:block}
+.tphd .tpfs+.tpx{margin-left:2px}
+/* часть развёрнута на всю консоль: остальные части (экран, шапка, окно ввода) спрятаны, но не закрыты */
+.termwrap.tpmax .fleet-console-viewport>.tphide,.termwrap.tpmax .tpheads .tphide,.termwrap.tpmax .tpcomps .tphide{display:none!important}
 body.tpdraging .tpadd{display:flex;position:fixed;z-index:60;align-items:center;justify-content:center;text-align:center;padding:14px;font:600 13px system-ui,sans-serif;color:#cfe9e0;background:rgba(25,60,52,.78);border:2px dashed var(--fleet-accent,#73dbb7);box-sizing:border-box}
 body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .termwrap.nai-on .tpextra,.termwrap.nai-on .tpheads{display:none!important}
@@ -5188,9 +5201,11 @@ try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')C
 function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
 // второй сервер не подключён — прячем всё, что с ним связано (вкладка, плашка шапки, карточка, кнопки передачи); запоминаем, чтобы страница не мигала при загрузке
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
-function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
+// запомненная вкладка Codex не выбирается, пока Codex не подключён (призрачная плитка), и консоль Codex сама не стартует без входа в ChatGPT — иначе при каждой загрузке страницы «Нет входа в ChatGPT» (владелец 62657)
+function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}
 function naiList(){try{return window.naiKeys?window.naiKeys():[]}catch(e){return []}}
-function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[],naiList().map(x=>x.key));}
+// не подключённые Codex и Notion AI (призрачные плитки, html.ag-unlinked-*) в разделение консоли не предлагаются (правка владельца 62622)
+function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[],R.contains('ag-unlinked-notion')?[]:naiList().map(x=>x.key));}
 // модели по панелям при разделении (только доступные); null — разделения нет (узкий экран, одна модель, не включено)
 function splitEff(){
  if(!splitMq.matches)return null;
@@ -5254,7 +5269,7 @@ async function ccConsole(P){
    if(s==='codex'){
     cxConsUi(d);
     if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
-    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true,P);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
+    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused&&ciAcc()){cxAutoGo=false;cxConsAct('start',true,P);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
     if(!d.ok){dot.className='termdot err';return;}
     dot.className='termdot';
     if(d.running){if(d.started!==P.cxRun){P.cxRun=d.started;ccConsoleHistory(P);}}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку
@@ -5295,7 +5310,7 @@ applyTz(false);
 function stickBottom(){for(const P of PANES)P.box.scrollTop=P.box.scrollHeight;}
 function wirePane(P){
  P.box.addEventListener('scroll',()=>{P.stick=P.box.scrollTop+P.box.clientHeight>=P.box.scrollHeight-20;},{passive:true});
- if(window.ResizeObserver)new ResizeObserver(()=>{if(P.stick)P.box.scrollTop=P.box.scrollHeight;fitPane(P);if(P.k==='prod'&&Math.abs(P.box.clientWidth-(P.histW||0))>24)ccConsoleHistory(P);}).observe(P.box);  // PROD отдаёт историю под заданную ширину: панель стала другой — берём заново
+ if(window.ResizeObserver)new ResizeObserver(()=>{if(P.stick)P.box.scrollTop=P.box.scrollHeight;fitPane(P);if(P.k==='prod'&&P.box.clientWidth>0&&Math.abs(P.box.clientWidth-(P.histW||0))>24)ccConsoleHistory(P);}).observe(P.box);  // PROD отдаёт историю под заданную ширину: панель стала другой — берём заново
  P.box.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
  dropTarget(P.box,()=>PANES.indexOf(P));
  P.idleGo.addEventListener('click',()=>paneGo(P));
@@ -5305,8 +5320,10 @@ function fitPane(P){
  const b=P.box;
  if(isNai(P.k)){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  if(!b.closest('.termwrap.tsplit')){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
- b.style.setProperty('--pz','1');
+ // подгонку по ширине меряем при масштабе 100% (--tz=1 на самой части): иначе шрифт, выросший от «+», тут же сжимался обратно, и у частей с длинными строками масштаб не менялся, а у остальных менялся (владелец 62676)
+ b.style.setProperty('--tz','1');b.style.setProperty('--pz','1');
  const cs=getComputedStyle(b),pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight),avail=b.clientWidth-pad,need=b.scrollWidth-pad;
+ b.style.removeProperty('--tz');
  const f=need>avail+1&&avail>0?Math.max(.5,avail/need):1;
  b.style.setProperty('--pz',f.toFixed(3));
 }
@@ -5440,11 +5457,14 @@ function placeFrame(ks){
  // иначе правый край уходит на пиксель под рамку блока и обрезается; нижние углы повторяют скругление блока там, где часть к нему примыкает.
  // Соседние рамки перекрываются на 1px — между частями одна линия, а не две
  const w=wrap.getBoundingClientRect(),act=splitActIdx(splitEff()||[0]),rad=Math.max(0,(parseFloat(getComputedStyle(wrap).borderBottomLeftRadius)||0)-(wrap.clientLeft||0));
+ const mx=wrap.classList.contains('tpmax');
  PANES.forEach((P,i)=>{
-  const f=fr[i],b=P.box.getBoundingClientRect(),bottom=P.comp?P.comp.w.getBoundingClientRect().bottom:b.bottom,lap=i>0?1:0;
+  const f=fr[i];
+  f.style.display=P.hid?'none':'';if(P.hid)return;
+  const b=P.box.getBoundingClientRect(),bottom=P.comp?P.comp.w.getBoundingClientRect().bottom:b.bottom,lap=i>0&&!mx?1:0;
   f.style.left=(b.left-w.left-wrap.clientLeft-lap).toFixed(2)+'px';f.style.top=(b.top-w.top-wrap.clientTop).toFixed(2)+'px';
   f.style.width=(b.width+lap).toFixed(2)+'px';f.style.height=(bottom-b.top).toFixed(2)+'px';
-  f.style.borderBottomLeftRadius=i===0?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1?rad+'px':'0';
+  f.style.borderBottomLeftRadius=i===0||mx?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1||mx?rad+'px':'0';
   f.classList.toggle('on',i===act);
  });
 }
@@ -5460,6 +5480,7 @@ function renderComps(ks){
 }
 function syncPanes(){
  const ks=splitEff(),keys=ks||[baseCur()],vp=PANES[0].box.parentNode;
+ if(!ks)MAXED=false;
  $('.termwrap').classList.toggle('tsplit',!!ks);
  if(ks&&window.naiClose)window.naiClose();  // окно чата Notion AI поверх консоли при разделении не нужно: чат живёт в своей части
  if(ks)CONS=ks[splitActIdx(ks)];
@@ -5471,6 +5492,7 @@ function syncPanes(){
  if(ks&&PANES[act]&&PANES[act].dotCls)$('#termDot').className=PANES[act].dotCls;
  renderHeads(ks);
  renderComps(ks);
+ applyMax(ks);
  placeFrame(ks);
  if(ks)fitAll();
 }
@@ -5495,21 +5517,43 @@ function openModelMenu(i){
 }
 // выбрана модель для части i: показана в другой части — части меняются местами (как при перетаскивании), иначе заменяется
 function pickPartModel(i,k){const ks=splitEff();if(!ks||!isKey(k))return;if(ks[i]===k){splitActivate(i);return;}splitCommit(splitDrop(ks,splitActIdx(ks),i,k),k);}
+const ACT_SVG={compact:'<path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/>',new:'<path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/>'};
+// «Сжать контекст» и «Новая сессия» у каждой части с консолью (Claude DEV, Claude PROD, Codex) — справа от названия модели
+function partActs(k,i){
+ if(!(k==='claude'||k==='prod'||k==='codex'))return '';
+ const tip=c=>tr(c==='compact'?(k==='codex'?'cxcCompactTip':'compactTitle'):(k==='codex'?'cxcNewTip':'newSessionTitle'));
+ return '<span class="tpacts">'+['compact','new'].map(c=>'<button type="button" class="tpab" data-cmd="'+c+'" data-i="'+i+'" title="'+acctEsc(tip(c))+'" aria-label="'+acctEsc(tip(c))+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ACT_SVG[c]+'</svg></button>').join('')+'</span>';
+}
+function splitPartCmd(i,cmd,btn){const ks=splitEff();if(!ks||i<0||i>=ks.length)return;splitActivate(i);consActCmd(cmd,btn);}
+function fsTip(on){return LANG==='en'?(on?'Show the other consoles':'Expand this console to the full block'):(on?'Вернуть остальные консоли':'Развернуть эту консоль на весь блок');}
 function renderHeads(ks){
  const vp=PANES[0].box.parentNode;let h=document.getElementById('tpHeads');
  if(!ks){if(h)h.remove();PANES.forEach(P=>{P.chipDot=null});return;}
  if(!h){
   h=document.createElement('div');h.id='tpHeads';h.className='tpheads';vp.appendChild(h);
-  h.addEventListener('click',e=>{const x=e.target.closest('[data-x]');if(x){splitClose(+x.dataset.x);return;}const c=e.target.closest('.tphd');if(c){const i=+c.dataset.i,m=document.getElementById('tpMenu');if(m&&+m.dataset.i===i){closeModelMenu();return;}splitActivate(i);openModelMenu(i);}});
+  h.addEventListener('click',e=>{const x=e.target.closest('[data-x]');if(x){splitClose(+x.dataset.x);return;}const fs=e.target.closest('[data-fs]');if(fs){splitMaxToggle(+fs.dataset.fs);return;}const ab=e.target.closest('[data-cmd]');if(ab){splitPartCmd(+ab.dataset.i,ab.dataset.cmd,ab);return;}const c=e.target.closest('.tphd');if(c){const i=+c.dataset.i,m=document.getElementById('tpMenu');if(m&&+m.dataset.i===i){closeModelMenu();return;}splitActivate(i);openModelMenu(i);}});
   h.addEventListener('dragstart',e=>{const c=e.target.closest('.tphd');if(!c)return;DRAG={t:'pane',v:+c.dataset.i};try{e.dataTransfer.setData('text/plain','pane:'+c.dataset.i);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
   h.addEventListener('dragend',dragEnd);
   dropTarget(h,e=>{const c=e.target.closest('.tphd');return c?+c.dataset.i:-1;});
  }
- const act=splitActIdx(ks),sig=ks.join()+'|'+act+'|'+LANG+'|'+ks.map(tabName).join();
+ const act=splitActIdx(ks),sig=ks.join()+'|'+act+'|'+MAXED+'|'+LANG+'|'+ks.map(tabName).join();
  if(h.dataset.sig===sig)return;
  h.dataset.sig=sig;
- h.innerHTML=ks.map((k,i)=>'<div class="tphd'+(i===act?' on':'')+'" data-i="'+i+'" draggable="true" title="'+(LANG==='en'?'Drag onto another part to swap':'Перетащи на другую часть, чтобы поменять местами')+'"><span class="termdot tpdot" data-i="'+i+'"></span><b>'+tabName(k)+'</b><span class="tpcaret" aria-hidden="true">▾</span><button type="button" class="tpx" data-x="'+i+'" title="'+(LANG==='en'?'Close this part':'Закрыть часть')+'" aria-label="'+(LANG==='en'?'Close this part':'Закрыть часть')+'">×</button></div>').join('');
+ h.innerHTML=ks.map((k,i)=>'<div class="tphd'+(i===act?' on':'')+'" data-i="'+i+'" draggable="true" title="'+(LANG==='en'?'Drag onto another part to swap':'Перетащи на другую часть, чтобы поменять местами')+'"><span class="termdot tpdot" data-i="'+i+'"></span><b>'+tabName(k)+'</b><span class="tpcaret" aria-hidden="true">▾</span>'+partActs(k,i)+'<button type="button" class="tpfs'+(MAXED&&i===act?' on':'')+'" data-fs="'+i+'" title="'+fsTip(MAXED&&i===act)+'" aria-label="'+fsTip(MAXED&&i===act)+'"><svg class="tpfsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="tpfsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button><button type="button" class="tpx" data-x="'+i+'" title="'+(LANG==='en'?'Close this part':'Закрыть часть')+'" aria-label="'+(LANG==='en'?'Close this part':'Закрыть часть')+'">×</button></div>').join('');
  PANES.forEach((P,i)=>{P.chipDot=h.querySelector('.tpdot[data-i="'+i+'"]');if(P.chipDot&&P.dotCls)P.chipDot.className=P.dotCls+' tpdot';});
+}
+// «на весь экран» у части: выбранная часть занимает всю консоль на месте, остальные спрятаны (не закрыты); выбор другой модели сверху/в меню ведёт развёрнутое окно за выбранной частью
+let MAXED=false;
+function applyMax(ks){
+ const wrap=document.querySelector('.termwrap'),mi=MAXED&&ks?splitActIdx(ks):-1;
+ wrap.classList.toggle('tpmax',mi>=0);
+ PANES.forEach((P,i)=>{const h=mi>=0&&i!==mi;P.hid=h;P.box.classList.toggle('tphide',h);if(P.comp)P.comp.w.classList.toggle('tphide',h);});
+ document.querySelectorAll('#tpHeads .tphd').forEach((c,i)=>c.classList.toggle('tphide',mi>=0&&i!==mi));
+}
+function splitMaxToggle(i){
+ const ks=splitEff();if(!ks||i<0||i>=ks.length)return;
+ if(MAXED&&i===splitActIdx(ks))MAXED=false;else{splitActivate(i);MAXED=true;}
+ tickAll();
 }
 let DRAG=null;
 function dragBegin(){
@@ -5548,11 +5592,13 @@ function splitDropOn(i,d){
 function splitAddDrop(k){
  const av=splitKeysAvail(),ks=splitEff()||[consCur()],nk=splitAdd(ks,av,k);
  if(!nk)return;
+ MAXED=false;
  splitCommit({keys:nk,act:nk.length-1},k);
 }
 function splitActivate(i){const ks=splitEff();if(!ks||i===splitActIdx(ks)||i<0||i>=ks.length)return;splitCommit({keys:ks,act:i});}
 function splitClose(i){
  const ks=splitEff();if(!ks)return;
+ MAXED=false;
  const r=splitCloseAt(ks,splitActIdx(ks),i);
  if(r.keys.length<2){SPLIT={keys:[],act:0};splitSave();CONS=r.keys[0]||'claude';try{localStorage.setItem('cc_contab',CONS);}catch(e){}consTabs();return;}
  splitCommit(r);
@@ -5560,6 +5606,7 @@ function splitClose(i){
 // кнопка в блоке масштаба: 1 → 2 → 3 части → обратно в одну (3-й нет, если моделей меньше)
 function splitToggle(){
  const av=splitKeysAvail();if(av.length<2||!splitMq.matches)return;
+ MAXED=false;
  const ks=splitEff();
  if(!ks){const nk=splitAdd([consCur()],av,null);if(nk)splitCommit({keys:nk,act:0},consCur());return;}
  const nk=splitAdd(ks,av,null);
@@ -5578,7 +5625,7 @@ document.getElementById('splitBtn').addEventListener('click',splitToggle);
 $('#cTabs').addEventListener('dragstart',e=>{const b=e.target.closest&&e.target.closest('.ctab');if(!b)return;const k=tabKey(b);if(!isKey(k)||!splitMq.matches||!splitKeysAvail().includes(k)){e.preventDefault();return;}DRAG={t:'tab',v:k};try{e.dataTransfer.setData('text/plain','tab:'+k);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
 $('#cTabs').addEventListener('dragend',dragEnd);
 splitMq.addEventListener('change',()=>{consTabs();fitAll();});
-function tickAll(){syncPanes();document.querySelectorAll('#cTabs .ctab').forEach(b=>{const d=splitMq.matches&&isKey(tabKey(b))&&splitKeysAvail().includes(tabKey(b));if(b.draggable!==d)b.draggable=d;});for(const P of PANES)ccConsole(P);}
+function tickAll(){syncPanes();document.querySelectorAll('#cTabs .ctab').forEach(b=>{const d=splitMq.matches&&isKey(tabKey(b))&&splitKeysAvail().includes(tabKey(b));if(b.draggable!==d)b.draggable=d;});for(const P of PANES)if(!P.hid)ccConsole(P);}
 window.fleetSplitOn=function(){try{return !!splitEff()}catch(e){return false}};
 window.fleetSplitWanted=function(){return splitMq.matches&&SPLIT.keys.length>1};
 window.fleetSplitShow=function(k){if(isKey(k))consPick(k);};
@@ -5629,8 +5676,8 @@ async function prodStart(P){
 // одна кнопка в плашке: что она запускает, решает вкладка (ставит idleUi)
 async function paneGo(P){const b=P.idleGo,w=b.dataset.go;if(w!=='codex'&&w!=='prod')return;if(!await window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start',false,P);else prodStart(P);}
 wirePane(PANES[0]);
-async function cxConsCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Codex
- if(cmd==='compact'&&!await window.fleetAsk($('#ctCompact'),tr('askCxCompact'),tr('askYes')))return;
+async function cxConsCmd(cmd,anchor){  // «Сжать контекст» / «Новая сессия» вкладки Codex
+ if(cmd==='compact'&&!await window.fleetAsk(anchor||$('#ctCompact'),tr('askCxCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;
  const bs=[$('#ctCompact'),$('#ctNew')];bs.forEach(b=>b.disabled=true);
  try{
@@ -5640,8 +5687,8 @@ async function cxConsCmd(cmd){  // «Сжать контекст» / «Нова�
  }catch(e){toast('⚠ '+e);}
  bs.forEach(b=>b.disabled=false);
 }
-async function prodSessionCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Claude PROD: команда вводится в консоль PROD, как её набрал бы человек
- const b=$(cmd==='compact'?'#ctCompact':'#ctNew');
+async function prodSessionCmd(cmd,anchor){  // «Сжать контекст» / «Новая сессия» вкладки Claude PROD: команда вводится в консоль PROD, как её набрал бы человек
+ const b=anchor||$(cmd==='compact'?'#ctCompact':'#ctNew');
  if(cmd==='compact'&&!await window.fleetAsk(b,tr('askProdCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('confirmNewProd')))return;
  try{
@@ -5649,7 +5696,7 @@ async function prodSessionCmd(cmd){  // «Сжать контекст» / «Но
   const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+(d.message||''));
  }catch(e){toast('⚠ '+e)}
 }
-function consActCmd(cmd){const s=consCur();return s==='codex'?cxConsCmd(cmd):s==='prod'?prodSessionCmd(cmd):sessionCmd(cmd,$(cmd==='compact'?'#ctCompact':'#ctNew'));}
+function consActCmd(cmd,anchor){const s=consCur();return s==='codex'?cxConsCmd(cmd,anchor):s==='prod'?prodSessionCmd(cmd,anchor):sessionCmd(cmd,anchor||$(cmd==='compact'?'#ctCompact':'#ctNew'));}
 $('#ctCompact').addEventListener('click',()=>consActCmd('compact'));
 $('#ctNew').addEventListener('click',()=>consActCmd('new'));
 setTimeout(()=>{consTabs();ccConsoleHistory();tickAll();},0);setInterval(tickAll,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
@@ -6507,8 +6554,10 @@ function ciSync(st){
  if(st===ciLast&&f&&pop.contains(f)&&f.tagName==='INPUT')return;  // человек вводит токен — не перерисовываем под руками
  ciRender();
 }
+// у не подключённого Codex кнопки «Codex +» в шапке нет (её роль у призрачной плитки): окно мастера встаёт под плитку
+function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#naiAgents .nai-seg[data-ag="codex"]')||b)}
 function ciPlace(){
- const pop=$('#cxInstPop'),r=$('#cxInst').getBoundingClientRect();
+ const pop=$('#cxInstPop'),r=ciAnchor().getBoundingClientRect();
  const top=Math.round(r.bottom+8);
  pop.style.top=top+'px';pop.style.maxHeight='calc(100vh - '+(top+12)+'px)';
  if(innerWidth>640){pop.style.left='auto';pop.style.right=Math.max(10,Math.round(innerWidth-r.right-4))+'px';}

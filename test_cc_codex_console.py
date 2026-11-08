@@ -883,14 +883,14 @@ class Page(unittest.TestCase):
         self.assertIn("acctPost('chatgpt/console/cmd',{cmd})", L.PAGE)
         self.assertIn("if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;", L.PAGE)
         # те же две кнопки стоят и на вкладках Claude DEV/PROD — вкладка Codex по-прежнему идёт в cxConsCmd
-        self.assertIn("return s==='codex'?cxConsCmd(cmd):", L.PAGE)
+        self.assertIn("return s==='codex'?cxConsCmd(cmd,anchor):", L.PAGE)
         self.assertIn("addEventListener('click',()=>consActCmd('compact'))", L.PAGE)
         self.assertIn("addEventListener('click',()=>consActCmd('new'))", L.PAGE)
 
     def test_tabs_are_hidden_until_codex_is_available(self):
         self.assertRegex(L.PAGE, r'<div class="ctabs" id="cTabs"[^>]*\bhidden\b')
         self.assertIn("$('#cTabs').hidden=!(av||pv)", L.PAGE)  # av = cxConsOn(): Codex установлен и есть вход ChatGPT; pv — подключён Аккаунт PROD
-        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}", L.PAGE)
         self.assertIn("function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}", L.PAGE)
 
     def test_tabs_sit_inside_console_block_before_it(self):
@@ -1051,7 +1051,7 @@ class Paused(unittest.TestCase):
 
     def test_page_does_not_start_codex_by_itself_while_the_profile_holds_the_pause(self):
         page = L.PAGE
-        self.assertIn("else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true,P);}", page)
+        self.assertIn("else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused&&ciAcc()){cxAutoGo=false;cxConsAct('start',true,P);}", page)
         self.assertEqual(page.count("cxConsAct('start',true"), 1)  # автозапуск один, и он за условием
         self.assertIn("(d.profile_paused&&!cxStarting?' '+tr('cxcPausedOff'):'')", page)  # плашка объясняет, почему не запустилась
         self.assertEqual(len(re.findall(r"cxcPausedOff:'", page)), 2)
