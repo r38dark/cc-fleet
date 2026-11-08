@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """notion-ai-reply [--voice "что озвучить"] [--no-voice] [--file путь ...] "текст" | -
-[notion-ai] 05.11.26. Ответ Notion AI Денису в общий чат Telegram (бот Claude, chat_id из /opt/cc-limits/config.json):
+[notion-ai] 05.11.26. Ответ Notion AI владельцу в общий чат Telegram (бот Claude, chat_id из /opt/cc-limits/config.json):
 текст + голос тем же TTS и тем же голосом, что у Claude (/root/tts/say.sh, kseniya).
 Для кода, логов и длинных отчётов озвучивать краткое резюме через --voice. «-» — текст из stdin."""
 import argparse
@@ -38,9 +38,9 @@ def chat_id():
     if cid:
         return cid
     try:
-        return str(json.load(open(CFG)).get("chat_id") or "262033135")
+        return str(json.load(open(CFG)).get("chat_id") or "")   # chat_id задаёт установщик (config.json)
     except Exception:
-        return "262033135"
+        return ""
 
 
 def api(method, payload, timeout=30):
@@ -115,6 +115,8 @@ def main():
     if not text and not a.file:
         ap.error("нет текста")
     cid, res = chat_id(), {"text": 0, "files": 0, "voice": False}
+    if not cid:
+        sys.exit("нет chat_id: укажи его в /opt/cc-limits/config.json (\"chat_id\") или в настройках Notion AI")
     for part in chunks(text):
         api("sendMessage", {"chat_id": cid, "text": part})
         res["text"] += 1

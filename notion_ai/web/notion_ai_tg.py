@@ -2,7 +2,7 @@
 """[notion-ai] 05.11.26. Мост «общий чат Telegram (бот Claude) -> постоянный чат Notion AI».
 Работает, только пока включён профиль «Notion AI · только он» (/opt/cc-limits/notion_ai_mode.json).
 Claude Code в это время остановлен, поэтому getUpdates бота слушает только этот мост.
-Сообщения Дениса (allowFrom из access.json) пачкой уходят через notion-delegate (/post) в чат Notion AI.
+Сообщения владельца (allowFrom из access.json) пачкой уходят через notion-delegate (/post) в чат Notion AI.
 Голосовые расшифровываются /root/tts/transcribe.sh, фото и файлы сохраняются в /root/notion_ai_inbox.
 Доставку в Notion отмечает реакция 👀; ответы Notion AI отправляет сам командой notion-ai-reply.
 Кнопки шагов оркестратора (callback nai:ok:<id> / nai:no:<id>) передаются в балансер: POST /api/notion-ai/step/confirm."""
@@ -191,7 +191,7 @@ def cc_confirm(sid, approve):
 
 
 def callback(cq, who):
-    """Кнопка шага под сообщением бота: только от Дениса, решение — в балансер."""
+    """Кнопка шага под сообщением бота: только от владельца, решение — в балансер."""
     uid = str((cq.get("from") or {}).get("id") or "")
     data = cq.get("data") or ""
     m = re.fullmatch(r"nai:(ok|no):([0-9a-f]{6,32})", data)
@@ -255,7 +255,7 @@ def _children(pids, proc="/proc"):
 
 
 def claude_plugin_off():
-    """[notion-ai] 06.11, правило Дениса: при профиле Notion AI Claude Telegram не слушает.
+    """[notion-ai] 06.11, правило владельца: при профиле Notion AI Claude Telegram не слушает.
     Запущенному вручную Claude отключаем плагин (SIGTERM ему и потомкам); сам Claude остаётся в консоли."""
     pids = claude_plugin_pids()
     if not pids:

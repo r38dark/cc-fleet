@@ -757,7 +757,7 @@ Notion AI из Notion работает рядом с Claude и Codex: сообщ
 Настройки берутся из `config.json` панели:
 - `screen_session` — имя screen-сессии Claude (по умолчанию `claude`);
 - `claude_cmd` — как запускать Claude целиком (по умолчанию просто `claude`), например `IS_SANDBOX=1 claude --dangerously-skip-permissions --channels plugin:telegram@claude-plugins-official`. Нужна только тем, кто запускает Claude с флагами или каналами;
-- `codex_user` — под кем живёт консоль Codex (по умолчанию `codextrial`).
+- `codex_user` — под кем живёт консоль Codex (по умолчанию `codex`).
 
 Команды нужны screen (`apt install screen`) и python3. Выйти из консоли, не останавливая её: `Ctrl+A`, потом `d`.
 

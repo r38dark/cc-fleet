@@ -4,7 +4,7 @@
 в папку .notion-delegate в РАБОЧЕЙ папке; для Claude — HTTP 127.0.0.1:8893. Ждёт ответ до NOTION_DELEGATE_WAIT секунд (1500)."""
 import os, sys, json, time, uuid, urllib.request, urllib.error
 HOME = os.path.expanduser("~")
-CODEX = HOME.startswith("/home/codextrial") or os.environ.get("NOTION_DELEGATE_SPOOL") == "1"
+CODEX = os.environ.get("NOTION_DELEGATE_SPOOL") == "1" or (os.getuid() != 0 and HOME.startswith("/home/"))   # Codex работает от отдельного пользователя ОС (не root)
 def tok():
     for p in (os.path.join(HOME, ".notion_delegate_token"), "/root/.notion_delegate_token"):
         try: return open(p).read().strip()

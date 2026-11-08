@@ -220,7 +220,7 @@ class Start(unittest.TestCase):
         pids = iter([None, '77'])
         with mock.patch.object(C.cc_codex_terminal, 'target', return_value=terminal), \
                 mock.patch.object(C, '_pid', side_effect=lambda **kw: next(pids)), \
-                mock.patch.object(C.cc_codex, 'runas_user', return_value='codextrial'), \
+                mock.patch.object(C.cc_codex, 'runas_user', return_value='nobody'), \
                 mock.patch.object(C.subprocess, 'run', return_value=mock.Mock(returncode=0)) as run:
             ok, msg = C.start()
         self.assertTrue(ok, msg)
@@ -781,7 +781,7 @@ class CmdRoute(unittest.TestCase):
 
 class Page(unittest.TestCase):
     def test_compact_and_new_buttons_live_in_the_console_toolbar_without_a_stop_button(self):
-        # Денис 62225: кнопки остановки консоли нет; сжать и новая сессия видны на вкладках Claude DEV, PROD и Codex всегда
+        # кнопки остановки консоли нет; сжать и новая сессия видны на вкладках Claude DEV, PROD и Codex всегда
         tabs = L.PAGE[L.PAGE.index('id="cTabs"'):L.PAGE.index('class="tzoom"')]
         self.assertNotIn('id="ctStop"', L.PAGE)
         self.assertLess(tabs.index('id="ctCompact"'), tabs.index('id="ctNew"'))
@@ -807,7 +807,7 @@ class Page(unittest.TestCase):
     def test_buttons_post_to_console_cmd_and_new_asks_first(self):
         self.assertIn("acctPost('chatgpt/console/cmd',{cmd})", L.PAGE)
         self.assertIn("if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;", L.PAGE)
-        # Денис 62218: те же две кнопки стоят и на вкладках Claude DEV/PROD — вкладка Codex по-прежнему идёт в cxConsCmd
+        # те же две кнопки стоят и на вкладках Claude DEV/PROD — вкладка Codex по-прежнему идёт в cxConsCmd
         self.assertIn("return s==='codex'?cxConsCmd(cmd):", L.PAGE)
         self.assertIn("addEventListener('click',()=>consActCmd('compact'))", L.PAGE)
         self.assertIn("addEventListener('click',()=>consActCmd('new'))", L.PAGE)

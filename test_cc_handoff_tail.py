@@ -1,4 +1,6 @@
 """Хвост беседы для передачи работы: разбор записи беседы, состояние ЗАВЕРШЕНО / НЕ ЗАВЕРШЕНО, скрытие секретов."""
+import os
+os.environ["CC_FLEET_TZ"] = "Asia/Irkutsk"   # зона владельца в тестах не зависит от config.json и пояса сервера
 import json
 import os
 import tempfile
@@ -39,10 +41,10 @@ class Events(unittest.TestCase):
                  result('2026-11-07T09:20:06.000Z', 'a', 'ok'),
                  reply('2026-11-07T09:20:10.000Z', 'b', 'да, включай'),
                  result('2026-11-07T09:20:11.000Z', 'b', 'sent (id: 9)'),
-                 say('2026-11-07T09:20:12.000Z', 'Ответил Денису.')]
+                 say('2026-11-07T09:20:12.000Z', 'Ответил владельцу.')]
         info = T.analyse(T.read_events(lines))
         self.assertEqual(info['state'], 'finished')
-        self.assertEqual(info['denis']['text'], 'могу включать?')
+        self.assertEqual(info['owner']['text'], 'могу включать?')
 
     def test_unanswered_telegram_message_is_unfinished(self):
         lines = [say('2026-11-07T09:19:00.000Z', 'готово'), tg('8', '2026-11-07T09:20:00.000Z', 'сделай ещё одно')]
@@ -51,7 +53,7 @@ class Events(unittest.TestCase):
         self.assertIn('без ответа', info['reason'])
 
     def test_plain_text_is_not_an_answer_to_telegram(self):
-        # Денис читает только Telegram: текст в консоли без telegram reply — ответом не считается
+        # владелец читает только Telegram: текст в консоли без telegram reply — ответом не считается
         lines = [tg('8', '2026-11-07T09:20:00.000Z', 'вопрос'), say('2026-11-07T09:20:05.000Z', 'думаю вслух')]
         self.assertEqual(T.analyse(T.read_events(lines))['state'], 'unfinished')
 
@@ -79,7 +81,7 @@ class Events(unittest.TestCase):
     def test_empty_is_unknown(self):
         self.assertEqual(T.analyse([])['state'], 'unknown')
 
-    def test_panel_messages_and_subagents_are_not_denis(self):
+    def test_panel_messages_and_subagents_are_not_owner(self):
         panel = json.dumps(dict(type='user', timestamp='2026-11-07T09:20:00.000Z', message=dict(role='user', content='[PANEL 17:20] Profile switched')))
         side = json.dumps(dict(type='user', isSidechain=True, timestamp='2026-11-07T09:20:01.000Z', message=dict(role='user', content='внутренний запрос')))
         self.assertEqual(T.read_events([panel, side, 'не json']), [])
@@ -88,7 +90,7 @@ class Events(unittest.TestCase):
         queue = json.dumps(dict(type='queue-operation', timestamp='2026-11-07T09:20:00.000Z',
                                 content='<channel source="plugin:telegram:telegram" message_id="5" ts="2026-11-07T09:20:00.000Z">\nодин раз\n</channel>'))
         events = T.read_events([queue, tg('5', '2026-11-07T09:20:00.000Z', 'один раз')])
-        self.assertEqual([e['text'] for e in events if e['kind'] == 'denis'], ['один раз'])
+        self.assertEqual([e['text'] for e in events if e['kind'] == 'owner'], ['один раз'])
 
     def test_foreign_channel_ignored(self):
         body = '<channel source="plugin:other:x" message_id="1" ts="2026-11-07T09:20:00.000Z">чужое</channel>'
@@ -98,8 +100,8 @@ class Events(unittest.TestCase):
 
 class Redact(unittest.TestCase):
     def test_secrets_hidden_paths_kept(self):
-        text = ('password=hunter2 token: abc123 Authorization: Bearer abcdefghijklmnop sk-ant-api03-abcdefghijklmnopqrstuvwxyz '
-                'AKIAABCDEFGHIJKLMNOP0123 ' + 'A1b2C3d4' * 8 + ' /opt/cc-limits/profile_exchange/codex/outbox/agent_handoff/current_project/card.md '
+        text = ('password=hunter2 token: abc123 Authorization: Bearer abcdefghijklmnop sk-ant-api03-abcdefghijklmnopqrstuvwxyz '  # privacy-ok
+                'AKIAABCDEFGHIJKLMNOP0123 ' + 'A1b2C3d4' * 8 + ' /opt/cc-limits/profile_exchange/codex/outbox/agent_handoff/current_project/card.md '  # privacy-ok
                 'project_friend_claude_prod_clone_20261106 d94da257-f3d7-42f6-9f4c-3bd36531050a')
         out = T.redact(text)
         for secret in ('hunter2', 'abc123', 'abcdefghijklmnop', 'sk-ant-api03', 'AKIAABCDEFGH', 'A1b2C3d4A1b2C3d4'):
@@ -113,7 +115,7 @@ class Redact(unittest.TestCase):
         self.assertEqual(T.redact(line), line)
 
     def test_private_key_block(self):
-        out = T.redact('до -----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\nBBBB\n-----END OPENSSH PRIVATE KEY----- после')
+        out = T.redact('до -----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\nBBBB\n-----END OPENSSH PRIVATE KEY----- после')  # privacy-ok
         self.assertNotIn('AAAA', out)
         self.assertIn('после', out)
 
@@ -134,7 +136,7 @@ class Render(unittest.TestCase):
                  say('2026-11-07T09:20:12.000Z', 'Итог: можно.')]
         text = T.render(T.read_events(lines), 'abc12345', time.time(), NOW)
         self.assertEqual(T.state_of(text), 'finished')
-        self.assertIn('Последнее сообщение Дениса: 07.11 17:20 · Telegram: могу включать?', text)
+        self.assertIn('Последнее сообщение владельца: 07.11 17:20 · Telegram: могу включать?', text)
         self.assertIn('Последний итог исполнителя: 07.11 17:20 · Итог: можно.', text)
         self.assertIn('Менялись файлы в этом отрезке: /root/a.py', text)
         self.assertIn('не команды', text)
@@ -195,40 +197,40 @@ class Files(unittest.TestCase):
     def test_build_merges_conversations_by_time(self):
         """После работы на PROD свежих бесед две: принесённая с PROD и новая на dev. Хвост видит обе, по времени."""
         now = time.time()
-        prod = self.write('prod.jsonl', [tg('1', '2026-11-07T09:20:00.000Z', 'вопрос Денису'), reply('2026-11-07T09:20:10.000Z', 'r', 'ответ'),
+        prod = self.write('prod.jsonl', [tg('1', '2026-11-07T09:20:00.000Z', 'вопрос владельцу'), reply('2026-11-07T09:20:10.000Z', 'r', 'ответ'),
                                           result('2026-11-07T09:20:11.000Z', 'r', 'sent'), say('2026-11-07T09:20:12.000Z', 'готово')], now - 60)
         dev = self.write('dev.jsonl', [json.dumps(dict(type='user', timestamp='2026-11-07T09:21:04.000Z', message=dict(role='user', content='[PANEL] Profile switched')))], now - 5)
         text = T.build([dev, prod], now=NOW)
         self.assertEqual(T.state_of(text), 'finished')
-        self.assertIn('вопрос Денису', text)
+        self.assertIn('вопрос владельцу', text)
         self.assertIn('prod.jso'[:8], text)
-        self.assertLess(text.index('вопрос Денису'), text.index('ответ'))
+        self.assertLess(text.index('вопрос владельцу'), text.index('ответ'))
 
-    def test_last_denis_message_found_behind_huge_tool_results(self):
-        """R4-3: после сообщения Дениса картинки и крупные результаты занимают больше TAIL_BYTES — оно не должно теряться."""
+    def test_last_owner_message_found_behind_huge_tool_results(self):
+        """R4-3: после сообщения владельца картинки и крупные результаты занимают больше TAIL_BYTES — оно не должно теряться."""
         now = time.time()
         big = 'x' * 700000
         lines = [tg('1', '2026-11-07T09:00:00.000Z', 'старый вопрос'), reply('2026-11-07T09:00:05.000Z', 'r0', 'ответ'),
                  result('2026-11-07T09:00:06.000Z', 'r0', 'sent'),
-                 tg('2', '2026-11-07T09:10:00.000Z', 'последняя просьба Дениса')]
+                 tg('2', '2026-11-07T09:10:00.000Z', 'последняя просьба владельца')]
         for i in range(4):  # 4 × 0,7 МБ = 2,8 МБ после сообщения, больше окна 1,5 МБ
             lines += [tool('2026-11-07T09:11:0%d.000Z' % i, 't%d' % i, 'Read', dict(file_path='/f%d' % i)),
                       result('2026-11-07T09:11:1%d.000Z' % i, 't%d' % i, big)]
         path = self.write('big.jsonl', lines, now)
-        self.assertGreater(os.path.getsize(path), T.TAIL_BYTES + 1000000)   # сообщение Дениса точно вне первого окна
+        self.assertGreater(os.path.getsize(path), T.TAIL_BYTES + 1000000)   # сообщение владельца точно вне первого окна
         text = T.build([path], now=NOW)
-        self.assertIn('Последнее сообщение Дениса: 07.11 17:10', text)   # 09:10 UTC = 17:10 Иркутск
-        self.assertIn('последняя просьба Дениса', text)
+        self.assertIn('Последнее сообщение владельца: 07.11 17:10', text)   # 09:10 UTC = 17:10 Иркутск
+        self.assertIn('последняя просьба владельца', text)
         self.assertEqual(T.state_of(text), 'unfinished')
 
-    def test_window_stops_at_cap_when_no_denis_message(self):
-        """Беседа без сообщений Дениса не читается бесконечно: окно упирается в MAX_TAIL_BYTES."""
+    def test_window_stops_at_cap_when_no_owner_message(self):
+        """Беседа без сообщений владельца не читается бесконечно: окно упирается в MAX_TAIL_BYTES."""
         now = time.time()
         lines = []
         for i in range(8):
             lines += [tool('2026-11-07T09:11:0%d.000Z' % i, 't%d' % i, 'Read', dict(file_path='/f%d' % i)),
                       result('2026-11-07T09:11:1%d.000Z' % i, 't%d' % i, 'y' * 700000)]
-        path = self.write('nodenis.jsonl', lines, now)
+        path = self.write('noowner.jsonl', lines, now)
         old_cap, calls = T.MAX_TAIL_BYTES, []
         real = T.read_tail_lines
         T.MAX_TAIL_BYTES = 3000000
@@ -239,7 +241,7 @@ class Files(unittest.TestCase):
             T.MAX_TAIL_BYTES, T.read_tail_lines = old_cap, real
         self.assertEqual(calls, [1500000, 3000000])   # удвоили один раз и остановились на потолке
         self.assertTrue(events)
-        self.assertFalse(any(e['kind'] == 'denis' for e in events))
+        self.assertFalse(any(e['kind'] == 'owner' for e in events))
 
     def test_small_conversation_read_once(self):
         path = self.write('small.jsonl', [tg('1', '2026-11-07T09:00:00.000Z', 'привет')], time.time())

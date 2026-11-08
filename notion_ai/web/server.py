@@ -9,11 +9,10 @@ D = "/root/notion_web"
 sys.path.insert(0, D)
 import agent_ops as AO
 import nagents as NA  # агенты Notion для балансера (07.11.26): список, окно чата, создание и настройки
-URL0 = "https://app.notion.com/chat?t=40b55b37d4588006b66400a92e8439da"  # запасной адрес, пока реестр agents.json пуст
+URL0 = "https://app.notion.com/chat"  # запасной адрес, пока реестр agents.json пуст (новый чат Notion AI)
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 PORT = 8893
 START = time.time()  # запуск процесса: спул-файлы старше него не обрабатываются
-SPOOL = "/home/codextrial/exchange/.notion-delegate"
 LOG, OFF, JOBS, LIM = f"{D}/sent.log", f"{D}/DISABLED", f"{D}/jobs", f"{D}/limits.json"
 TOKEN = open(f"{D}/api_token").read().strip()
 MAX_TASK = 30000
@@ -41,7 +40,7 @@ def sent_times():
 def disabled(): return os.path.exists(OFF)
 
 
-PROMPT = """[Задание от Claude Code, отправлено автоматически с сервера по просьбе Дениса. Ты исполнитель: вся черновая работа за тобой, я только проверю результат.]
+PROMPT = """[Задание от Claude Code, отправлено автоматически с сервера по просьбе владельца. Ты исполнитель: вся черновая работа за тобой, я только проверю результат.]
 Правила:
 1. Выполни задание ЦЕЛИКОМ сам: поиск в интернете и в Notion, чтение, анализ, написание текстов, кода и таблиц, сравнение, самопроверка. Не перекладывай часть работы на меня и не предлагай варианты вместо результата.
 2. Вопросов не задавай, если можно разумно предположить. Сделанные предположения перечисли одной строкой в конце.
@@ -218,8 +217,8 @@ def nai_email():
 def tg_chat():
     cid = str(nai_cfg().get("tg_chat_id") or "").strip()
     if cid: return cid
-    try: return str(json.load(open("/opt/cc-limits/config.json")).get("chat_id") or "262033135")
-    except Exception: return "262033135"
+    try: return str(json.load(open("/opt/cc-limits/config.json")).get("chat_id") or "")
+    except Exception: return ""
 
 
 def tg(text):
@@ -321,7 +320,7 @@ def watchdog():
 
 
 
-# ---------- ротация агентов: до 5 штук, каждый работает сутки (решение Дениса 61077, 02.11.26) ----------
+# ---------- ротация агентов: до 5 штук, каждый работает сутки (решение , 02.11.26) ----------
 ROT_LOCK = threading.Lock()
 ROTLOG = D + "/rotation.log"
 IRK = 8 * 3600
@@ -358,7 +357,7 @@ def cleanup(pg, a, protect):
 
 def rotate(force=False):
     """Создать нового агента, проверить его тестовым сообщением, переключить сервис на него; если агентов больше 5 — убрать самого старого."""
-    # [notion-ai] 06.11.26: по просьбе Дениса пересоздание отключено, в том числе вручную.
+    # [notion-ai] 06.11.26: по просьбе владельца пересоздание отключено, в том числе вручную.
     return "пересоздание отключено"
     if not ROT_LOCK.acquire(blocking=False): return "уже идёт"
     try:
@@ -459,20 +458,25 @@ NAME = re.compile(r"^[0-9a-f]{10}$")
 
 def spool_uid():
     import pwd
-    try: return pwd.getpwnam(os.environ.get("NOTION_SPOOL_USER", "codextrial"))
-    except KeyError: return None  # [notion-ai] нет пользователя Codex — спул-папки не нужны
+    name = os.environ.get("NOTION_SPOOL_USER") or ""
+    if not name:
+        try: name = str(json.load(open("/opt/cc-limits/config.json")).get("codex_user") or "")
+        except (OSError, ValueError): name = ""
+    if not name: return None  # пользователь Codex не задан (config.json «codex_user») — спул-папки не нужны
+    try: return pwd.getpwnam(name)
+    except KeyError: return None  # нет пользователя Codex — спул-папки не нужны
 
 
 def spool_roots():
     """Папки, откуда берём задания: <рабочая>/.notion-delegate у Codex. Берём известные места, чужие пути не читаем."""
-    pw = spool_uid(); roots = {"/home/codextrial/exchange", "/home/codextrial/work"}
+    pw = spool_uid(); roots = {pw.pw_dir + "/exchange", pw.pw_dir + "/work"}
     try:
         st = json.load(open("/opt/cc-limits/codex_bridge.json"))
         for k in ("workdir", "exchange"):
             v = os.path.realpath(st.get(k) or "")
             if v.startswith(pw.pw_dir + "/") and v != pw.pw_dir: roots.add(v)
     except Exception: pass
-    em = "/home/codextrial/emergency"
+    em = pw.pw_dir + "/emergency"
     try:
         roots.add(em)
         for n in os.listdir(em):
@@ -558,7 +562,7 @@ def spool_loop():
 
 
 # ── [notion-ai] 05.11.26: сообщения из общего чата Telegram -> постоянный чат Notion AI ──
-# Профиль балансера «Notion AI · только он»: мост notion-ai-tg.service кладёт сюда сообщения Дениса.
+# Профиль балансера «Notion AI · только он»: мост notion-ai-tg.service кладёт сюда сообщения владельца.
 # Только отправка (ответ Notion AI шлёт сам через notion-ai-reply); Escape не жмём — он может прервать ответ.
 NAI_URL = "https://app.notion.com/chat?t=40c55b37d45880e9b91600a9c9425683"
 # Поле ввода: личный чат Notion AI («Ask Notion AI…») или чат пользовательского агента («Chat with <агент>»), 07.11.26
@@ -1007,7 +1011,8 @@ if __name__ == "__main__":
     pw = spool_uid()
     if pw:
         for sub in ("", "/in", "/out"):
-            os.makedirs(SPOOL + sub, exist_ok=True); os.chown(SPOOL + sub, pw.pw_uid, pw.pw_gid)
+            spool = pw.pw_dir + "/exchange/.notion-delegate"
+            os.makedirs(spool + sub, exist_ok=True); os.chown(spool + sub, pw.pw_uid, pw.pw_gid)
         threading.Thread(target=spool_loop, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start(); threading.Thread(target=watchdog, daemon=True).start(); threading.Thread(target=post_worker, daemon=True).start()
     NA.start()

@@ -1,10 +1,10 @@
-"""Агенты Notion для балансера (Денис 62230/62245/62249, 07.11.26).
+"""Агенты Notion для балансера (, 07.11.26).
 
-Чтение и имя — официальный Agent API Notion (токен Дениса в notion_pat, агент при этом НЕ запускается, кредиты не тратятся).
+Чтение и имя — официальный Agent API Notion (токен владельца в notion_pat, агент при этом НЕ запускается, кредиты не тратятся).
 Сообщения агентам — только через сайт (печатаем в чат, как человек), API-запусков агента нет.
 Модель, effort, «Web access», инструкции, создание из шаблона «Morning brief», имя чата — через сайт (Playwright).
 Реестр nagents.json: чат каждого агента и последний известный effort. Импортируется сервисом notion-delegate."""
-import base64, calendar, json, os, re, threading, time, traceback, urllib.request, urllib.error, uuid
+import base64, calendar, json, os, re, subprocess, threading, time, traceback, urllib.request, urllib.error, uuid
 
 D = "/root/notion_web"
 PAT = f"{D}/notion_pat"
@@ -399,9 +399,21 @@ def create_from_template(pg, log):
     return aid, setup
 
 
+def _owner_and_host():
+    """Имя владельца (⚙ Настройки → Notion AI) и адрес сервера для шаблона инструкций."""
+    try: owner = str(json.load(open("/opt/cc-limits/notion_ai.json")).get("owner") or "").strip()
+    except (OSError, ValueError): owner = ""
+    try:
+        out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5).stdout.split()
+        host = next((a for a in out if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", a) and not a.startswith(("10.", "127.", "192.168.", "172."))), out[0] if out else "")
+    except (OSError, subprocess.SubprocessError): host = ""
+    return owner or "владелец", host or "IP-сервера"
+
+
 def instructions_for(name, chat_name):
     t = open(INSTR).read()
-    return t.replace("{name}", name).replace("{chat}", chat_name)
+    owner, host = _owner_and_host()
+    return t.replace("{name}", name).replace("{chat}", chat_name).replace("{owner}", owner).replace("{host}", host)
 
 
 # ---------- задания (отдельный поток, свой браузер на задание) ----------

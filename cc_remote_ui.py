@@ -72,9 +72,9 @@ var compact=null,tile=null;
 function $i(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function mem(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}var r=s&&s.remote;if(!r)return null;var k=Object.keys(r)[0];return k?Object.assign({id:k},r[k]):null}
-var WD=new Intl.DateTimeFormat('ru',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Irkutsk'});
-var CK=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Irkutsk'}),DY=new Intl.DateTimeFormat('ru',{day:'2-digit',month:'2-digit',timeZone:'Asia/Irkutsk'});
-function clk(t){var d=DY.format(t),c=CK.format(t);return d===DY.format(new Date())?c:d+' '+c}   // Денис 62135: время сброса 5 ч по Иркутску
+var WD=new Intl.DateTimeFormat('ru',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ});
+var CK=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ}),DY=new Intl.DateTimeFormat('ru',{day:'2-digit',month:'2-digit',timeZone:window.FLEET_TZ});
+function clk(t){var d=DY.format(t),c=CK.format(t);return d===DY.format(new Date())?c:d+' '+c}   // время сброса 5 ч по Иркутску
 function when(win,week){var t=win&&win.resets_at?new Date(win.resets_at):null;if(!t||isNaN(t))return 'Время не получено';
  if(week)return WD.format(t).replace(/,/g,'');var m=Math.ceil((t.getTime()-Date.now())/60000);if(m<=0)return 'сброс ожидается';var h=Math.floor(m/60),r=m%60;return clk(t)+' · через '+(h?h+' ч'+(r?' ':''):'')+(r?r+' мин':'')}
 function pct(win){return win&&isFinite(win.pct)?Math.round(win.pct):null}
@@ -279,7 +279,7 @@ function qOpen(){['cxQClose','cxPopClose','cxMenuClose'].forEach(function(f){try
 function qPick(body,text){qjob=true;qnote=text;qbad=false;qPaint();
  post('remote/model',body).then(function(j){qbad=!j.ok;qnote=j.message||(j.ok?'Готово':'Не получилось');return fetch(base+'remote',{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.json()}).then(function(s){try{if(lastSnap&&s.limits)lastSnap.remote=s.limits}catch(e){}})}).catch(function(){qbad=true;qnote='Панель не ответила'}).then(function(){qjob=false;paint();qPaint();qPlace()})}
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-model');if(!b||!tile||!tile.contains(b))return;e.stopPropagation();if(qp&&!qp.hidden)qClose();else qOpen()});
-// Окно «Настройки PROD» (Денис 61914: настроек у PROD должно быть столько же, сколько у Claude DEV).
+// Окно «Настройки PROD» (настроек у PROD должно быть столько же, сколько у Claude DEV).
 // Тот же вид и размещение, те же группы: 1) переключение и лимиты, 2) модели в быстром меню. Пороги и пул моделей общие с Claude DEV:
 // PROD берётся в работу по тем же порогам (cc_avail.availability), а быстрое меню PROD показывает те же отмеченные модели.
 // «Аккаунты и копии» не переносятся: аккаунт друга один, его вход здесь не копируется.

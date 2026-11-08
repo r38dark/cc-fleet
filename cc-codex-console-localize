@@ -5,7 +5,17 @@ import os
 import subprocess
 import sys
 
-USER_NAME = 'codextrial'
+def _user_name():
+    """Пользователь ОС консоли Codex: config.json «codex_user», иначе codex."""
+    import json
+    try:
+        with open('/opt/cc-limits/config.json', encoding='utf-8') as f:
+            return str(json.load(f).get('codex_user') or '').strip() or 'codex'
+    except (OSError, ValueError):
+        return 'codex'
+
+
+USER_NAME = _user_name()
 
 
 def screen_pid():

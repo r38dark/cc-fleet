@@ -244,12 +244,12 @@ html:root:root:not(.conly) .hdr>.hdrctl{order:1;flex:0 1 auto!important;flex-bas
 html:root:root:not(.conly) .hdr>.hdrbtns{order:2;flex:none;margin:0 0 0 auto;gap:7px!important}
 .hdr #fleetGeneralGear,.hdr #fleetProfilesBtn,.hdr #rfBtn{width:32px;height:32px;padding:7px;border:1px solid var(--fleet-line);border-radius:7px;background:transparent;color:var(--fleet-muted)}
 .hdr #fleetGeneralGear svg,.hdr #fleetProfilesBtn svg,.hdr #rfBtn svg{width:16px;height:16px}
-/* Денис 62019: кнопка общего окна «Выбор профиля» рядом с шестерёнкой; на широком экране с подписью, на узком только иконка */
+/* кнопка общего окна «Выбор профиля» рядом с шестерёнкой; на широком экране с подписью, на узком только иконка */
 .hdr #fleetProfilesBtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;box-sizing:border-box;cursor:pointer}
 .hdr #fleetProfilesBtn .fleet-hdr-label{display:none;font-size:12px;font-weight:550;line-height:1;white-space:nowrap}
 .hdr #fleetProfilesBtn:hover{border-color:var(--fleet-muted)}.hdr #fleetProfilesBtn[aria-expanded="true"]{color:var(--fleet-accent);border-color:var(--fleet-accent)}
 @media(min-width:901px){.hdr #fleetProfilesBtn{width:auto;padding:0 11px 0 9px}.hdr #fleetProfilesBtn .fleet-hdr-label{display:inline}}
-/* Денис 61908: иконки «Обновить сейчас» в шапке нет, данные и так обновляются сами раз в минуту. Элемент остаётся в разметке: на него ссылаются скрипты страницы. */
+/* иконки «Обновить сейчас» в шапке нет, данные и так обновляются сами раз в минуту. Элемент остаётся в разметке: на него ссылаются скрипты страницы. */
 html:root:root .hdr #rfBtn{display:none!important}
 .fleet-live-head{min-height:18px;margin-bottom:6px}
 .fleet-live-account{grid-template-columns:minmax(100px,1fr) minmax(175px,210px) 90px 90px;grid-template-areas:"identity controls session week";gap:14px;cursor:default}
@@ -591,13 +591,13 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-
  html:root:root .fleet-input-status{min-height:24px;padding:4px 10px;font-size:10px}
  html:root:root .fleet-input-status span:last-child{display:none}
  html:root:root:not(.conly) .dock{display:none!important;pointer-events:none!important}
- /* Денис 62019: полный экран на телефоне без нижней кнопки «Аккаунты» — панель была выключена целиком. Язычок стоит над полем ввода (--fleet-dock-lift считает fitDockLift), список открывается касанием. */
+ /* полный экран на телефоне без нижней кнопки «Аккаунты» — панель была выключена целиком. Язычок стоит над полем ввода (--fleet-dock-lift считает fitDockLift), список открывается касанием. */
  html.conly:root:root .dockzone{pointer-events:none;height:0}
  html.conly:root:root .docktab{pointer-events:auto;bottom:calc(var(--fleet-dock-lift,0px) + 8px);padding:7px 14px;font-size:12px;opacity:.92;z-index:41}
  html.conly:root:root .dockzone:hover .docktab{opacity:.92}html.conly:root:root .dockzone.pin .docktab{opacity:0;pointer-events:none}
  html.conly:root:root .dockzone .dockpanel{max-height:calc(var(--fleet-visual-height,100dvh) - 16px);overflow:auto;padding-bottom:max(12px,env(safe-area-inset-bottom))}
  html.conly:root:root .dockzone:hover .dockpanel{transform:translateY(110%);pointer-events:none}html.conly:root:root .dockzone.pin .dockpanel{transform:none;pointer-events:auto}
- /* Денис 61924: на телефоне окно консоли (вкладки, консоль, ввод) тянется до самого низа экрана, «Активные аккаунты» — ниже, после прокрутки.
+ /* на телефоне окно консоли (вкладки, консоль, ввод) тянется до самого низа экрана, «Активные аккаунты» — ниже, после прокрутки.
     Высоту считает fitConsoleFill: высота экрана минус верх окна минус поле. Пока она не посчитана (класс fleet-term-fill), остаётся прежняя. */
  html.fleet-term-fill:root:root:not(.conly) .termwrap{height:var(--fleet-term-fill)!important;min-height:0}
  html.fleet-term-fill:root:root:not(.conly) .termwrap .fleet-console-viewport{flex:1 1 0;height:auto;min-height:150px}
@@ -782,14 +782,14 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .n
  html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{flex:1 1 100%}
 }
 
-/* ===== Активные аккаунты: полоса (референс Дениса 61873) =====
+/* ===== Активные аккаунты: полоса =====
    Ячейки в ряд, у каждой: статус и имя | Модель, Effort, 5ч, Неделя, дата сброса, стрелка. Рамка активного лежит на границе своей ячейки:
    без внешней тени и отрицательных отступов, поэтому ничего не перекрывает. Две ячейки в ряд — от 1260 px (см. ниже), уже — по одной. */
 #fleetActiveAccounts{--cal:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='3' width='12' height='11' rx='2'/%3E%3Cpath d='M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4'/%3E%3C/svg%3E")}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:6px}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc{display:block;min-width:0}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open{grid-column:1/-1}
-/* в одну строку идут только аккаунты Claude (Claude DEV и PROD); Codex и Notion AI — каждый на всю ширину (Денис 61881) */
+/* в одну строку идут только аккаунты Claude (Claude DEV и PROD); Codex и Notion AI — каждый на всю ширину */
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.codex),
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.notion){grid-column:1/-1}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:0}
@@ -803,7 +803,7 @@ html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-co
 html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-name::before,
 html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex .fleet-compact-name::before,
 html:root:root:root.ag-live-notion #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.notion .fleet-compact-name::before{background:#49d6aa}
-/* «пауза» словом в строке аккаунта не пишем (Денис 62321): состояние показывает значок ⏸ перед именем */
+/* «пауза» словом в строке аккаунта не пишем: состояние показывает значок ⏸ перед именем */
 html:root:root:root.ag-pause-notion #fleetActiveAccounts .fleet-compact-account.notion .nai-cs{display:none}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"] .fleet-compact-range{display:inline-flex;margin-left:2px;color:var(--fleet-muted)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model .fleet-compact-label::after,
@@ -823,18 +823,18 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[da
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account .nai-cs{flex:0 1 auto;min-width:0}
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc-chev{flex:none;margin:0 3px 4px auto}
 }
-/* Нижняя панель полного экрана: подсказки PROD, Codex и Notion AI (Денис 61924) */
+/* Нижняя панель полного экрана: подсказки PROD, Codex и Notion AI */
 .dpop .dsub{margin-top:6px;font-size:11.5px;font-weight:500;color:var(--mut)}
 .dchip.dx.paused .dmail,.dchip.paused .dmail{color:var(--mut)}
 .dchip.paused:not(.dx) .dmail::after{content:" · пауза";font-weight:500}
-/* Стрелка «свернуть» у раскрытой плитки стоит там же, где стрелка «развернуть» у свёрнутой ячейки: у правого края, на той же высоте (Денис 61912).
+/* Стрелка «свернуть» у раскрытой плитки стоит там же, где стрелка «развернуть» у свёрнутой ячейки: у правого края, на той же высоте.
    Отступы повторяют ячейку при тех же границах ширины: 1260–1579 px плотнее, до 900 px — как на телефоне. Клик по стрелке — это клик по названию, плитка сворачивается. «^» повёрнута на 225°, её видимая часть выше центра коробки, поэтому top на 4.5 px больше, чем у «⌄» (замер по снимку 61912). */
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open>.fleet-live-account{position:relative}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name{padding-right:34px}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name::after{position:absolute;right:17px;top:19px;width:7px;height:7px;margin:0;vertical-align:baseline}
 @media(min-width:1260px) and (max-width:1579px){html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name::after{right:14px}}
 @media(max-width:900px){html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-name::after{right:21px;top:20.5px}}
-/* Две ячейки (Claude DEV и PROD) в одной строке, пока хватает места (референс Дениса: обе ячейки при ширине окна ~1280). Ширина ячейки = (окно − 62) / 2.
+/* Две ячейки (Claude DEV и PROD) в одной строке, пока хватает места (референс владельца: обе ячейки при ширине окна ~1280). Ширина ячейки = (окно − 62) / 2.
    от 1580 px — как есть; 1260–1579 px — плотнее (меньше зазоры и шрифт); 1260–1379 px — ещё и без подписей «Модель:» и «Effort:»; уже — по одной в строке. */
 @media(min-width:1260px){html:root:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:1260px) and (max-width:1579px){
@@ -857,7 +857,7 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-n
   html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:has(.fleet-compact-warning:not(:empty)) .fleet-compact-window[data-window="week"] .fleet-compact-range{display:none}
 }
 
-/* Денис 62019: какой профиль выбран — мелкой строкой под именем в свёрнутой строке аккаунта */
+/* какой профиль выбран — мелкой строкой под именем в свёрнутой строке аккаунта */
 .fleet-compact-id{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;grid-column:1}
 .fleet-compact-prof{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:13px;font-size:11px;line-height:13px;font-weight:500;color:var(--fleet-muted)}
 .fleet-compact-prof:empty{display:none}
@@ -871,7 +871,7 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-n
  .fleet-compact-prof::before{content:"Профиль: "}
 }
 
-/* Денис 62029: колонки свёрнутых строк одной ширины у всех аккаунтов: разделитель после имени и колонки Модель / Effort / 5ч стоят ровно, длинная подпись обрезается многоточием.
+/* колонки свёрнутых строк одной ширины у всех аккаунтов: разделитель после имени и колонки Модель / Effort / 5ч стоят ровно, длинная подпись обрезается многоточием.
    Ширины — по самым длинным значениям (имя + «пауза», GPT-6.1-Sol, «Модель:» у Notion AI), три диапазона плотности как у ячеек выше. */
 #fleetActiveAccounts.fleet-acc-mode{--cid:172px;--cmod:130px;--ceff:80px;--cses:112px}
 @media(min-width:1380px) and (max-width:1579px){
@@ -879,10 +879,10 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-n
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{column-gap:7px}
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-id{padding-right:10px}
 }
-/* Денис 62135: у Codex сброс 5ч бывает завтра («08.11 00:28»), строка у него на всю ширину, колонке даём место */
+/* у Codex сброс 5ч бывает завтра («08.11 00:28»), строка у него на всю ширину, колонке даём место */
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex{--cses:128px}
 @media(min-width:1260px) and (max-width:1379px){#fleetActiveAccounts.fleet-acc-mode{--cid:156px;--cmod:76px;--ceff:42px;--cses:86px}}
-/* Денис 62135: DEV и PROD делят строку пополам; после % окна 5ч стоит время сброса, поэтому подписи колонок убираем и здесь */
+/* DEV и PROD делят строку пополам; после % окна 5ч стоит время сброса, поэтому подписи колонок убираем и здесь */
 @media(min-width:1380px) and (max-width:1899px){
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-model .fleet-compact-label,
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-effort .fleet-compact-label,
@@ -915,7 +915,7 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort{ov
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"]{flex:0 0 54px}
 }
 
-/* Денис 62181: время сброса окна 5ч («08.11 00:29») налезало на подпись «Неделя»: колонка 5ч была уже своего содержимого (112/92/86/54 px при 120 px текста).
+/* время сброса окна 5ч («08.11 00:29») налезало на подпись «Неделя»: колонка 5ч была уже своего содержимого (112/92/86/54 px при 120 px текста).
    Теперь колонка не уже содержимого (min-width = запас под «100%» и самое широкое время), остальное сдвигается вправо. Телефон (до 640 px) не затронут. */
 @media(min-width:641px){
  #fleetActiveAccounts.fleet-acc-mode{--cses:128px}
@@ -930,7 +930,7 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort{ov
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-window[data-window="week"] .fleet-compact-range{display:none}
 }
 
-/* Денис 62045: единое окно «Точно? Отмена / Да» для кнопок быстрого доступа (window.fleetAsk) */
+/* единое окно «Точно? Отмена / Да» для кнопок быстрого доступа (window.fleetAsk) */
 .fleet-ask{z-index:60}.fleet-ask[hidden]{display:none}
 .fleet-ask .cxpbody{padding:14px 16px 16px}
 .fleet-ask h3{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--txt)}
@@ -940,7 +940,7 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort{ov
 .fleet-ask .fa-btns .fa-yes{border-color:var(--fleet-accent);background:var(--fleet-accent-soft)}
 .fleet-ask .fa-btns button:focus-visible{outline:2px solid var(--fleet-accent);outline-offset:2px}
 
-/* ===== Единые окна шестерёнок и моделей (Денис 61881): одна прокрутка, окно не сжимается без нужды ===== */
+/* ===== Единые окна шестерёнок и моделей: одна прокрутка, окно не сжимается без нужды ===== */
 html:root:root:root .fleet-quick-panel:not([hidden]),html:root:root:root .fleet-settings-panel:not([hidden]){display:flex;flex-direction:column;overflow:hidden}
 html:root:root:root .fleet-quick-panel[hidden],html:root:root:root .fleet-settings-panel[hidden]{display:none}
 html:root:root:root .fleet-quick-panel>.cxpbody,html:root:root:root .fleet-settings-panel>.cxpbody{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--fleet-line) transparent}
@@ -1161,7 +1161,7 @@ JS = r'''
  const liveFooter=el('div','fleet-live-footer');liveFooter.append(liveCollapse);
  const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows,liveFooter);liveStrip.append(liveHead,liveFold);term.after(liveStrip);
 
- // Нижняя панель полного экрана консоли (Денис 61924): старый код рисует в ней только аккаунты Claude (список написан, когда движок был один).
+ // Нижняя панель полного экрана консоли: старый код рисует в ней только аккаунты Claude (список написан, когда движок был один).
  // PROD, Codex и Notion AI достраиваем из ячеек полосы «Активные аккаунты»: тот же вид, та же подсказка при наведении.
  let dockSig='';
  function dockExtras(){
@@ -1289,7 +1289,7 @@ JS = r'''
  liveRows.addEventListener('keydown',event=>{const compact=event.target.closest&&event.target.closest('.fleet-compact-account[data-acc]');if(compact&&(event.key==='Enter'||event.key===' ')){event.preventDefault();accSet(compact.dataset.engine,true,true)}});
  const accObserver=new MutationObserver(accOrganize);accObserver.observe(liveSummary,{childList:true});accObserver.observe(liveRows,{childList:true});
  accOrganize();
- // Единое размещение окон у шестерёнок, моделей и настроек (Денис 61881): окно НИКОГДА не режется до «остатка под кнопкой».
+ // Единое размещение окон у шестерёнок, моделей и настроек: окно НИКОГДА не режется до «остатка под кнопкой».
  // Высота — по содержимому, но не больше экрана; ставим под кнопкой, если помещается целиком, иначе над ней, иначе сдвигаем вверх.
  // Содержимое выросло или уменьшилось после открытия — окно ставится заново (ResizeObserver).
  const placeState=new WeakMap();
@@ -1305,7 +1305,7 @@ JS = r'''
   o.a=anchor;o.w=width;o.h=h;
  };
  function placePanel(panel,anchor,width){window.fleetPlace(panel,anchor,width)}
- // Денис 62045: кнопка быстрого доступа без «Сохранить» не срабатывает от одного клика. fleetAsk(якорь, вопрос, подпись «Да») → Promise<true|false>.
+ // кнопка быстрого доступа без «Сохранить» не срабатывает от одного клика. fleetAsk(якорь, вопрос, подпись «Да») → Promise<true|false>.
  let askEl=null,askRes=null,askAnc=null;
  function askPlace(){if(!askEl||askEl.hidden)return;const a=askAnc;
   const ar=a&&a.isConnected?a.getBoundingClientRect():null;
@@ -1494,12 +1494,12 @@ JS = r'''
  if(!scrim.hidden){scrim.dataset.view='general';putText(claudeTitle,'Общие настройки');common.open=true;placePanel(modal,generalGear,580);paintSettingsState()}
  if(lastModel)paintClaudeModel(lastModel);
 
- const liveDateOptions={timeZone:'Asia/Irkutsk',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'};
+ const liveDateOptions={timeZone:window.FLEET_TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'};
  const liveDateFormats=[new Intl.DateTimeFormat('ru-RU',liveDateOptions),new Intl.DateTimeFormat('ru-RU',{...liveDateOptions,weekday:'short'})];
- const liveYearFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',year:'numeric'});
- const liveClockFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
- const liveDayFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk',day:'2-digit',month:'2-digit'});
- // Денис 62135: время сброса 5-часового окна по Иркутску сразу после процентов; если сброс не сегодня, перед временем стоит дата.
+ const liveYearFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:window.FLEET_TZ,year:'numeric'});
+ const liveClockFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:window.FLEET_TZ,hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const liveDayFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:window.FLEET_TZ,day:'2-digit',month:'2-digit'});
+ // время сброса 5-часового окна по Иркутску сразу после процентов; если сброс не сегодня, перед временем стоит дата.
  function fiveHourClock(date){const clock=liveClockFormat.format(date),day=liveDayFormat.format(date);return day===liveDayFormat.format(new Date())?clock:day+' '+clock}
  function resetDate(win){
   if(!win?.resets_at)return null;

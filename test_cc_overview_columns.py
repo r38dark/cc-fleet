@@ -1,4 +1,4 @@
-# Денис 62181: время сброса 5ч налезало на подпись «Неделя» — колонка 5ч была уже своего содержимого.
+# время сброса 5ч налезало на подпись «Неделя» — колонка 5ч была уже своего содержимого.
 # Замер делался в браузере (30 ширин от 320 до 2200 px, худшие данные «100%» и «88.88 88:88»); здесь — страж от возврата фиксированной узкой ширины.
 import re
 import unittest
@@ -22,21 +22,21 @@ class SessionColumn(unittest.TestCase):
 
     def test_floor_covers_widest_content_per_range(self):
         css = cc_overview.CSS
-        tail = css[css.index('Денис 62181'):]
+        tail = css[css.index('налезало на подпись'):]
         self.assertIn('--cses:128px', tail)    # 120 px текста + запас под «100%»
         self.assertIn('--cses:118px', tail)    # плотные плитки 1260–1579: 112 px + запас
         self.assertNotIn('--cses:86px', tail)
 
     def test_narrow_two_per_row_drops_week_date_instead_of_overflowing(self):
         css = cc_overview.CSS
-        tail = css[css.index('Денис 62181'):]
+        tail = css[css.index('налезало на подпись'):]
         self.assertIn('@media(min-width:1260px) and (max-width:1379px)', tail)
         self.assertIn('.fleet-compact-window[data-window="week"] .fleet-compact-range', tail)
 
 
 class SendIcon(unittest.TestCase):
     def test_send_button_is_enter_key_icon_not_up_arrow(self):
-        """Денис 62197: кнопка отправки в консоль — значок клавиши Enter (↵), а не стрелка вверх."""
+        """кнопка отправки в консоль — значок клавиши Enter (↵), а не стрелка вверх."""
         self.assertNotIn("send.textContent='↑'", cc_overview.JS)
         i = cc_overview.JS.index("send.innerHTML='<svg")
         self.assertIn('<polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/>', cc_overview.JS[i:i + 400])
@@ -44,14 +44,14 @@ class SendIcon(unittest.TestCase):
 
 
 class ConsoleActionButtons(unittest.TestCase):
-    """Денис 62218: «Сжать контекст» и «Новая сессия» на вкладках Claude DEV и PROD, а не только у Codex (и не только в сложенной карточке)."""
+    """«Сжать контекст» и «Новая сессия» на вкладках Claude DEV и PROD, а не только у Codex (и не только в сложенной карточке)."""
 
     def setUp(self):
         import cc_limits
         self.page = cc_limits.PAGE
 
     def test_buttons_are_always_visible_on_claude_prod_and_codex_tabs(self):
-        # Денис 62225: на PROD кнопок не было, пока Claude на PROD не запущен — теперь видны всегда; кнопки остановки консоли нет
+        # на PROD кнопок не было, пока Claude на PROD не запущен — теперь видны всегда; кнопки остановки консоли нет
         self.assertIn("function ctActsSync(){const k=consCur(),show=k==='claude'||k==='prod'||k==='codex';", self.page)
         self.assertNotIn("ctActsClaude", self.page)
         self.assertNotIn('id="ctStop"', self.page)

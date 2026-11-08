@@ -199,7 +199,7 @@ class Page(unittest.TestCase):
         self.assertRegex(L.PAGE, r"\.iconbtn\.ctab\[data-s\]\.on\{")
 
     def test_console_tabs_inactive_is_outline_only_active_is_filled(self):
-        # просьба владельца (60742): неактивная вкладка — только окантовка без фона, активная окрашена целиком
+        # просьба владельца: неактивная вкладка — только окантовка без фона, активная окрашена целиком
         css = L.PAGE
         base = re.search(r"^html:root:root \.iconbtn\.ctab\[data-s\]\{([^}]*)\}$", css, re.M).group(1)
         self.assertIn("background:transparent", base)
@@ -275,7 +275,7 @@ class Page(unittest.TestCase):
         poll = re.search(r"async function ccConsole\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
         self.assertIn("cxConsAct('start',true)", poll)
         self.assertRegex(poll, r"d\.running\)cxAutoGo=false")  # уже работала — дальше остановка осознанная
-        # кнопки остановки консоли нет (Денис 62225): ручной остановки нет, флаг сбрасывается только при запуске
+        # кнопки остановки консоли нет: ручной остановки нет, флаг сбрасывается только при запуске
         self.assertNotIn("id=\"ctStop\"", L.PAGE)
         self.assertIn("cxAutoGo=false;cxConsAct('start',true)", poll)  # флаг гаснет ДО запроса: опрос раз в 2 с не запустит дважды
         self.assertIn("cxcStarting", i18n_block("ru"))
@@ -722,7 +722,7 @@ class QuickSwitch(unittest.TestCase):
         ])
 
     def test_change_asks_before_posting(self):
-        self.assertEqual(self.o["asked"], 2)   # Денис 62045: окно «Точно?» перед каждой отправкой, при том же значении не спрашиваем
+        self.assertEqual(self.o["asked"], 2)   # окно «Точно?» перед каждой отправкой, при том же значении не спрашиваем
 
     def test_effort_choice_closes_panel_even_without_change(self):
         self.assertTrue(self.o["closedOnSame"])

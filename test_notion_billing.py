@@ -1,4 +1,6 @@
 """Тесты даты оплаты Notion AI и счётчика до следующей оплаты (billing_info, parse_paid_at, save_cfg)."""
+import os
+os.environ["CC_FLEET_TZ"] = "Asia/Irkutsk"   # зона владельца в тестах не зависит от config.json и пояса сервера
 import json
 import os
 import tempfile
@@ -115,9 +117,9 @@ class Save(unittest.TestCase):
         s.assertEqual((cfg['paid_at'], cfg['plan']), ('', ''))
 
     def test_other_fields_untouched(s):
-        M.save_cfg({'owner': 'Денис'})
+        M.save_cfg({'owner': 'Владелец'})
         M.save_cfg({'paid_at': '2026-11-06 17:06'})
-        s.assertEqual(M.load_cfg()['owner'], 'Денис')
+        s.assertEqual(M.load_cfg()['owner'], 'Владелец')
 
     def test_cfg_public_has_fields(s):
         M.save_cfg({'paid_at': '2026-11-06 17:06'})
@@ -150,7 +152,7 @@ class ModelList(unittest.TestCase):
         s.assertEqual(labels, ['Auto', 'Opus 5.5', 'Sonnet 5.5'])
 
 
-class DenisParse(unittest.TestCase):
+class OwnerParse(unittest.TestCase):
     LT, GT = chr(60), chr(62)
 
     def tg(s, mid, text, ts='2026-11-06T10:20:11.000Z', extra=''):
@@ -180,7 +182,7 @@ class DenisParse(unittest.TestCase):
         ]
 
     def test_filtering_order_and_time(s):
-        r = M.parse_denis_messages(s.lines())
+        r = M.parse_owner_messages(s.lines())
         s.assertEqual([m['text'] for m in r], ['первое из двух строк', 'вопрос из консоли', 'часть один часть два', '[вложение]', 'из очереди', 'с хвостом'])
         s.assertEqual([m['src'] for m in r], ['Telegram', 'консоль', 'консоль', 'Telegram', 'Telegram', 'Telegram'])
         s.assertEqual(r[0]['ts'], at(2026, 11, 6, 18, 20, 11))           # UTC+8
@@ -188,22 +190,22 @@ class DenisParse(unittest.TestCase):
         s.assertEqual(r[3]['ts'], at(2026, 11, 6, 19, 0))
 
     def test_limit_and_truncate(s):
-        r = M.parse_denis_messages(s.lines(), limit=3)
+        r = M.parse_owner_messages(s.lines(), limit=3)
         s.assertEqual([m['text'] for m in r], ['[вложение]', 'из очереди', 'с хвостом'])
-        r = M.parse_denis_messages([s.rec('я' * 50)], max_chars=10)
+        r = M.parse_owner_messages([s.rec('я' * 50)], max_chars=10)
         s.assertEqual(r[0]['text'], 'я' * 9 + '…')
-        s.assertEqual(M.parse_denis_messages(s.lines(), limit=0), [])
+        s.assertEqual(M.parse_owner_messages(s.lines(), limit=0), [])
 
     def test_bad_input(s):
-        s.assertEqual(M.parse_denis_messages(['', '{', '[]', '{"type":"user"}', json.dumps(dict(type='user', message=dict(content=5)))]), [])
+        s.assertEqual(M.parse_owner_messages(['', '{', '[]', '{"type":"user"}', json.dumps(dict(type='user', message=dict(content=5)))]), [])
 
     def test_render(s):
         now = at(2026, 11, 6, 19, 40)
-        out = M.render_denis_last(M.parse_denis_messages(s.lines(), limit=2), now)
-        s.assertTrue(out.startswith('# Последние сообщения Дениса\n\nСобрано панелью автоматически 06.11.2026 19:40 (Иркутск)'))
+        out = M.render_owner_last(M.parse_owner_messages(s.lines(), limit=2), now)
+        s.assertTrue(out.startswith('# Последние сообщения владельца\n\nСобрано панелью автоматически 06.11.2026 19:40 (Asia/Irkutsk)'))
         s.assertIn('- 06.11 19:05 · Telegram: из очереди\n', out)
         s.assertTrue(out.endswith('\n'))
-        s.assertIn('Сообщений не найдено.', M.render_denis_last([], now))
+        s.assertIn('Сообщений не найдено.', M.render_owner_last([], now))
 
     def test_tail_lines(s):
         f = os.path.join(tempfile.mkdtemp(), 'h.jsonl')

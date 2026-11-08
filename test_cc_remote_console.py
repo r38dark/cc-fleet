@@ -192,7 +192,7 @@ class RemoteConsole(unittest.TestCase):
         self.assertEqual((v['model'], v['effort']), ('claude-a', 'low'))
 
     def test_models_view_follows_the_shared_quick_menu_pool(self):
-        # Денис 61914: «Модели в быстром меню» общие у Claude и PROD — отмеченные в пуле показываются и у PROD
+        # «Модели в быстром меню» общие у Claude и PROD — отмеченные в пуле показываются и у PROD
         self._models()
         M._NS.update(all_models=lambda: {'claude-a': 'A', 'claude-b': 'B', 'claude-c': 'C'}, cfg=lambda: {'enabled_models': ['claude-b']})
         try:

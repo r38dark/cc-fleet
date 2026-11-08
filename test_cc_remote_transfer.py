@@ -2,7 +2,7 @@
 
 Раньше во всех тестах эти две функции были заглушками, поэтому зелёные тесты не показывали главного: получит ли тот, кто
 подхватывает работу, место, где остановился прежний. Здесь проверяется именно это: что попало в записку, что скопировано,
-что проверено и что сказано Денису."""
+что проверено и что сказано владельцу."""
 import hashlib
 import json
 import os
@@ -25,7 +25,7 @@ class Nai:
     handoff_project_dir = N.NotionAI.handoff_project_dir
     handoff_transcripts = N.NotionAI.handoff_transcripts
     handoff_write = N.NotionAI.handoff_write
-    handoff_refresh_denis_last = N.NotionAI.handoff_refresh_denis_last
+    handoff_refresh_owner_last = N.NotionAI.handoff_refresh_owner_last
     handoff_tail_state = N.NotionAI.handoff_tail_state
 
     def __init__(self, base):
@@ -166,7 +166,7 @@ class Transfer(unittest.TestCase):
         os.utime(path, (stamp, stamp))
         return path
 
-    def answered(self, text='вопрос Дениса'):
+    def answered(self, text='вопрос владельца'):
         return [tg('1', '2026-11-07T09:20:00.000Z', text), reply('2026-11-07T09:20:10.000Z', 'r', 'ответ'),
                 result('2026-11-07T09:20:11.000Z', 'r', 'sent'), say('2026-11-07T09:20:12.000Z', 'готово')]
 
@@ -221,7 +221,7 @@ class Transfer(unittest.TestCase):
         self.assertEqual([a for a in self.ctl_args if a.startswith('start')], ['start - 1'])
         self.assertFalse(any(e[0] == 'rsync' and e[1].endswith('.jsonl') and e[2] for e in self.events))
 
-    def test_to_prod_finished_work_waits_for_denis(self):
+    def test_to_prod_finished_work_waits_for_owner(self):
         self.write_conversation(self.hist, 'dev1', self.answered())
         M._on_job('prod', 'по кнопке', '', False)
         brief = self.briefs[-1]
@@ -229,7 +229,7 @@ class Transfer(unittest.TestCase):
         self.assertIn('Работу сам не начинай', brief)
 
     def test_to_prod_refreshes_stale_files_before_brief(self):
-        (self.project / 'denis_last.md').write_text('СТАРЫЙ ФАЙЛ')
+        (self.project / 'owner_last.md').write_text('СТАРЫЙ ФАЙЛ')
         self.write_conversation(self.hist, 'dev1', self.answered('сегодняшний вопрос'))
         M._on_job('prod', 'по кнопке', '', False)
         self.assertIn('сегодняшний вопрос', self.briefs[-1])
@@ -262,7 +262,7 @@ class Transfer(unittest.TestCase):
         self.assertFalse(M.mode()['active'])
 
     def test_to_prod_check_crash_keeps_transfer_and_warns(self):
-        """R4-1: записка уже у PROD, а сама проверка доставки упала (ssh): передача не откатывается, Денис получает ⚠️."""
+        """R4-1: записка уже у PROD, а сама проверка доставки упала (ssh): передача не откатывается, владелец получает ⚠️."""
         self.write_conversation(self.hist, 'dev1', self.unanswered())
 
         def boom(m, path):
@@ -308,7 +308,7 @@ class Transfer(unittest.TestCase):
         (self.project / 'card.md').unlink()
         self.write_conversation(self.hist, 'dev1', self.answered())
         M._on_job('prod', 'по кнопке', '', False)
-        self.assertIn('карточка, сообщения Дениса и хвост беседы', self.last_note().split('Не подтверждено:')[-1])
+        self.assertIn('карточка, сообщения владельца и хвост беседы', self.last_note().split('Не подтверждено:')[-1])
 
     # ── PROD -> dev ──────────────────────────────────────────────────────────
     def go_back(self, restore=True):
@@ -324,7 +324,7 @@ class Transfer(unittest.TestCase):
         self.prod_names = [os.path.join(self.hist, 'prod1.jsonl')]
         res = self.go_back()
         self.assertTrue(res['ok'])
-        last = (self.project / 'denis_last.md').read_text()
+        last = (self.project / 'owner_last.md').read_text()
         self.assertIn('вопрос с PROD', last)
         self.assertLess(last.index('старое сообщение'), last.index('вопрос с PROD'))   # свежее идёт последним, а не пропадает
         tail = (self.project / 'handoff_tail.md').read_text()
@@ -352,7 +352,7 @@ class Transfer(unittest.TestCase):
         order = [e for e in self.events if e[0] in ('ctl', 'rsync')]
         stop_at = order.index(('ctl', 'stop'))
         self.assertTrue(any(e[0] == 'rsync' and e[1].endswith('prod1.jsonl') for e in order[stop_at:]), order)
-        self.assertIn('поздняя запись при остановке', (self.project / 'denis_last.md').read_text())
+        self.assertIn('поздняя запись при остановке', (self.project / 'owner_last.md').read_text())
         self.assertEqual(self.nai.handoff_tail_state(), 'unfinished')
 
     def test_back_success_message_and_delivery(self):

@@ -241,7 +241,7 @@ class SideClaudeStart(unittest.TestCase):
     """Запуск побочной сессии Claude на dev, пока основной остановлен (2b). Живой запуск не делается: subprocess подменён."""
 
     def ns(self, folder):
-        return {'BASE': folder, 'cfg': lambda: {'screen_session': 'darqai'}}
+        return {'BASE': folder, 'cfg': lambda: {'screen_session': 'testscreen'}}
 
     def runner(self, alive, start_rc=0, ready=True, calls=None, plugin=False):
         def run(args, **kw):
@@ -250,7 +250,7 @@ class SideClaudeStart(unittest.TestCase):
             if args[0] == 'pgrep':
                 return SimpleNamespace(returncode=0 if plugin else 1, stdout='', stderr='')
             if args[:2] == ['screen', '-ls']:
-                return SimpleNamespace(returncode=0, stdout=('There is a screen on:\n\t123.darqai\t(Detached)\n' if alive[0] else 'No Sockets found.\n'), stderr='')
+                return SimpleNamespace(returncode=0, stdout=('There is a screen on:\n\t123.testscreen\t(Detached)\n' if alive[0] else 'No Sockets found.\n'), stderr='')
             if args[0] == 'systemd-run':
                 if start_rc == 0:
                     alive[0] = True
@@ -272,12 +272,15 @@ class SideClaudeStart(unittest.TestCase):
         alive, calls = [False], []
         with tempfile.TemporaryDirectory() as folder, mock.patch.object(cc_fleet.subprocess, 'run', side_effect=self.runner(alive, calls=calls)), \
                 mock.patch.object(cc_fleet.time, 'sleep'):
-            self.assertEqual(cc_fleet.start_side_claude(self.ns(folder)), (True, ''))
+            ns = self.ns(folder)
+            self.assertEqual(cc_fleet.start_side_claude(ns), (True, ''))
             self.assertFalse(list(Path(folder).iterdir()), 'временный файл экрана удалён')
+            side = cc_fleet.side_script(ns)
         starts = [c for c in calls if c[0] == 'systemd-run']
         self.assertEqual(len(starts), 1)
-        self.assertEqual(starts[0][-1], cc_fleet.START_SIDE)
-        self.assertNotEqual(cc_fleet.START_SIDE, '/root/start_claude.sh', 'основной скрипт с Telegram не используется')
+        self.assertEqual(starts[0][-1], side)
+        self.assertTrue(side.endswith('/start_claude_side.sh'), 'побочный скрипт лежит рядом с панелью')
+        self.assertNotIn('start_claude.sh', side.rsplit('/', 1)[-1].replace('start_claude_side.sh', ''), 'основной скрипт с Telegram не используется')
 
     def test_session_that_brought_telegram_plugin_is_stopped_at_once(self):
         """R2-3: если --settings не отключил плагин, побочную гасим — иначе второй опрос бота отнимает сообщения у ведущего."""
@@ -287,7 +290,7 @@ class SideClaudeStart(unittest.TestCase):
             ok, message = cc_fleet.start_side_claude(self.ns(folder))
         self.assertFalse(ok)
         self.assertIn('плагином Telegram', message)
-        self.assertIn(['screen', '-S', 'darqai', '-X', 'quit'], calls)
+        self.assertIn(['screen', '-S', 'testscreen', '-X', 'quit'], calls)
         self.assertIn(['pkill', '-f', cc_fleet.SIDE_TG_MARK], calls)
         self.assertIn(cc_fleet.SIDE_CLAUDE_FLAG, [c.args[0] for c in unlink.call_args_list])
 
@@ -297,7 +300,7 @@ class SideClaudeStart(unittest.TestCase):
                 mock.patch.object(cc_fleet.time, 'sleep') as nap:
             self.assertEqual(cc_fleet.start_side_claude(self.ns(folder)), (True, ''))
         nap.assert_any_call(cc_fleet.SIDE_TG_SETTLE)
-        self.assertNotIn(['screen', '-S', 'darqai', '-X', 'quit'], calls)
+        self.assertNotIn(['screen', '-S', 'testscreen', '-X', 'quit'], calls)
 
     def test_script_refusal_reports_and_does_not_wait(self):
         alive = [False]
@@ -327,10 +330,10 @@ class SideClaudeStart(unittest.TestCase):
         self.assertIn('Не удалось запустить', message)
 
     def test_side_script_does_not_leave_bare_bash_after_claude_exits(self):
-        """R2-1: после выхода Claude screen darqai должен закрыться; голый bash считался бы «основной Claude работает»."""
-        text = (Path(__file__).parent / 'start_claude_side.sh').read_text(encoding='utf-8')
+        """R2-1: после выхода Claude screen testscreen должен закрыться; голый bash считался бы «основной Claude работает»."""
+        text = (Path(__file__).parent / 'scripts' / 'start_claude_side.sh').read_text(encoding='utf-8')
         self.assertNotIn('exec bash', text)
-        line = [x for x in text.splitlines() if x.startswith('screen -U -S darqai')][0]
+        line = [x for x in text.splitlines() if x.startswith('screen -U -S "$SCREEN"')][0]
         self.assertTrue(line.rstrip().endswith('rm -f $SIDE_FLAG"'), line[-80:])   # claude …; rm -f флаг — и всё
 
     def test_flag_helper_follows_file(self):
@@ -353,7 +356,7 @@ class SideClaudeRoute(unittest.TestCase):
         helper = overview.Routes('fixture')
         self.addCleanup(helper.doCleanups)   # временные папки заготовки маршрута
         handler, ns = helper.fixture('/api/console/input', dict(session='claude', request_id='side-req-0001', text='как дела?', **body))
-        ns['cfg'] = lambda: {'screen_session': 'darqai'}
+        ns['cfg'] = lambda: {'screen_session': 'testscreen'}
         ns['session_busy'] = lambda: False
         patches = dict(
             alive=mock.patch.object(cc_fleet, 'claude_alive', return_value=alive),
@@ -413,14 +416,14 @@ class SideTeardown(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.flag = Path(self.tmp.name) / 'side_claude.json'
-        self.screen = [False]     # есть ли screen darqai
+        self.screen = [False]     # есть ли screen testscreen
         self.plugin = [False]     # работает ли плагин Telegram (у основного Claude он есть)
         self.runs = []
 
         def run(args, timeout=30):
             self.runs.append(list(args))
             if args[:2] == ['screen', '-ls']:
-                return 0, ('\t123.darqai\t(Detached)\n' if self.screen[0] else 'No Sockets found.')
+                return 0, ('\t123.testscreen\t(Detached)\n' if self.screen[0] else 'No Sockets found.')
             if args[:2] == ['screen', '-S'] and 'quit' in args:
                 self.screen[0] = False
                 self.plugin[0] = False
@@ -437,7 +440,7 @@ class SideTeardown(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
         self.nai = cc_notion_ai.NotionAI.__new__(cc_notion_ai.NotionAI)
-        self.nai.ns = {'cfg': lambda: {'screen_session': 'darqai'}}
+        self.nai.ns = {'cfg': lambda: {'screen_session': 'testscreen'}}
 
     def start_side(self):
         self.screen[0], self.plugin[0] = True, False
@@ -483,7 +486,7 @@ class SideTeardown(unittest.TestCase):
         import re
         source = Path(self.M.__file__).read_text()          # SIDE_FLAG подменён в setUp, поэтому сверяем по тексту модуля
         self.assertEqual(re.search(r"^SIDE_FLAG = '([^']+)'", source, re.M).group(1), cc_fleet.SIDE_CLAUDE_FLAG)
-        self.assertIn('SIDE_FLAG=' + cc_fleet.SIDE_CLAUDE_FLAG, Path(__file__).with_name('start_claude_side.sh').read_text())
+        self.assertIn('SIDE_FLAG="$BASE/' + Path(cc_fleet.SIDE_CLAUDE_FLAG).name + '"', (Path(__file__).parent / 'scripts' / 'start_claude_side.sh').read_text())
 
 
 if __name__ == '__main__':

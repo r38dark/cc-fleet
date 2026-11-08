@@ -748,7 +748,7 @@ def collect(force=False, force_account=None, renew_account=None):
                         and (old.get("plan") == "free" or not cc_avail.reset_passed(old)))
         # после 429 этот аккаунт не трогаем до конца его паузы — показываем кэш.
         # Без исключения для force_account: кнопка "Я продлил" раньше била мимо
-        # паузы и могла продлевать 429 повторным запросом (та же дыра из 52631).
+        # паузы и могла продлевать 429 повторным запросом.
         if old.get("ts") and time.time() < backoff_until.get(n, 0):
             stale_ok = True
         if stale_ok:
@@ -2252,6 +2252,12 @@ def _renewal_applicable(row):
     return row.get("plan") == "pro"
 
 
+def _page_tz():
+    """IANA-имя зоны для времени на странице (config.json "tz"); пусто — браузер показывает свою зону."""
+    name = str(cfg().get("tz") or "")
+    return name if re.fullmatch(r"[A-Za-z0-9_+./-]{1,64}", name) else ""
+
+
 def _local_hm(iso):
     # время сброса, коротко: «07:40». Если self-host крутится не в твоём
     # часовом поясе (сервер в одном регионе, ты в другом) — голый
@@ -2390,7 +2396,7 @@ def _week_cap_warn(snap):
         head = f"⚠️ Claude: неделя {n} дошла до {round(w)}% (потолок {cap:g}%)."
         text = None
         if n != act:
-            # обычная смена аккаунта, а не пауза: «Пауза на недельном потолке» тут ни при чём (51618)
+            # обычная смена аккаунта, а не пауза: «Пауза на недельном потолке» тут ни при чём
             text = (f"ℹ️ Claude: неделя {n} — {round(w)}%, это потолок балансера"
                     + (f" (последний {100 - cap:g}% — запас)" if cap < 100 else "") + "."
                     + f" {n} отдыхает до сброса недели"
@@ -2775,7 +2781,7 @@ def pause_state():
             sys.path.insert(0, BASE)
         import pause_ctl  # данные модуль читает с диска на каждый вызов — кэш не мешает
         d = pause_ctl.level_state()
-        # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем (Денис 62292)
+        # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем
         d["remote"] = pause_ctl._remote_active()
         d["ok"] = True
         return d
@@ -2839,7 +2845,7 @@ class H(BaseHTTPRequestHandler):
             if not self.headers.get("X-Auth-User"):
                 return self._send(403, {"error": "forbidden"})
             # токен вшивается в страницу: браузер может не переслать Basic Auth в fetch
-            html = PAGE.replace("__TOKEN__", cfg().get("hook_token", "")).replace("__PAGE_VER__", VERSION)
+            html = PAGE.replace("__TOKEN__", cfg().get("hook_token", "")).replace("__PAGE_VER__", VERSION).replace("__FLEET_TZ__", _page_tz())
             return self._send(200, html.encode(), "text/html; charset=utf-8")
         if u.path == "/api/limits":
             if not self._authed():
@@ -3326,6 +3332,7 @@ PAGE = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude — лимиты аккаунтов</title>
 <link rel="icon" href="data:,">
+<script>window.FLEET_TZ='__FLEET_TZ__'||undefined;</script>
 <script>try{localStorage.removeItem('cc_skin')}catch(e){}try{if(localStorage.getItem('cc_conly')==='1')document.documentElement.classList.add('conly')}catch(e){}</script>
 <style>
 :root{--bg:#0f1115;--card:#181c24;--txt:#e8eaf0;--mut:#8b93a7;--ok:#34c07c;--warn:#e8b93e;--bad:#e05b5b;--acc:#7c9aff}
@@ -5050,7 +5057,7 @@ function idleUi(d,dot,txt,who,go){
  if(!idle)return;
  dot.className='termdot idle';
  let t=txt;
- if(d.stopped){const at=new Date(d.stopped*1000).toLocaleTimeString('ru-RU',{timeZone:'Asia/Irkutsk',hour:'2-digit',minute:'2-digit'});t+=' '+tr('cxcShown',who,at);}
+ if(d.stopped){const at=new Date(d.stopped*1000).toLocaleTimeString('ru-RU',{timeZone:window.FLEET_TZ,hour:'2-digit',minute:'2-digit'});t+=' '+tr('cxcShown',who,at);}
  $('#termIdleTxt').textContent='⏸ '+t;
  b.hidden=!go;
  if(go){b.textContent=go.label;b.disabled=!!go.disabled;b.dataset.go=go.id;}
@@ -5071,8 +5078,8 @@ function cxConsSb(sb){return tr(sb==='workspace-write'?'cxcSbWrite':sb==='danger
 // «не запущена» / кнопка остановки — для вкладки Codex
 let cxAutoGo=true;  // вкладка Codex сама запускает консоль (как у Claude); после остановки или ошибки — только кнопкой
 let cxStarting=false;
-// «Сжать контекст» и «Новая сессия» в панели консоли на вкладках Claude DEV, Claude PROD и Codex (Денис 62218, 62225): видны всегда, сессия не запущена — нажатие вернёт понятную ошибку.
-// Кнопки «Остановить консоль» нет (Денис 62225): консоль Codex запускается сама и гасится профилем.
+// «Сжать контекст» и «Новая сессия» в панели консоли на вкладках Claude DEV, Claude PROD и Codex: видны всегда, сессия не запущена — нажатие вернёт понятную ошибку.
+// Кнопки «Остановить консоль» нет: консоль Codex запускается сама и гасится профилем.
 function ctActsSync(){const k=consCur(),show=k==='claude'||k==='prod'||k==='codex';
  $('#ctCompact').hidden=$('#ctNew').hidden=!show;
  $('#cTabs').classList.toggle('cacts',show);$('.termwrap').classList.toggle('hascacts',show);
@@ -6642,7 +6649,7 @@ function ccpRender(){
  // приоритет: пауза отключена кнопкой > пауза (в ней уже есть будильник) >
  // переключаться некуда > активный забит
  const mode=pause.override?'off':pause.active?'pause':lvl;
- // [remote] работа на Claude PROD: лимиты DEV не значат «переключаться некуда» — переключились туда (Денис 62292)
+ // [remote] работа на Claude PROD: лимиты DEV не значат «переключаться некуда» — переключились туда
  if(d.remote&&['hard','week','weekrisk','gate'].includes(mode)){el.hidden=true;return;}
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);

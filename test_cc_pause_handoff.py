@@ -1,4 +1,4 @@
-# Вместо паузы по лимитам — передача на Claude PROD (Денис 62160, 07.11.26): хуки просят панель, панель передаёт сразу.
+# Вместо паузы по лимитам — передача на Claude PROD (, 07.11.26): хуки просят панель, панель передаёт сразу.
 # Ни боевая папка, ни Telegram, ни ssh не трогаются: все файлы во временной папке.
 # python3 -m unittest test_cc_pause_handoff -v
 import argparse
@@ -261,7 +261,7 @@ class Tick(Files):
         self.state = dict(native=dict(level='hard', role='solo', stale=False, notion_active=False),
                           prod=dict(usable=True, why='', row={'five_hour': {'pct': 12.0}, 'seven_day': {'pct': 9.0}}))
         A._snapshot = lambda ns, mid: (self.state['native'], self.state['prod'])
-        A._queue_text = lambda: ('1) 20:00 от Denis:\nпривет', [111.0])
+        A._queue_text = lambda: ('1) 20:00 от Owner:\nпривет', [111.0])
         self.taken = []
         A._queue_taken = self.taken.append
         self.md = dict(active=False)
@@ -351,16 +351,16 @@ class Tick(Files):
 
 class Queue(Files):
     def test_text_and_taken_roundtrip(self):
-        rows = [dict(ts=1.0, chat_id='1', message_id='1', user='Denis', text='первое', taken_ts=0),
-                dict(ts=2.0, chat_id='1', message_id='2', user='Denis', text='второе', taken_ts=0),
-                dict(ts=3.0, chat_id='1', message_id='3', user='Denis', text='старое', taken_ts=9.0)]
+        rows = [dict(ts=1.0, chat_id='1', message_id='1', user='Owner', text='первое', taken_ts=0),
+                dict(ts=2.0, chat_id='1', message_id='2', user='Owner', text='второе', taken_ts=0),
+                dict(ts=3.0, chat_id='1', message_id='3', user='Owner', text='старое', taken_ts=9.0)]
         Q._rewrite(rows)
         text, stamps = A._queue_text()
         self.assertIn('первое', text)
         self.assertIn('второе', text)
         self.assertNotIn('старое', text)
         self.assertEqual(stamps, [1.0, 2.0])
-        Q._rewrite(Q._rows() + [dict(ts=4.0, chat_id='1', message_id='4', user='Denis', text='пришло позже', taken_ts=0)])
+        Q._rewrite(Q._rows() + [dict(ts=4.0, chat_id='1', message_id='4', user='Owner', text='пришло позже', taken_ts=0)])
         A._queue_taken(stamps)
         left = [r['text'] for r in Q._pending()]
         self.assertEqual(left, ['пришло позже'])                   # не помечаем то, что пришло уже после выборки
@@ -370,7 +370,7 @@ class Queue(Files):
         A._queue_taken([])
 
     def test_ack_says_handoff_not_pause(self):
-        args = argparse.Namespace(chat='1', msg_id='5', user='Denis', ts='', text_file='', notify=False)
+        args = argparse.Namespace(chat='1', msg_id='5', user='Owner', ts='', text_file='', notify=False)
         import io
         import contextlib
         import sys
@@ -465,7 +465,7 @@ class Hooks(unittest.TestCase):
         text = os.path.join(self.d, 'msg.txt')
         with open(text, 'w', encoding='utf-8') as f:
             f.write('привет')
-        r = self.run_py('tg_queue.py', 'enqueue', '--chat', '1', '--msg-id', '7', '--user', 'Denis', '--ts', '', '--text-file', text)
+        r = self.run_py('tg_queue.py', 'enqueue', '--chat', '1', '--msg-id', '7', '--user', 'Owner', '--ts', '', '--text-file', text)
         self.assertEqual(r.returncode, 10, r.stdout + r.stderr)
         self.assertIn('передаю работу на Claude PROD', r.stdout)
         self.assertFalse(self.pause_active())

@@ -18,7 +18,7 @@ SIDE_LABEL = '[побочный вопрос из консоли: ответь �
 SLASH_COMMAND = re.compile(r'(/[A-Za-z][A-Za-z0-9_-]{0,79})(?:[ \t]+(.*))?')   # как в _claude и cc_codex_console.send_input
 
 
-START_SIDE = '/root/start_claude_side.sh'            # побочная сессия Claude без Telegram, только чтение
+START_SIDE = '/opt/cc-limits/start_claude_side.sh'    # запасной путь; настоящий — config.json «start_claude_side» (side_script)
 SIDE_CLAUDE_FLAG = '/opt/cc-limits/side_claude.json'  # пишет скрипт запуска, стирает сам Claude при выходе
 SIDE_READY = ('for shortcuts', 'bypass permissions', '❯')   # признаки готового приглашения ввода на экране Claude
 SIDE_START_WAIT = 45
@@ -86,13 +86,22 @@ def _quit_side(ns):
         pass
 
 
+def side_script(ns):
+    """Скрипт побочной сессии Claude: config.json «start_claude_side», иначе start_claude_side.sh рядом с панелью."""
+    try:
+        custom = str(ns['cfg']().get('start_claude_side') or '').strip()
+    except Exception:
+        custom = ''
+    return custom or os.path.join(str(ns.get('BASE') or os.path.dirname(START_SIDE)), 'start_claude_side.sh')
+
+
 def start_side_claude(ns):
     """Запускает побочную сессию Claude на dev, если основной остановлен. Возвращает (ok, сообщение).
     Основной Claude, уже работающий в том же screen, не трогаем: тогда ничего не запускаем и сообщаем, что запуск не нужен."""
     if claude_alive(ns):
         return True, ''
     try:
-        result = subprocess.run(['systemd-run', '--scope', '--quiet', '--unit', 'claude-side-%d' % int(time.time()), START_SIDE],
+        result = subprocess.run(['systemd-run', '--scope', '--quiet', '--unit', 'claude-side-%d' % int(time.time()), side_script(ns)],
                                 capture_output=True, text=True, timeout=90)
     except (OSError, subprocess.SubprocessError) as exc:
         return False, 'Не удалось запустить побочную сессию Claude: ' + type(exc).__name__

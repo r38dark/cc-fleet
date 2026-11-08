@@ -1,3 +1,5 @@
+import os
+os.environ["CC_FLEET_TZ"] = "Asia/Irkutsk"   # зона владельца в тестах не зависит от config.json и пояса сервера
 import json, tempfile, unittest, time, threading
 from pathlib import Path
 import cc_notion_ai as M
@@ -53,14 +55,14 @@ class T(unittest.TestCase):
         s.d = tempfile.mkdtemp(); s.sent = []; s.runs = []; s.tg = []; s.posts = []
         (Path(s.d)/'profile_runtime').mkdir(); (Path(s.d)/'profile_runtime/claude-policy.json').write_text('{"their":1}')
         (Path(s.d)/'h.jsonl').write_text('')
-        s.ns = {'BASE': s.d, 'cfg': lambda: {'screen_session': 'darqai'}, 'tg_notify': lambda t: s.sent.append(('claude', t)), 'H': H,
+        s.ns = {'BASE': s.d, 'cfg': lambda: {'screen_session': 'testscreen'}, 'tg_notify': lambda t: s.sent.append(('claude', t)), 'H': H,
                 'PAGE': '<html><head></head><body>x\n mirrorLoad();\n\n loadRotation();\n</body></html>', 'transcripts_dir': lambda: s.d}
         class B: BRIDGE = type('X', (), {'send': lambda self, t: s.sent.append(('codex', t))})()
         s.ns['cc_codex_bridge'] = B
         s.claude = [True]
         def run(args, timeout=30):
             s.runs.append(args)
-            if args[:2] == ['screen', '-ls']: return 0, ('\t123.darqai\t(Detached)\n' if s.claude[0] else 'No Sockets')
+            if args[:2] == ['screen', '-ls']: return 0, ('\t123.testscreen\t(Detached)\n' if s.claude[0] else 'No Sockets')
             if args[:2] == ['screen', '-S'] and 'quit' in args: s.claude[0] = False; return 0, ''
             if args[0] == 'pgrep': return (0 if s.claude[0] else 1), ''
             if args[0] == 'systemd-run': s.claude[0] = True; return 0, ''
@@ -69,7 +71,7 @@ class T(unittest.TestCase):
         M._run = run; M.INBOX = s.d + '/inbox'; M.SIDE_FLAG = s.d + '/side_claude.json'   # stop_claude стирает флаг побочной сессии: не по боевому пути
         M.NotionAI._later = lambda self, fn, *a: fn(*a)
         M.NotionAI.tg_api = lambda self, method, payload: (s.tg.append((method, payload)), {'result': {'message_id': 77}})[1]
-        M.NotionAI.tg_chats = lambda self: ['262033135']
+        M.NotionAI.tg_chats = lambda self: ['100000001']
         M.NotionAI.post_chat = lambda self, text: s.posts.append(text)
         s.retries = []; M.NotionAI._codex_restore_retry = lambda self, data: s.retries.append(data)
         s.p = Profiles(s); s.nai = M.install(s.ns, s.p)
@@ -198,7 +200,7 @@ class T(unittest.TestCase):
     def test_resume_snapshot_validation_and_do_not_overwrite(s):
         tid='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
         history=Path(s.d)/(tid+'.jsonl');history.write_text('test')
-        s.ns['cfg']=lambda:{'screen_session':'darqai','transcripts_dir':s.d}
+        s.ns['cfg']=lambda:{'screen_session':'testscreen','transcripts_dir':s.d}
         good={'thread_id':tid,'history':str(history),'cwd':s.d,'model':'claude-test','effort':'xhigh'}
         s.assertTrue(s.nai.handoff_snapshot_save(good));s.assertEqual(s.nai.handoff_snapshot_load(),good)
         s.assertFalse(s.nai.handoff_snapshot_save(dict(good,thread_id='bad')))
@@ -269,7 +271,7 @@ class T(unittest.TestCase):
         s.assertTrue(text.isascii())
         s.assertFalse(any(ord(c) in {36, 92, 94, 34, 39, 96} or ord(c) < 32 or ord(c) == 127 for c in text))
         s.assertIn('current project folder ' + str(proj), text)
-        s.assertIn('card.md first, then denis_last.md', text)
+        s.assertIn('card.md first, then owner_last.md', text)
         s.assertNotIn('Read all .md notes', text)
         s.assertNotIn('older than', text)
         for target in ('codex', 'notion'):
@@ -303,17 +305,17 @@ class T(unittest.TestCase):
         hist.write_text(json.dumps(dict(type='user', isMeta=True, timestamp='2026-11-06T10:20:11.838Z', message=dict(role='user', content=tg))) + '\n')
         (Path(s.d) / 'profile_runtime/last-claude-session.json').write_text(json.dumps(dict(history=str(hist))))
         s.assertTrue(s.nai.handoff_sync('notion'))
-        text = (proj / 'denis_last.md').read_text()
+        text = (proj / 'owner_last.md').read_text()
         s.assertIn('06.11 18:20 · Telegram: привет, проверка', text)  # UTC+8
-        s.assertEqual(oct((proj / 'denis_last.md').stat().st_mode & 0o777), '0o644')
+        s.assertEqual(oct((proj / 'owner_last.md').stat().st_mode & 0o777), '0o644')
         sig = json.loads((Path(s.d) / 'profile_runtime/handoff-sync.json').read_text())['notion']
         names = [x[0] for x in sig]
         s.assertIn('current_project/card.md', names)
-        s.assertIn('current_project/denis_last.md', names)
+        s.assertIn('current_project/owner_last.md', names)
         s.assertNotIn('notion.md', names)
         s.assertIn('codex.md', names)
         s.assertIn('current_project', ' '.join(str(x) for x in s.posts))  # подсказка про папку ушла в чат Notion
-        s.assertEqual([x for x in proj.iterdir() if x.name.startswith('.denis_last')], [])  # временный файл убран
+        s.assertEqual([x for x in proj.iterdir() if x.name.startswith('.owner_last')], [])  # временный файл убран
 
     def history_files(s, **files):
         """Папка бесед в песочнице: {имя: (строки, сколько секунд назад изменена)}."""
@@ -337,8 +339,8 @@ class T(unittest.TestCase):
         s.history_files(prod=([tg('2', '2026-11-07T09:20:00.000Z', 'свежий вопрос с PROD'),
                                reply('2026-11-07T09:20:10.000Z', 'r', 'ответил'), result('2026-11-07T09:20:11.000Z', 'r', 'sent'),
                                say('2026-11-07T09:20:12.000Z', 'готово')], 60))
-        s.assertTrue(s.nai.handoff_refresh_denis_last())
-        last = (proj / 'denis_last.md').read_text()
+        s.assertTrue(s.nai.handoff_refresh_owner_last())
+        last = (proj / 'owner_last.md').read_text()
         s.assertIn('07.11 17:20 · Telegram: свежий вопрос с PROD', last)
         s.assertNotIn('старое сообщение', last)
         tail = (proj / 'handoff_tail.md').read_text()
@@ -352,20 +354,20 @@ class T(unittest.TestCase):
         folder, proj = s.project_setup()
         s.history_files(prod=([tg('2', '2026-11-07T09:20:00.000Z', 'вопрос на PROD')], 120),
                         dev=([tg('3', '2026-11-07T09:25:00.000Z', 'вопрос после возврата')], 10))
-        s.nai.handoff_refresh_denis_last()
-        last = (proj / 'denis_last.md').read_text()
+        s.nai.handoff_refresh_owner_last()
+        last = (proj / 'owner_last.md').read_text()
         s.assertIn('вопрос на PROD', last)
         s.assertIn('вопрос после возврата', last)
         s.assertLess(last.index('вопрос на PROD'), last.index('вопрос после возврата'))
 
-    def test_service_inserts_are_not_denis_messages(s):
+    def test_service_inserts_are_not_owner_messages(s):
         from test_cc_handoff_tail import tg
         folder, proj = s.project_setup()
         note = json.dumps(dict(type='user', timestamp='2026-11-07T09:21:00.000Z', message=dict(role='user', content='<task-notification><task-id>x</task-id></task-notification>')))
         resumed = json.dumps(dict(type='user', timestamp='2026-11-07T09:22:00.000Z', message=dict(role='user', content='This session is being continued from a previous conversation')))
         s.history_files(a=([tg('2', '2026-11-07T09:20:00.000Z', 'настоящее'), note, resumed], 5))
-        s.nai.handoff_refresh_denis_last()
-        last = (proj / 'denis_last.md').read_text()
+        s.nai.handoff_refresh_owner_last()
+        last = (proj / 'owner_last.md').read_text()
         s.assertIn('настоящее', last)
         s.assertNotIn('task-notification', last)
         s.assertNotIn('This session is being continued', last)
@@ -374,12 +376,12 @@ class T(unittest.TestCase):
         from test_cc_handoff_tail import tg
         folder, proj = s.project_setup()
         s.history_files(a=([tg('2', '2026-11-07T09:20:00.000Z', 'доделай правку')], 5))
-        s.nai.handoff_refresh_denis_last()
+        s.nai.handoff_refresh_owner_last()
         s.assertEqual(s.nai.handoff_tail_state(), 'unfinished')
         text = s.nai.handoff_sync_text('claude')
         s.assertTrue(text.isascii())
         s.assertFalse(any(ord(c) in {36, 92, 94, 34, 39, 96} or ord(c) < 32 or ord(c) == 127 for c in text))
-        s.assertIn('card.md first, then denis_last.md, then handoff_tail.md', text)
+        s.assertIn('card.md first, then owner_last.md, then handoff_tail.md', text)
         s.assertIn('Continue from the last step', text)
         s.assertNotIn('Do not start any work', text)
         s.assertIn('Продолжи с последнего шага', s.nai.handoff_sync_text('codex'))
@@ -392,7 +394,7 @@ class T(unittest.TestCase):
         folder, proj = s.project_setup()
         s.history_files(a=([tg('2', '2026-11-07T09:20:00.000Z', 'вопрос'), reply('2026-11-07T09:20:10.000Z', 'r', 'ответ'),
                             result('2026-11-07T09:20:11.000Z', 'r', 'sent'), say('2026-11-07T09:20:12.000Z', 'готово')], 5))
-        s.nai.handoff_refresh_denis_last()
+        s.nai.handoff_refresh_owner_last()
         s.assertEqual(s.nai.handoff_tail_state(), 'finished')
         text = s.nai.handoff_sync_text('claude')
         s.assertIn('Do not start any work', text)
@@ -406,7 +408,7 @@ class T(unittest.TestCase):
         s.history_files(a=([tg('2', '2026-11-07T09:20:00.000Z', 'вопрос')], 5))
         old = time.time() - 3600
         os.utime(proj / 'card.md', (old, old))
-        s.nai.handoff_refresh_denis_last()
+        s.nai.handoff_refresh_owner_last()
         s.assertIn('behind the conversation', s.nai.handoff_sync_text('claude'))
         s.assertIn('отстаёт от беседы', s.nai.handoff_sync_text('codex'))
         os.utime(proj / 'card.md', None)
@@ -423,8 +425,8 @@ class T(unittest.TestCase):
 
     def test_project_no_card_no_refresh(s):
         folder, proj = s.project_setup(card=None)
-        s.assertFalse(s.nai.handoff_refresh_denis_last())
-        s.assertFalse((proj / 'denis_last.md').exists())
+        s.assertFalse(s.nai.handoff_refresh_owner_last())
+        s.assertFalse((proj / 'owner_last.md').exists())
         s.assertFalse(any(x[0].startswith('current_project') for x in s.nai.handoff_sync_signature('claude')))
 
     def test_handoff_claude_screen_delivery(s):
@@ -432,7 +434,7 @@ class T(unittest.TestCase):
         s.assertTrue(s.nai.handoff_sync('claude'))
         calls = s.handoff_stuff()
         s.assertEqual(len(calls), 2)
-        s.assertEqual(calls[0][:7], ['screen', '-S', 'darqai', '-p', '0', '-X', 'stuff'])
+        s.assertEqual(calls[0][:7], ['screen', '-S', 'testscreen', '-p', '0', '-X', 'stuff'])
         s.assertEqual(calls[0][-1], s.nai.handoff_sync_text('claude'))
         s.assertEqual(calls[1][-1], '\r')
         s.assertEqual(s.tg, [])
@@ -707,7 +709,7 @@ class TestCfg(unittest.TestCase):
         M.key_remove(); self.assertEqual(Path(M.AUTH_KEYS).read_text().splitlines(), ['ssh-ed25519 AAAAother user@x'])
     def test_instruction_generic(self):
         M.save_cfg({'owner': 'Аня'}); t = M.instruction()
-        self.assertIn('Владелец — Аня', t); self.assertIn('[TG чч:мм]', t); self.assertNotIn('Денис', t)
+        self.assertIn('Владелец — Аня', t); self.assertIn('[TG чч:мм]', t); self.assertNotIn('farm', t.lower())
     def test_page_has_cfg(self):
         page = '<html><body><div id="scrim"><div class="modal">' + M.CFG_ANCHOR + '</div></div></body></html>'
         out = M.inject(page); self.assertIn('id="naiCfgBox"', out); self.assertIn('id="naiCfgScript"', out)
@@ -859,7 +861,7 @@ class TestUnifiedMenus(unittest.TestCase):
 
 
 class TestHeaderPopups(unittest.TestCase):
-    """Окно справки по аккаунту в шапке (07.11, Денис 61869): три кнопки PROD не влезали в строку и вылезали из окна."""
+    """Окно справки по аккаунту в шапке (07.11, ): три кнопки PROD не влезали в строку и вылезали из окна."""
 
     def setUp(self):
         self.src = open(M.__file__, encoding='utf-8').read()
@@ -869,12 +871,12 @@ class TestHeaderPopups(unittest.TestCase):
         self.assertIn(".nai-pop button{height:32px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", self.src)
 
     def test_prod_popup_is_drawn_like_the_reference(self):
-        # референс Дениса 61873: значок, заголовок, «Закрыть» с крестиком, «Включить авто» с переключателем, широкая кнопка с иконкой
+        # референс значок, заголовок, «Закрыть» с крестиком, «Включить авто» с переключателем, широкая кнопка с иконкой
         for part in ('class="nai-ph"', 'class="nai-pi ', 'class="nai-sw"', 'role="switch" aria-checked="', "pp.classList.add('ag-'+k,'rich')"):
             self.assertIn(part, self.src)
         self.assertIn(".nai-pop.ag-prod .nai-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}", self.src)
         self.assertIn(".nai-pop.ag-prod button.nai-yes{grid-column:1/-1;height:40px;background:#6f59f9", self.src)  # главная кнопка на своей строке
-        self.assertIn(".nai-pop.rich .nai-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}", self.src)  # то же окно у DEV, Codex и Notion AI (Денис 62202)
+        self.assertIn(".nai-pop.rich .nai-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}", self.src)  # то же окно у DEV, Codex и Notion AI
         self.assertIn("'Claude PROD',codex:'Codex',notion:'Notion AI'})[k])+(gp.text?' - '+esc(gp.text):'')", self.src)  # заголовок как на картинке: «Claude PROD - пауза»
         self.assertIn(".nai-auto[aria-checked=\"true\"] .nai-sw::after{transform:translateX(11px)}", self.src)
 
@@ -889,7 +891,7 @@ class TestHeaderPopups(unittest.TestCase):
 
 
 class TestPopupTail(unittest.TestCase):
-    """Окна шапки (Денис 61881): хвост-облачко указывает на нажатый значок, сам значок подсвечен."""
+    """Окна шапки: хвост-облачко указывает на нажатый значок, сам значок подсвечен."""
 
     def setUp(self):
         with open(M.__file__, encoding='utf-8') as f:
@@ -919,7 +921,7 @@ class TestPopupTail(unittest.TestCase):
 
 
 class TestHeaderPopupsHandoff(unittest.TestCase):
-    """Денис 62202: окна всех четырёх значков одинаковые — «авто» у пары DEV↔PROD и кнопка передачи работы у каждого."""
+    """окна всех четырёх значков одинаковые — «авто» у пары DEV↔PROD и кнопка передачи работы у каждого."""
 
     def setUp(self):
         self.src = open(M.__file__, encoding='utf-8').read()
@@ -939,7 +941,7 @@ class TestHeaderPopupsHandoff(unittest.TestCase):
         self.assertIn("(pair?'<button type=\"button\" class=\"nai-auto\"", self.body)
 
     def test_handoff_button_target_rule(self):
-        # работа не у этого агента — одна кнопка «Передать работу в <он>»; работа у него — блок из трёх кнопок (Денис 62212)
+        # работа не у этого агента — одна кнопка «Передать работу в <он>»; работа у него — блок из трёх кнопок
         self.assertIn("act=wk===own,hi=act?null:rm.handInfo(own,md)", self.body)
         self.assertIn("(act?hand3(own,md,rm):'<button type=\"button\" class=\"nai-yes\"", self.body)
         self.assertIn("rm.hand(own,anchor)", self.body)
@@ -973,14 +975,14 @@ class TestHeaderPopupsHandoff(unittest.TestCase):
 
 
 class TestUnifiedWindows(unittest.TestCase):
-    """Окна шестерёнок и моделей (Денис 61881): одно правило размещения, одна прокрутка, скрытое остаётся скрытым."""
+    """Окна шестерёнок и моделей: одно правило размещения, одна прокрутка, скрытое остаётся скрытым."""
 
     def setUp(self):
         import cc_overview as O
         self.js, self.css = O.JS, O.CSS
 
     def test_project_knows_nothing_about_the_supervisor(self):
-        # Денис 61905: проект лежит на GitHub и ставится другими людьми без супервизора; балансер у него открывается чистой страницей
+        # проект лежит на GitHub и ставится другими людьми без супервизора; балансер у него открывается чистой страницей
         import cc_notion_ai as N
         for name, text in (("cc_overview", self.js + self.css), ("cc_notion_ai", open(N.__file__, encoding="utf-8").read())):
             self.assertNotIn("svnav", text, name)
@@ -1016,7 +1018,7 @@ class TestUnifiedWindows(unittest.TestCase):
 
 
 class TestActiveStrip(unittest.TestCase):
-    """Активные аккаунты одной полосой (референс Дениса 61873)."""
+    """Активные аккаунты одной полосой."""
 
     def setUp(self):
         import cc_overview
@@ -1024,7 +1026,7 @@ class TestActiveStrip(unittest.TestCase):
         self.js = cc_overview.JS
 
     def test_phone_console_fills_the_screen(self):
-        # Денис 61924: на телефоне окно консоли (вкладки, консоль, ввод) тянется до низа экрана, «Активные аккаунты» ниже, после прокрутки
+        # на телефоне окно консоли (вкладки, консоль, ввод) тянется до низа экрана, «Активные аккаунты» ниже, после прокрутки
         self.assertIn("html.fleet-term-fill:root:root:not(.conly) .termwrap{height:var(--fleet-term-fill)!important;min-height:0}", self.css)
         self.assertIn(".termwrap .fleet-console-viewport{flex:1 1 0;height:auto;min-height:150px}", self.css)
         self.assertIn("function fitConsoleFill(){", self.js)
@@ -1035,7 +1037,7 @@ class TestActiveStrip(unittest.TestCase):
         self.assertEqual(self.css.count("height:var(--fleet-term-fill)"), 1)  # переменная нужна только одному правилу, и оно привязано к классу
 
     def test_fullscreen_dock_lists_every_engine(self):
-        # Денис 61924: нижняя панель полного экрана показывала только аккаунты Claude; PROD, Codex и Notion AI достраиваются из ячеек полосы
+        # нижняя панель полного экрана показывала только аккаунты Claude; PROD, Codex и Notion AI достраиваются из ячеек полосы
         self.assertIn("function dockExtras(){", self.js)
         self.assertIn("c.dataset.engine!=='claude'", self.js)  # родные аккаунты Claude рисует прежний код
         self.assertIn("window.renderDock=function(){const r=rd.apply(this,arguments);try{dockExtras()}catch(e){}return r}", self.js)
@@ -1044,7 +1046,7 @@ class TestActiveStrip(unittest.TestCase):
         self.assertIn(".dpop .dsub{", self.css)
 
     def test_prod_has_the_same_settings_window_as_claude(self):
-        # Денис 61914: у PROD должно быть столько же настроек, сколько у родного Claude
+        # у PROD должно быть столько же настроек, сколько у родного Claude
         import cc_remote_ui as U
         js = U.JS
         self.assertIn('class="hdrgear fleet-provider-gear rm-gear" title="Настройки PROD"', js)        # шестерёнка в плитке
@@ -1063,13 +1065,13 @@ class TestActiveStrip(unittest.TestCase):
         self.assertIn("sClose();\n", js)                                                              # быстрый выбор модели закрывает окно настроек
 
     def test_header_has_no_refresh_now_icon(self):
-        # Денис 61908: иконки «Обновить сейчас» рядом с шестерёнкой нет; сам элемент остаётся, на него ссылаются скрипты (title, disabled, вставка панели Notion перед ним)
+        # иконки «Обновить сейчас» рядом с шестерёнкой нет; сам элемент остаётся, на него ссылаются скрипты (title, disabled, вставка панели Notion перед ним)
         self.assertIn("html:root:root .hdr #rfBtn{display:none!important}", self.css)
         import cc_limits as L
         self.assertIn('id="rfBtn"', L.PAGE if hasattr(L, "PAGE") else open(L.__file__, encoding="utf-8").read())
 
     def test_fold_arrow_stays_where_the_unfold_arrow_was(self):
-        # Денис 61912: стрелка «свернуть» раскрытой плитки не уезжает влево за название, а стоит там же, где стрелка «развернуть» свёрнутой ячейки
+        # стрелка «свернуть» раскрытой плитки не уезжает влево за название, а стоит там же, где стрелка «развернуть» свёрнутой ячейки
         css = self.css
         tile = "html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open"
         self.assertIn(tile + ">.fleet-live-account{position:relative}", css)
@@ -1083,7 +1085,7 @@ class TestActiveStrip(unittest.TestCase):
         self.assertNotIn("margin-left:9px", strip[:1500])
 
     def test_cells_sit_side_by_side_only_when_there_is_room(self):
-        # Денис 61894: у него две строки при ширине окна меньше 1580 px — порог снижен до 1260 px, ячейки плотнее
+        # у него две строки при ширине окна меньше 1580 px — порог снижен до 1260 px, ячейки плотнее
         self.assertIn("@media(min-width:1260px){html:root:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{grid-template-columns:repeat(2,minmax(0,1fr))}}", self.css)
         self.assertIn("@media(min-width:1260px) and (max-width:1579px){", self.css)  # плотный вид: зазоры 9px, шрифт 11.5px
         self.assertIn("@media(min-width:1260px) and (max-width:1379px){", self.css)  # самый узкий: без подписей «Модель:» и «Effort:»
@@ -1092,7 +1094,7 @@ class TestActiveStrip(unittest.TestCase):
         self.assertIn("#fleetActiveAccounts.fleet-acc-mode .fleet-acc.open{grid-column:1/-1}", self.css)  # раскрытый аккаунт занимает всю ширину
 
     def test_only_claude_accounts_share_a_row(self):
-        # Денис 61881: «в одну строку — только аккаунты Claude»; Codex и Notion AI — каждый на всю ширину
+        # «в одну строку — только аккаунты Claude»; Codex и Notion AI — каждый на всю ширину
         self.assertIn(".fleet-acc:has(>.fleet-compact-account.codex),", self.css)
         self.assertIn(".fleet-acc:has(>.fleet-compact-account.notion){grid-column:1/-1}", self.css)
 
@@ -1103,17 +1105,17 @@ class TestActiveStrip(unittest.TestCase):
         self.assertNotIn("inset 0 0 0 1px #49d6aa}\nhtml:root:root:root", self.css)
 
     def test_reference_pieces_are_there(self):
-        self.assertNotIn('content:"пауза"', self.css)  # Денис 62321: серой плашки «пауза» в строке аккаунта нет, состояние — значок ⏸
+        self.assertNotIn('content:"пауза"', self.css)  # серой плашки «пауза» в строке аккаунта нет, состояние — значок ⏸
         self.assertNotIn('· пауза";color:var(--fleet-muted)', self.css)  # и текста « · пауза» через точку тоже
         self.assertIn('.fleet-compact-name::before{content:"";display:inline-block;flex:none;', self.css)  # значок не схлопывается у длинного имени
         import cc_remote_ui
         self.assertNotIn('.fleet-compact-name::after{content:" · пауза"', open(cc_remote_ui.__file__, encoding='utf-8').read())  # у PROD так же
         self.assertIn('.fleet-compact-window[data-window="week"] .fleet-compact-range::before', self.css)  # значок календаря у даты сброса
-        # Денис 62135: время сброса окна 5ч по Иркутску показывается и в свёрнутой строке (раньше было скрыто)
+        # время сброса окна 5ч по Иркутску показывается и в свёрнутой строке (раньше было скрыто)
         self.assertIn('.fleet-compact-window[data-window="session"] .fleet-compact-range{display:inline-flex', self.css)
         self.assertNotIn('.fleet-compact-window[data-window="session"] .fleet-compact-range{display:none}', self.css)
         self.assertIn('function fiveHourClock(date)', self.js)
-        self.assertIn("liveClockFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk'", self.js)  # время только по Иркутску
+        self.assertIn("liveClockFormat=new Intl.DateTimeFormat('ru-RU',{timeZone:window.FLEET_TZ", self.js)  # время только по Иркутску
         self.assertIn("text=minutes<=0?'сброс ожидается':fiveHourClock(end)+' · через '", self.js)  # в плитке: «20:00 · через 35 мин»
         self.assertIn("@media(min-width:1380px) and (max-width:1899px){", self.css)  # DEV и PROD делят строку: подписи колонок убраны
         self.assertIn("weekday:'short'", self.js)  # «пт 13.11 02:00»

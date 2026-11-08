@@ -67,7 +67,7 @@ class Base(unittest.TestCase):
         cc_remote.STATE_FILE = os.path.join(self.tmp, 's.json')
         M.MODE_FILE = os.path.join(self.tmp, 'mode.json')
         with open(cc_remote.MEMBERS_FILE, 'w') as f:
-            json.dump({'prod': {'label': 'Аккаунт PROD', 'host': '192.0.2.1', 'tmux': 'friend'}}, f)
+            json.dump({'prod': {'label': 'Аккаунт PROD', 'host': '192.0.2.1', 'tmux': 'friend', 'back_host': '192.0.2.2'}}, f)
         self.nai = FakeNai()
         M._NS.clear()
         M._NS.update(NOTION_AI=self.nai, tg_notify=lambda t: None)
@@ -467,10 +467,12 @@ class ProdIo(Base):
         self.assertTrue(M.prod_ready())
 
     def test_orch_script_is_python_with_destination(self):
-        src = M._orch_script('/opt/x/outbox/task.md')
+        src = M._orch_script('/opt/x/outbox/task.md', {'back_host': '203.0.113.7', 'back_key': '/root/.ssh/k'})
         compile(src, 'orch_step.py', 'exec')
         self.assertIn('/opt/x/outbox/task.md', src)
-        self.assertIn(M.DEV_SSH[0], src)
+        self.assertIn('203.0.113.7', src)
+        self.assertIn('/root/.ssh/k', src)
+        self.assertEqual(M.back_ssh({}), ('', M.BACK_KEY))   # без записи пары адреса нет: шаг ведущему не ставится
 
     def test_announce_role(self):
         put = []

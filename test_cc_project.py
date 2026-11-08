@@ -31,7 +31,7 @@ class CcProject(unittest.TestCase):
         text = card.read_text(encoding='utf-8')
         s.assertTrue(text.startswith('# Карточка дела: Тест задачи\nНачато: '))
         s.assertIn('(Claude)', text.splitlines()[1])
-        for h in ('## Цель', '## Этап', '## Сделано и проверено', '## Следующий шаг', '## Файлы и места', '## Открытые вопросы', '## Нельзя без слова Дениса'):
+        for h in ('## Цель', '## Этап', '## Сделано и проверено', '## Следующий шаг', '## Файлы и места', '## Открытые вопросы', '## Нельзя без слова владельца'):
             s.assertIn(h, text)
         s.assertEqual((s.mode(card), s.mode(s.dir)), (0o666, 0o777))
         s.assertFalse((s.dir / 'archive').exists())

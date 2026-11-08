@@ -772,7 +772,7 @@ What they are for: get into the Claude or Codex console on a server with one sho
 Settings come from the panel's `config.json`:
 - `screen_session` — the name of the Claude screen session (default `claude`);
 - `claude_cmd` — how to start Claude, as a whole line (default just `claude`), for example `IS_SANDBOX=1 claude --dangerously-skip-permissions --channels plugin:telegram@claude-plugins-official`. Only needed if you start Claude with flags or channels;
-- `codex_user` — the OS user the Codex console lives under (default `codextrial`).
+- `codex_user` — the OS user the Codex console lives under (default `codex`).
 
 The commands need screen (`apt install screen`) and python3. To leave a console without stopping it: `Ctrl+A`, then `d`.
 
