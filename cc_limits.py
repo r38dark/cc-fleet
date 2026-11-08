@@ -5225,6 +5225,25 @@ function consPick(k){
  consTabs();
 }
 $('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(b&&b.dataset.s!==consCur())consPick(b.dataset.s);});
+// консоль идёт за исполнителем: панель знает, кто сейчас работает (remote_mode.worker: dev/prod/codex/notion).
+// Сменился — вкладка консоли переключается сама. Пока исполнитель тот же, ручной выбор вкладки не трогаем.
+let consFollowed='',consFollowWait=0;
+function consFollow(d){
+ try{
+  const w=d&&d.remote_mode&&d.remote_mode.worker;if(!w)return;
+  let seen=consFollowed;if(!seen){try{seen=localStorage.getItem('cc_conworker')||'';}catch(e){}}
+  if(seen===w)return;
+  const b=document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[w]||'ctClaude');
+  if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())){
+   // страница только открылась: вкладка Notion и данные Codex приходят чуть позже — ждём до 30 с, потом отстаём до следующего опроса
+   const t=Date.now();if(!consFollowWait||t-consFollowWait>30000)consFollowWait=t;
+   if(t-consFollowWait<30000)setTimeout(()=>consFollow(lastSnap),700);
+   return;
+  }
+  consFollowed=w;try{localStorage.setItem('cc_conworker',w);}catch(e){}  // запоминаем до клика: сам клик зовёт consTabs
+  b.click();  // обычный клик: вкладка Notion открывает его чат, остальные закрывают чат Notion и зовут consPick
+ }catch(e){}
+}
 async function cxConsAct(path,quiet){
  const g=$('#termIdleGo');g.disabled=true;
  cxStarting=path==='start';if(cxStarting&&!$('#termIdle').hidden)$('#termIdleTxt').textContent='⏸ '+tr('cxcStarting');
@@ -5321,7 +5340,7 @@ function renderCards(d){
 function setUpd(ts){const t=tr('updated')+' '+new Date(ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');$('#termDot').title=t;$('#rfBtn').title=tr('refresh')+' · '+t}
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
- lastSnap=d;
+ lastSnap=d;consFollow(d);
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
  const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
  $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';

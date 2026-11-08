@@ -198,6 +198,24 @@ class Page(unittest.TestCase):
         self.assertRegex(L.PAGE, r'html:root:root \.iconbtn\.ctab\[data-s="codex"\]\{--tc:104,154,236;')
         self.assertRegex(L.PAGE, r"\.iconbtn\.ctab\[data-s\]\.on\{")
 
+    def test_console_follows_the_working_agent(self):
+        # консоль идёт за исполнителем: сменился remote_mode.worker — вкладка переключается сама, ручной выбор не трогаем
+        page = L.PAGE
+        self.assertRegex(page, r"function consFollow\(d\)\{")
+        self.assertIn("d.remote_mode.worker", page)
+        self.assertIn("{prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[w]||'ctClaude'", page)
+        self.assertRegex(page, r"lastSnap=d;consFollow\(d\);")
+        # запоминаем, за кем уже последовали: и в памяти страницы (localStorage может быть закрыт), и в localStorage
+        self.assertIn("let consFollowed='',consFollowWait=0;", page)
+        self.assertIn("localStorage.setItem('cc_conworker',w)", page)
+        # пока нужной вкладки нет (PROD/Codex недоступны, вкладка Notion ещё не создана) — не запоминаем, ждём до 30 с и повторяем
+        self.assertIn("if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())){", page)
+        self.assertIn("setTimeout(()=>consFollow(lastSnap),700)", page)
+        # запоминаем ДО клика: клик зовёт consPick -> consTabs, а запоминание после клика зациклило бы переключение
+        self.assertLess(page.index("consFollowed=w;try{localStorage.setItem('cc_conworker',w)"), page.index("b.click();  // обычный клик"))
+        # смена вкладки не зависит от скрытости кнопки: на только что открытой странице кнопка PROD ещё скрыта
+        self.assertNotIn("||b.hidden||", page[page.index("function consFollow"):page.index("function consFollow") + 700])
+
     def test_console_tabs_inactive_is_outline_only_active_is_filled(self):
         # просьба владельца: неактивная вкладка — только окантовка без фона, активная окрашена целиком
         css = L.PAGE
