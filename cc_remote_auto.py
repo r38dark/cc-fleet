@@ -75,7 +75,7 @@ def prod_state(row, thr, cap, now=None):
 
 def decide(now, cfg, native, prod, mode, memo):
     """(действие, причина). Действия: None | 'to_prod' | 'to_native' | 'notify_both'.
-    native: level, stale, role, notion_active; prod: usable, why; mode: active, busy, since.
+    native: level, stale, role, notion_active; prod: usable, why; mode: active, busy, since, auto (передачу начал автопереход; нет ключа = да).
     memo (меняется): to_prod, to_native — подряд идущие тики с одним и тем же решением; both_notified, last_return."""
     if not cfg.get("enabled") or mode.get("busy") or native.get("stale"):
         memo.update(to_prod=0, to_native=0)
@@ -101,7 +101,9 @@ def decide(now, cfg, native, prod, mode, memo):
     back = None
     if native_ok and not prod.get("usable"):
         back = "лимит на Claude PROD исчерпан, у Claude DEV есть"
-    elif native_ok and stay >= float(cfg.get("min_stay") or 0):
+    elif native_ok and stay >= float(cfg.get("min_stay") or 0) and mode.get("auto", True):
+        # «вернулся лимит» — только для передач, начатых самим автопереходом из-за нехватки лимита;
+        # ручную передачу (кнопка в панели) человек вернёт сам: лимит у Claude DEV никуда не пропадал
         back = "у Claude DEV вернулся лимит"
     if back:
         memo["to_native"] += 1
@@ -333,7 +335,8 @@ def _tick(ns, kicked=False):
         return None, False
     native, prod = _snapshot(ns, mid)
     md = M.mode()
-    mode = dict(active=bool(md.get("active")), busy=M.busy(), since=md.get("since") or 0)
+    mode = dict(active=bool(md.get("active")), busy=M.busy(), since=md.get("since") or 0,
+                auto=str(md.get("reason") or "").startswith("автопередача"))
     with _lock:
         if kicked:
             _memo["to_prod"] = max(0, int(cfg.get("ticks") or 2) - 1)

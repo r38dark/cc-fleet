@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 
 import cc_remote as R
@@ -79,6 +80,17 @@ class Decide(unittest.TestCase):
         self.assertIsNone(self.run_ticks(3, c, native('none'), prod(), mode(True, since=NOW - 100), mm)[0])  # рано
         self.assertEqual(self.run_ticks(2, c, native('none'), prod(), mode(True, since=NOW - 700), memo())[0], 'to_native')
 
+    def test_manual_handoff_is_not_returned_by_limit_back(self):
+        # 08.11.26: передача кнопкой, у Claude DEV лимит и не пропадал — автовозврат «вернулся лимит» её не трогает
+        md = dict(mode(True, since=NOW - 3600), auto=False)
+        self.assertIsNone(self.run_ticks(5, cfg(), native('none'), prod(), md, memo())[0])
+
+    def test_manual_handoff_still_returns_when_prod_is_exhausted(self):
+        md = dict(mode(True, since=NOW - 30), auto=False)
+        act, why = self.run_ticks(2, cfg(), native('none'), prod(False), md, memo())
+        self.assertEqual(act, 'to_native')
+        self.assertIn('PROD', why)
+
     def test_return_at_once_when_prod_is_exhausted_and_native_is_free(self):
         act, why = self.run_ticks(2, cfg(), native('none'), prod(False), mode(True, since=NOW - 30), memo())
         self.assertEqual(act, 'to_native')
@@ -114,7 +126,7 @@ class ProdState(unittest.TestCase):
 
     def test_expired_token_is_not_the_same_as_no_limit(self):
         """Баг: Claude на PROD давно не работал, токен истёк (живёт ~8 ч и обновляется только в работе), и PROD считался непригодным.
-        Автопередача на него не шла, а владельцу приходило ложное «лимиты закончились и там, и там»."""
+        Автопередача на него не шла, а Денису приходило ложное «лимиты закончились и там, и там»."""
         past = '2026-11-07T01:00:00+00:00'
         future = '2099-01-01T00:00:00+00:00'
         base = {'online': True, 'error': 'token_expired'}
@@ -198,6 +210,24 @@ class Tick(unittest.TestCase):
         self.assertEqual(A.tick(self.ns), 'to_native')
         self.assertEqual(self.calls[0][0], 'off')
         self.assertGreater(A._memo['last_return'], 0)
+
+    def test_tick_manual_button_handoff_stays_on_prod(self):
+        # передача кнопкой («по кнопке в панели») не возвращается сама при свободном лимите Claude DEV
+        A.set_enabled(True)
+        self.md = dict(active=True, since=time.time() - 3600, reason='по кнопке в панели')
+        self.state['native'] = native('none')
+        for _ in range(4):
+            A.tick(self.ns)
+        self.assertEqual(self.calls, [])
+
+    def test_tick_auto_handoff_returns_when_limit_is_back(self):
+        A.set_enabled(True)
+        self.md = dict(active=True, since=time.time() - 3600, reason='автопередача: у Claude DEV нет лимита, на Claude PROD есть')
+        self.state['native'] = native('none')
+        A.tick(self.ns)
+        self.assertEqual(A.tick(self.ns), 'to_native')
+        self.assertEqual(self.calls[0][0], 'off')
+        self.assertIn('вернулся лимит', self.calls[0][1])
 
     def test_failed_start_is_retried_not_reported_as_done(self):
         A.set_enabled(True)
