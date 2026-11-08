@@ -54,6 +54,11 @@ class Output(unittest.TestCase):
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 result = {"ok": False, "error_code": 400, "description": "test failure"} if failed else {"ok": True, "result": {}}
+                if method == "sendPhoto" and not failed:
+                    # как Telegram: фото в том чате и от того бота, куда и кем отправлено (tg_photo это сверяет)
+                    bot = self.path.split("/")[1][len("bot"):].split(":", 1)[0]
+                    result["result"] = {"photo": [{"file_id": "p"}], "chat": {"id": int(data["chat_id"].get_content().strip())},
+                                        "from": {"id": int(bot)}}
                 self.wfile.write(json.dumps(result).encode())
 
             def log_message(self, *args):
@@ -82,25 +87,26 @@ class Output(unittest.TestCase):
     def methods(self):
         return [m for m, _ in self.requests]
 
+    # С 02.11 (просьба владельца) картинки уходят обычным фото с превью (sendPhoto), не документом.
     def test_png_and_jpeg_are_uploaded_unchanged_after_text(self):
         self.put()
         self.put("other.jpg", JPEG)
         self.bot.send_answer("Проверил\n![Рамка](outbox/shot.png)\n![Другое](outbox/other.jpg)")
-        self.assertEqual(self.methods(), ["sendMessage", "sendDocument", "sendDocument"])
+        self.assertEqual(self.methods(), ["sendMessage", "sendPhoto", "sendPhoto"])
         text = self.requests[0][1]["text"]
         self.assertIn("Проверил", text)
         self.assertIn("📎 Рамка", text)
         self.assertNotIn("outbox/", text)
         for (_, parts), expected, name in zip(self.requests[1:], (PNG, JPEG), ("shot.png", "other.jpg")):
             self.assertEqual(parts["chat_id"].get_content().strip(), self.s["chat_id"])
-            self.assertEqual(parts["document"].get_filename(), name)
-            self.assertEqual(hashlib.sha256(parts["document"].get_payload(decode=True)).digest(), hashlib.sha256(expected).digest())
+            self.assertEqual(parts["photo"].get_filename(), name)
+            self.assertEqual(hashlib.sha256(parts["photo"].get_payload(decode=True)).digest(), hashlib.sha256(expected).digest())
 
     def test_absolute_sandbox_and_spaces_and_duplicate(self):
         path = self.put("my shot.png")
         self.bot.send_answer(f"![Скрин](<sandbox:{path}>)\n![Ещё](<outbox/my shot.png>)")
-        self.assertEqual(self.methods().count("sendDocument"), 1)
-        self.assertEqual(self.requests[-1][1]["document"].get_filename(), "my_shot.png")
+        self.assertEqual(self.methods().count("sendPhoto"), 1)
+        self.assertEqual(self.requests[-1][1]["photo"].get_filename(), "my_shot.png")
 
     def test_examples_remote_and_service_messages_are_not_attachments(self):
         self.put()
@@ -138,7 +144,7 @@ class Output(unittest.TestCase):
         for n in range(6):
             self.put(f"{n}.png")
         self.bot.send_answer("\n".join(f"![](outbox/{n}.png)" for n in range(6)))
-        self.assertEqual(self.methods().count("sendDocument"), br.OUT_MAX_FILES)
+        self.assertEqual(self.methods().count("sendPhoto"), br.OUT_MAX_FILES)
         self.assertIn("⚠️", self.requests[0][1]["text"])
         self.requests.clear()
         with patch.object(br, "OUT_MAX_BYTES", 8):
@@ -150,12 +156,12 @@ class Output(unittest.TestCase):
 
     def test_upload_failure_keeps_text_and_masks_errors(self):
         self.put()
-        self.failed_method = "sendDocument"
+        self.failed_method = "sendPhoto"
         self.bot.send_answer("Весь ответ\n![](outbox/shot.png)")
-        self.assertEqual(self.methods(), ["sendMessage", "sendDocument", "sendMessage"])
+        self.assertEqual(self.methods(), ["sendMessage", "sendPhoto", "sendMessage"])
         self.assertIn("Весь ответ", self.requests[0][1]["text"])
         self.assertIn("Не удалось", self.requests[-1][1]["text"])
-        with patch.object(br, "tg_document", side_effect=OSError("http://host/bot" + self.s["token"])):
+        with patch.object(br, "tg_photo", side_effect=OSError("http://host/bot" + self.s["token"])):
             self.bot.send_answer("Ответ\n![](outbox/shot.png)")
         self.assertNotIn(self.s["token"], str(self.logs))
         self.assertNotIn("/bot", str(self.logs))
@@ -171,8 +177,8 @@ class Output(unittest.TestCase):
         with patch.object(br, "run_codex", return_value=("Ответ\n![](outbox/shot.png)", "test")):
             action = unittest.mock.Mock()
             self.bot.ask_codex("покажи скриншот", action)
-        self.assertEqual(self.methods(), ["sendMessage", "sendDocument"])
-        self.assertIn(unittest.mock.call("upload_document"), action.set.call_args_list)
+        self.assertEqual(self.methods(), ["sendMessage", "sendPhoto"])
+        self.assertIn(unittest.mock.call("upload_photo"), action.set.call_args_list)
         self.assertEqual(action.set.call_args_list[-1], unittest.mock.call("typing"))
 
     def test_output_dir_respects_existing_sandbox(self):
@@ -189,7 +195,7 @@ class Output(unittest.TestCase):
         alias.symlink_to(self.cwd, target_is_directory=True)
         self.s["workdir"] = str(alias)
         self.bot.send_answer(f"![]({alias}/outbox/shot.png)\n![]({path})")
-        self.assertEqual(self.methods().count("sendDocument"), 1)
+        self.assertEqual(self.methods().count("sendPhoto"), 1)
 
     def test_profile_change_during_run_uses_original_settings(self):
         self.put()
@@ -201,23 +207,28 @@ class Output(unittest.TestCase):
 
         with patch.object(br, "run_codex", side_effect=answer):
             self.bot.ask_codex("скриншот", unittest.mock.Mock())
-        self.assertEqual(self.methods(), ["sendMessage", "sendDocument"])
+        self.assertEqual(self.methods(), ["sendMessage", "sendPhoto"])
         self.assertEqual(self.requests[1][1]["chat_id"].get_content().strip(), original["chat_id"])
 
 
 class OutputHints(support.Base):
     def test_hint_goes_to_exec_and_console_without_changing_permissions(self):
+        # С 02.11 (просьба владельца) подсказка лежит в постоянных инструкциях AGENTS.md,
+        # а в exec и консоль уходит только текст человека.
         self.image_note_patch.stop()
+        br.ensure_exchange()
+        agents = support.get(os.path.join(self.ex, "AGENTS.md"))
+        self.assertIn("![подпись](outbox/имя.png)", agents)
+        self.assertIn(os.path.join(self.ex, "outbox"), agents)
         self.say("покажи скриншот")
         argv = self.runs()[0]["argv"]
-        self.assertIn("![подпись](outbox/имя.png)", argv[-1])
-        self.assertIn(os.path.join(self.ex, "outbox"), argv[-1])
+        self.assertEqual(argv[-1], "покажи скриншот")
         self.assertEqual(argv[argv.index("-s") + 1], "workspace-write")
         self.assertNotIn("--add-dir", argv)
         console = support.FakeConsole()
         br.CONSOLE = console
         self.say("ещё скриншот")
-        self.assertIn("![подпись](outbox/имя.png)", console.asked[0])
+        self.assertEqual(console.asked[0], "ещё скриншот")
 
 
 if __name__ == "__main__":

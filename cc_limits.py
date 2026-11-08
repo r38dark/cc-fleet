@@ -18,7 +18,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.6"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.7"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3353,6 +3353,7 @@ class H(BaseHTTPRequestHandler):
 
 PAGE = r"""<!doctype html>
 <html lang="ru"><head><script>try{if(localStorage.getItem('cc_has_prod')!=='1')document.documentElement.classList.add('no-prod')}catch(e){document.documentElement.classList.add('no-prod')}</script>
+<script>try{var _u=(localStorage.getItem('cc_unl')||'').split(',');for(var _i=0;_i<_u.length;_i++)if(/^[a-z]+$/.test(_u[_i]))document.documentElement.classList.add('ag-unlinked-'+_u[_i])}catch(e){}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude — лимиты аккаунтов</title>
@@ -3469,6 +3470,7 @@ html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
 html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
 html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
 .tpextra{background:var(--fleet-terminal,#0b0d10);color:#d2dce9;white-space:pre;font:calc(12px*var(--tz,1)*var(--pz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace}
+html:root:root .termwrap.tsplit .tcwrap{white-space:pre-wrap!important;overflow-wrap:anywhere;overflow-x:hidden}
 .termwrap.tsplit .termbox.tpdrop{box-shadow:inset 0 0 0 2px var(--fleet-accent,#73dbb7);background-image:linear-gradient(rgba(115,219,183,.08),rgba(115,219,183,.08))}
 .termwrap.tsplit .tpheads{display:flex;position:absolute;left:0;right:0;top:0;height:30px;z-index:5;pointer-events:none}
 .tphd{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;padding:0 10px;margin:0;font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#9fb0c3;cursor:grab;pointer-events:auto;background:#0e1219;border-bottom:1px solid #263140;user-select:none}
@@ -5198,7 +5200,7 @@ function idleUi(P,d,dot,txt,who,go){
  if(go){b.textContent=go.label;b.disabled=!!go.disabled;b.dataset.go=go.id;}
 }
 try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
-function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
+function prodAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_prod')==='1';return !!(lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}  // снимка ещё нет (первые секунды после обновления страницы): по запомненному cc_has_prod, иначе вкладка PROD на миг откатывается на DEV
 // второй сервер не подключён — прячем всё, что с ним связано (вкладка, плашка шапки, карточка, кнопки передачи); запоминаем, чтобы страница не мигала при загрузке
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
 // запомненная вкладка Codex не выбирается, пока Codex не подключён (призрачная плитка), и консоль Codex сама не стартует без входа в ChatGPT — иначе при каждой загрузке страницы «Нет входа в ChatGPT» (владелец 62657)
@@ -5318,8 +5320,11 @@ function wirePane(P){
 // в узкой панели экран не ломаем переносом строк, а уменьшаем шрифт (не мельче половины), дальше — прокрутка вправо
 function fitPane(P){
  const b=P.box;
+ b.classList.remove('tcwrap');
  if(isNai(P.k)){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  if(!b.closest('.termwrap.tsplit')){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
+ // Codex и Claude DEV рисуют экран шире окна части: сжимать шрифт нельзя (при тех же 100% он выходил мельче соседних, владелец 62811/62838), поэтому строки переносятся
+ if(P.k==='codex'||P.k==='claude'){b.classList.add('tcwrap');if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  // подгонку по ширине меряем при масштабе 100% (--tz=1 на самой части): иначе шрифт, выросший от «+», тут же сжимался обратно, и у частей с длинными строками масштаб не менялся, а у остальных менялся (владелец 62676)
  b.style.setProperty('--tz','1');b.style.setProperty('--pz','1');
  const cs=getComputedStyle(b),pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight),avail=b.clientWidth-pad,need=b.scrollWidth-pad;

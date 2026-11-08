@@ -271,15 +271,18 @@ class Chat(Base):
         saved = (br.MCP_ARGS, br.RESERVE_NOTE)
         br.MCP_ARGS, br.RESERVE_NOTE = (lambda: keys), (lambda: "[РЕЗЕРВ: тест]")
         self.addCleanup(lambda: setattr(br, "MCP_ARGS", saved[0]) or setattr(br, "RESERVE_NOTE", saved[1]))
+        # С 02.11 (просьба владельца) напоминание лежит в AGENTS.md (его переписывает включение резерва через
+        # ensure_exchange), а в сообщение уходит только текст человека.
+        br.ensure_exchange()
+        self.assertIn("[РЕЗЕРВ: тест]", get(os.path.join(self.ex, "AGENTS.md")))
         self.say("вопрос 1")
         self.say("вопрос 2")
         new, resume = self.runs()[0]["argv"], self.runs()[1]["argv"]
         self.assertEqual(resume[:2], ["exec", "resume"])
-        for argv in (new, resume):
+        for argv, text in ((new, "вопрос 1"), (resume, "вопрос 2")):
             i = argv.index("--")
             self.assertEqual(argv[i - 2:i], keys, argv)  # ключи до «--», иначе Codex принял бы их за текст сообщения
-            self.assertEqual(argv[i + 1], "[РЕЗЕРВ: тест] " + argv[-1].split("] ", 1)[1])
-            self.assertTrue(argv[-1].endswith("вопрос 1") or argv[-1].endswith("вопрос 2"))
+            self.assertEqual(argv[i + 1:], [text])
 
     def test_no_reserve_means_clean_exec(self):
         self.say("вопрос")
@@ -324,11 +327,13 @@ class Chat(Base):
         ev = threading.Event()
         br.BRIDGE.worker = threading.Thread(target=ev.wait)
         br.BRIDGE.worker.start()
-        self.addCleanup(br.BRIDGE.worker.join, 5)  # дождаться выхода: живой воркер портил бы следующий тест («ещё работает»)
+        self.addCleanup(br.BRIDGE.worker.join, 5)  # дождаться выхода: живой воркер портил бы следующий тест
         self.addCleanup(ev.set)
         br.BRIDGE.handle_text("ещё вопрос")
-        self.assertIn("ещё работает", self.sent[-1])
+        # С 1.26.0 (просьба владельца 02.11) вместо заглушки «ещё работает» — очередь, с 1.27.2 без уведомления о ней
+        self.assertEqual(self.sent, [])
         self.assertEqual(self.runs(), [])
+        self.assertEqual([e.text for e in br.BRIDGE.inputs.items], ["ещё вопрос"])  # ждёт своей очереди, не потеряно
 
 
 class Tasks(Base):
@@ -507,9 +512,9 @@ class Tasks(Base):
 
 class Profiles(Base):
     def test_builtin_apply(self):
-        want = {"orchestrator": ("orchestrator", "read", "dev"), "codex": ("self", "write", "dev")}
+        want = {"orchestrator": ("orchestrator", "read", "dev"), "codex_solo_full": ("self", "full", "dev")}
         for pid, (mode, acc, rights) in want.items():
-            ok, msg = br.apply_profile(pid)
+            ok, msg = br.apply_profile(pid, "подтверждаю")  # Full включается только словом
             self.assertTrue(ok, msg)
             s = br.load()
             self.assertEqual((s["mode"], s["access"], s["task_rights"], s["enabled"]), (mode, acc, rights, True), pid)
@@ -521,25 +526,25 @@ class Profiles(Base):
         self.assertTrue(br.save({"enabled": False})[0])
         self.assertEqual(br.public()["profile"], "orchestrator")
         self.assertFalse(br.running())
-        ok, msg = br.apply_profile("codex")
+        ok, msg = br.apply_profile("codex_solo_full", "подтверждаю")
         self.assertTrue(ok)
         self.assertIn("Бот выключен", msg)
         self.assertFalse(br.load()["enabled"])
-        self.assertEqual(br.public()["profile"], "codex")
+        self.assertEqual(br.public()["profile"], "codex_solo_full")
         self.assertTrue(br.save({"enabled": True})[0])
         self.assertTrue(br.running())
         self.assertTrue(br.apply_profile("orchestrator")[0])
         self.assertTrue(br.load()["enabled"])
 
     def test_legacy_profile_ids(self):
-        """Профили прежних версий: «Запасной» стал «Codex» (тот же состав), остальные выбором не считаются."""
+        """Профили прежних версий выбором не считаются: встроенного «Codex» (запись) больше нет, остались Оркестратор и Full."""
         self.assertTrue(br.save({"mode": "self", "access": "write"})[0])
-        for old, want in (("standby", "codex"), ("second", ""), ("secretary", ""), ("off", "")):
+        for old, want in (("standby", ""), ("second", ""), ("secretary", ""), ("off", "")):
             s = br.load()
             s["profile"] = old
             br._save(s)
             self.assertEqual(br.public()["profile"], want, old)
-        self.assertTrue(br.save({"mode": "self", "access": "read"})[0])  # «Второй ИИ» (чтение) — не «Codex»
+        self.assertTrue(br.save({"mode": "self", "access": "read"})[0])  # «Второй ИИ» (чтение) — тоже не профиль
         s = br.load()
         s["profile"] = "second"
         br._save(s)
@@ -584,11 +589,11 @@ class Profiles(Base):
         s = br.load()
         s["workdir"], s["project"] = "", os.path.join(self.tmp, "proj")
         br._save(s)
-        ok, msg = br.apply_profile("codex")
+        ok, msg = br.apply_profile("codex_solo_full", "подтверждаю")
         self.assertTrue(ok, msg)
         ws = br.workspace_dir()
         self.assertEqual(br.load()["workdir"], ws)
-        self.assertEqual(br.public()["profile"], "codex")
+        self.assertEqual(br.public()["profile"], "codex_solo_full")
         t = get(os.path.join(ws, "AGENTS.md"))
         self.assertIn(br.AGENTS_MARK, t)
         self.assertIn(os.path.join(self.tmp, "proj"), t)
@@ -606,7 +611,7 @@ class Profiles(Base):
         mine = os.path.join(self.tmp, "mine")
         os.makedirs(mine)
         self.assertTrue(br.save({"workdir": mine})[0])
-        self.assertTrue(br.apply_profile("codex")[0])
+        self.assertTrue(br.apply_profile("codex_solo_full", "подтверждаю")[0])
         self.assertEqual(br.load()["workdir"], mine)
         self.assertFalse(os.path.exists(os.path.join(mine, "AGENTS.md")))  # чужую папку не засоряем
 
@@ -629,9 +634,16 @@ class Profiles(Base):
         self.assertFalse(br.apply_profile("nope")[0])
 
     def test_builtins_never_full(self):
+        """Полный доступ встроенного профиля включается только словом-подтверждением; Оркестратор полного доступа не даёт."""
         for pid, d in br.BUILTIN_PROFILES:
-            self.assertNotEqual(d.get("access"), "full", pid)
             self.assertNotEqual(d.get("task_rights"), "full", pid)
+            if d.get("access") == "full":
+                ok, msg = br.apply_profile(pid)
+                self.assertFalse(ok, pid)
+                self.assertIn("подтверждаю", msg)
+                self.assertTrue(br.apply_profile(pid, "подтверждаю")[0], pid)
+            else:
+                self.assertNotEqual(d.get("access"), "full", pid)
 
     def seed_custom(self, pid, name, mode, access, rights):
         """Свой профиль прежней версии панели: новые не собираются, но сохранённые должны работать."""
@@ -641,20 +653,16 @@ class Profiles(Base):
                 {"id": pid, "name": name, "mode": mode, "access": access, "task_rights": rights}]
             br._save(s)
 
-    def test_legacy_custom_apply_delete_and_full_word(self):
+    def test_legacy_custom_profiles_are_not_offered(self):
+        """Свои профили прежних версий больше не предлагаются и не применяются: остались только встроенные (1.28.20)."""
         self.seed_custom("c1", "Мой полный", "self", "full", "dev")
         self.assertTrue(br.apply_profile("orchestrator")[0])
-        ok, msg = br.apply_profile("c1")  # поднимать до полного — только со словом
+        ok, msg = br.apply_profile("c1", "подтверждаю")
         self.assertFalse(ok)
-        self.assertIn("подтверждаю", msg)
+        self.assertIn("Такого профиля нет", msg)
         self.assertEqual(br.load()["mode"], "orchestrator")
-        self.assertTrue(br.apply_profile("c1", "подтверждаю")[0])
-        self.assertEqual(br.load()["access"], "full")
-        self.assertEqual(br.public()["profile"], "c1")
         self.assertFalse(br.delete_profile("orchestrator")[0])  # встроенные не удаляются
-        self.assertTrue(br.delete_profile("c1")[0])
-        self.assertEqual(br.load()["profiles"], [])
-        self.assertEqual(br.public()["profile"], "")
+        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex_solo_full"])
 
     def test_save_profile_is_gone(self):
         """Сборка своего профиля убрана: ни функции, ни лимита."""
@@ -669,78 +677,17 @@ class Profiles(Base):
 
     def test_public_lists_profiles(self):
         pub = br.public()
-        self.assertEqual([p["id"] for p in pub["profiles"]], ["orchestrator", "codex"])
+        self.assertEqual([p["id"] for p in pub["profiles"]], ["orchestrator", "codex_solo_full"])
         self.assertTrue(all(p["builtin"] for p in pub["profiles"]))
         self.seed_custom("c1", "Свой", "self", "write", "dev")
-        self.assertEqual(br.public()["profiles"][-1]["name"], "Свой")
-        self.assertFalse(br.public()["profiles"][-1]["builtin"])
+        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex_solo_full"])  # свой старый профиль не показывается
 
 
-class DelegateProfile(Base):
-    """Профиль «Агент»: основная сессия и Codex только ставят задачи агенту Notion. Виден лишь при настроенной команде поручения."""
-
-    def setUp(self):
-        super().setUp()
-        self.saved_cmd = br.DELEGATE_CMD
-        self.addCleanup(setattr, br, "DELEGATE_CMD", self.saved_cmd)
+class DelegateNoteHook(Base):
+    """Профиль «Агент» убран (профили 1.28.x: Оркестратор и Full); хук всё ещё добавляет заметку, пока лежит её файл."""
 
     def note_file(self):
         return os.path.join(br.BASE, "delegate_note.txt")
-
-    def test_hidden_without_command(self):
-        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex"])
-        ok, msg = br.apply_profile("agent")
-        self.assertFalse(ok)
-        self.assertFalse(os.path.exists(self.note_file()))
-        self.assertEqual(br.delegate_note("main"), "")
-
-    def test_apply_writes_note_for_main_session_and_agents_for_codex(self):
-        br.DELEGATE_CMD = lambda: "agent-delegate"
-        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex", "agent"])
-        ok, _ = br.apply_profile("agent")
-        self.assertTrue(ok)
-        self.assertEqual(br.public()["profile"], "agent")
-        note = get(self.note_file())
-        self.assertIn("agent-delegate", note)
-        self.assertNotIn("{cmd}", note)
-        self.assertEqual(note, br.delegate_note("main"))
-        self.assertIn("agent-delegate", br.delegate_note("codex"))
-        self.assertNotEqual(br.delegate_note("codex"), br.delegate_note("main"))
-        # настройки правят вручную → метка профиля сбрасывается, режима «Агент» больше нет
-        br.save({"task_rights": "read"})
-        self.assertEqual(br.public()["profile"], "")
-        self.assertEqual(br.delegate_note("main"), "")
-
-    def test_switching_profile_removes_note_and_restores_codex_agents(self):
-        br.DELEGATE_CMD = lambda: "agent-delegate"
-        ws = br.ensure_workspace()  # папка должна существовать, иначе save() отклонит рабочую папку
-        self.assertTrue(br.save({"mode": "self", "access": "write", "task_rights": "dev", "workdir": ws})[0])
-        self.assertTrue(br.apply_profile("agent")[0])
-        self.assertTrue(os.path.exists(self.note_file()))
-        text = get(os.path.join(ws, "AGENTS.md"))
-        self.assertIn("ставит задачи агенту", text)
-        self.assertIn('agent-delegate "текст"', text)
-        self.assertTrue(br.apply_profile("codex")[0])
-        self.assertFalse(os.path.exists(self.note_file()))
-        self.assertNotIn("ставит задачи агенту", get(os.path.join(ws, "AGENTS.md")))
-        self.assertEqual(br.delegate_note("codex"), "")
-
-    def test_command_removed_switches_mode_off(self):
-        br.DELEGATE_CMD = lambda: "agent-delegate"
-        self.assertTrue(br.apply_profile("agent")[0])
-        br.DELEGATE_CMD = lambda: ""
-        br.sync_delegate_file()
-        self.assertFalse(os.path.exists(self.note_file()))
-
-    def test_codex_message_gets_delegate_note(self):
-        br.DELEGATE_CMD = lambda: "agent-delegate"
-        self.assertTrue(br.apply_profile("agent")[0])
-        answer, _ = br.run_codex("привет")
-        self.assertIn("РЕЖИМ «АГЕНТ»", answer)
-        self.assertIn("привет", answer)
-        br.apply_profile("codex")
-        answer, _ = br.run_codex("привет")
-        self.assertNotIn("РЕЖИМ «АГЕНТ»", answer)
 
     def test_hook_adds_note_only_while_file_exists(self):
         import subprocess
@@ -822,10 +769,10 @@ class ReserveProfile(Base):
     def test_humans_own_choice_during_reserve_is_not_touched(self):
         self.assertTrue(br.apply_profile("orchestrator")[0])
         self.assertTrue(br.reserve_profile(True, True))
-        self.assertTrue(br.apply_profile("codex")[0])  # человек сам выбрал профиль посреди резерва
+        self.assertTrue(br.apply_profile("codex_solo_full", "подтверждаю")[0])  # человек сам выбрал профиль посреди резерва
         self.assertFalse(br.reserve_profile(False, True))
         s = br.load()
-        self.assertEqual((s["profile"], s["mode"]), ("codex", "self"))
+        self.assertEqual((s["profile"], s["mode"]), ("codex_solo_full", "self"))
         self.assertNotIn("reserve_prev", s)
 
     def test_emergency_freezes_both_directions(self):
@@ -843,18 +790,18 @@ class ReserveProfile(Base):
         self.assertEqual(br.load()["profile"], "orchestrator")
 
     def test_cannot_be_picked_by_hand(self):
-        self.assertTrue(br.apply_profile("codex")[0])
+        self.assertTrue(br.apply_profile("codex_solo_full", "подтверждаю")[0])
         ok, msg = br.apply_profile("reserve")
         self.assertFalse(ok)
         self.assertIn("сам", msg)
         ok, msg = br.apply_profile("reserve", lang="en")
         self.assertFalse(ok)
         self.assertIn("by itself", msg)
-        self.assertEqual(br.load()["profile"], "codex")
+        self.assertEqual(br.load()["profile"], "codex_solo_full")
 
     def test_reserve_is_not_listed_among_profiles(self):
         self.assertTrue(br.reserve_profile(True, True))
-        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex"])
+        self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex_solo_full"])
 
     def test_manual_edit_during_reserve_drops_mark_but_end_still_restores(self):
         self.assertTrue(br.apply_profile("orchestrator")[0])
@@ -1535,6 +1482,15 @@ class ImagesBase(Base):
     def imgs(self):
         return sorted(os.listdir(self.images)) if os.path.isdir(self.images) else []
 
+    def wait_ready(self, n):
+        """Фото готовятся фоном (1.28.5): дождаться, пока первые n записей очереди скачаны."""
+        end = time.time() + 10
+        while time.time() < end:
+            items = list(br.BRIDGE.inputs.items)
+            if len(items) >= n and all(e.state == "ready" for e in items[:n]):
+                return
+            time.sleep(0.02)
+
 
 class Images(ImagesBase):
     def test_photo_with_caption_reaches_exec_with_path(self):
@@ -1641,17 +1597,22 @@ class Images(ImagesBase):
         self.assertTrue(self.runs()[-1]["argv"][-1].startswith("/new"))
 
     def test_busy_is_reported_not_dropped_silently(self):
+        # С 1.26.0 фото при занятом Codex встаёт в очередь (не отказ «не принял»), с 1.27.2 без уведомления,
+        # с 1.28.5 скачивается сразу, пока идёт ответ.
         gate = threading.Event()
         br.BRIDGE.worker = threading.Thread(target=gate.wait, args=(10,), daemon=True)
         br.BRIDGE.worker.start()
         try:
             br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "photo": [{"file_id": "fid-big", "width": 9, "height": 9}]}})
+            self.wait_ready(1)
         finally:
             gate.set()
             br.BRIDGE.worker.join(5)
-        self.assertIn("картинку не принял", self.sent[-1])
-        self.assertEqual(self.api, [])
-        self.assertEqual(self.imgs(), [])
+        self.assertEqual(self.sent, [])
+        self.assertEqual(len(br.BRIDGE.inputs), 1, "фото ждёт в очереди, а не выброшено")
+        self.assertEqual(self.api, ["fid-big"])
+        self.assertEqual(len(self.imgs()), 1)
+        self.assertEqual(self.runs(), [])
 
     def test_old_images_pruned_new_kept(self):
         self.photo("1")
@@ -1784,11 +1745,12 @@ class ChatActionIndicator(ImagesBase):
     def test_stop_command_stops_indicator(self):
         os.environ["FAKE_SLEEP"] = "5"
         br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "text": "долго"}})
+        worker = br.BRIDGE.worker  # поток очереди (1.26.0) сам обнуляет ссылку, когда доработал
         time.sleep(0.45)
         self.assertGreaterEqual(len(self.acts), 3)
         self.say("/stop")
-        br.BRIDGE.worker.join(10)
-        self.assertFalse(br.BRIDGE.worker.is_alive())
+        worker.join(10)
+        self.assertFalse(worker.is_alive())
         self.assert_quiet_after_end()
 
     def test_telegram_error_on_indicator_does_not_break_turn(self):
@@ -1880,6 +1842,8 @@ class Albums(ImagesBase):
         self.assertNotIn(self.TOKEN, self.sent[0])
 
     def test_album_while_busy_is_reported_once(self):
+        # С 1.26.0 альбом при занятом Codex встаёт в очередь одной записью (не отказ), с 1.27.2 без уведомления,
+        # с 1.28.5 фото скачиваются сразу.
         gate = threading.Event()
         br.BRIDGE.worker = threading.Thread(target=gate.wait, args=(10,), daemon=True)
         br.BRIDGE.worker.start()
@@ -1888,17 +1852,18 @@ class Albums(ImagesBase):
             end = time.time() + 10
             while br.BRIDGE.albums and time.time() < end:
                 time.sleep(0.02)
+            self.wait_ready(1)
         finally:
             gate.set()
             br.BRIDGE.worker.join(5)
-        self.assertEqual(len(self.sent), 1, "одно сообщение на весь альбом, а не по числу фото")
-        self.assertIn("картинки не принял", self.sent[0])
-        self.assertEqual(self.api, [])
-        self.assertEqual(self.imgs(), [])
+        self.assertEqual(self.sent, [])
+        self.assertEqual(len(br.BRIDGE.inputs), 1, "одна запись на весь альбом, а не по числу фото")
+        self.assertEqual(self.api, ["fid-a", "fid-b"])
+        self.assertEqual(len(self.imgs()), 2)
+        self.assertEqual(self.runs(), [])
 
     def test_two_albums_do_not_mix(self):
-        # оба таймера срабатывают с разницей в миллисекунды; Codex должен быть занят первым, пока второй альбом ещё не дошёл
-        # (с быстрым поддельным Codex первый успевал закончиться, и второй тоже принимался)
+        # оба таймера срабатывают с разницей в миллисекунды, Codex занят первым альбомом, когда готов второй
         os.environ["FAKE_SLEEP"] = "0.8"
         self.addCleanup(os.environ.pop, "FAKE_SLEEP", None)
         self.album(["fid-a"], gid="g1", wait=False)
@@ -1910,38 +1875,36 @@ class Albums(ImagesBase):
         w = br.BRIDGE.worker
         if w:
             w.join(20)
-        # второй альбом пришёл, пока Codex занят первым → ему сказано прислать снова, а не склеено с первым
-        self.assertEqual(len(self.runs()), 1)
-        n = len(self.imgs())  # какой из альбомов успел первым, неважно: в запрос идёт ровно он
-        self.assertIn(n, (1, 2))
-        self.assertEqual(self.runs()[0]["argv"][-1].count("img_"), n)
-        self.assertTrue(any("не принял" in m for m in self.sent), self.sent)
+        # С 1.26.0 второй альбом ждёт в очереди: два отдельных запроса в порядке прихода, без склейки и без отказа
+        self.assertEqual([r["argv"][-1].count("img_") for r in self.runs()], [1, 2])
+        self.assertEqual(len(self.imgs()), 3)
+        self.assertFalse(any("не принял" in m for m in self.sent), self.sent)
 
     def test_two_threads_never_start_two_codex_workers(self):
-        # два таймера альбомов (и текст из опроса) приходят из разных потоков: «занят? → запустить» не должно пускать обоих.
-        # Окно гонки между проверкой и запуском искусственно расширено: без замка start_lock оба потока видели «свободно»
+        # два таймера альбомов (и текст из опроса) приходят из разных потоков: очередь под start_lock держит один
+        # поток Codex; с 1.26.0 второе фото ждёт своей очереди, а не получает отказ «не принял»
         started = []
         gate = threading.Event()
         b = br.BRIDGE
-        b.ask_image = lambda ids, caption: (started.append(list(ids)), gate.wait(5))
-        self.addCleanup(delattr, b, "ask_image")
+        b.ask_codex = lambda text, act=None: (started.append(text), gate.wait(5))
+        self.addCleanup(delattr, b, "ask_codex")
         self.addCleanup(gate.set)
-        real_busy = b.busy
-
-        def slow_busy():
-            v = real_busy()
-            time.sleep(0.1)
-            return v
-        b.busy = slow_busy
-        self.addCleanup(delattr, b, "busy")
         ts = [threading.Thread(target=b.handle_image, args=([fid], "")) for fid in ("fid-a", "fid-b")]
         for t in ts:
             t.start()
         for t in ts:
             t.join(10)
+        end = time.time() + 10
+        while not started and time.time() < end:
+            time.sleep(0.02)
         time.sleep(0.2)
         self.assertEqual(len(started), 1, "запущен один запрос к Codex, а не два")
-        self.assertTrue(any("не принял" in m for m in self.sent), self.sent)
+        gate.set()
+        w = b.worker
+        if w:
+            w.join(10)
+        self.assertEqual(len(started), 2, "второе фото дождалось очереди")
+        self.assertFalse(any("не принял" in m for m in self.sent), self.sent)
 
     def test_album_from_foreign_chat_ignored(self):
         self.album(["fid-a", "fid-b"], chat=555)

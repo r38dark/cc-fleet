@@ -211,7 +211,9 @@ class Routes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         import http.server
-        cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), L.H)
+        # исходный обработчик панели: у наследников (cc_fleet и др.) маршрут /api/chatgpt/bridge свой, и результат зависел бы от порядка импорта модулей в общем прогоне
+        handler = next(c for c in L.H.__mro__ if c.__module__ == L.__name__)
+        cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
         cls.url = "http://127.0.0.1:%d" % cls.srv.server_port
 
@@ -262,9 +264,10 @@ class Routes(unittest.TestCase):
             return e.code, json.loads(e.read() or b"{}")
 
     def test_bridge_without_codex_reports_install_info(self):
-        code, d = self.call("GET", "/api/chatgpt/bridge")
+        with mock.patch.object(cc_codex, "find_bin", return_value=None):  # на машине, где Codex уже стоит, поиск находил бы настоящий
+            code, d = self.call("GET", "/api/chatgpt/bridge")
         self.assertEqual(code, 200)
-        self.assertFalse(d["available"])
+        self.assertFalse(d["available"], d)
         self.assertEqual(d["install"]["state"], "idle")
         self.assertTrue(d["install"]["ready"])  # Node и npm нашлись
 

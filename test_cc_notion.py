@@ -8,7 +8,11 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import cc_notion as N  # noqa: E402
+import importlib.util  # noqa: E402
+# чистая копия модуля: после импорта cc_limits (cc_profiles) у общего cc_notion подменён public(), и проверки «карточки нет» зависели бы от порядка тестов
+_spec = importlib.util.spec_from_file_location("cc_notion_pristine", os.path.join(HERE, "cc_notion.py"))
+N = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(N)
 
 
 class Public(unittest.TestCase):
