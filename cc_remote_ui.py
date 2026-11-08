@@ -209,6 +209,7 @@ var SVG_CAR='<svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentC
 var SVG_SWAP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"></path></svg>';
 function meter(kind){return '<div class="fleet-live-meter" data-window="'+kind+'"><div class="fleet-live-meter-label"><span>'+(kind==='session'?'5 часов':'Неделя')+'</span><b>—</b><span class="fleet-live-reset">Время не получено</span></div><span class="fleet-live-track" aria-hidden="true"><span class="fleet-live-fill"></span></span></div>'}
 function gearIcon(){var g=$i('gear'),s=g&&g.querySelector('svg');return s?s.outerHTML:'⚙'}
+function subChip(iso){if(!iso)return'';var d=new Date(iso);if(isNaN(d))return'';var when=d.toLocaleDateString('ru',{day:'2-digit',month:'2-digit',year:'numeric'});return '<span class="chip" title="Дата оформления подписки">\ud83d\udcc5 '+when+'</span>'}
 function buildStrip(){
  if(tile)return true;var rows=$i('fleetLiveRows'),sum=$i('fleetActiveSummary');if(!rows||!sum)return false;
  compact=document.createElement('span');compact.className='fleet-compact-account prod';compact.dataset.engine='prod';
@@ -251,12 +252,12 @@ function paintCard(m){
  if(old&&old.dataset.sig===sig)return;
  var el=document.createElement('div');el.className='card fleet-remote-card';el.dataset.sig=sig;el.dataset.remote=m.id;
  var st=status(m),bad=st!=='онлайн';
- el.innerHTML='<div class="top"><div class="fleet-identity"><div class="fleet-titleline"><strong class="fleet-account-name" title="Claude PROD">Claude PROD</strong>'+(m.plan?'<span class="tag plan">'+esc(m.plan.toUpperCase())+'</span>':'')+'</div><span class="email" title="'+esc(m.email||'')+'">'+esc(m.email||'почта не получена')+'</span></div></div>'
+ el.innerHTML='<div class="top"><div class="fleet-identity"><div class="fleet-titleline"><strong class="fleet-account-name" title="Claude PROD">Claude PROD</strong>'+(m.plan?'<span class="tag plan">'+esc(m.plan.toUpperCase())+'</span>':'')+subChip(m.subscription_since)+'</div><span class="email" title="'+esc(m.email||'')+'">'+esc(m.email||'почта не получена')+'</span></div></div>'
   +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
   +row('Сессия 5ч',m.five_hour,false)+row('Неделя',m.seven_day,true)
   +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD). Вручную переключённая работа остаётся там, куда её переключили. Codex и агент Notion переключаются вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
   +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: войди заново':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
-  +'<button type="button" class="btn-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
+  +loginChip(m.login_expires)+'<button type="button" class="btn-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
   +'</div>';   // кнопки «Передать работу» в этой карточке нет: она живёт в плитке «Активные аккаунты»
  if(old)old.replaceWith(el);else box.appendChild(el)}
 var hadTab=null;

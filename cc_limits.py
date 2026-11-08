@@ -18,7 +18,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.7"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.8"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2836,13 +2836,25 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _authed(self):
-        # либо nginx прислал имя пользователя Basic Auth, либо валидный hook-токен
-        if self.headers.get("X-Auth-User"):
-            return True
+        # только настоящий (непустой) токен: X-Auth-User браузер шлёт сам на любой запрос к
+        # источнику (Basic Auth, как cookie) — это не защищает ни от подделки локальным
+        # процессом (другой пользователь ОС на этом же сервере бьёт прямо в 127.0.0.1:8877,
+        # минуя nginx), ни от межсайтовой подделки запроса (CSRF). Токен так не утекает:
+        # его знает только сама загруженная страница. Единственное исключение — отдача
+        # самой страницы, см. _index_authed().
         from urllib.parse import urlparse, parse_qs
         q = parse_qs(urlparse(self.path).query)
         tok = q.get("token", [None])[0] or self.headers.get("X-CC-Token")
-        return tok == cfg().get("hook_token")
+        token = cfg().get("hook_token") or ""
+        return bool(token) and tok == token
+
+    def _index_authed(self):
+        # отдача HTML-страницы: в неё вшивается настоящий hook_token, так что X-Auth-User
+        # одного недостаточно (его может подделать любой локальный процесс) — нужен ещё
+        # internal_secret, который знают только nginx/супервизор: config.json 0600, его не
+        # прочитать непривилегированному локальному пользователю (например codex-песочнице).
+        secret = cfg().get("internal_secret") or ""
+        return bool(secret) and bool(self.headers.get("X-Auth-User")) and self.headers.get("X-CC-Internal") == secret
 
     def log_message(self, fmt, *args):
         print(f"{self.address_string()} {fmt % args}", flush=True)
@@ -2867,7 +2879,7 @@ class H(BaseHTTPRequestHandler):
                     'Можно закрыть страницу</span></body>')
             return self._send(200 if ok else 410, page.encode(), "text/html; charset=utf-8")
         if u.path in ("/", "/index.html"):
-            if not self.headers.get("X-Auth-User"):
+            if not self._index_authed():
                 return self._send(403, {"error": "forbidden"})
             # токен вшивается в страницу: браузер может не переслать Basic Auth в fetch
             html = PAGE.replace("__TOKEN__", cfg().get("hook_token", "")).replace("__PAGE_VER__", VERSION).replace("__FLEET_TZ__", _page_tz())
@@ -7510,6 +7522,13 @@ def _remote_loop():
 
 
 if __name__ == "__main__":
+    try:  # internal_secret для _index_authed(): один раз, переживает перезапуски и обновления
+        _c = cfg()
+        if not _c.get("internal_secret"):
+            _c["internal_secret"] = os.urandom(24).hex()
+            jsave(CONFIG, _c)
+    except Exception as e:
+        print("internal_secret: не создан", e, flush=True)
     try:
         made = {n: s for n, s in ensure_cmd_links().items() if s != "есть"}
         if made:

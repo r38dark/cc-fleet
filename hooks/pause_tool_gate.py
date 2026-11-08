@@ -93,7 +93,7 @@ def main():
         with contextlib.redirect_stdout(io.StringIO()):
             pause_ctl.cmd_set(argparse.Namespace(
                 reason="лимиты сессионного окна", resume_at="",
-                note="остановлен посреди работы (%s)" % (lvl.get("line") or "")))
+                note="остановлен посреди работы (сессия: %s)" % (lvl.get("line") or "")))
         st = pause_ctl.load()
         if not st.get("active"):
             passthrough()

@@ -6,6 +6,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 
 HOME = os.environ.get("HOME") or "/root"
 HDR = {"anthropic-beta": "oauth-2025-04-20"}
@@ -38,16 +39,25 @@ def main():
     except Exception:
         out({"ok": False, "error": "net"})
     plan = ""
+    subscription_since = ""
     try:
-        a = get("https://api.anthropic.com/api/oauth/profile", token).get("account") or {}
+        prof = get("https://api.anthropic.com/api/oauth/profile", token)
+        a = prof.get("account") or {}
         plan = "max" if a.get("has_claude_max") else ("pro" if a.get("has_claude_pro") else "free")
+        # дата оформления подписки — для панели балансера ("дата подписки")
+        subscription_since = (prof.get("organization") or {}).get("subscription_created_at") or ""
     except Exception:
         pass
     try:
         email = (json.load(open(HOME + "/.claude.json")).get("oauthAccount") or {}).get("emailAddress", "")
     except Exception:
         email = ""
-    res = {"ok": True, "email": email, "plan": plan}
+    res = {"ok": True, "email": email, "plan": plan, "subscription_since": subscription_since}
+    # срок действия текущего входа ("вход до") — для панели балансера
+    try:
+        res["login_expires"] = datetime.fromtimestamp(int(oa.get("expiresAt") or 0) / 1000.0, tz=timezone.utc).isoformat()
+    except Exception:
+        res["login_expires"] = ""
     try:  # модель и effort по умолчанию на этом сервере (как «Модель/Effort» у Claude DEV)
         st = json.load(open(HOME + "/.claude/settings.json"))
         mid = st.get("model") or ""

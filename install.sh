@@ -290,7 +290,7 @@ s5() {
 # ---------- Шаг 6 ----------
 c6() {
   [ -f "$BASE/config.json" ] || return 1
-  python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c.get("hook_token") and c.get("screen_session")' "$BASE/config.json" 2>/dev/null || return 1
+  python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); assert c.get("hook_token") and c.get("screen_session") and c.get("internal_secret")' "$BASE/config.json" 2>/dev/null || return 1
   [ -d "$PROFILES_DIR" ] && ls "$PROFILES_DIR"/acc*/oauth_account.json >/dev/null 2>&1
 }
 s6() {
@@ -301,14 +301,19 @@ s6() {
     [ -f "$d/oauth_account.json" ] || echo '{}' > "$d/oauth_account.json"
   done
   okm "профили аккаунтов: $N_ACCOUNTS пустых слота в $PROFILES_DIR (войдёшь в них в панели: «Добавить аккаунт» или «Войти заново»)"
-  # config.json не обнуляем: hook_token и уже настроенные ключи переживают обновление
+  # config.json не обнуляем: hook_token, internal_secret и уже настроенные ключи переживают обновление
   local old_token; old_token="$(json_get "$BASE/config.json" hook_token)"
   if [ -n "$old_token" ]; then HOOK_TOKEN="$old_token"; info "config.json уже есть — обновляю, hook_token оставляю прежним"
   else HOOK_TOKEN="$(openssl rand -hex 24)"; info "config.json создан, hook_token сгенерирован случайно (храни в секрете)"; fi
-  python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$PORT" "$SERVICE_NAME" "$TZ_NAME" "$WORK_DIR" "$BASE" "$BOT_TOKEN" "$CHAT_ID" "$([ "$WANT_NGINX" = y ] && echo "$DOMAIN")" "$([ "$WANT_HTTPS" = y ] && echo https || echo http)" <<'PYEOF'
+  # internal_secret: отдельный секрет для отдачи HTML-страницы — его знают только nginx и панель
+  # супервизора (если есть), не произвольный локальный процесс на этом же сервере
+  local old_isecret; old_isecret="$(json_get "$BASE/config.json" internal_secret)"
+  if [ -n "$old_isecret" ]; then INTERNAL_SECRET="$old_isecret"
+  else INTERNAL_SECRET="$(openssl rand -hex 24)"; fi
+  python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$PORT" "$SERVICE_NAME" "$TZ_NAME" "$WORK_DIR" "$BASE" "$BOT_TOKEN" "$CHAT_ID" "$([ "$WANT_NGINX" = y ] && echo "$DOMAIN")" "$([ "$WANT_HTTPS" = y ] && echo https || echo http)" "$INTERNAL_SECRET" <<'PYEOF'
 import json, os, sys
-path, token, threshold, screen, port, service, tz, work, base, bot, chat, domain, scheme = sys.argv[1:14]
-cfg = {"hook_token": token, "autoswitch": True, "threshold": int(threshold), "poll_sec": 120, "switch_cooldown_sec": 300,
+path, token, threshold, screen, port, service, tz, work, base, bot, chat, domain, scheme, isecret = sys.argv[1:15]
+cfg = {"hook_token": token, "internal_secret": isecret, "autoswitch": True, "threshold": int(threshold), "poll_sec": 120, "switch_cooldown_sec": 300,
        "optimize": False, "screen_session": screen, "port": int(port)}
 fresh = not os.path.exists(path)
 if os.path.exists(path):
@@ -450,6 +455,9 @@ server {
         auth_basic_user_file $htpasswd;
         proxy_pass http://127.0.0.1:$PORT/;
         proxy_set_header X-Auth-User \$remote_user;
+        # секрет из config.json: без него движок не отдаст страницу даже с верным X-Auth-User —
+        # подделать его может только тот, кто читает config.json (root), не любой локальный процесс
+        proxy_set_header X-CC-Internal "$(json_get "$BASE/config.json" internal_secret)";
         proxy_read_timeout 60s;
         proxy_send_timeout 60s;
     }

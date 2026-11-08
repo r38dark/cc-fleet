@@ -677,7 +677,7 @@ def cmd_on(a):
     _log("пауза снова включена вручную (%s)" % (a.by or "?"))
     if not ls.get("stale") and ls.get("level") in ("hard", "week"):
         return cmd_set(argparse.Namespace(reason="включена вручную", resume_at="", no_handoff=True,
-                                          note="окно забито (%s)" % (ls.get("line") or "")))
+                                          note="окно забито (сессия: %s)" % (ls.get("line") or "")))
     _tg("⏸ Claude: пауза снова работает — встанет, когда активный упрётся в сессионное окно, "
         "а переключаться будет некуда"
         + (" или активный дойдёт до недельного потолка без запасного аккаунта." if _weekly_pause() else "."))

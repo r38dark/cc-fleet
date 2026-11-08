@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.8",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Авторизация API, подпись плашки паузы, подписка на втором сервере",
+        "p": [
+          "Доступ к API панели требует настоящий токен, не только заголовок от прокси — закрыт локальный обход авторизации",
+          "Плашка паузы по недельному лимиту подписывает проценты явно (неделя/сессия) вместо двух цифр подряд без пояснения",
+          "На карточке второго сервера (Claude PROD) — дата подписки и срок действия входа"
+        ]
+      },
+      "en": {
+        "t": "API authorization, pause banner labels, second-server subscription info",
+        "p": [
+          "The panel API now requires a real token, not just a proxy header — closes a local authorization bypass",
+          "The weekly-limit pause banner labels its two percentages (week vs. session) instead of showing them unmarked side by side",
+          "The second-server (Claude PROD) card now shows the subscription date and login expiry"
+        ]
+      }
+    },
+    {
       "v": "2.0.7",
       "date": "2026-11-08",
       "ru": {
