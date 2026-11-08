@@ -70,6 +70,7 @@ class T(unittest.TestCase):
             return 0, ''
         M._run = run; M.INBOX = s.d + '/inbox'; M.SIDE_FLAG = s.d + '/side_claude.json'   # stop_claude стирает флаг побочной сессии: не по боевому пути
         M.NotionAI._later = lambda self, fn, *a: fn(*a)
+        M.notion_installed = lambda: True   # на боевом пути /root/notion_web есть не везде: по умолчанию «Notion AI поставлен»
         M.NotionAI.tg_api = lambda self, method, payload: (s.tg.append((method, payload)), {'result': {'message_id': 77}})[1]
         M.NotionAI.tg_chats = lambda self: ['100000001']
         M.NotionAI.post_chat = lambda self, text: s.posts.append(text)
@@ -124,6 +125,39 @@ class T(unittest.TestCase):
         s.nai.on(kind='orchestrator', follower='codex'); a = s.nai.agents()
         s.assertEqual((a['codex']['state'], a['codex']['text'], a['notion']['state']), ('exec', 'исполнитель', 'lead'))
         s.assertIn('agents', s.nai.public())
+    def test_unlinked_codex_and_notion_are_ghost_tiles(s):
+        # Codex без аккаунтов и Notion AI без службы — «призрачные» плитки с предложением установить, а не «работает»
+        class St:
+            def public(_): return {'engines': {'claude': {'role': 'solo', 'label': 'Claude Full'}, 'codex': {'role': 'solo', 'label': 'Codex Full'}}}
+        s.p.state = St()
+        s.ns['cc_codex'] = type('C', (), {'profile_slots': staticmethod(lambda: [])})
+        M.notion_installed = lambda: False
+        a = s.nai.agents()
+        s.assertEqual((a['codex']['state'], a['codex']['text']), ('unlinked', 'не подключён'))
+        s.assertEqual((a['notion']['state'], a['notion']['text']), ('unlinked', 'не установлен'))
+        s.assertEqual(a['claude']['state'], 'run')   # Claude не затронут
+        s.assertEqual(s.nai.public()['agents']['codex']['state'], 'unlinked')
+        # подключили Codex (есть аккаунт) и поставили Notion AI — плитки обычные
+        s.ns['cc_codex'] = type('C', (), {'profile_slots': staticmethod(lambda: ['gpt1'])})
+        M.notion_installed = lambda: True
+        a = s.nai.agents()
+        s.assertEqual((a['codex']['state'], a['notion']['state']), ('run', 'run'))
+    def test_unlinked_check_failure_keeps_tiles_working(s):
+        class St:
+            def public(_): return {'engines': {'claude': {'role': 'solo', 'label': 'Claude Full'}, 'codex': {'role': 'solo', 'label': 'Codex Full'}}}
+        s.p.state = St()
+        class Bad:
+            @staticmethod
+            def profile_slots(): raise OSError('нет доступа')
+        s.ns['cc_codex'] = Bad
+        s.assertEqual(s.nai.agents()['codex']['state'], 'run')   # не смогли проверить — рабочее не прячем
+    def test_ghost_tiles_ui_is_in_the_page(s):
+        import cc_notion_ai as N
+        src = Path(N.__file__).read_text(encoding='utf-8')
+        for part in ("function linkPop(k,anchor){", "function ghostMark(){", "'ag-unlinked-'+a[0]", ".nai-seg.s-unlinked{",
+                     "html.ag-unlinked-codex #ctCodex", "html.ag-unlinked-notion #cTabs .ctab[data-s=\"notion\"]",
+                     "if(agState(s.dataset.ag).state==='unlinked'){linkPop(s.dataset.ag,s);return}"):
+            s.assertIn(part, src, part)
     def test_codex_with_single_account_is_not_paused_by_notion_profile(s):
         class St:
             def public(_): return {'engines': {'claude': {'role': 'paused', 'label': 'Claude · не участвует'}, 'codex': {'role': 'solo', 'label': 'Codex Full · самостоятельно'}}}
