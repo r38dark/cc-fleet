@@ -648,7 +648,8 @@ Below the Codex section there is a "Telegram ↔ Codex bridge" card: you write t
 - For Codex "rights" are a sandbox wall, for Claude they are a condition of the task. Tasks reach the console through `screen -X stuff` (ASCII only, Enter as a separate call), so it is best-effort: a busy console is not forced — answer "retry N".
 - Run Codex as a separate OS user: `"codex_user": "name"` in `config.json` (the profiles must then live where that user can write — `codex_profiles` in `config.json` or `CC_CODEX_PROFILES`).
 
-Since v1.25.28 the bridge returns PNG/JPEG screenshots as original files in Telegram. Codex is told to save an image
+Since v1.25.28 the bridge returns PNG/JPEG screenshots in Telegram; since v1.26.0 they go as regular photos with a preview (not as files),
+and the hint lives in the working folder's AGENTS.md instead of every message. Codex is told to save an image
 in its working folder's `outbox` and include a separate `![Caption](outbox/shot.png)` line in the final reply.
 For mediator/orchestrator this is `exchange/outbox`; self mode uses the selected working folder. Sandbox permissions
 are unchanged, and read-only mode gets no image-output hint. Up to five regular images of 10 MB each are accepted,
@@ -934,6 +935,7 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v2.0.7** — The second server's console finds its session by the name in the pair record (with a non-default name it used to show "not running"); in the split console Codex and Claude DEV no longer shrink their font but wrap long lines, so the text matches the other parts; on page reload the Codex and Notion AI tabs no longer flash and the PROD tab no longer briefly falls back to DEV.
 - **v2.0.6** — Phone: the model tabs (Claude DEV, PROD, Codex, Notion AI) share the whole row instead of running off the edge; tapping "Notion AI ▾" opens a dropdown with Notion AI and its agents, and the tab shows the chosen agent's name.
 - **v2.0.5** — Split console: every part has an expand icon (the other parts are hidden, not closed), Compact context and New session moved into each part header right of the model name, and the zoom + and - change the font in every part by the same ratio.
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).

@@ -771,13 +771,18 @@ class Routes(unittest.TestCase):
     def test_profile_routes_delegate_to_bridge(self):
         with mock.patch.object(L.cc_codex_bridge, "apply_profile", return_value=(True, "ok")) as ap, \
                 mock.patch.object(L.cc_codex_bridge, "delete_profile", return_value=(False, "no")) as dl:
-            self.assertEqual(self.post("bridge/profile/apply", {"id": "orchestrator", "confirm": "x", "lang": "en"}),
-                             (200, {"ok": True, "message": "ok"}))
-            ap.assert_called_once_with("orchestrator", "x", lang="en")
+            # одиночный маршрут применения не обходит общий выбор сценария (cc_manual_scenarios): оркестратор выбирают в общем окне
+            code, out = self.post("bridge/profile/apply", {"id": "orchestrator", "confirm": "x", "lang": "en"})
+            self.assertEqual((code, out["ok"]), (200, False))
+            self.assertIn("общем окне", out["message"])
+            ap.assert_not_called()
             # сборка своего профиля убрана — маршрута больше нет
             self.assertEqual(self.post("bridge/profile/save", {"name": "Ночной"})[0], 404)
-            self.assertEqual(self.post("bridge/profile/delete", {"id": "c1"}), (200, {"ok": False, "message": "no"}))
-            dl.assert_called_once_with("c1", lang=None)
+            # свои профили прежних версий убраны: удалять нечего, маршрут отвечает отказом без обращения к мосту
+            code, out = self.post("bridge/profile/delete", {"id": "c1"})
+            self.assertEqual((code, out["ok"]), (200, False))
+            self.assertIn("встроенные", out["message"])
+            dl.assert_not_called()
 
     def test_delete_route_frees_bridge_slot_only_on_success(self):
         # удалённый аккаунт: мост, привязанный к нему, возвращается к «первый подходящий»; при отказе привязка не трогается
@@ -1061,10 +1066,11 @@ class NotionRoute(unittest.TestCase):
         code, out = self.post({"url": "http://evil", "lang": "en"})
         self.assertEqual(code, 400)
         self.assertEqual(out["field"], "url")
-        self.assertIn("“url”", out["message"])
+        self.assertTrue(out["message"])  # текст общий («не принято поле настроек агента»), поле называет out["field"]
         self.assertEqual(L.cfg()["notion_agent"]["url"], "agent://s/a")
-        code, out = self.post({"reserve": {"manual": "yes"}})
-        self.assertEqual((code, out["field"]), (400, "reserve"))
+        code, out = self.post({"reserve": {"manual": "yes"}})  # резерв Notion убран: ключ молча отбрасывается, не ошибка
+        self.assertEqual(code, 200)
+        self.assertNotIn("reserve", L.cfg()["notion_agent"])
 
     def test_needs_auth(self):
         self.assertEqual(self.post({"enabled": False}, auth=False)[0], 403)

@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.7",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Консоль: второй сервер, шрифт частей, мигание вкладок",
+        "p": [
+          "Консоль второго сервера находит его сессию по имени из записи пары; при нестандартном имени она показывала «не запущен»",
+          "В разделённой консоли Codex и Claude DEV не сжимают шрифт, строки переносятся: размер текста как у остальных частей",
+          "При обновлении страницы не мигают вкладки Codex и Notion AI, а PROD на миг не откатывается на DEV"
+        ]
+      },
+      "en": {
+        "t": "Console: second server, part font size, tab flicker",
+        "p": [
+          "The second server's console finds its session by the name in the pair record; with a non-default name it used to show \"not running\"",
+          "In the split console Codex and Claude DEV no longer shrink their font and wrap long lines: text size matches the other parts",
+          "On page reload the Codex and Notion AI tabs no longer flash and PROD no longer briefly falls back to DEV"
+        ]
+      }
+    },
+    {
       "v": "2.0.6",
       "date": "2026-11-08",
       "ru": {

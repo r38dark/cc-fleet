@@ -1,6 +1,7 @@
 """Удалённые Claude-аккаунты (на чужом сервере): запись, лимиты по ssh, состояние. Токены остаются на их сервере."""
 import json
 import os
+import re
 import subprocess
 import time
 
@@ -122,7 +123,8 @@ def ctl(mid, *args, inp=None, timeout=25):
     m = members().get(mid)
     if not m:
         return None
-    code, text = ssh_run(m, "python3 /root/cc-remote/ctl.py " + " ".join(shlex.quote(str(x)) for x in args), timeout=timeout, inp=inp)
+    tmux = re.sub(r"[^A-Za-z0-9_-]", "", str(m.get("tmux") or ""))   # имя сессии tmux на втором сервере — из записи пары (иначе ctl.py ищет «ccfleet»)
+    code, text = ssh_run(m, (("CC_REMOTE_TMUX=%s " % tmux) if tmux else "") + "python3 /root/cc-remote/ctl.py " + " ".join(shlex.quote(str(x)) for x in args), timeout=timeout, inp=inp)
     if code != 0:
         return None
     try:
