@@ -12,10 +12,10 @@
         ]
       },
       "en": {
-        "t": "No Codex console autostart; "auto" confirmation in the tile window",
+        "t": "No Codex console autostart; \"auto\" confirmation in the tile window",
         "p": [
           "A remembered Codex tab is not selected while Codex is unconnected; its console does not start without a ChatGPT login",
-          "The "auto" on/off confirmation is shown inside the tile window instead of a separate window hidden under it"
+          "The \"auto\" on/off confirmation is shown inside the tile window instead of a separate window hidden under it"
         ]
       }
     },
