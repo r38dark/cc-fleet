@@ -223,6 +223,9 @@ class ConsoleInput:
 
 def install(ns):
     codex, console, bridge = ns['cc_codex'], ns['cc_codex_console'], ns['cc_codex_bridge']
+    # один аккаунт Codex — ротации нет: профиль Claude Full не ставит Codex на паузу (число аккаунтов смотрим при каждом обращении)
+    import cc_profile_state
+    cc_profile_state.ProfileState.codex_independent = staticmethod(lambda: len(codex.profile_slots()) <= 1)
     rotation = cc_codex_rotation.Rotation(ns['BASE'], codex, console, ns['codex_bin'], bridge)
     models = cc_codex_models.Discovery(codex, rotation, ns['codex_bin'])
     inputs = ConsoleInput(ns)
@@ -230,6 +233,11 @@ def install(ns):
     bridge.LIMIT_PAUSE = rotation.limit_pause  # [notion-ai] очередь моста ждёт сброса, если лимит исчерпан и переключаться некуда
     import cc_profiles
     profiles = cc_profiles.bind(ns, inputs)
+    try:   # Codex раньше стоял на паузе (SIGSTOP), а теперь по правилу выше не должен: снимаем заморозку при старте панели
+        if not profiles.paused('codex'):
+            profiles.native._codex_pause(False)
+    except Exception as exc:
+        print('profiles: заморозка Codex не снята: %r' % (exc,), flush=True)
     original = ns['H']
 
     class FleetHandler(original):

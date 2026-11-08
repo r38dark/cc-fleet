@@ -38,6 +38,11 @@ def validate_stored_choices(choices):
 
 
 class ManualScenarioMixin:
+    # Codex с одним аккаунтом на балансере не участвует в ротации — профиль «Full» у Claude его на паузу не ставит:
+    # он остаётся самостоятельным (с прежним профилем), пишет в свой Telegram и принимает ввод в консоли.
+    # Функцию подставляет cc_fleet.install (число аккаунтов Codex); по умолчанию Codex ставится на паузу, как раньше.
+    codex_independent = staticmethod(lambda: False)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Existing sessions remain untouched until a complete scenario is applied.
@@ -76,9 +81,10 @@ class ManualScenarioMixin:
         if self.manual_choices is not None:
             for engine, choice in self.manual_choices.items():
                 data = result['engines'][engine]
-                data.update(role={'full':'solo', 'orchestrator':'leader', 'executor':'executor'}.get(choice, 'paused'),
-                            active=choice is not None)
-                if choice is None:
+                free = choice is None and engine == 'codex' and self._codex_free()
+                data.update(role={'full':'solo', 'orchestrator':'leader', 'executor':'executor'}.get(choice, 'solo' if free else 'paused'),
+                            active=choice is not None or free)
+                if choice is None and not free:
                     data.update(selected=None, label=self.actor(engine)+' · не участвует')
                 elif choice == 'executor':
                     data['label'] = self.actor(engine)+' · исполнитель '+self.actor(self.leader)
@@ -88,6 +94,13 @@ class ManualScenarioMixin:
             result['engines'][engine].update(selected=engine+'_solo_full', label=self.actor(engine)+' Full')
             result['manual_scenario']['choices'][engine] = 'full'
         return result
+
+    def _codex_free(self):
+        """Codex вне сценария остаётся самостоятельным, если на балансере у него один аккаунт (ротации нет)."""
+        try:
+            return bool(self.codex_independent())
+        except Exception:
+            return False
 
     def apply_scenario(self, choices, confirm='', revision=None):
         with self.lock:

@@ -45,6 +45,29 @@ class ManualPolicy(unittest.TestCase):
         self.assertEqual(view['engines']['codex']['role'],'solo')
         self.assertEqual(ProfileState.from_data(state.export()).public()['manual_scenario']['choices'],choices)
 
+    def test_single_codex_account_is_never_paused_by_claude_full(self):
+        # один аккаунт Codex — ротации нет: Claude Full оставляет Codex самостоятельным (не на паузе, с прежним профилем)
+        with patch.object(ProfileState,'codex_independent',staticmethod(lambda:True)):
+            state=ProfileState();choices=dict(claude='full',codex=None)
+            self.assertTrue(state.apply_scenario(choices,'подтверждаю',0)['ok'])
+            view=state.public();codex=view['engines']['codex']
+            self.assertEqual(view['engines']['claude']['role'],'solo');self.assertEqual(codex['role'],'solo');self.assertTrue(codex['active'])
+            self.assertNotIn('на паузе',codex['label']);self.assertNotIn('не участвует',codex['label']);self.assertEqual(codex['selected'],codex['base_selected'])
+            # зеркальный случай: Claude (несколько аккаунтов, есть ротация) при Codex Full по-прежнему на паузе
+            other=ProfileState();self.assertTrue(other.apply_scenario(dict(claude=None,codex='full'),'подтверждаю',0)['ok'])
+            self.assertEqual(other.public()['engines']['claude']['role'],'paused')
+
+    def test_several_codex_accounts_keep_the_old_pause(self):
+        with patch.object(ProfileState,'codex_independent',staticmethod(lambda:False)):
+            state=ProfileState();self.assertTrue(state.apply_scenario(dict(claude='full',codex=None),'подтверждаю',0)['ok'])
+            self.assertEqual(state.public()['engines']['codex']['role'],'paused')
+
+    def test_broken_independence_check_falls_back_to_pause(self):
+        def boom():raise OSError('нет профилей')
+        with patch.object(ProfileState,'codex_independent',staticmethod(boom)):
+            state=ProfileState();self.assertTrue(state.apply_scenario(dict(claude='full',codex=None),'подтверждаю',0)['ok'])
+            self.assertEqual(state.public()['engines']['codex']['role'],'paused')
+
     def test_legacy_state_is_reported_without_activating_or_pausing_sessions(self):
         state=ProfileState();raw=state.export();raw.pop('manual_choices')
         restored=ProfileState.from_data(raw);view=restored.public()
