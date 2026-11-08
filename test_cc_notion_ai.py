@@ -730,6 +730,13 @@ class TestAgents(unittest.TestCase):
         for needle in ("grp.id='naiGrp'", "grp.classList.toggle('nai-grp-on',L.length>0&&tabOn)", '.nai-grp:not(:has(.ctab:not([hidden])))'):
             self.assertIn(needle, ui)
 
+    def test_settings_form_has_the_token_field_as_a_password_input(self):
+        import cc_notion_ai as M
+        ui = M.CFG_UI
+        self.assertIn('id="naiCfgPat" type="password"', ui)
+        self.assertIn("['notion_token','naiCfgPat']", ui)
+        self.assertIn('notion.so/profile/integrations', ui)  # «как подключить с нуля» говорит, где взять токен
+
     def test_public_filters_and_errors(self):
         def fake(path, data=None, timeout=20):
             return {'ok': True, 'agents': [{'aid': self.AID, 'name': 'A'}], 'models': [{'label': 'Opus 5.5'}, {'label': 'Connect ChatGPT plan'}], 'efforts': ['Low'], 'jobs': []}
@@ -772,6 +779,45 @@ class TestCfg(unittest.TestCase):
         ok, _, _ = M.save_cfg({'tg_agent': aid}); self.assertTrue(ok); self.assertEqual(M.load_cfg()['tg_agent'], aid)
         ok, _, _ = M.save_cfg({'tg_agent': ''}); self.assertTrue(ok); self.assertEqual(M.load_cfg()['tg_agent'], '')
         ok, _, _ = M.save_cfg({'tg_agent': '../x'}); self.assertFalse(ok)
+    def test_notion_api_token_goes_to_its_own_file_and_never_back_to_the_page(self):
+        import os as _os
+        old = M.PAT_FILE
+        M.PAT_FILE = self.d + '/notion_pat'
+        self.addCleanup(setattr, M, 'PAT_FILE', old)
+        tok = 'ntn_' + 'A1b2C3d4' * 5
+        self.assertFalse(M.pat_set())
+        for bad in ('abc', 'ntn_short', 'ntn_ bad token with spaces ' + 'x' * 30, 'ghp_' + 'a' * 40):
+            ok, m, _ = M.save_cfg({'notion_token': bad}); self.assertFalse(ok, bad); self.assertIn('ntn_', m)
+        self.assertFalse(Path(M.PAT_FILE).exists())
+        ok, m, c = M.save_cfg({'notion_token': '  ' + tok + '  ', 'owner': 'Аня'}); self.assertTrue(ok, m)
+        self.assertEqual(Path(M.PAT_FILE).read_text().strip(), tok)
+        self.assertEqual(oct(_os.stat(M.PAT_FILE).st_mode & 0o777), '0o600')
+        self.assertTrue(M.pat_set())
+        self.assertEqual(M.load_cfg()['owner'], 'Аня')  # остальные поля сохранились вместе с токеном
+        pub = json.dumps(M.cfg_public())
+        self.assertNotIn(tok, pub); self.assertNotIn('A1b2C3d4', pub)  # ни токена, ни его кусков в ответе панели
+        self.assertNotIn(tok, Path(M.CFG_FILE).read_text())              # и в файле настроек его нет
+        self.assertTrue(M.cfg_public()['status']['pat'])
+        ok, _, _ = M.save_cfg({'notion_token': ''}); self.assertTrue(ok)  # пустое поле — токен не меняется
+        self.assertEqual(Path(M.PAT_FILE).read_text().strip(), tok)
+
+    def test_check_tells_whether_the_token_works(self):
+        old = (M.PAT_FILE, M._delegate, M.delegate_health, M.tg_me)
+        M.PAT_FILE = self.d + '/notion_pat'
+        M.delegate_health = lambda: {'auth': 'ok'}
+        M.tg_me = lambda fresh=False: ''
+        self.addCleanup(lambda: [setattr(M, k, v) for k, v in zip(('PAT_FILE', '_delegate', 'delegate_health', 'tg_me'), old)])
+        item = lambda: [x for x in M.cfg_check()['items'] if x['name'] == 'Токен Notion API'][0]
+        i = item(); self.assertTrue(i['ok']); self.assertIn('не задан', i['text'])      # не задан — не ошибка, нужен только для агентов
+        Path(M.PAT_FILE).write_text('ntn_' + 'x' * 40)
+        M._delegate = lambda path, data=None, timeout=20: {'ok': True, 'agents': [1, 2]}
+        i = item(); self.assertTrue(i['ok']); self.assertIn('агентов: 2', i['text'])
+        M._delegate = lambda path, data=None, timeout=20: {'ok': False, 'error': 'Notion API 401: API token is invalid'}
+        i = item(); self.assertFalse(i['ok']); self.assertIn('401', i['text'])
+        def down(path, data=None, timeout=20): raise OSError('нет')
+        M._delegate = down
+        i = item(); self.assertFalse(i['ok']); self.assertIn('не отвечает', i['text'])
+
     def test_chat_change_restarts_view(self):
         ok, _, _ = M.save_cfg({'chat_url': 'https://app.notion.com/chat?t=' + 'b' * 32}); self.assertTrue(ok)
         self.assertTrue(any('notion-ai-view.service' in x for x in self.runs[-1]))

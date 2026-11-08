@@ -295,7 +295,7 @@ s6() {
     d="$PROFILES_DIR/acc$i"; mkdir -p "$d"
     [ -f "$d/oauth_account.json" ] || echo '{}' > "$d/oauth_account.json"
   done
-  okm "профили аккаунтов: $N_ACCOUNTS пустых слота в $PROFILES_DIR (войдёшь в них в панели кнопкой «Войти»)"
+  okm "профили аккаунтов: $N_ACCOUNTS пустых слота в $PROFILES_DIR (войдёшь в них в панели: «Добавить аккаунт» или «Войти заново»)"
   # config.json не обнуляем: hook_token и уже настроенные ключи переживают обновление
   local old_token; old_token="$(json_get "$BASE/config.json" hook_token)"
   if [ -n "$old_token" ]; then HOOK_TOKEN="$old_token"; info "config.json уже есть — обновляю, hook_token оставляю прежним"
@@ -581,12 +581,12 @@ s14() {
   echo
   echo -e "${CB}Что осталось сделать руками (по порядку):${C0}"
   command -v claude >/dev/null 2>&1 || echo "  ☐ Поставить Claude Code: npm install -g @anthropic-ai/claude-code (нужен Node.js 18+)"
-  echo "  ☐ Войти в аккаунты Claude: панель → карточка аккаунта → «Войти» (docs/INSTALL.md, раздел 3)"
+  echo "  ☐ Войти в аккаунты Claude: панель → «Добавить аккаунт» или «Войти заново» в меню ⋯ карточки (docs/INSTALL.md, раздел 3)"
   echo "  ☐ Запустить Claude Code в screen-сессии: $BASE/start_claude.sh (или кнопка «Запустить» в панели)"
   yes_ "$WANT_TG" || echo "  ☐ Подключить Telegram: docs/INSTALL.md, раздел 4"
   yes_ "$WANT_CODEX" && echo "  ☐ Codex: панель → «Codex +» → мастер (docs/INSTALL.md, раздел 5)" || echo "  ☐ Codex (по желанию): запусти установщик снова и ответь «y» на вопрос про Codex"
   yes_ "$WANT_NOTION" && echo "  ☐ Notion AI: панель → ⚙ Общие настройки → Notion AI (docs/INSTALL.md, раздел 6)"
-  echo "  ☐ Второй сервер (по желанию): панель → «Второй сервер +» (docs/INSTALL.md, раздел 7)"
+  echo "  ☐ Второй сервер (по желанию): панель → ⚙ Общие настройки → «Второй сервер» (docs/INSTALL.md, раздел 7)"
   echo
   echo "Проверить установку в любой момент: sudo ./install.sh --check"
   echo "Подробная инструкция со всеми подключениями: docs/INSTALL.md"

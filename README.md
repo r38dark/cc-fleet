@@ -1,6 +1,6 @@
 # ⚡ cc-fleet
 
-🇷🇺 Русский · [🇬🇧 English](README.en.md)
+🇷🇺 Русский · [🇬🇧 English](README.en.md) · 📘 [Установка по шагам](docs/INSTALL.md)
 
 **Self-host дашборд для ротации нескольких аккаунтов Claude Code по лимитам.**
 
@@ -196,50 +196,30 @@ Blocks. Переключаются в «⚙ Настройки», выбор п�
 
 ## Требования
 
-- Свой VDS/сервер (root-доступ), Ubuntu/Debian с `apt`.
-- Установленный Claude Code (`npm i -g @anthropic-ai/claude-code`), команда
-  `claude` должна быть в `PATH` (`install.sh` предупредит, если её нет).
-- 2+ Pro/Max-аккаунта Claude, между которыми нужно переключаться.
-- *(опционально)* домен с A-записью на сервер — для веб-панели по HTTPS
-  вместо голого `127.0.0.1:8877`.
+- Свой VDS/сервер (root-доступ), Ubuntu 22.04+/Debian 12+ с `apt`, 1 ГБ свободного места, выход в интернет.
+- 2+ Pro/Max-аккаунта Claude, между которыми нужно переключаться. Claude Code установщик поставит сам.
+- *(по желанию)* домен с A-записью на сервер — панель на `https://домен/cc/`; Telegram-бот; Codex (ChatGPT Plus/Pro);
+  аккаунт Notion с Notion AI; второй сервер; голос (~5 ГБ места, 2 ГБ памяти).
 
 ## Установка
+
+**Полная пошаговая инструкция со всеми подключениями (аккаунты Claude, Telegram, Codex, Notion AI и агенты, второй сервер, голос) —
+[docs/INSTALL.md](docs/INSTALL.md):** «Шаг N из M», проверка после каждого шага, таблицы «если не вышло».
+
+Коротко:
 
 ```bash
 git clone https://github.com/r38dark/cc-fleet.git
 cd cc-fleet
-sudo ./install.sh
+sudo ./install.sh            # 14 шагов, после каждого проверка; перед следующим — перепроверка предыдущих
+sudo ./install.sh --check    # что уже готово (ничего не меняет)
 ```
 
-Установщик спросит: имя `screen`-сессии, где живёт Claude Code, сколько
-аккаунтов завести, порог авто-переключения, нужен ли nginx-домен с Basic
-Auth, нужны ли уведомления в Telegram. Дальше сам:
+Установщик задаёт вопросы (screen-сессия, число аккаунтов, порог, имя, часовой пояс, домен и пароль, Telegram, Codex, Notion AI, голос),
+показывает план и ничего не записывает, пока вы не ответите `y`. Повторный запуск безопасен: он продолжает с места остановки,
+не трогая токены и настройки. Без вопросов — для скриптов: `CC_FLEET_YES=1 sudo -E ./install.sh` (все переменные `CC_FLEET_*` — в таблице раздела 2 инструкции).
 
-1. поставит `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils`,
-   если выбран веб-домен),
-2. скопирует `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py` →
-   `/opt/cc-limits`, `cc-switch` → `/usr/local/bin/cc-switch`,
-3. заведёт N пустых слотов-профилей в `/root/.claude-profiles/accN`,
-4. сгенерирует `config.json` со случайным `hook_token` (при повторном запуске
-   — обновит существующий, не трогая токен и твои ключи),
-5. поставит и запустит systemd-сервис,
-6. поставит cron-будильник паузы (`/etc/cron.d/cc-limits-pause`, тик раз в
-   минуту),
-7. проверит, что сервис реально отвечает (health-check `/api/limits` и
-   `/api/pause`),
-8. *(опционально)* настроит nginx vhost + Basic Auth.
-
-Без вопросов — для скриптов/CI:
-
-```bash
-CC_FLEET_YES=1 sudo -E ./install.sh
-```
-
-Все параметры берутся из переменных окружения `CC_FLEET_*` (см. шапку
-`install.sh`) или из значений по умолчанию.
-
-HTTPS после установки настраивается отдельно, вручную: если ставил nginx —
-`certbot --nginx -d <домен>`.
+После установки: войти в свои аккаунты Claude в панели (раздел 3 инструкции), затем по желанию подключить остальное (разделы 4–8).
 
 ## Как запустить сам Claude Code в screen-сессии
 

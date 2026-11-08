@@ -2179,6 +2179,7 @@ VIEW_WANT = '/root/notion_web/notion_ai_view.want'
 
 DELEGATE = 'http://127.0.0.1:8893'
 DELEGATE_TOKEN = '/root/notion_web/api_token'
+PAT_FILE = '/root/notion_web/notion_pat'   # токен Notion API (внутренняя интеграция): по нему сервис видит и создаёт агентов; панель пишет, читает только сервис
 PANEL_FOOT = '\n\n— из панели балансера (вкладка «Notion AI» в консоли). Ответ — здесь в чате: {owner} видит его во вкладке.'
 _SENT, _SENT_LOCK = {}, threading.Lock()
 
@@ -2235,10 +2236,27 @@ def _valid_chat(url):
     return u.scheme == 'https' and u.hostname in CHAT_HOSTS and u.path.rstrip('/') == '/chat' and bool(re.fullmatch(r'[0-9a-f]{32}', q.get('t', '')))
 
 
+def pat_set():
+    try:
+        return bool(Path(PAT_FILE).read_text().strip())
+    except OSError:
+        return False
+
+
 def save_cfg(body):
     """Проверить и записать поля настроек. → (ok, сообщение, cfg)."""
     cur = load_cfg()
     new = dict(cur)
+    if str(body.get('notion_token') or '').strip():  # секрет: пишется в свой файл (600), в настройках и в ответах панели его нет
+        tok = str(body.get('notion_token')).strip()
+        if not re.fullmatch(r'(ntn_|secret_)[A-Za-z0-9_\-]{20,200}', tok):
+            return False, 'Токен Notion API: строка вида ntn_… (секрет внутренней интеграции из notion.so/profile/integrations).', cur
+        tmp = PAT_FILE + '.tmp'
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(tok + '\n')
+        os.replace(tmp, PAT_FILE)
+        os.chmod(PAT_FILE, 0o600)
     if 'chat_url' in body:
         url = str(body.get('chat_url') or '').strip()
         if not _valid_chat(url):
@@ -2615,7 +2633,7 @@ def card_state(path, now=None):
 
 def cfg_public():
     cfg = load_cfg()
-    return dict(ok=True, cfg=cfg, status=cfg_status(cfg), instruction=instruction(cfg))
+    return dict(ok=True, cfg=cfg, status=dict(cfg_status(cfg), pat=pat_set()), instruction=instruction(cfg))
 
 
 def cfg_check():
@@ -2642,6 +2660,14 @@ def cfg_check():
     out.append(dict(name='Ответ в Telegram', ok=Path(REPLY_BIN).exists(), text='notion-ai-reply на месте' if Path(REPLY_BIN).exists() else 'нет notion-ai-reply'))
     out.append(dict(name='Голос', ok=Path(tts_path()).exists() or not cfg['voice'],
                     text=('включён' if cfg['voice'] else 'выключен') + ('' if Path(tts_path()).exists() else ' · нет синтеза речи (поставь: sudo bash voice/install.sh)')))
+    if not pat_set():
+        out.append(dict(name='Токен Notion API', ok=True, text='не задан — он нужен только для списка и создания агентов (⚙ → «Токен Notion API»)'))
+    else:
+        try:
+            j = _delegate('/agents', timeout=30)
+            out.append(dict(name='Токен Notion API', ok=bool(j.get('ok')), text=('работает, агентов: %d' % len(j.get('agents') or [])) if j.get('ok') else str(j.get('error') or 'Notion не принял токен')[:160]))
+        except Exception as exc:
+            out.append(dict(name='Токен Notion API', ok=False, text='сохранён, но проверить не вышло: сервис Notion не отвечает (' + type(exc).__name__ + ')'))
     n = len(key_lines())
     out.append(dict(name='Ключ доступа Notion AI', ok=True, text='из панели добавлено: %d' % n if n else 'из панели не добавлялся (может быть добавлен вручную)'))
     try:
@@ -2755,6 +2781,7 @@ function render(){var box=$i('naiCfgBox');if(!box||!data)return;var c=data.cfg||
   +'<label class="nc-f">Почта входа в Notion (на неё придёт код при повторном входе)<input class="dlginp" id="naiCfgMail" type="email" autocomplete="off" placeholder="name@example.com" value="'+esc(c.notion_email)+'"></label>'
   +'<label class="nc-f">Telegram: куда отвечать (id чата)<input class="dlginp" id="naiCfgTg" inputmode="numeric" placeholder="пусто — общий чат'+(s.tg_default?': '+esc(s.tg_default):'')+'" value="'+esc(c.tg_chat_id)+'"></label>'
   +'<label class="nc-f">Адрес сервера для SSH агентов<input class="dlginp" id="naiCfgHost" maxlength="100" spellcheck="false" autocomplete="off" placeholder="пусто — внешний IP этого сервера" value="'+esc(c.ssh_host)+'"></label>'
+  +'<label class="nc-f">Токен Notion API (для агентов; секрет, после сохранения не показывается)<input class="dlginp" id="naiCfgPat" type="password" autocomplete="off" spellcheck="false" placeholder="'+(s.pat?'сохранён — впиши новый, чтобы заменить':'ntn_…')+'"></label>'
   +'<label class="updchk"><input type="checkbox" id="naiCfgVoice"'+(c.voice?' checked':'')+'><span>Голосовые ответы в Telegram (текст + голос)</span></label>'
   +'<label class="updchk"><input type="checkbox" id="naiCfgTab"'+(c.console_tab?' checked':'')+'><span>Вкладка «Notion AI» в консоли</span></label>'
   +'<div class="nc-row"><button type="button" id="naiCfgSave">Сохранить</button><span class="nc-msg" data-m></span></div></div>'
@@ -2767,7 +2794,7 @@ function save(fields,okMsg){if(busy)return;var c=(data&&data.cfg)||{},body={};fi
  busy=true;msg('Сохраняю…');
  call('config',body).then(function(d){busy=false;if(d&&d.ok){if(d.cfg)data=d;render();msg(d.message||okMsg||'Сохранено');try{window.dispatchEvent(new CustomEvent('nai-cfg',{detail:d.cfg}))}catch(_){}}else msg('⚠ '+(d&&d.message||'Не сохранилось'))}).catch(function(e){busy=false;msg('⚠ '+e.message)})}
 function bind(){
- var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['tg_chat_id','naiCfgTg'],['ssh_host','naiCfgHost'],['voice','naiCfgVoice'],['console_tab','naiCfgTab']])};
+ var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['tg_chat_id','naiCfgTg'],['ssh_host','naiCfgHost'],['notion_token','naiCfgPat'],['voice','naiCfgVoice'],['console_tab','naiCfgTab']])};
  var ck=$i('naiCfgCheck');if(ck)ck.onclick=function(){msg('Проверяю…');call('check',{}).then(function(d){var o=$i('naiCfgOut');o.hidden=false;
   o.innerHTML=(d.items||[]).map(function(x){return '<div><span class="'+(x.ok?'nc-ok':'nc-bad')+'">'+(x.ok?'✓':'✗')+'</span><span><b>'+esc(x.name)+':</b> '+esc(x.text)+'</span></div>'}).join('');msg(d.ok?'Всё на месте':'Есть что поправить')}).catch(function(e){msg('⚠ '+e.message)})};
  var lg=$i('naiLogin');if(lg)lg.onclick=function(){if(data&&data.status&&data.status.auth==='ok'&&!confirm('Вход в Notion сейчас работает. Войти заново? На почту придёт код (не больше 3 входов в сутки).'))return;msg('Запрашиваю письмо…');call('login',{}).then(function(d){msg((d.ok?'':'⚠ ')+(d.message||''));if(d.ok){$i('naiCode').hidden=false;setTimeout(load,3000)}}).catch(function(e){msg('⚠ '+e.message)})};
@@ -2913,6 +2940,7 @@ var HOW_NAI='<details data-k="nhow"><summary>Подробно: что, где, �
  +'<li>В Notion открой Notion AI, начни новый чат и скопируй ссылку на него (…/chat?t=…). «⚙ Настройки Notion AI» → «Ссылка на постоянный чат» → «Сохранить».</li>'
  +'<li>Там же впиши почту входа в Notion, сохрани и нажми «Войти» в строке «Вход в Notion»: на почту придёт код — введи его там же.</li>'
  +'<li>Попроси Notion AI создать SSH-ключ и вставь публичную часть — одну строку «ssh-ed25519 AAAA…» — в «Ключ доступа к серверу (SSH)».</li>'
+ +'<li>Чтобы видеть и создавать других агентов Notion: создай внутреннюю интеграцию на notion.so/profile/integrations, скопируй её секрет (начинается с ntn_) и вставь в «Токен Notion API». Агенты создаются кнопкой «＋ Новый агент» в плитке Notion AI; ключ доступа к серверу и Telegram-чат каждому агенту панель выдаёт сама.</li>'
  +'<li>Скопируй «Инструкцию для постоянного чата» и отправь её первым сообщением в чат — так Notion AI узнает, откуда приходят сообщения и куда отвечать.</li>'
  +'<li>Нажми «Проверить связь». Потом в шапке выбери Notion AI → «Notion AI · только он».</li></ol>'
  +'<p><b>Почему так.</b> Постоянный чат хранит весь контекст работы. Вход в Notion — по коду из письма, пароль в панели не нужен. Ключ даёт доступ только к серверу и убирается одной кнопкой. Один бот Telegram на Claude и Notion AI — чтобы писать в привычный чат, кто бы ни работал.</p></details>';

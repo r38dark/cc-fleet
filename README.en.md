@@ -216,6 +216,8 @@ gear, a "Delete" button on every card and the windows for both flows
 
 ## Installation
 
+> A complete step-by-step guide (Claude accounts, Telegram, Codex, Notion AI and agents, a second server, voice) with a check after every step is in [docs/INSTALL.md](docs/INSTALL.md) (Russian). The installer has 14 steps and checks each one; `sudo ./install.sh --check` shows what is done.
+
 ```bash
 git clone https://github.com/r38dark/cc-fleet.git
 cd cc-fleet
