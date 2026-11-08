@@ -98,19 +98,39 @@ class Page(unittest.TestCase):
         self.assertIn(".termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}", L.PAGE)
         self.assertIn(".termwrap.nai-on .tpcomps{display:none!important}", L.PAGE)
 
-    def test_every_part_has_a_gray_frame_and_the_selected_one_a_muted_green(self):
-        # открытая часть — тонкая прозрачная серая рамка по периметру, выбранная — такая же мягкого зелёного (Денис 62474);
+    def test_selected_part_has_a_muted_green_frame_only(self):
+        # у частей консоли — приглушённо-зелёная рамка только выбранной (серые рамки частей убраны, Денис 62486);
         # рамка охватывает шапку, экран и окно ввода, строки «Ввод в …» у части нет (62461)
-        self.assertIn(".tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid rgba(170,182,200,.26)}", L.PAGE)
+        self.assertIn(".tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid transparent}", L.PAGE)
         self.assertIn(".tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}", L.PAGE)
         self.assertIn(".termwrap.tsplit:not(.nai-on) .tpfr{display:block}", L.PAGE)
         self.assertIn("renderComps(ks);\n placeFrame(ks);", L.PAGE)
         # размеры дробные (округление уводило правый край под рамку блока), нижние углы — как у блока, соседние рамки перекрываются на 1px
         self.assertIn("f.style.width=(b.width+lap).toFixed(2)+'px'", L.PAGE)
         self.assertIn("f.style.borderBottomLeftRadius=i===0?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1?rad+'px':'0';", L.PAGE)
+        # разделительные линии между частями на месте
+        self.assertIn(".tphd+.tphd{border-left:1px solid #263140}", L.PAGE)
+        self.assertIn(".tpcw+.tpcw{border-left:1px solid #263140}", L.PAGE)
         self.assertNotIn("tpstat", L.PAGE)
         self.assertNotIn("#tpFrame", L.PAGE)
         self.assertNotIn(".termbox.tpact{box-shadow", L.PAGE)
+
+    def test_top_menu_tabs_have_a_gray_frame_when_open_and_a_muted_green_one_when_active(self):
+        # верхнее меню (ПК): открытая консоль — прозрачная серая рамка вокруг вкладки, активная — такая же приглушённо-зелёная (Денис 62474/62486)
+        self.assertIn("@media(min-width:1100px) and (pointer:fine){\n html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s]{align-self:center;height:30px!important;padding:0 12px!important;border-radius:8px}", L.PAGE)
+        self.assertIn("html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].tshown:not(.on){box-shadow:inset 0 0 0 1px rgba(170,182,200,.28)!important}", L.PAGE)
+        self.assertIn("html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].on{box-shadow:inset 0 0 0 1px rgba(104,172,146,.62)!important}", L.PAGE)
+        self.assertIn("html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].on::after{display:none}", L.PAGE)
+        self.assertNotIn("text-decoration:underline;text-decoration-color:rgba(200,215,230,.45)", L.PAGE)
+
+    def test_part_header_opens_a_model_menu(self):
+        # клик по шапке части — выпадающее меню моделей: выбрать модель для части сразу, без перетаскивания (Денис 62486)
+        for part in ("function openModelMenu(i){", "function closeModelMenu(){", "function pickPartModel(i,k){",
+                     "splitCommit(splitDrop(ks,splitActIdx(ks),i,k),k);", '<span class="tpcaret" aria-hidden="true">▾</span>',
+                     "const i=+c.dataset.i,m=document.getElementById('tpMenu');if(m&&+m.dataset.i===i){closeModelMenu();return;}splitActivate(i);openModelMenu(i);"):
+            self.assertIn(part, L.PAGE, part)
+        self.assertIn("splitKeysAvail().map(k=>{", L.PAGE)  # в меню — все доступные модели, включая Notion AI и агентов
+        self.assertIn(".tpmenu{position:fixed;z-index:70;", L.PAGE)
 
     def test_split_keeps_the_console_block_height(self):
         # общее окно ввода со строкой статуса выше окон частей на 39px: добавлены к экрану, «Активные аккаунты» остаются на месте (Денис 62472)

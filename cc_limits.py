@@ -3441,15 +3441,30 @@ html:root:root #splitBtn[hidden]{display:none!important}  /* у кнопок б�
 html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(360px,41dvh,510px) + 39px)}
 @media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)}}
 html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
+html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
 html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
 .tpextra{background:var(--fleet-terminal,#0b0d10);color:#d2dce9;white-space:pre;font:calc(12px*var(--tz,1)*var(--pz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace}
 .termwrap.tsplit .termbox.tpdrop{box-shadow:inset 0 0 0 2px var(--fleet-accent,#73dbb7);background-image:linear-gradient(rgba(115,219,183,.08),rgba(115,219,183,.08))}
 .termwrap.tsplit .tpheads{display:flex;position:absolute;left:0;right:0;top:0;height:30px;z-index:5;pointer-events:none}
 .tphd{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;padding:0 10px;margin:0;font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#9fb0c3;cursor:grab;pointer-events:auto;background:#0e1219;border-bottom:1px solid #263140;user-select:none}
 .tphd.on{color:#eaf2fb}
+.tphd+.tphd{border-left:1px solid #263140}
 .tphd.tpdrop{background:#173a33}
 .tphd b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tphd .tpdot{flex:none}
+.tphd{cursor:pointer}
+.tphd .tpcaret{flex:none;color:#7d8ea3;font-size:10px;margin-left:-2px}
+.tphd:hover .tpcaret{color:#cfe9e0}
+.tpmenu{position:fixed;z-index:70;min-width:224px;max-width:min(320px,calc(100vw - 16px));padding:6px;background:#141a23;border:1px solid #2a3644;border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,.5);font:500 13px system-ui,-apple-system,Segoe UI,sans-serif;color:#c9d4e0}
+.tpmt{padding:5px 10px 6px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6d7f94}
+.tpmi{display:flex;align-items:center;gap:9px;width:100%;margin:0;padding:8px 10px;border:0;border-radius:7px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.tpmi:hover,.tpmi:focus-visible{background:rgba(255,255,255,.07);outline:0}
+.tpmi.cur{color:#e7f3ee}
+.tpmd{width:7px;height:7px;border-radius:50%;flex:none;background:#e0905a}
+.tpmd[data-m=codex]{background:#4cdbb0}.tpmd[data-m=notion]{background:#a78bfa}
+.tpmn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpmw{flex:none;font-size:11px;color:#6d7f94}
+.tpmc{flex:none;color:#68ac92}
 .tphd .tpx{margin:0 0 0 auto;padding:0 4px;min-height:0;width:auto;background:none;border:0;color:#7d8ea3;font:16px/1 system-ui,sans-serif;cursor:pointer}
 .tphd .tpx:hover{color:#eaf2fb}
 body.tpdraging .tpadd{display:flex;position:fixed;z-index:60;align-items:center;justify-content:center;text-align:center;padding:14px;font:600 13px system-ui,sans-serif;color:#cfe9e0;background:rgba(25,60,52,.78);border:2px dashed var(--fleet-accent,#73dbb7);box-sizing:border-box}
@@ -3460,6 +3475,7 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .termwrap.tsplit.tpcomps-on:not(.nai-on)>.tpcomps{display:flex;flex:none;min-width:0}
 .termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}
 .tpcw{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+.tpcw+.tpcw{border-left:1px solid #263140}
 .tpcomp{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-top:1px solid #263140;background:#101620;color:#dbe3ed}
 .tpcomp::before{content:"›";color:#73dbb7;font:20px ui-monospace,monospace}
 .tpcomp textarea{flex:1;min-width:0;resize:vertical;min-height:26px;max-height:140px;margin:0;padding:4px 0;background:none;color:#dbe3ed;border:0;outline:0;border-radius:0;font:12px/1.5 ui-monospace,Consolas,monospace}
@@ -3474,11 +3490,17 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 html:root:root #termBox.tpchat,html:root:root .tpextra.tpchat{white-space:normal!important;font-family:ui-monospace,"SFMono-Regular",Consolas,monospace}
 .termbox.tpchat>span,.termbox.tpchat>.termidle{display:none!important}
 html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 auto;min-height:0;width:auto;height:auto;margin:0;padding:0;overflow-x:hidden;overflow-y:auto;font:inherit;color:inherit;white-space:normal}
-.tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid rgba(170,182,200,.26)}
+.tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid transparent}
 .tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}
 .termwrap.tsplit:not(.nai-on) .tpfr{display:block}
 .termwrap.nai-on .tpcomps{display:none!important}
-html:root:root .ctab.tshown:not(.on){text-decoration:underline;text-decoration-color:rgba(200,215,230,.45);text-decoration-thickness:1px;text-underline-offset:7px}
+/* верхнее меню (ПК): открытая консоль — аккуратная прозрачная серая рамка вокруг вкладки, активная — такая же мягкого приглушённого зелёного */
+@media(min-width:1100px) and (pointer:fine){
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s]{align-self:center;height:30px!important;padding:0 12px!important;border-radius:8px}
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].tshown:not(.on){box-shadow:inset 0 0 0 1px rgba(170,182,200,.28)!important}
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].on{box-shadow:inset 0 0 0 1px rgba(104,172,146,.62)!important}
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].on::after{display:none}
+}
 /* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
 .ccpause{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid #232a36;border-left:4px solid var(--ccp-accent,var(--mut))}
 .ccpause[hidden]{display:none}
@@ -5419,12 +5441,33 @@ function syncPanes(){
  placeFrame(ks);
  if(ks)fitAll();
 }
+// ---- выпадающее меню моделей в шапке части: выбрать модель для этой части сразу, без перетаскивания
+function closeModelMenu(){const m=document.getElementById('tpMenu');if(m)m.remove();document.removeEventListener('pointerdown',menuOutside,true);document.removeEventListener('keydown',menuKey,true);removeEventListener('resize',closeModelMenu);}
+function menuOutside(e){const m=document.getElementById('tpMenu');if(m&&!m.contains(e.target)&&!(e.target.closest&&e.target.closest('.tphd')))closeModelMenu();}
+function menuKey(e){if(e.key==='Escape'){e.stopPropagation();closeModelMenu();}}
+function openModelMenu(i){
+ closeModelMenu();
+ const ks=splitEff();if(!ks||i<0||i>=ks.length)return;
+ const chip=document.querySelector('#tpHeads .tphd[data-i="'+i+'"]');if(!chip)return;
+ const m=document.createElement('div');m.id='tpMenu';m.className='tpmenu';m.dataset.i=i;m.setAttribute('role','menu');
+ m.innerHTML='<div class="tpmt">'+(LANG==='en'?'Model in this part':'Модель в этой части')+'</div>'+splitKeysAvail().map(k=>{
+  const j=ks.indexOf(k),cur=j===i;
+  return '<button type="button" role="menuitem" class="tpmi'+(cur?' cur':'')+'" data-k="'+acctEsc(k)+'"><span class="tpmd" data-m="'+(isNai(k)?'notion':k)+'"></span><span class="tpmn">'+acctEsc(tabName(k))+'</span>'
+   +(j>=0&&!cur?'<span class="tpmw">'+(LANG==='en'?'part ':'часть ')+(j+1)+'</span>':'')+(cur?'<span class="tpmc">✓</span>':'')+'</button>';}).join('');
+ document.body.appendChild(m);
+ const r=chip.getBoundingClientRect();m.style.left=Math.max(8,Math.min(r.left,innerWidth-m.offsetWidth-8))+'px';m.style.top=(r.bottom+4)+'px';
+ m.addEventListener('click',e=>{const b=e.target.closest('.tpmi');if(!b)return;const k=b.dataset.k;closeModelMenu();pickPartModel(i,k);});
+ document.addEventListener('pointerdown',menuOutside,true);document.addEventListener('keydown',menuKey,true);addEventListener('resize',closeModelMenu);
+ const f=m.querySelector('.tpmi.cur')||m.querySelector('.tpmi');if(f)f.focus({preventScroll:true});
+}
+// выбрана модель для части i: показана в другой части — части меняются местами (как при перетаскивании), иначе заменяется
+function pickPartModel(i,k){const ks=splitEff();if(!ks||!isKey(k))return;if(ks[i]===k){splitActivate(i);return;}splitCommit(splitDrop(ks,splitActIdx(ks),i,k),k);}
 function renderHeads(ks){
  const vp=PANES[0].box.parentNode;let h=document.getElementById('tpHeads');
  if(!ks){if(h)h.remove();PANES.forEach(P=>{P.chipDot=null});return;}
  if(!h){
   h=document.createElement('div');h.id='tpHeads';h.className='tpheads';vp.appendChild(h);
-  h.addEventListener('click',e=>{const x=e.target.closest('[data-x]');if(x){splitClose(+x.dataset.x);return;}const c=e.target.closest('.tphd');if(c)splitActivate(+c.dataset.i);});
+  h.addEventListener('click',e=>{const x=e.target.closest('[data-x]');if(x){splitClose(+x.dataset.x);return;}const c=e.target.closest('.tphd');if(c){const i=+c.dataset.i,m=document.getElementById('tpMenu');if(m&&+m.dataset.i===i){closeModelMenu();return;}splitActivate(i);openModelMenu(i);}});
   h.addEventListener('dragstart',e=>{const c=e.target.closest('.tphd');if(!c)return;DRAG={t:'pane',v:+c.dataset.i};try{e.dataTransfer.setData('text/plain','pane:'+c.dataset.i);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
   h.addEventListener('dragend',dragEnd);
   dropTarget(h,e=>{const c=e.target.closest('.tphd');return c?+c.dataset.i:-1;});
@@ -5432,7 +5475,7 @@ function renderHeads(ks){
  const act=splitActIdx(ks),sig=ks.join()+'|'+act+'|'+LANG+'|'+ks.map(tabName).join();
  if(h.dataset.sig===sig)return;
  h.dataset.sig=sig;
- h.innerHTML=ks.map((k,i)=>'<div class="tphd'+(i===act?' on':'')+'" data-i="'+i+'" draggable="true" title="'+(LANG==='en'?'Drag onto another part to swap':'Перетащи на другую часть, чтобы поменять местами')+'"><span class="termdot tpdot" data-i="'+i+'"></span><b>'+tabName(k)+'</b><button type="button" class="tpx" data-x="'+i+'" title="'+(LANG==='en'?'Close this part':'Закрыть часть')+'" aria-label="'+(LANG==='en'?'Close this part':'Закрыть часть')+'">×</button></div>').join('');
+ h.innerHTML=ks.map((k,i)=>'<div class="tphd'+(i===act?' on':'')+'" data-i="'+i+'" draggable="true" title="'+(LANG==='en'?'Drag onto another part to swap':'Перетащи на другую часть, чтобы поменять местами')+'"><span class="termdot tpdot" data-i="'+i+'"></span><b>'+tabName(k)+'</b><span class="tpcaret" aria-hidden="true">▾</span><button type="button" class="tpx" data-x="'+i+'" title="'+(LANG==='en'?'Close this part':'Закрыть часть')+'" aria-label="'+(LANG==='en'?'Close this part':'Закрыть часть')+'">×</button></div>').join('');
  PANES.forEach((P,i)=>{P.chipDot=h.querySelector('.tpdot[data-i="'+i+'"]');if(P.chipDot&&P.dotCls)P.chipDot.className=P.dotCls+' tpdot';});
 }
 let DRAG=null;
