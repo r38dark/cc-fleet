@@ -5,15 +5,17 @@
       "v": "2.0.4",
       "date": "2026-11-08",
       "ru": {
-        "t": "Консоль Codex не стартует сама, пока Codex не подключён",
+        "t": "Консоль Codex не стартует сама; подтверждение «авто» — в окне плитки",
         "p": [
-          "Запомненная вкладка Codex не выбирается, пока Codex не подключён; его консоль не стартует без входа в ChatGPT"
+          "Запомненная вкладка Codex не выбирается, пока Codex не подключён; его консоль не стартует без входа в ChatGPT",
+          "Подтверждение «Включить/Выключить авто» показывается в том же окне плитки, а не отдельным окном под ним"
         ]
       },
       "en": {
-        "t": "The Codex console no longer auto-starts while unconnected",
+        "t": "No Codex console autostart; "auto" confirmation in the tile window",
         "p": [
-          "A remembered Codex tab is not selected while Codex is unconnected; its console does not start without a ChatGPT login"
+          "A remembered Codex tab is not selected while Codex is unconnected; its console does not start without a ChatGPT login",
+          "The "auto" on/off confirmation is shown inside the tile window instead of a separate window hidden under it"
         ]
       }
     },
