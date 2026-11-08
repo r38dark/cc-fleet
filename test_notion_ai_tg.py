@@ -48,6 +48,41 @@ class Base(unittest.TestCase):
             return f.read()
 
 
+class AgentRouting(Base):
+    """Сообщения из Telegram идут главному агенту или тому, кого выбрали в окне агента (tg_agent); в реестре его нет — главному."""
+    AID = "a1b2c3d4-0000-0000-0000-000000000000"
+
+    def setUp(self):
+        super().setUp()
+        self.m.NAI_CFG = os.path.join(self.d, "notion_ai.json")
+        self.m.NAGENTS = os.path.join(self.d, "nagents.json")
+
+    def reg(self, cfg, agents):
+        import json
+        put(self.m.NAI_CFG, json.dumps(cfg))
+        put(self.m.NAGENTS, json.dumps({"agents": agents}))
+
+    def test_main_agent_by_default_and_when_agent_is_unknown(self):
+        self.assertEqual(self.m.tg_agent(), (None, None))  # файлов нет
+        self.reg({"tg_agent": ""}, {self.AID: {"name": "Торговля"}})
+        self.assertEqual(self.m.tg_agent(), (None, None))
+        self.reg({"tg_agent": self.AID}, {})
+        self.assertEqual(self.m.tg_agent(), (None, None))  # агента удалили — вернуться к главному
+
+    def test_selected_agent_gets_the_messages(self):
+        self.reg({"tg_agent": self.AID}, {self.AID: {"name": "Торговля"}})
+        self.assertEqual(self.m.tg_agent(), (self.AID, "Торговля"))
+
+    def test_post_adds_agent_only_when_chosen(self):
+        sent = []
+        self.m.dcall = lambda path, data=None, timeout=30: (sent.append((path, data)), {"id": "abcd1234", "status": "done"})[1]
+        with mock.patch.object(self.m.time, "sleep", lambda s: None):
+            self.assertTrue(self.m.post("привет"))
+            self.assertEqual(sent[0], ("/post", {"text": "привет"}))
+            self.assertTrue(self.m.post("привет", self.AID))
+        self.assertEqual(sent[2], ("/post", {"text": "привет", "aid": self.AID}))
+
+
 class PluginProcesses(Base):
     def tree(self):
         self.ps(50, 1, "claude", "--dangerously-skip-permissions", "--channels", "plugin:telegram@claude-plugins-official")

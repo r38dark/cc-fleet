@@ -682,6 +682,49 @@ class TestAgents(unittest.TestCase):
             self.assertFalse(M.agents_view('x')['ok']); self.assertEqual(M.agents_job('../x')['status'], 'unknown')
         self._with(fake, run)
 
+    def test_telegram_actions_return_at_once_without_a_job(self):
+        calls = []
+        def fake(path, data=None, timeout=20):
+            calls.append((path, data)); return {'ok': True, 'message': 'Сохранено', 'tg': '-100123456'}
+        def run(M):
+            r = M.agents_action('tg', {'aid': self.AID, 'tg_chat_id': ' -100123456 '})
+            self.assertEqual((r['ok'], r['tg']), (True, '-100123456'))
+            self.assertEqual(calls[-1], ('/agents/tg', {'aid': self.AID, 'tg_chat_id': '-100123456'}))
+            M.agents_action('tgtest', {'name': 'Торговля', 'tg_chat_id': '@trade_channel'})
+            self.assertEqual(calls[-1], ('/agents/tgtest', {'name': 'Торговля', 'tg_chat_id': '@trade_channel'}))
+            M.agents_action('create', {'name': 'Агент', 'tg_chat_id': '-100123456'}); self.assertEqual(calls[-1][1]['tg_chat_id'], '-100123456')
+            M.agents_action('create', {'name': 'Агент'}); self.assertEqual(calls[-1][1]['tg_chat_id'], '')  # пусто — основной канал
+            M.agents_action('settings', {'aid': self.AID, 'instructions': True}); self.assertIs(calls[-1][1]['instructions'], True)
+            M.agents_action('settings', {'aid': self.AID, 'instructions': 'yes'}); self.assertNotIn('instructions', calls[-1][1])
+            self.assertFalse(M.agents_action('tg', {'aid': '../x'})['ok'])
+        self._with(fake, run)
+        def refuse(path, data=None, timeout=20): return {'error': 'Telegram: нужен id чата'}
+        r = self._with(refuse, lambda M: M.agents_action('tg', {'aid': self.AID, 'tg_chat_id': 'x'}))
+        self.assertFalse(r['ok']); self.assertIn('нужен id', r['message'])
+
+    def test_public_list_tells_who_gets_telegram(self):
+        def fake(path, data=None, timeout=20): return {'ok': True, 'agents': [], 'models': [], 'efforts': [], 'jobs': []}
+        r = self._with(fake, lambda M: M.agents_public())
+        self.assertIn('tg_agent', r)
+
+    def test_agents_ui_progress_telegram_and_one_block(self):
+        import cc_notion_ai as M
+        ui = M.UI
+        # создание: окно закрывается сразу, ход — в строке под проектом с полосой по времени; повторного окна с прогрессом нет
+        self.assertIn("if(label.kind==='create')close()", ui)
+        for needle in ('nai-ag-prog', 'nai-pg-bar', 'function fillProg', 'function fmtEta', "'/'+j.steps+' · '", 'Осталось примерно'):
+            self.assertIn(needle, ui)
+        self.assertNotIn("Создаю агента… (~3–4 мин)", ui.split("function onClick")[1].split("window.naiAgentPop")[0].replace("'Создаю агента… (около 3 мин)'", ''))
+        # Telegram: поле в форме и в окне агента, проверка, сохранение, приём из Telegram
+        for needle in ("tgBlock('naiNewTg','naiNewTgId'", "tgBlock('naiAgTg','naiAgTgId'", "data-do=\"tgtest\"", "data-do=\"agtgsave\"", "post('tgtest'", "post('tg'", 'naiAgRecv', 'tg_agent', 'Основной канал Claude', 'tg_chat_id:tv.id'):
+            self.assertIn(needle, ui)
+        # введённое в форму не пропадает, когда она перерисовывается
+        for needle in ('function snap()', 'cur.name=n.value', "if(cur&&t.id==='naiNewName')cur.name=t.value"):
+            self.assertIn(needle, ui)
+        # Notion AI и его агенты — одним блоком в верхнем меню, рамка только когда агенты есть
+        for needle in ("grp.id='naiGrp'", "grp.classList.toggle('nai-grp-on',L.length>0&&tabOn)", '.nai-grp:not(:has(.ctab:not([hidden])))'):
+            self.assertIn(needle, ui)
+
     def test_public_filters_and_errors(self):
         def fake(path, data=None, timeout=20):
             return {'ok': True, 'agents': [{'aid': self.AID, 'name': 'A'}], 'models': [{'label': 'Opus 5.5'}, {'label': 'Connect ChatGPT plan'}], 'efforts': ['Low'], 'jobs': []}
@@ -714,6 +757,16 @@ class TestCfg(unittest.TestCase):
                      {'owner': ''}, {'owner': '<b>'}, {'notion_email': 'nope'}, {'tg_chat_id': '12ab'}):
             ok, m, _ = M.save_cfg(body); self.assertFalse(ok, body)
         self.assertFalse(Path(M.CFG_FILE).exists())
+    def test_server_address_and_telegram_agent_settings(self):
+        ok, _, c = M.save_cfg({'ssh_host': ' srv.example.org '}); self.assertTrue(ok); self.assertEqual(M.load_cfg()['ssh_host'], 'srv.example.org')
+        ok, _, _ = M.save_cfg({'ssh_host': '203.0.113.7'}); self.assertTrue(ok)
+        ok, _, _ = M.save_cfg({'ssh_host': ''}); self.assertTrue(ok); self.assertEqual(M.load_cfg()['ssh_host'], '')  # пусто — внешний IP сервера
+        for bad in ('bad host', 'a;b', 'x' * 120, '-srv'):
+            ok, _, _ = M.save_cfg({'ssh_host': bad}); self.assertFalse(ok, bad)
+        aid = 'a1b2c3d4-0000-0000-0000-000000000000'
+        ok, _, _ = M.save_cfg({'tg_agent': aid}); self.assertTrue(ok); self.assertEqual(M.load_cfg()['tg_agent'], aid)
+        ok, _, _ = M.save_cfg({'tg_agent': ''}); self.assertTrue(ok); self.assertEqual(M.load_cfg()['tg_agent'], '')
+        ok, _, _ = M.save_cfg({'tg_agent': '../x'}); self.assertFalse(ok)
     def test_chat_change_restarts_view(self):
         ok, _, _ = M.save_cfg({'chat_url': 'https://app.notion.com/chat?t=' + 'b' * 32}); self.assertTrue(ok)
         self.assertTrue(any('notion-ai-view.service' in x for x in self.runs[-1]))

@@ -17,7 +17,123 @@ EFFORTS = ["Low", "Medium", "High", "xHigh", "Max"]
 EFFORT_ARIA = {"low": "Low", "medium": "Medium", "high": "High", "extra high": "xHigh", "xhigh": "xHigh", "max": "Max", "maximum": "Max"}
 MENU_JS = """()=>[...document.querySelectorAll('[role=menu]')].map(m=>[...m.querySelectorAll('[role=menuitem],[role=menuitemradio],[role=option]')].map(e=>({t:(e.innerText||'').split('\\n').map(s=>s.trim()).filter(Boolean),dis:e.getAttribute('aria-disabled')==='true'})))"""
 NAME_RE = re.compile(r"^[^\x00-\x1f<>]{1,80}$")
+TG_RE = re.compile(r"^(-?\d{4,20}|@[A-Za-z0-9_]{5,32})$")  # куда отвечает агент в Telegram: id чата/канала или @имя канала; пусто — основной чат балансера
 LOCK = threading.RLock()
+NAI_CFG = os.environ.get("CC_NOTION_AI_CFG") or "/opt/cc-limits/notion_ai.json"  # общие настройки панели (⚙ Настройки → Notion AI)
+INSTR_LOCAL = f"{D}/agent_instructions.local.md"  # личные правила владельца сервера: дописываются к общей инструкции, в репозиторий не попадают
+HANDOFF = "/opt/cc-limits/profile_exchange/codex/outbox/agent_handoff/current_project"
+# Этапы создания агента: (ключ, текст в строке состояния, секунд по умолчанию). Цифры по первому замеру 08.11.2026 (вся цепочка ~3 мин);
+# после каждого успешного создания реестр хранит последние 5 замеров этапа, полоса прогресса считает по их среднему.
+CREATE_STEPS = [
+    ("tpl", "создаю агента из шаблона «Morning brief»…", 20), ("setup", "Notion настраивает агента…", 3),
+    ("finish", "агент создан, Notion дописывает настройку…", 51), ("name", "имя агента…", 1),
+    ("settings", "модель, effort, доступ в интернет, инструкции…", 44), ("cleanup", "убираю чат настройки…", 15),
+    ("open", "открываю чат агента…", 18), ("rename", "называю чат…", 14),
+    ("key", "ключ доступа к серверу…", 22), ("login", "ключ добавлен на сервер, проверяю вход агента…", 30)]
+STEP_KEY = {t: k for k, t, _ in CREATE_STEPS}
+SSH_STEPS = ("key", "login")
+KEEP_TIMES = 5
+
+
+def step_plan(ssh): return [k for k, _, _ in CREATE_STEPS if ssh or k not in SSH_STEPS]
+
+
+def step_estimates(plan):
+    hist = reg_load().get("timing") or {}
+    dflt = {k: d for k, _, d in CREATE_STEPS}
+    return {k: (sum(hist[k]) / len(hist[k]) if hist.get(k) else dflt[k]) for k in plan}
+
+
+def step_mark(j, key, now=None):
+    """Этап key начался: предыдущий закрыт, его длительность записана."""
+    if not key or key not in (j.get("plan") or []): return
+    now = now or time.time()
+    step_close(j, now)
+    j["cur"], j["cur_t"] = key, now
+
+
+def step_close(j, now=None):
+    if j.get("cur"): j.setdefault("done", {})[j["cur"]] = (now or time.time()) - j["cur_t"]; j["cur"] = None
+
+
+def progress_of(j, now=None):
+    """Полоса по времени: доля сделанных этапов (по средним замерам) + часть текущего; на 100% только когда задание закончено."""
+    plan = j.get("plan") or []
+    if not plan: return {}
+    now = now or time.time(); est = j.get("est") or step_estimates(plan); n = len(plan)
+    if j.get("status") == "done": return dict(pct=100, eta=0, step=n, steps=n)
+    done, cur = j.get("done") or {}, j.get("cur")
+    total = sum(est.values()) or 1
+    spent = sum(est[k] for k in plan if k in done)
+    el = max(0.0, now - j["cur_t"]) if cur else 0.0
+    ce = est.get(cur, 0) if cur else 0
+    pct = min(99, int(100 * (spent + min(el, ce * 0.95)) / total))
+    after = sum(est[k] for k in plan if k not in done and k != cur)
+    eta = int(round(after + (max(ce - el, 5) if cur else 0)))
+    return dict(pct=pct, eta=eta, step=(plan.index(cur) + 1 if cur in plan else (len([k for k in plan if k in done]) or 0)), steps=n)
+
+
+def timing_record(j):
+    """Успешное создание: замеры этапов — в реестр (последние KEEP_TIMES на этап)."""
+    with LOCK:
+        r = reg_load(); t = r.setdefault("timing", {})
+        for k, d in (j.get("done") or {}).items():
+            if d > 0: t[k] = (t.get(k, []) + [round(d, 1)])[-KEEP_TIMES:]
+        reg_save(r)
+
+
+def nai_cfg():
+    try:
+        with open(NAI_CFG) as f: return json.load(f) or {}
+    except Exception: return {}
+
+
+_HOST = {"ts": 0, "v": ""}
+
+
+def server_host():
+    """Адрес сервера для SSH агента: ⚙ Настройки → Notion AI → «Адрес сервера» (ssh_host); пусто — внешний IP этого сервера."""
+    h = str(nai_cfg().get("ssh_host") or "").strip()
+    if h: return h
+    if time.time() - _HOST["ts"] < 600 and _HOST["v"]: return _HOST["v"]
+    for u in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "curl/8"}), timeout=5) as r:
+                v = r.read().decode().strip()
+            if re.fullmatch(r"[0-9a-fA-F:.]{3,45}", v): _HOST.update(ts=time.time(), v=v); return v
+        except Exception: pass
+    try:  # нет выхода к сервисам «мой IP» — первый публичный адрес самой машины
+        import subprocess
+        out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5).stdout.split()
+        return next((a for a in out if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", a) and not a.startswith(("10.", "127.", "192.168.", "172."))), "")
+    except Exception: return ""
+
+
+def key_fingerprint(pub):
+    parts = str(pub or "").split()
+    if len(parts) < 2: return ""
+    try: blob = base64.b64decode(parts[1], validate=True)
+    except Exception: return ""
+    import hashlib
+    return "SHA256:" + base64.b64encode(hashlib.sha256(blob).digest()).decode().rstrip("=")
+
+
+def ssh_login_seen(pub, since):
+    """Заходил ли агент по своему ключу: отпечаток в журнале sshd («Accepted publickey») после момента since."""
+    fp = key_fingerprint(pub)
+    if not fp: return False
+    import subprocess
+    out = ""
+    try:
+        r = subprocess.run(["journalctl", "-u", "ssh", "-u", "sshd", "--since", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(since)), "--no-pager", "-o", "cat"],
+                           capture_output=True, text=True, timeout=20)
+        out = r.stdout or ""
+    except Exception: pass
+    if not out:
+        try:
+            with open("/var/log/auth.log", errors="replace") as f: out = "".join(f.readlines()[-3000:])
+        except OSError: pass
+    return any("Accepted publickey" in l and fp in l for l in out.splitlines())
 
 
 # ---------- официальный API (только чтение и имя) ----------
@@ -80,7 +196,7 @@ def list_agents(main_url="", fresh=False):
     with LOCK:
         if not fresh and _CACHE["list"] is not None and time.time() - _CACHE["ts"] < 20: return _CACHE["list"]
     res = api("POST", "/agents/query", {})
-    r = reg_load(); main_sid = session_of(main_url); out = []
+    r = reg_load(); main_sid = session_of(main_url); out = []; name_upd = {}
     main_aid = r.get("main_aid") if r.get("main_sid") == main_sid else None
     if main_sid and not main_aid:
         try: main_aid = api("GET", f"/sessions/{main_sid}").get("agent_id")
@@ -96,9 +212,20 @@ def list_agents(main_url="", fresh=False):
                 sid = next((x["id"] for x in q.get("results", []) if x.get("trigger_type") == "chat"), "")
                 if sid: r["agents"].setdefault(aid, {})["chat_sid"] = sid; reg_save(r)
             except Exception: sid = ""
+        nm = a.get("name") or ""
+        if aid != main_aid and nm and ra.get("name") != nm: name_upd[aid] = nm  # имя агента в реестре = имя в Notion (по нему notion-ai-reply находит чат Telegram)
         out.append({"aid": aid, "name": a.get("name") or "", "model": ra.get("model_label") or model_label(a.get("model")),
                     "model_api": a.get("model"), "effort": ra.get("effort", ""), "web": ra.get("web"), "main": aid == main_aid,
-                    "chat": chat_url(sid) if sid else "", "state": ra.get("state", "ready"), "created": ra.get("created", 0)})
+                    "chat": chat_url(sid) if sid else "", "state": ra.get("state", "ready"), "created": ra.get("created", 0),
+                    "tg": ra.get("tg_chat_id", ""), "ssh": bool(ra.get("ssh")), "ssh_ok": ra.get("ssh_ok")})
+    if name_upd:
+        with LOCK:  # свежий реестр: пока шли запросы к Notion, задание могло дописать свои поля
+            rr = reg_load()
+            for aid, nm in name_upd.items():
+                e = rr["agents"].setdefault(aid, {}); old = e.get("name")
+                e["name"] = nm
+                if old and old != nm: e["old_names"] = sorted(set(e.get("old_names") or []) | {old})  # прежнее имя остаётся запасным
+            reg_save(rr)
     out.sort(key=lambda x: (not x["main"], x["created"] or 0, x["name"]))
     with LOCK: _CACHE.update(ts=time.time(), list=out)
     return out
@@ -399,21 +526,24 @@ def create_from_template(pg, log):
     return aid, setup
 
 
-def _owner_and_host():
-    """Имя владельца (⚙ Настройки → Notion AI) и адрес сервера для шаблона инструкций."""
-    try: owner = str(json.load(open("/opt/cc-limits/notion_ai.json")).get("owner") or "").strip()
-    except (OSError, ValueError): owner = ""
+def last_file():
+    """Имя файла «последние сообщения владельца» в папке текущего проекта (denis_last.md на старых установках, owner_last.md на новых)."""
     try:
-        out = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=5).stdout.split()
-        host = next((a for a in out if re.fullmatch(r"\d+\.\d+\.\d+\.\d+", a) and not a.startswith(("10.", "127.", "192.168.", "172."))), out[0] if out else "")
-    except (OSError, subprocess.SubprocessError): host = ""
-    return owner or "владелец", host or "IP-сервера"
+        for f in sorted(os.listdir(HANDOFF)):
+            if f.endswith("_last.md"): return f
+    except OSError: pass
+    return "owner_last.md"
 
 
 def instructions_for(name, chat_name):
     t = open(INSTR).read()
-    owner, host = _owner_and_host()
-    return t.replace("{name}", name).replace("{chat}", chat_name).replace("{owner}", owner).replace("{host}", host)
+    if os.path.exists(INSTR_LOCAL): t = t.rstrip("\n") + "\n" + open(INSTR_LOCAL).read()
+    import shlex
+    cfg = nai_cfg()
+    for k, v in (("{name}", name), ("{chat}", chat_name), ("{owner}", str(cfg.get("owner") or "владелец")), ("{host}", server_host() or "адрес сервера"),
+                 ("{reply_cmd}", "notion-ai-reply --agent " + shlex.quote(name)), ("{last_file}", last_file())):
+        t = t.replace(k, v)
+    return t
 
 
 # ---------- задания (отдельный поток, свой браузер на задание) ----------
@@ -435,20 +565,33 @@ def add_key(pub):
     return True, "ключ добавлен"
 
 
-def job_public(j): return {k: j.get(k) for k in ("id", "kind", "status", "stage", "error", "aid", "name", "created", "finished", "result")}
+def job_public(j):
+    d = {k: j.get(k) for k in ("id", "kind", "status", "stage", "error", "aid", "name", "created", "finished", "result", "warn")}
+    d.update(progress_of(j))
+    return d
 
 
 def submit(kind, **kw):
     if kind == "create":
         if not NAME_RE.match(kw.get("name") or ""): raise ValueError("имя агента: 1–80 символов")
+        if kw.get("tg_chat_id") and not TG_RE.match(kw["tg_chat_id"]): raise ValueError("Telegram: нужен id чата (например -1001234567890) или @имя_канала")
+        if kw.get("ssh") and not server_host(): raise ValueError("не знаю адрес сервера для SSH агента: впиши его в ⚙ Настройки → Notion AI → «Адрес сервера»")
     if kw.get("effort") and kw["effort"] not in EFFORTS: raise ValueError("неверный effort")
     if kw.get("model") and not re.fullmatch(r"[\w .,+()-]{1,40}", kw["model"]): raise ValueError("неверная модель")
     if kw.get("name") and not NAME_RE.match(kw["name"]): raise ValueError("имя агента: 1–80 символов")
     with job_cv:
         if sum(1 for x in jobs.values() if x["status"] in ("queued", "running")) >= 5: raise RuntimeError("очередь заданий агентов полна")
         j = dict(kw, id=uuid.uuid4().hex[:8], kind=kind, status="queued", stage="в очереди", created=time.time())
+        if kind == "create": j["plan"] = step_plan(bool(kw.get("ssh"))); j["est"] = step_estimates(j["plan"])
         jobs[j["id"]] = j; job_q.append(j["id"]); job_cv.notify()
     return j
+
+
+def make_log(j):
+    def log(s):
+        j["stage"] = s; print(f"[agents] {j['id']} {j['kind']}: {s}", flush=True)
+        if j["kind"] == "create": step_mark(j, STEP_KEY.get(s))
+    return log
 
 
 def worker():
@@ -458,13 +601,16 @@ def worker():
             while not job_q: job_cv.wait()
             j = jobs[job_q.pop(0)]
         j["status"] = "running"
-        def log(s): j["stage"] = s; print(f"[agents] {j['id']} {j['kind']}: {s}", flush=True)
+        log = make_log(j)
         try:
             with sync_playwright() as p:
                 b, ctx, pg = browser(p)
                 try: RUN[j["kind"]](pg, j, log)  # state.json не пишем: его ведёт основной поток сервиса
                 finally: b.close()
-            j["status"] = "done"; log("готово")
+            step_close(j); j["status"] = "done"; log("готово")
+            if j["kind"] == "create":
+                try: timing_record(j)
+                except Exception: traceback.print_exc()
         except Exception as e:
             j["status"] = "error"; j["error"] = f"{type(e).__name__}: {str(e)[:300]}"; traceback.print_exc()
         j["finished"] = time.time()
@@ -473,11 +619,12 @@ def worker():
 
 def run_create(pg, j, log):
     name, model, effort, ssh = j["name"], j.get("model") or "", j.get("effort") or "", bool(j.get("ssh"))
+    tg = str(j.get("tg_chat_id") or "")
     list_agents(j.get("main_url", ""), fresh=True)  # главный агент записан в реестр до любых правок
     if not main_aid(): raise RuntimeError("не удалось определить главного агента — создание остановлено")
     log("создаю агента из шаблона «Morning brief»…")
     aid, setup = create_from_template(pg, log)
-    j["aid"] = aid; reg_set(aid, state="creating", created=time.time(), setup_chat=setup)
+    j["aid"] = aid; reg_set(aid, state="creating", created=time.time(), setup_chat=setup, name=name, tg_chat_id=tg)
     log("имя агента…"); api("PATCH", f"/agents/{aid}", {"name": name})
     log("модель, effort, доступ в интернет, инструкции…")
     st = set_settings(pg, aid, model=model or None, effort=effort or None, web=True, instructions=instructions_for(name, name))
@@ -498,21 +645,45 @@ def run_create(pg, j, log):
         txt = wait_reply(sid, after, 180)
         m = re.search(r"ssh-ed25519 AAAA[0-9A-Za-z+/=]+", txt)
         if not m: raise RuntimeError("агент не прислал публичный ключ")
-        ok, msg = add_key(m.group(0))
+        pub = m.group(0)
+        ok, msg = add_key(pub)
         if not ok: raise RuntimeError(msg)
-        reg_set(aid, ssh=True, ssh_pub=m.group(0))
+        reg_set(aid, ssh=True, ssh_pub=pub)
+        # Агент сам ничего не узнает о добавленном ключе: говорим ему и проверяем, что он правда зашёл (отпечаток в журнале sshd).
+        log(CREATE_STEPS[-1][1]); t_login = time.time(); host = server_host()
+        after = last_seq(sid)
+        goto(pg, chat_url(sid)); box = open_chat_input(pg)
+        type_send(pg, box, f"Твой публичный ключ уже добавлен на сервер автоматически, делать никому ничего не нужно. Проверь вход: выполни `ssh -o StrictHostKeyChecking=accept-new root@{host} hostname` "
+                           "и ответь одним словом «доступ есть». Не вышло — одной строкой пришли текст ошибки. Больше на сервере пока ничего не делай.")
+        reply, seen = "", False
+        try: reply = wait_reply(sid, after, 180)
+        except RuntimeError as e: reply = str(e)
+        for _ in range(6):
+            seen = ssh_login_seen(pub, t_login - 5)
+            if seen: break
+            time.sleep(5)
+        ssh_ok = seen
+        reg_set(aid, ssh_ok=ssh_ok, ssh_checked=time.time())
+        if not ssh_ok: j["warn"] = "агент создан, но на сервер по ключу не зашёл: " + (re.sub(r"\s+", " ", reply)[:200] or "нет ответа")
     reg_set(aid, state="ready")
-    j["result"] = {"aid": aid, "chat": chat_url(sid), "model": st["model"], "effort": st["effort"]}
+    j["result"] = {"aid": aid, "chat": chat_url(sid), "model": st["model"], "effort": st["effort"], "ssh_ok": (ssh_ok if ssh else None)}
 
 
 def run_settings(pg, j, log):
     aid = dash(j["aid"]); name = j.get("name")
     if name:
-        log("переименовываю агента…"); api("PATCH", f"/agents/{aid}", {"name": name})
-        a = agent_by(aid, j.get("main_url", ""))
+        log("переименовываю агента…"); a = agent_by(aid, j.get("main_url", "")); old = (a or {}).get("name") or ""
+        api("PATCH", f"/agents/{aid}", {"name": name})
+        ra = reg_load()["agents"].get(aid, {})
+        reg_set(aid, name=name, old_names=sorted(set((ra.get("old_names") or []) + ([old] if old and old != name else []))))  # notion-ai-reply узнаёт агента и по прежнему имени
         sid = session_of(a["chat"]) if a else ""
         if sid and not (a and a.get("main")):  # чат главного агента называется отдельно («Notion AI Балансер»)
             log("переименовываю чат…"); rename_chat(pg, sid, name)
+        if a and not a.get("main"): j["instructions"] = True  # команда ответа в Telegram в инструкции содержит имя агента
+    if j.get("instructions"):
+        a = agent_by(aid, j.get("main_url", "")); nm = name or (a or {}).get("name") or ""
+        if not nm: raise RuntimeError("агент не найден")
+        log("обновляю инструкции агента…"); set_settings(pg, aid, instructions=instructions_for(nm, nm))
     if j.get("model") or j.get("effort"):
         log("модель и effort в настройках агента…")
         st = set_settings(pg, aid, model=j.get("model") or None, effort=j.get("effort") or None)
@@ -531,6 +702,29 @@ def run_sync(pg, j, log):
     with LOCK:
         r = reg_load(); r["models"] = models; r["models_ts"] = time.time(); reg_save(r)
     j["result"] = {"agents": len(agents), "models": len(models)}
+
+
+def set_tg(aid, cid):
+    """Куда агент отвечает в Telegram (пусто — основной чат балансера). Без заданий и без сайта Notion: пишется в реестр."""
+    aid = dash(aid); cid = str(cid or "").strip()
+    if cid and not TG_RE.match(cid): raise ValueError("Telegram: нужен id чата (например -1001234567890) или @имя_канала")
+    if not (reg_load()["agents"].get(aid) or aid == main_aid()): raise ValueError("агент не найден")
+    reg_set(aid, tg_chat_id=cid)
+    with LOCK: _CACHE["ts"] = 0
+    return {"ok": True, "tg": cid, "message": "Сохранено: " + ("отвечает в чат " + cid if cid else "отвечает в основной канал")}
+
+
+def tg_test(name, cid):
+    """Пробное сообщение от бота в указанный чат: сразу видно, что id неверный или бота там нет."""
+    import subprocess
+    cid = str(cid or "").strip()
+    if cid and not TG_RE.match(cid): raise ValueError("Telegram: нужен id чата (например -1001234567890) или @имя_канала")
+    cmd = [os.environ.get("CC_NAI_REPLY") or "/usr/local/bin/notion-ai-reply", "--test", "--agent", name or "агент"] + (["--chat", cid] if cid else [])
+    try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
+    except Exception as e: return {"ok": False, "message": "проверка не запустилась: " + type(e).__name__}
+    try: d = json.loads((r.stdout or "").strip().splitlines()[-1])
+    except Exception: d = {"ok": False, "error": (r.stderr or r.stdout or "нет ответа")[-200:]}
+    return {"ok": bool(d.get("ok")), "message": ("Тест отправлен в " + str(d.get("chat") or "чат") + ": проверь, что он пришёл") if d.get("ok") else str(d.get("error") or "не отправлено")[:200]}
 
 
 def del_key(pub):
@@ -562,6 +756,12 @@ def run_delete(pg, j, log):
     if ra.get("ssh_pub") and del_key(ra["ssh_pub"]): log("ключ доступа убран")
     with LOCK:
         r = reg_load(); r["agents"].pop(aid, None); reg_save(r)
+    try:  # если этот агент принимал сообщения из Telegram — вернуть главному
+        c = nai_cfg()
+        if dash(str(c.get("tg_agent") or "")) == aid:
+            c["tg_agent"] = ""
+            with open(NAI_CFG, "w") as f: json.dump(c, f, ensure_ascii=False, indent=1)
+    except Exception: pass
 
 
 RUN = {"create": run_create, "settings": run_settings, "sync": run_sync, "delete": run_delete}

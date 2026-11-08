@@ -981,13 +981,20 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/nai/model":  # [notion-ai] выбрать модель/effort ({} — перечитать список)
             try: return self._send(200, post_public(submit_model(d)))
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})
+        if self.path == "/agents/tg":  # куда агент отвечает в Telegram (без заданий: только реестр)
+            try: return self._send(200, NA.set_tg(str(d.get("aid") or ""), d.get("tg_chat_id")))
+            except ValueError as e: return self._send(400, {"error": str(e)})
+        if self.path == "/agents/tgtest":  # пробное сообщение от бота в этот чат
+            try: return self._send(200, NA.tg_test(str(d.get("name") or ""), d.get("tg_chat_id")))
+            except ValueError as e: return self._send(400, {"error": str(e)})
         if self.path in ("/agents/create", "/agents/settings", "/agents/sync", "/agents/delete"):
             if AUTH["state"] != "ok": return self._send(400, {"error": AUTH_MSG()})
             try:
                 kind = self.path.rsplit("/", 1)[1]
                 kw = {k: str(d.get(k) or "").strip() for k in ("name", "model", "effort", "aid")}
                 kw = {k: v for k, v in kw.items() if v}
-                if kind == "create": kw.pop("aid", None); kw["ssh"] = bool(d.get("ssh"))
+                if kind == "create": kw.pop("aid", None); kw["ssh"] = bool(d.get("ssh")); kw["tg_chat_id"] = str(d.get("tg_chat_id") or "").strip()
+                if kind == "settings" and d.get("instructions"): kw["instructions"] = True
                 if kind in ("settings", "delete") and not kw.get("aid"): raise ValueError("нет агента")
                 return self._send(200, NA.job_public(NA.submit(kind, main_url=nai_url(), **kw)))
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})

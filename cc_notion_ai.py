@@ -1648,6 +1648,8 @@ html.nai-nosub .fleet-brand-sub{display:none!important}
 .termwrap.nai-on .ctacts{display:none!important}
 .termwrap.nai-on .tzoom{z-index:3}
 .fleet-console-toolbar #ctNotion::before{background:#a78bfa}
+.nai-grp{display:inline-flex;align-items:center;gap:4px;align-self:center;border-radius:10px}.nai-grp:not(:has(.ctab:not([hidden]))){display:none}
+html:root:root .fleet-console-toolbar .nai-grp.nai-grp-on{border:1px solid rgba(167,139,250,.34);background:rgba(167,139,250,.07);padding:2px 3px;margin-left:2px}
 .fleet-live-account.notion{--live-accent:#a78bfa;border-color:color-mix(in srgb,#a78bfa 38%,var(--fleet-line));background:linear-gradient(120deg,#2a2346,var(--card) 60%)}
 .fleet-live-account.notion .fleet-live-name::before{background:#a78bfa}
 .fleet-live-account.notion .mirror-profile-button{border-color:color-mix(in srgb,#a78bfa 40%,var(--fleet-line))}
@@ -1871,63 +1873,104 @@ var CSS='.nai-agents{display:flex;flex-direction:column;gap:4px;margin:6px 0 2px
  +'#naiAgentQ select option{color:#111}#naiAgentQ .nai-aq-btn{padding:6px 10px;border-radius:7px;border:1px solid var(--line,rgba(127,127,127,.35));background:transparent;color:inherit;font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap}'
  +'#naiAgentQ .nai-aq-btn.pri{background:#7c3aed;border-color:#7c3aed;color:#fff}#naiAgentQ .nai-aq-btn.del{color:#f87171;border-color:rgba(248,113,113,.5)}#naiAgentQ .nai-aq-btn:disabled{opacity:.5;cursor:default}'
  +'#naiAgentQ .nai-aq-chk{display:flex;gap:8px;align-items:flex-start;font-size:12px;margin:6px 0;opacity:.9}#naiAgentQ .cxqlist{max-height:220px;overflow:auto}'
+ +'#naiAgentQ .nai-qnote{margin:10px 0 0;font-size:11px;color:var(--fleet-muted);line-height:1.45}#naiAgentQ .nai-qnote.bad{color:var(--bad,#f87171)}'
+ +'.nai-ag-prog{display:flex;flex-direction:column;gap:5px;padding:4px 2px}.nai-ag-prog .nai-pg-t{font-size:11.5px;opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+ +'.nai-pg-r{display:flex;align-items:center;gap:8px}.nai-pg-bar{flex:1 1 auto;height:6px;border-radius:99px;background:rgba(167,139,250,.18);overflow:hidden}'
+ +'.nai-pg-bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#8b5cf6,#c4b5fd);transition:width 1s linear}.nai-pg-c{flex:none;font-size:11px;opacity:.75;white-space:nowrap}'
  +'.fleet-console-toolbar .nai-atab::before,#cTabs .nai-atab::before{background:#a78bfa!important}';
 function style(){if($i('naiAgentsStyle'))return;var s=document.createElement('style');s.id='naiAgentsStyle';s.textContent=CSS;document.head.appendChild(s)}
 function holder(){var t=$i('fleetNotion');if(!t)return null;if(box&&t.contains(box))return box;box=document.createElement('div');box.className='nai-agents';box.id='naiAgents';
  var id=t.querySelector('.fleet-live-identity');if(id&&id.nextSibling)t.insertBefore(box,id.nextSibling);else t.appendChild(box);
  box.addEventListener('click',function(e){var r=e.target.closest('.nai-ag-row');if(!r)return;e.stopPropagation();if(r.dataset.aid)openQ(r.dataset.aid,r);else openNew(r)});return box}
-function running(){return Object.keys(jobs).map(function(k){return jobs[k]}).filter(function(j){return j&&(j.status==='queued'||j.status==='running'||(j.status==='error'&&Date.now()-(j.seen||0)<120000))})}
+function running(){return Object.keys(jobs).map(function(k){return jobs[k]}).filter(function(j){return j&&(j.status==='queued'||j.status==='running'||(j.status==='error'&&Date.now()-(j.seen||0)<120000)||(j.status==='done'&&j.warn&&Date.now()/1000-(j.finished||0)<180))})}
+// полоса по времени: сервер считает долю этапов по средним замерам прежних созданий; между опросами добавляем плавный ход
+var shown={};
+function fmtEta(e){e=+e||0;return e<45?'меньше минуты':'~'+Math.max(1,Math.round(e/60))+' мин'}
+function fillProg(){if(!box)return;box.querySelectorAll('.nai-ag-prog').forEach(function(el){var j=jobs[el.dataset.jid];if(!j)return;var pct=j.pct==null?0:j.pct,
+ w=j.status==='queued'?2:Math.min(99,pct+(j._ts&&j.eta?(100-pct)/Math.max(j.eta,1)*((Date.now()-j._ts)/1000):0));w=Math.max(shown[j.id]||0,w);shown[j.id]=w;
+ el.querySelector('.nai-pg-t').textContent='⏳ Новый агент «'+(j.name||'')+'»: '+(j.stage||'в очереди');
+ el.querySelector('.nai-pg-bar i').style.width=w.toFixed(1)+'%';
+ el.querySelector('.nai-pg-c').textContent=(j.step?j.step+'/'+j.steps+' · ':'')+(j.status==='queued'?'в очереди':fmtEta(j.eta));
+ el.title=(j.step?'Этап '+j.step+' из '+j.steps+'. ':'')+'Осталось примерно '+fmtEta(j.eta)+' (по времени прошлых созданий)'})}
 function paint(){var h=holder();if(!h)return;var L=agents();
  var s='<div class="nai-ag-h">Агенты Notion ('+L.length+')</div>'+L.map(function(a){var u=agUrl(a);return '<div class="nai-ag-line"><button type="button" class="nai-ag-row" data-aid="'+esc(a.aid)+'" title="'+esc(a.name+' — '+mdl(a)+(a.main?' · главный агент, его чат — «Notion AI Балансер»':''))+'"><span class="nai-ag-dot"></span><span class="nai-ag-nm">'+esc(a.name)+'</span><span class="nai-ag-md">'+esc(mdl(a))+'</span></button>'+(u?'<a class="nai-ag-go" href="'+esc(u)+'" target="_blank" rel="noopener noreferrer" title="Открыть агента «'+esc(a.name)+'» в Notion" aria-label="Открыть агента «'+esc(a.name)+'» в Notion">↗</a>':'')+'</div>'}).join('');
- running().forEach(function(j){s+='<div class="nai-ag-job'+(j.status==='error'?' bad':'')+'">'+(j.status==='error'?'⚠ ':'⏳ ')+esc((j.kind==='create'?'Новый агент «'+(j.name||'')+'»':j.kind==='delete'?'Удаление':'Настройки')+': '+(j.status==='error'?(j.error||'ошибка').replace(/^\w+Error: /,''):(j.stage||'')))+'</div>'});
+ running().forEach(function(j){
+  if(j.status==='done'){s+='<div class="nai-ag-job bad">⚠ '+esc('«'+(j.name||'')+'»: '+(j.warn||''))+'</div>';return}
+  if(j.kind==='create'&&j.status!=='error'){s+='<div class="nai-ag-job nai-ag-prog" data-jid="'+esc(j.id)+'"><div class="nai-pg-t"></div><div class="nai-pg-r"><div class="nai-pg-bar"><i></i></div><span class="nai-pg-c"></span></div></div>';return}
+  s+='<div class="nai-ag-job'+(j.status==='error'?' bad':'')+'">'+(j.status==='error'?'⚠ ':'⏳ ')+esc((j.kind==='create'?'Новый агент «'+(j.name||'')+'»':j.kind==='delete'?'Удаление':'Настройки')+': '+(j.status==='error'?(j.error||'ошибка').replace(/^\w+Error: /,''):(j.stage||'')))+'</div>'});
  if(!data)s+='<div class="nai-ag-job">Загружаю агентов…</div>';else if(!data.ok)s+='<div class="nai-ag-job bad">⚠ '+esc(data.message||'нет связи с Notion')+'</div>';
  s+='<button type="button" class="nai-ag-row nai-ag-new" title="Новый агент из шаблона «Morning brief»">＋ Новый агент</button>';
- if(h.innerHTML!==s)h.innerHTML=s}
+ if(h.innerHTML!==s)h.innerHTML=s;fillProg()}
 function publish(){var m=agents().filter(function(a){return a.main})[0]||null;window.naiAgentsData=data;window.naiMainAgent=m;try{window.dispatchEvent(new CustomEvent('nai-agents',{detail:data}))}catch(_){}}
-function load(){clearTimeout(timer);get(api).then(function(d){if(d){data=d;(d.jobs||[]).forEach(function(j){if(!jobs[j.id]||jobs[j.id].status!==j.status)jobs[j.id]=Object.assign(jobs[j.id]||{},j)});publish();paint();if(q&&!q.hidden)paintQ()}}).catch(function(){}).then(function(){timer=setTimeout(load,running().length?4000:20000)})}
+function load(){clearTimeout(timer);get(api).then(function(d){if(d){data=d;(d.jobs||[]).forEach(function(j){jobs[j.id]=Object.assign(jobs[j.id]||{},j);jobs[j.id]._ts=Date.now()});publish();paint();if(q&&!q.hidden)paintQ()}}).catch(function(){}).then(function(){timer=setTimeout(load,running().length?4000:20000)})}
 function watch(id,label){jobs[id]={id:id,status:'queued',stage:'в очереди',kind:label.kind,name:label.name};paint();
- (function poll(){get(base+'notion-ai/agents/job/'+id).then(function(j){if(!j||j.status==='unknown')return;Object.assign(jobs[id],j);if(j.status==='error')jobs[id].seen=Date.now();paint();
+ (function poll(){get(base+'notion-ai/agents/job/'+id).then(function(j){if(!j||j.status==='unknown')return;Object.assign(jobs[id],j);jobs[id]._ts=Date.now();if(j.status==='error')jobs[id].seen=Date.now();paint();
   if(q&&!q.hidden&&q.dataset.job===id){msg=j.status==='error'?'Не получилось: '+String(j.error||'').replace(/^\w+Error: /,''):j.status==='done'?'Готово.':(j.stage||'…');bad=j.status==='error';paintQ()}
   if(j.status==='queued'||j.status==='running')setTimeout(poll,3000);else{load();if(j.status==='done'&&label.kind==='create'&&j.result&&j.result.aid&&window.naiConsoleOpen)setTimeout(function(){window.naiConsoleOpen(j.result.aid)},1500)}}).catch(function(){setTimeout(poll,5000)})})()}
-function act(kind,body,label,text){msg=text;bad=false;paintQ();return post(kind,body).then(function(j){if(j&&j.ok&&j.id){if(q)q.dataset.job=j.id;watch(j.id,label)}else{bad=true;msg=(j&&j.message)||'Не принято';paintQ()}}).catch(function(){bad=true;msg='Панель не ответила';paintQ()})}
+function act(kind,body,label,text){msg=text;bad=false;paintQ();return post(kind,body).then(function(j){if(j&&j.ok&&j.id){if(q)q.dataset.job=j.id;watch(j.id,label);if(label.kind==='create')close()}else{bad=true;msg=(j&&j.message)||'Не принято';paintQ()}}).catch(function(){bad=true;msg='Панель не ответила';paintQ()})}
 function build(){if(q)return;style();q=document.createElement('div');q.className='cxpop cxquick fleet-quick-panel';q.id='naiAgentQ';q.setAttribute('role','dialog');q.setAttribute('aria-label','Агент Notion');q.hidden=true;q.innerHTML='<div class="cxpbody"></div>';document.body.appendChild(q);
  document.addEventListener('pointerdown',function(e){if(q&&!q.hidden&&!q.contains(e.target)&&!e.target.closest('.nai-ag-row')&&!e.target.closest('#naiModelTile')&&!e.target.closest('.fleet-ask'))close()});
  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&q&&!q.hidden&&!document.querySelector('.fleet-ask:not([hidden])'))close()});
- q.addEventListener('click',onClick)}
+ q.addEventListener('click',onClick);q.addEventListener('change',onChange);q.addEventListener('input',onInput)}
 function place(anchor){if(window.fleetPlace)return window.fleetPlace(q,anchor,360);var r=anchor.getBoundingClientRect(),w=Math.min(360,innerWidth-24),top=Math.min(r.bottom+8,Math.max(12,innerHeight-420));
  q.style.width=w+'px';q.style.top=Math.round(top)+'px';q.style.left=Math.max(12,Math.min(Math.round(r.left),innerWidth-w-12))+'px';q.style.maxHeight=Math.max(200,innerHeight-top-12)+'px'}
 function close(){if(q){q.hidden=true;q.dataset.job='';cur=null}}
 function openQ(aid,anchor){build();['cxQClose','cxPopClose','cxMenuClose'].forEach(function(f){try{typeof window[f]==='function'&&window[f]()}catch(_){}});cur={aid:aid};q.dataset.job='';msg='';bad=false;q.hidden=false;place(anchor);paintQ()}
 function openNew(anchor){build();cur={create:true};q.dataset.job='';msg='';bad=false;q.hidden=false;place(anchor);paintQ()}
 function models(){return (data&&data.models||[]).filter(function(m){return !m.disabled})}
+// куда агент отвечает в Telegram: основной канал балансера (по умолчанию) или другой чат; бот тот же, чат добавляют в него
+function tgBlock(sid,iid,sel,id,title){return '<div class="cxqh">'+esc(title)+'</div><div class="nai-aq-row"><select id="'+sid+'" aria-label="'+esc(title)+'"><option value=""'+(sel==='own'?'':' selected')+'>Основной канал Claude</option><option value="own"'+(sel==='own'?' selected':'')+'>Другой чат…</option></select></div>'
+ +'<div class="nai-aq-row"'+(sel==='own'?'':' style="display:none"')+'><input type="text" id="'+iid+'" inputmode="numeric" maxlength="40" placeholder="id чата, например -1001234567890" value="'+esc(id)+'"></div>'}
+function tgVal(sid,iid){var s=$i(sid),i=$i(iid),own=!!(s&&s.value==='own'),id=own&&i?i.value.trim():'';return {sel:own?'own':'',id:id}}
+function tgOk(v){return v.sel!=='own'||/^(-?\d{4,20}|@[A-Za-z0-9_]{5,32})$/.test(v.id)}
+function tgTest(nm,v){if(!tgOk(v)){msg='Telegram: нужен id чата (например -1001234567890) или @имя_канала';bad=true;paintQ();return}msg='Отправляю пробное сообщение…';bad=false;paintQ();
+ post('tgtest',{name:nm||'новый агент',tg_chat_id:v.id}).then(function(j){bad=!(j&&j.ok);msg=(j&&j.message)||'Нет ответа';paintQ()}).catch(function(){bad=true;msg='Панель не ответила';paintQ()})}
+function postCfg(b){return fetch(base+'notion-ai/config',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify(b)}).then(function(r){return r.json()})}
 function paintQ(){if(!q||q.hidden||!cur)return;var b=q.querySelector('.cxpbody'),h='',busy=!!(q.dataset.job&&jobs[q.dataset.job]&&(jobs[q.dataset.job].status==='queued'||jobs[q.dataset.job].status==='running'));
  if(cur.create){var mm=models();
   h+='<div class="cxqh">Новый агент из шаблона «Morning brief»</div><div class="nai-aq-row"><input type="text" id="naiNewName" maxlength="80" placeholder="Имя агента" value="'+esc(cur.name||'')+'"></div>';
   h+='<div class="nai-aq-row"><select id="naiNewModel" aria-label="Модель">'+mm.map(function(m){return '<option'+(m.label===(cur.model||'Sonnet 5.5')?' selected':'')+'>'+esc(m.label)+'</option>'}).join('')+'</select>';
   h+='<select id="naiNewEffort" aria-label="Effort">'+(data&&data.efforts||[]).map(function(e){return '<option'+(e===(cur.effort||'High')?' selected':'')+'>'+esc(e)+'</option>'}).join('')+'</select></div>';
   h+='<label class="nai-aq-chk"><input type="checkbox" id="naiNewSsh"'+(cur.ssh===false?'':' checked')+'><span>Доступ к серверу: свой SSH-ключ (root) и выход в интернет (Web Browser в Notion) — как у главного агента</span></label>';
-  h+='<div class="nai-aq-row"><button type="button" class="nai-aq-btn pri" data-do="create"'+(busy?' disabled':'')+'>Создать</button></div>';
-  h+='<p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||'Создаётся через сайт Notion: ~3–4 минуты. У агента будет свой чат с тем же именем и своя вкладка в консоли.')+'</p>'}
+  h+=tgBlock('naiNewTg','naiNewTgId',cur.tgsel||'',cur.tgid||'','Куда отвечать в Telegram');
+  h+='<div class="nai-aq-row"><button type="button" class="nai-aq-btn" data-do="tgtest"'+(busy?' disabled':'')+'>Проверить Telegram</button><button type="button" class="nai-aq-btn pri" data-do="create"'+(busy?' disabled':'')+'>Создать</button></div>';
+  h+='<p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||'Создаётся через сайт Notion, около 3 минут: ход виден в строке под проектом. У агента будет свой чат с тем же именем и своя вкладка в консоли.')+'</p>'}
  else{var a=byId(cur.aid);if(!a){b.innerHTML='<p class="nai-qnote">Агент не найден.</p>';return}var auto=(a.model||'')==='Auto';
   h+='<div class="cxqh">'+esc(a.name)+(a.main?' · главный':'')+'</div><div class="nai-aq-row"><input type="text" id="naiAgName" maxlength="80" value="'+esc(a.name)+'" aria-label="Имя агента"><button type="button" class="nai-aq-btn" data-do="rename"'+(busy?' disabled':'')+'>Переименовать</button></div>';
   h+='<div class="cxqh">Модель</div><div class="cxqlist" role="radiogroup" aria-label="Модель агента">'+(models().length?models():[{label:a.model}]).map(function(m){var on=m.label===a.model;return '<button type="button" class="cxqm'+(on?' on':'')+'" role="radio" aria-checked="'+on+'" data-model="'+esc(m.label)+'"'+(busy?' disabled':'')+'><i class="cxqr"></i><span>'+esc(m.label)+'</span>'+(m.beta?'<small>Beta</small>':'')+'</button>'}).join('')+'</div>';
   h+='<div class="cxqh">Уровень рассуждений (effort)</div><div class="cxqeff" role="radiogroup" aria-label="Effort агента">'+(auto?'<span class="cxsub">При модели Auto effort выбирает Notion</span>':(data&&data.efforts||[]).map(function(e){return '<button type="button" class="cxqe'+(e===a.effort?' on':'')+'" role="radio" aria-checked="'+(e===a.effort)+'" data-effort="'+esc(e)+'"'+(busy?' disabled':'')+'>'+esc(e)+'</button>'}).join(''))+'</div>';
+  var tsel=cur.tgsel!==undefined?cur.tgsel:(a.tg?'own':''),tid=cur.tgid!==undefined?cur.tgid:(a.tg||''),recv=a.main?!(data&&data.tg_agent):!!(data&&data.tg_agent===a.aid);
+  h+=tgBlock('naiAgTg','naiAgTgId',tsel,tid,'Telegram: куда отвечает агент');
+  h+='<div class="nai-aq-row"><button type="button" class="nai-aq-btn" data-do="agtgtest"'+(busy?' disabled':'')+'>Проверить</button><button type="button" class="nai-aq-btn" data-do="agtgsave"'+(busy?' disabled':'')+'>Сохранить</button></div>';
+  h+='<label class="nai-aq-chk"><input type="checkbox" id="naiAgRecv"'+(recv?' checked':'')+(a.main&&recv?' disabled':'')+'><span>Принимает сообщения из Telegram (пока включён профиль Notion AI). Ответ — с пометкой «['+esc(a.name)+']»</span></label>';
   h+='<div class="nai-aq-row" style="margin-top:10px"><button type="button" class="nai-aq-btn" data-do="console">Открыть консоль</button>'+(a.main?'':'<button type="button" class="nai-aq-btn del" data-do="delete"'+(busy?' disabled':'')+'>Удалить агента</button>')+'</div>';
   h+='<p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||(a.main?'Чат главного агента — «Notion AI Балансер». ':'Чат агента называется так же, как агент. ')+'Модель и effort задаются в настройках агента Notion и действуют со следующего сообщения.')+'</p>'}
  b.innerHTML=h}
-function onClick(e){var t=e.target,a=cur&&cur.aid?byId(cur.aid):null,m=t.closest('[data-model]'),f=t.closest('[data-effort]'),d=t.closest('[data-do]');
+function snap(){if(!cur||!cur.create)return;var n=$i('naiNewName'),m=$i('naiNewModel'),f=$i('naiNewEffort'),h=$i('naiNewSsh');if(n)cur.name=n.value;if(m)cur.model=m.value;if(f)cur.effort=f.value;if(h)cur.ssh=h.checked}  // форма перерисовывается при выборе чата Telegram — введённое не теряем
+function onChange(e){var t=e.target;if(!cur)return;snap();
+ if(t.id==='naiNewTg'||t.id==='naiAgTg'){var v=tgVal(t.id,t.id==='naiNewTg'?'naiNewTgId':'naiAgTgId');cur.tgsel=v.sel;cur.tgid=t.value==='own'?(cur.tgid||''):'';paintQ();var i=$i(t.id==='naiNewTg'?'naiNewTgId':'naiAgTgId');if(i&&v.sel==='own')i.focus();return}
+ if(t.id==='naiAgRecv'&&cur.aid){var a=byId(cur.aid);if(!a)return;var on=t.checked,target=a.main?'':(on?a.aid:'');t.checked=!on;
+  ask(t,a.main?'Вернуть приём сообщений из Telegram главному агенту Notion AI?':(on?'Направлять сообщения из Telegram агенту «'+a.name+'»? Он будет отвечать с пометкой «['+a.name+']».':'Вернуть приём сообщений из Telegram главному агенту?'),'Да').then(function(ok){if(!ok)return;
+   postCfg({tg_agent:target}).then(function(j){bad=!(j&&j.ok);msg=(j&&j.ok)?(target?'Теперь из Telegram пишут агенту «'+a.name+'».':'Из Telegram снова пишут главному агенту.'):((j&&j.message)||'Не сохранилось');if(data)data.tg_agent=target;load();paintQ()}).catch(function(){bad=true;msg='Панель не ответила';paintQ()})})}}
+function onInput(e){var t=e.target;if(cur&&(t.id==='naiNewTgId'||t.id==='naiAgTgId'))cur.tgid=t.value;if(cur&&t.id==='naiNewName')cur.name=t.value}
+function onClick(e){snap();var t=e.target,a=cur&&cur.aid?byId(cur.aid):null,m=t.closest('[data-model]'),f=t.closest('[data-effort]'),d=t.closest('[data-do]');
  if(m&&!m.disabled&&a&&m.dataset.model!==a.model)return ask(m,'Поставить агенту «'+a.name+'» модель «'+m.dataset.model+'»?','Поставить').then(function(ok){if(ok)act('settings',{aid:a.aid,model:m.dataset.model},{kind:'settings'},'Меняю модель в настройках агента…')});
  if(f&&!f.disabled&&a&&f.dataset.effort!==a.effort)return ask(f,'Поставить агенту «'+a.name+'» effort «'+f.dataset.effort+'»?','Поставить').then(function(ok){if(ok)act('settings',{aid:a.aid,effort:f.dataset.effort},{kind:'settings'},'Меняю effort в настройках агента…')});
  if(!d||d.disabled)return;var w=d.dataset.do;
  if(w==='console'){if(window.naiConsoleOpen)window.naiConsoleOpen(a&&!a.main?a.aid:'');close();return}
  if(w==='rename'&&a){var n=($i('naiAgName').value||'').trim();if(!n||n===a.name){msg='Введите новое имя';bad=true;paintQ();return}act('settings',{aid:a.aid,name:n},{kind:'settings'},a.main?'Переименовываю агента…':'Переименовываю агента и его чат…');return}
  if(w==='delete'&&a)return ask(d,'Удалить агента «'+a.name+'»? Его чаты удалятся, агент уйдёт в Корзину Notion (30 дней можно вернуть), его SSH-ключ будет убран.','Удалить').then(function(ok){if(ok)act('delete',{aid:a.aid},{kind:'delete'},'Удаляю агента…')});
- if(w==='create'){var nm=($i('naiNewName').value||'').trim(),mo=$i('naiNewModel').value,ef=$i('naiNewEffort').value,ss=$i('naiNewSsh').checked;cur.name=nm;cur.model=mo;cur.effort=ef;cur.ssh=ss;
+ if(w==='tgtest'){var nm0=($i('naiNewName').value||'').trim(),v0=tgVal('naiNewTg','naiNewTgId');cur.name=nm0;cur.tgsel=v0.sel;cur.tgid=v0.id;tgTest(nm0,v0);return}
+ if(w==='agtgtest'&&a){var v1=tgVal('naiAgTg','naiAgTgId');cur.tgsel=v1.sel;cur.tgid=v1.id;tgTest(a.name,v1);return}
+ if(w==='agtgsave'&&a){var v2=tgVal('naiAgTg','naiAgTgId');if(!tgOk(v2)){msg='Telegram: нужен id чата (например -1001234567890) или @имя_канала';bad=true;paintQ();return}cur.tgsel=v2.sel;cur.tgid=v2.id;
+  post('tg',{aid:a.aid,tg_chat_id:v2.id}).then(function(j){bad=!(j&&j.ok);msg=(j&&j.message)||'Не сохранилось';if(j&&j.ok){delete cur.tgsel;delete cur.tgid;load()}paintQ()}).catch(function(){bad=true;msg='Панель не ответила';paintQ()});return}
+ if(w==='create'){var nm=($i('naiNewName').value||'').trim(),mo=$i('naiNewModel').value,ef=$i('naiNewEffort').value,ss=$i('naiNewSsh').checked,tv=tgVal('naiNewTg','naiNewTgId');cur.name=nm;cur.model=mo;cur.effort=ef;cur.ssh=ss;cur.tgsel=tv.sel;cur.tgid=tv.id;
   if(!nm){msg='Введите имя агента';bad=true;paintQ();return}
-  ask(d,'Создать агента «'+nm+'» ('+mo+' · '+ef+(ss?', с доступом к серверу':'')+')? Займёт ~3–4 минуты.','Создать').then(function(ok){if(ok)act('create',{name:nm,model:mo,effort:ef,ssh:ss},{kind:'create',name:nm},'Создаю агента… (~3–4 мин)')})}}
+  if(!tgOk(tv)){msg='Telegram: нужен id чата (например -1001234567890) или @имя_канала';bad=true;paintQ();return}
+  ask(d,'Создать агента «'+nm+'» ('+mo+' · '+ef+(ss?', с доступом к серверу':'')+'; Telegram: '+(tv.id||'основной канал')+')? Займёт около 3 минут.','Создать').then(function(ok){if(ok)act('create',{name:nm,model:mo,effort:ef,ssh:ss,tg_chat_id:tv.id},{kind:'create',name:nm},'Создаю агента… (около 3 мин)')})}}
 window.naiAgentPop=function(aid,anchor){openQ(aid,anchor)};
 window.naiAgentsReload=load;
-function boot(){var n=0;(function try_(){if($i('fleetNotion')){style();paint();load()}else if(n++<60)setTimeout(try_,250)})()}
+function boot(){var n=0;(function try_(){if($i('fleetNotion')){style();paint();load();setInterval(function(){if(box&&box.querySelector('.nai-ag-prog'))fillProg()},1000)}else if(n++<60)setTimeout(try_,250)})()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 }catch(e){console.warn('notion agents',e)}})();
 // [notion-ai] Автопереключение вкладки консоли на работающий профиль (просьба ): срабатывает только при смене профиля,
@@ -1994,7 +2037,7 @@ function cfgApply(c){if(!c)return;if(c.owner)who=c.owner;tabOn=c.console_tab!==f
 function cfgSync(){fetch(base+'notion-ai',{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d)cfgApply(d)}).catch(function(){})}
 window.addEventListener('nai-cfg',function(e){cfgApply(e.detail)});
 var on=false,timer=0,sig='',stick=true,tab=null,view=null,saved=null,tries=0,pend=[],sending=false,lastReq=null;
-var agentAid='',agentName='Notion AI',atabs={},savedAid='';  // [агенты Notion] вкладка на каждого агента; '' — главный (вкладка «Notion AI»)
+var agentAid='',agentName='Notion AI',atabs={},savedAid='',grp=null;  // [агенты Notion] вкладка на каждого агента; '' — главный (вкладка «Notion AI»)
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function $i(id){return document.getElementById(id)}
 function curTab(){return agentAid&&atabs[agentAid]?atabs[agentAid]:tab}
@@ -2073,6 +2116,7 @@ function syncTabs(d){if(!tab||!d||!d.ok)return;var L=(d.agents||[]).filter(funct
   if(after.nextSibling!==b)after.after(b);after=b;seen[a.aid]=1;if(a.aid===agentAid&&agentName!==a.name){agentName=a.name;if(on){setInput(false);setInput(true);sig=''}}});
  Object.keys(atabs).forEach(function(k){if(!seen[k]){atabs[k].remove();delete atabs[k];if(agentAid===k&&on)switchTo('')}});
  if(savedAid&&atabs[savedAid]&&on&&!agentAid){var s0=savedAid;savedAid='';switchTo(s0)}else if(savedAid&&!atabs[savedAid])savedAid='';
+ if(grp)grp.classList.toggle('nai-grp-on',L.length>0&&tabOn);
  fixTabs()}
 window.addEventListener('nai-agents',function(e){syncTabs(e.detail)});
 window.naiConsoleOpen=function(aid){if(window.fleetSplitOn&&window.fleetSplitOn()&&window.fleetSplitShow){window.fleetSplitShow(aid?'notion:'+aid:'notion');return}switchTo(aid||'');var b=$i('termBox');if(b)b.scrollIntoView({block:'center',behavior:'smooth'})};
@@ -2108,6 +2152,7 @@ function setup(){var tabs=$i('cTabs'),codex=$i('ctCodex'),box=$i('termBox');
  if($i('ctNotion'))return;
  tab=document.createElement('button');tab.type='button';tab.className='iconbtn ctab';tab.id='ctNotion';tab.setAttribute('role','tab');tab.setAttribute('aria-selected','false');tab.dataset.s='notion';tab.textContent='Notion AI';tab.title='Постоянный чат Notion AI';
  codex.after(tab);
+ grp=document.createElement('span');grp.id='naiGrp';grp.className='nai-grp';grp.title='Notion AI и его агенты';tab.before(grp);grp.appendChild(tab);  // один блок: вкладка Notion AI и вкладки его агентов (это не разные аккаунты Notion)
  view=document.createElement('div');view.id='naiView';view.className='termbox nai-view';view.setAttribute('role','log');view.setAttribute('aria-label','Чат Notion AI');view.tabIndex=0;box.after(view);
  view.addEventListener('scroll',function(){stick=view.scrollHeight-view.scrollTop-view.clientHeight<40});
  tabs.addEventListener('click',function(e){var b=e.target.closest('.ctab');if(!b)return;if(window.fleetSplitOn&&window.fleetSplitOn()){if(on)close();return}if(b===tab||b.classList.contains('nai-atab')){e.preventDefault();e.stopPropagation();var aid=b===tab?'':b.dataset.aid;if(!on||aid!==agentAid)switchTo(aid)}else if(on)close()},true);
@@ -2140,7 +2185,7 @@ _SENT, _SENT_LOCK = {}, threading.Lock()
 # Один файл BASE/notion_ai.json читают все части: панель, notion-delegate (отправка в чат), notion-ai-view
 # (окно консоли), notion-ai-reply (ответ в Telegram), notion_ai_tg.py (мост), login2.py (вход по коду).
 CFG_FILE = '/opt/cc-limits/notion_ai.json'
-CFG_DEFAULTS = dict(chat_url='', owner='', notion_email='', tg_chat_id='', voice=True, console_tab=True, model_hidden=(), paid_at='', plan='')  # model_hidden — без галочки «в быстром меню»
+CFG_DEFAULTS = dict(chat_url='', owner='', notion_email='', tg_chat_id='', ssh_host='', tg_agent='', voice=True, console_tab=True, model_hidden=(), paid_at='', plan='')  # model_hidden — без галочки «в быстром меню»
 CFG_LOCK = threading.Lock()
 UNITS = (('notion-delegate.service', 'Отправка в чат'), (BRIDGE_UNIT, 'Мост Telegram'), ('notion-ai-view.service', 'Окно консоли'))
 AUTH_KEYS = '/root/.ssh/authorized_keys'
@@ -2204,6 +2249,16 @@ def save_cfg(body):
         if cid and not re.fullmatch(r'-?\d{3,20}', cid):
             return False, 'Чат Telegram: число (id чата) или пусто — тогда как у Claude.', cur
         new['tg_chat_id'] = cid
+    if 'ssh_host' in body:
+        host = str(body.get('ssh_host') or '').strip()
+        if host and not re.fullmatch(r'[A-Za-z0-9]([A-Za-z0-9.\-]{0,98}[A-Za-z0-9])?|[0-9a-fA-F:]{3,45}', host):
+            return False, 'Адрес сервера: доменное имя или IP, без пробелов — или пусто (тогда внешний IP этого сервера).', cur
+        new['ssh_host'] = host
+    if 'tg_agent' in body:
+        aid = str(body.get('tg_agent') or '').strip()
+        if aid and not AGENT_ID.match(aid):
+            return False, 'Агент для Telegram: неверный номер.', cur
+        new['tg_agent'] = aid
     for k in ('voice', 'console_tab'):
         if k in body:
             new[k] = body.get(k) is True
@@ -2689,6 +2744,7 @@ function render(){var box=$i('naiCfgBox');if(!box||!data)return;var c=data.cfg||
   +'<label class="nc-f">Как к тебе обращаться<input class="dlginp" id="naiCfgOwner" maxlength="40" value="'+esc(c.owner)+'"></label>'
   +'<label class="nc-f">Почта входа в Notion (на неё придёт код при повторном входе)<input class="dlginp" id="naiCfgMail" type="email" autocomplete="off" placeholder="name@example.com" value="'+esc(c.notion_email)+'"></label>'
   +'<label class="nc-f">Telegram: куда отвечать (id чата)<input class="dlginp" id="naiCfgTg" inputmode="numeric" placeholder="пусто — общий чат'+(s.tg_default?': '+esc(s.tg_default):'')+'" value="'+esc(c.tg_chat_id)+'"></label>'
+  +'<label class="nc-f">Адрес сервера для SSH агентов<input class="dlginp" id="naiCfgHost" maxlength="100" spellcheck="false" autocomplete="off" placeholder="пусто — внешний IP этого сервера" value="'+esc(c.ssh_host)+'"></label>'
   +'<label class="updchk"><input type="checkbox" id="naiCfgVoice"'+(c.voice?' checked':'')+'><span>Голосовые ответы в Telegram (текст + голос)</span></label>'
   +'<label class="updchk"><input type="checkbox" id="naiCfgTab"'+(c.console_tab?' checked':'')+'><span>Вкладка «Notion AI» в консоли</span></label>'
   +'<div class="nc-row"><button type="button" id="naiCfgSave">Сохранить</button><span class="nc-msg" data-m></span></div></div>'
@@ -2701,7 +2757,7 @@ function save(fields,okMsg){if(busy)return;var c=(data&&data.cfg)||{},body={};fi
  busy=true;msg('Сохраняю…');
  call('config',body).then(function(d){busy=false;if(d&&d.ok){if(d.cfg)data=d;render();msg(d.message||okMsg||'Сохранено');try{window.dispatchEvent(new CustomEvent('nai-cfg',{detail:d.cfg}))}catch(_){}}else msg('⚠ '+(d&&d.message||'Не сохранилось'))}).catch(function(e){busy=false;msg('⚠ '+e.message)})}
 function bind(){
- var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['tg_chat_id','naiCfgTg'],['voice','naiCfgVoice'],['console_tab','naiCfgTab']])};
+ var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['tg_chat_id','naiCfgTg'],['ssh_host','naiCfgHost'],['voice','naiCfgVoice'],['console_tab','naiCfgTab']])};
  var ck=$i('naiCfgCheck');if(ck)ck.onclick=function(){msg('Проверяю…');call('check',{}).then(function(d){var o=$i('naiCfgOut');o.hidden=false;
   o.innerHTML=(d.items||[]).map(function(x){return '<div><span class="'+(x.ok?'nc-ok':'nc-bad')+'">'+(x.ok?'✓':'✗')+'</span><span><b>'+esc(x.name)+':</b> '+esc(x.text)+'</span></div>'}).join('');msg(d.ok?'Всё на месте':'Есть что поправить')}).catch(function(e){msg('⚠ '+e.message)})};
  var lg=$i('naiLogin');if(lg)lg.onclick=function(){if(data&&data.status&&data.status.auth==='ok'&&!confirm('Вход в Notion сейчас работает. Войти заново? На почту придёт код (не больше 3 входов в сутки).'))return;msg('Запрашиваю письмо…');call('login',{}).then(function(d){msg((d.ok?'':'⚠ ')+(d.message||''));if(d.ok){$i('naiCode').hidden=false;setTimeout(load,3000)}}).catch(function(e){msg('⚠ '+e.message)})};
@@ -2951,7 +3007,8 @@ def agents_public():
     if not j.get('ok'):
         return dict(ok=False, message=str(j.get('error') or 'нет ответа')[:200], agents=[])
     return dict(ok=True, agents=j.get('agents') or [], models=[m for m in (j.get('models') or []) if not _not_model(m)],
-                efforts=j.get('efforts') or [], jobs=j.get('jobs') or [], models_ts=j.get('models_ts') or 0)
+                efforts=j.get('efforts') or [], jobs=j.get('jobs') or [], models_ts=j.get('models_ts') or 0,
+                tg_agent=load_cfg().get('tg_agent') or '')
 
 
 def agents_view(aid):
@@ -2974,11 +3031,23 @@ def agents_job(jid):
 
 def agents_action(kind, body):
     """Создать агента / сменить имя, модель, effort / удалить / перечитать — задание сервису notion-delegate (через сайт Notion)."""
-    if kind not in ('create', 'settings', 'delete', 'sync'):
+    if kind not in ('create', 'settings', 'delete', 'sync', 'tg', 'tgtest'):
         return dict(ok=False, message='неизвестное действие')
     data = {k: str(body.get(k) or '').strip()[:80] for k in ('aid', 'name', 'model', 'effort') if str(body.get(k) or '').strip()}
     if 'aid' in data and not AGENT_ID.match(data['aid']):
         return dict(ok=False, message='неверный агент')
+    if kind in ('create', 'tg', 'tgtest'):
+        data['tg_chat_id'] = str(body.get('tg_chat_id') or '').strip()[:40]
+    if kind == 'settings' and body.get('instructions') is True:
+        data['instructions'] = True
+    if kind in ('tg', 'tgtest'):  # без задания: ответ сразу (сохранение в реестр / пробное сообщение от бота)
+        try:
+            j = _delegate('/agents/' + kind, data, timeout=50)
+        except Exception as exc:
+            return dict(ok=False, message='Сервис Notion (notion-delegate) не отвечает: ' + type(exc).__name__)
+        if j.get('error'):
+            return dict(ok=False, message=str(j['error'])[:200])
+        return dict(ok=bool(j.get('ok')), message=str(j.get('message') or '')[:240], tg=j.get('tg', ''))
     if kind == 'create':
         data['ssh'] = body.get('ssh') is True
     try:
@@ -3230,7 +3299,7 @@ def install(ns, profiles):
     posts = ('/api/notion-ai/on', '/api/notion-ai/off', '/api/notion-ai/step', '/api/notion-ai/step/confirm', '/api/notion-ai/send',
              '/api/notion-ai/config', '/api/notion-ai/check', '/api/notion-ai/key', '/api/notion-ai/login', '/api/notion-ai/code',
              '/api/notion-ai/model', '/api/notion-ai/agents/create', '/api/notion-ai/agents/settings', '/api/notion-ai/agents/delete',
-             '/api/notion-ai/agents/sync')
+             '/api/notion-ai/agents/sync', '/api/notion-ai/agents/tg', '/api/notion-ai/agents/tgtest')
 
     class NotionAIHandler(base):
         def do_GET(self):

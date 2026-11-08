@@ -27,6 +27,8 @@ CC_CONFIG = "/opt/cc-limits/config.json"
 UPDATES = ["message", "callback_query"]
 IRK = 8 * 3600
 FOOT = "\n\n— из Telegram (общий чат). Ответ: notion-ai-reply на сервере (текст + голос)."
+NAI_CFG = "/opt/cc-limits/notion_ai.json"  # tg_agent — агент, которому идут сообщения из Telegram (пусто — главный агент Notion AI)
+NAGENTS = "/root/notion_web/nagents.json"
 BATCH_WAIT = 2  # [notion-ai] пачка: альбом и пару сообщений подряд отправляем одним куском
 MAX_FILE = 20 * 1024 * 1024
 
@@ -165,9 +167,19 @@ def dcall(path, data=None, timeout=30):
         return json.load(e)
 
 
-def post(text):
-    """Отправить в чат Notion AI; True — доставлено."""
-    j = dcall("/post", {"text": text})
+def tg_agent():
+    """(aid, имя) агента, принимающего сообщения из Telegram; (None, None) — главный агент. Агента, которого нет в реестре, не берём."""
+    try:
+        aid = str(json.load(open(NAI_CFG)).get("tg_agent") or "").strip()
+        a = (json.load(open(NAGENTS)).get("agents") or {}).get(aid) if aid else None
+    except Exception:
+        return None, None
+    return (aid, a.get("name") or "") if a and a.get("name") else (None, None)
+
+
+def post(text, aid=None):
+    """Отправить в чат Notion AI (или выбранного агента); True — доставлено."""
+    j = dcall("/post", dict(text=text, **({"aid": aid} if aid else {})))
     if not j.get("id"):
         raise RuntimeError(j.get("error") or "notion-delegate не принял сообщение")
     t0 = time.time()
@@ -327,9 +339,10 @@ def main():
             marks.append(m["message_id"])
         nxt = ups[-1]["update_id"] + 1
         if lines:
-            text = "\n\n".join(lines) + FOOT
+            aid, aname = tg_agent()
+            text = "\n\n".join(lines) + (FOOT.replace("notion-ai-reply на сервере", 'notion-ai-reply --agent "%s" на сервере' % aname.replace('"', "'")) if aid else FOOT)
             try:
-                post(text)
+                post(text, aid)
                 fails = 0
                 for mid in marks:
                     react(chat, mid)

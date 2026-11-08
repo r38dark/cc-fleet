@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""notion-ai-reply [--voice "что озвучить"] [--no-voice] [--file путь ...] "текст" | -
+"""notion-ai-reply [--agent "имя агента"] [--voice "что озвучить"] [--no-voice] [--file путь ...] "текст" | -
+--agent: ответ от имени агента — в его чат Telegram (⚙ в окне агента; пусто — основной чат) и с пометкой «[имя]» в начале текста и голоса.
+--chat id: явный чат (проверка). --test: отправить пробное сообщение и напечатать {"ok":..., "error":...}.
 [notion-ai] 05.11.26. Ответ Notion AI владельцу в общий чат Telegram (бот Claude, chat_id из /opt/cc-limits/config.json):
 текст + голос тем же TTS и тем же голосом, что у Claude (/root/tts/say.sh, kseniya).
 Для кода, логов и длинных отчётов озвучивать краткое резюме через --voice. «-» — текст из stdin."""
 import argparse
 import json
+import urllib.error
 import mimetypes
 import os
 import re
@@ -33,7 +36,29 @@ def nai_cfg():
         return {}
 
 
-def chat_id():
+NAGENTS = "/root/notion_web/nagents.json"  # реестр агентов (пишет сервис notion-delegate)
+
+
+def agent_entry(name):
+    """Запись агента из реестра по имени (или по прежнему имени после переименования); None — не найден."""
+    want = " ".join(str(name or "").split()).lower()
+    if not want:
+        return None
+    try:
+        reg = json.load(open(NAGENTS)).get("agents") or {}
+    except Exception:
+        return None
+    for a in reg.values():
+        names = [a.get("name")] + list(a.get("old_names") or [])
+        if any(" ".join(str(n or "").split()).lower() == want for n in names):
+            return a
+    return None
+
+
+def chat_id(agent=None):
+    own = str((agent or {}).get("tg_chat_id") or "").strip()  # свой чат агента (форма создания / окно агента)
+    if own:
+        return own
     cid = str(nai_cfg().get("tg_chat_id") or "").strip()  # свой чат для Notion AI; пусто — как у Claude
     if cid:
         return cid
@@ -108,17 +133,40 @@ def main():
     ap.add_argument("--voice", help="текст для озвучки (по умолчанию — сам ответ без кода)")
     ap.add_argument("--no-voice", action="store_true")
     ap.add_argument("--file", action="append", default=[], help="приложить файл/картинку")
+    ap.add_argument("--agent", default="", help="имя агента: чат Telegram берётся из его настроек, в начале — пометка [имя]")
+    ap.add_argument("--chat", default="", help="явный чат (для проверки)")
+    ap.add_argument("--test", action="store_true", help="пробное сообщение; итог — одна строка JSON")
     a = ap.parse_args()
+    ent = agent_entry(a.agent) if a.agent else None
+    cid = a.chat.strip() or chat_id(ent)
+    tag = ("[%s] " % " ".join(a.agent.split())) if a.agent.strip() else ""
+    if a.test:
+        if not cid:
+            print(json.dumps({"ok": False, "chat": "", "error": "нет chat_id: укажи его в config.json или в настройках Notion AI"}, ensure_ascii=False))
+            return
+        try:
+            api("sendMessage", {"chat_id": cid, "text": "%s✅ Проверка: сюда будет отвечать агент «%s»." % (tag, a.agent or "Notion AI")})
+            print(json.dumps({"ok": True, "chat": cid}, ensure_ascii=False))
+        except urllib.error.HTTPError as e:
+            try:
+                err = json.load(e).get("description") or "HTTP %s" % e.code
+            except Exception:
+                err = "HTTP %s" % e.code
+            hint = " — проверь id чата и что бот добавлен в этот чат (в канале — администратором)" if "chat not found" in err.lower() or e.code in (400, 403) else ""
+            print(json.dumps({"ok": False, "chat": cid, "error": err + hint}, ensure_ascii=False))
+        except Exception as e:
+            print(json.dumps({"ok": False, "chat": cid, "error": type(e).__name__}, ensure_ascii=False))
+        return
     text = " ".join(a.text).strip()
     if text == "-" or (not text and not sys.stdin.isatty()):
         text = sys.stdin.read().strip()
     if not text and not a.file:
         ap.error("нет текста")
-    cid, res = chat_id(), {"text": 0, "files": 0, "voice": False}
+    res = {"text": 0, "files": 0, "voice": False}
     if not cid:
         sys.exit("нет chat_id: укажи его в /opt/cc-limits/config.json (\"chat_id\") или в настройках Notion AI")
-    for part in chunks(text):
-        api("sendMessage", {"chat_id": cid, "text": part})
+    for i, part in enumerate(chunks(text)):
+        api("sendMessage", {"chat_id": cid, "text": (tag + part) if i == 0 else part})
         res["text"] += 1
     for path in a.file:
         img = (mimetypes.guess_type(path)[0] or "").startswith("image/") and os.path.getsize(path) < 10 * 1024 * 1024
@@ -126,6 +174,8 @@ def main():
         res["files"] += 1
     if not a.no_voice and nai_cfg().get("voice", True) is not False:  # голос выключают в настройках
         vt = voice_text(a.voice or text)
+        if vt and a.agent.strip():
+            vt = "Отвечает %s. %s" % (" ".join(a.agent.split()), vt)
         if vt and tts_ok():
             out = "/tmp/notion_ai_voice_%d.ogg" % int(time.time() * 1000)
             try:
