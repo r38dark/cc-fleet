@@ -424,7 +424,7 @@ def _off_job(reason, force, restore=True):
             _notify("⏹ Claude PROD остановлен (%s): работа передаётся дальше." % reason)
         return {"ok": True}
     except Exception as exc:
-        return _fail("Возврат не удался: %s" % type(exc).__name__)
+        return _fail("Переключение не удалось: %s" % type(exc).__name__)
 
 
 def off(reason="вручную", force=False):
@@ -445,7 +445,7 @@ def off(reason="вручную", force=False):
         _job["t"] = t
         _save(stage="начало", error="")
         t.start()
-        return {"ok": True, "started": True, "message": "Возврат начался: ~1 минута."}
+        return {"ok": True, "started": True, "message": "Переключение началось: ~1 минута."}
 
 
 def _scenario(claude, codex):

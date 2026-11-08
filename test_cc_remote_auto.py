@@ -74,24 +74,12 @@ class Decide(unittest.TestCase):
         self.assertIsNone(self.run_ticks(3, cfg(), native(), prod(), mode(busy=True), memo())[0])
         self.assertIsNone(self.run_ticks(3, cfg(), native(stale=True), prod(), mode(), memo())[0])
 
-    def test_return_when_native_limit_is_back_after_min_stay(self):
-        mm = memo()
-        c = cfg(min_stay=600)
-        self.assertIsNone(self.run_ticks(3, c, native('none'), prod(), mode(True, since=NOW - 100), mm)[0])  # рано
-        self.assertEqual(self.run_ticks(2, c, native('none'), prod(), mode(True, since=NOW - 700), memo())[0], 'to_native')
+    def test_no_switch_just_because_native_limit_is_back(self):
+        # Денис 62410/62421: понятия «вернуться» нет; работа остаётся там, куда её переключили, сколько бы она ни пробыла
+        for since in (NOW - 30, NOW - 700, NOW - 36000):
+            self.assertIsNone(self.run_ticks(5, cfg(), native('none'), prod(), mode(True, since=since), memo())[0])
 
-    def test_manual_handoff_is_not_returned_by_limit_back(self):
-        # 08.11.26: передача кнопкой, у Claude DEV лимит и не пропадал — автовозврат «вернулся лимит» её не трогает
-        md = dict(mode(True, since=NOW - 3600), auto=False)
-        self.assertIsNone(self.run_ticks(5, cfg(), native('none'), prod(), md, memo())[0])
-
-    def test_manual_handoff_still_returns_when_prod_is_exhausted(self):
-        md = dict(mode(True, since=NOW - 30), auto=False)
-        act, why = self.run_ticks(2, cfg(), native('none'), prod(False), md, memo())
-        self.assertEqual(act, 'to_native')
-        self.assertIn('PROD', why)
-
-    def test_return_at_once_when_prod_is_exhausted_and_native_is_free(self):
+    def test_switch_to_native_at_once_when_prod_is_exhausted_and_native_is_free(self):
         act, why = self.run_ticks(2, cfg(), native('none'), prod(False), mode(True, since=NOW - 30), memo())
         self.assertEqual(act, 'to_native')
         self.assertIn('PROD', why)
@@ -211,23 +199,26 @@ class Tick(unittest.TestCase):
         self.assertEqual(self.calls[0][0], 'off')
         self.assertGreater(A._memo['last_return'], 0)
 
-    def test_tick_manual_button_handoff_stays_on_prod(self):
-        # передача кнопкой («по кнопке в панели») не возвращается сама при свободном лимите Claude DEV
+    def test_tick_handoff_stays_on_prod_while_prod_has_limit(self):
+        # ни ручная передача кнопкой, ни автопередача сами не переключаются, пока на PROD есть лимит
+        A.set_enabled(True)
+        self.state['native'] = native('none')
+        for reason in ('по кнопке в панели', 'автопередача: у Claude DEV нет лимита, на Claude PROD есть'):
+            self.md = dict(active=True, since=time.time() - 36000, reason=reason)
+            for _ in range(4):
+                A.tick(self.ns)
+            self.assertEqual(self.calls, [], reason)
+
+    def test_tick_switches_to_native_when_prod_limit_ends(self):
         A.set_enabled(True)
         self.md = dict(active=True, since=time.time() - 3600, reason='по кнопке в панели')
         self.state['native'] = native('none')
-        for _ in range(4):
-            A.tick(self.ns)
-        self.assertEqual(self.calls, [])
-
-    def test_tick_auto_handoff_returns_when_limit_is_back(self):
-        A.set_enabled(True)
-        self.md = dict(active=True, since=time.time() - 3600, reason='автопередача: у Claude DEV нет лимита, на Claude PROD есть')
-        self.state['native'] = native('none')
+        self.state['prod'] = dict(prod(False), row={})
         A.tick(self.ns)
         self.assertEqual(A.tick(self.ns), 'to_native')
         self.assertEqual(self.calls[0][0], 'off')
-        self.assertIn('вернулся лимит', self.calls[0][1])
+        self.assertIn('автопереключение', self.calls[0][1])
+        self.assertNotIn('возврат', self.calls[0][1])
 
     def test_failed_start_is_retried_not_reported_as_done(self):
         A.set_enabled(True)

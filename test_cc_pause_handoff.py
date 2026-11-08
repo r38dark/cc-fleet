@@ -98,7 +98,7 @@ class Ready(Files):
         put(A.HB_FILE, {'ts': self.now - 5, 'last_return': self.now - 100})
         ok, why = A.handoff_ready(self.now)
         self.assertFalse(ok)
-        self.assertIn('рано после возврата', why)                # кулдаун 15 мин после возврата с PROD
+        self.assertIn('рано после переключения', why)            # кулдаун 15 мин после переключения с PROD
         put(A.HB_FILE, {'ts': self.now - 5, 'last_return': self.now - 1000})
         self.assertTrue(A.handoff_ready(self.now)[0])
         put(A.MODE_FILE, {'active': True})

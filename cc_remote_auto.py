@@ -1,5 +1,6 @@
-"""[remote] Автопередача работы между Claude-аккаунтами: Claude DEV → Claude PROD, когда у Claude DEV нет лимита, и обратно,
-когда лимит у него вернулся. Codex и агент Notion сюда не входят: на них переключает человек.
+"""[remote] Автопереключение работы между Claude-аккаунтами (DEV ↔ PROD): когда лимит заканчивается у того, где идёт работа,
+а на другом он есть, работа переключается на другой. Вручную переключённая работа остаётся там, куда её переключили.
+Codex и агент Notion сюда не входят: на них переключает человек.
 
 Решение принимает чистая функция decide(): ей даётся снимок (Claude DEV, PROD, режим передачи, память тиков),
 она возвращает действие. tick() собирает снимок, вызывает decide() и выполняет действие через cc_remote_mode.
@@ -14,7 +15,7 @@ import cc_avail
 import cc_remote as R
 
 CFG_FILE = os.environ.get("CC_REMOTE_AUTO") or R.BASE + "/remote_auto.json"
-DEFAULTS = dict(enabled=False, dry_run=False, ticks=2, min_stay=600, cooldown=900, sim_level="", sim_prod="")  # sim_*: проверка вживую — подмена состояния Claude DEV (hard/none) и PROD ("1" пригоден, "0" нет)
+DEFAULTS = dict(enabled=False, dry_run=False, ticks=2, cooldown=900, sim_level="", sim_prod="")  # sim_*: проверка вживую — подмена состояния Claude DEV (hard/none) и PROD ("1" пригоден, "0" нет)
 TICK_SEC = 30
 KICK_FILE = os.environ.get("CC_REMOTE_AUTO_KICK") or R.BASE + "/remote_auto_kick.json"   # хук паузы просит панель передать работу сейчас
 HB_FILE = os.environ.get("CC_REMOTE_AUTO_HB") or R.BASE + "/remote_auto_hb.json"          # «пульс» потока панели: жив ли тот, кто примет запрос
@@ -75,7 +76,7 @@ def prod_state(row, thr, cap, now=None):
 
 def decide(now, cfg, native, prod, mode, memo):
     """(действие, причина). Действия: None | 'to_prod' | 'to_native' | 'notify_both'.
-    native: level, stale, role, notion_active; prod: usable, why; mode: active, busy, since, auto (передачу начал автопереход; нет ключа = да).
+    native: level, stale, role, notion_active; prod: usable, why; mode: active, busy, since.
     memo (меняется): to_prod, to_native — подряд идущие тики с одним и тем же решением; both_notified, last_return."""
     if not cfg.get("enabled") or mode.get("busy") or native.get("stale"):
         memo.update(to_prod=0, to_native=0)
@@ -96,15 +97,12 @@ def decide(now, cfg, native, prod, mode, memo):
             memo["to_prod"] = 0
         return None, ""
     memo["to_prod"] = 0
-    stay = now - float(mode.get("since") or now)
     native_ok = not native_blocked
     back = None
+    # переключаемся только когда лимит заканчивается у того, где идёт работа (здесь — PROD), а на другом есть;
+    # «вернуться, потому что у DEV свободно» нет: куда человек переключил вручную, там работа и остаётся (Денис 62421)
     if native_ok and not prod.get("usable"):
         back = "лимит на Claude PROD исчерпан, у Claude DEV есть"
-    elif native_ok and stay >= float(cfg.get("min_stay") or 0) and mode.get("auto", True):
-        # «вернулся лимит» — только для передач, начатых самим автопереходом из-за нехватки лимита;
-        # ручную передачу (кнопка в панели) человек вернёт сам: лимит у Claude DEV никуда не пропадал
-        back = "у Claude DEV вернулся лимит"
     if back:
         memo["to_native"] += 1
         if memo["to_native"] >= need:
@@ -205,7 +203,7 @@ def handoff_ready(now=None):
     if pc._notion_ai_active():
         return False, "включён профиль Notion AI"
     if now - max(float(hb.get("last_return") or 0), 0.0) < float(cfg.get("cooldown") or 0):
-        return False, "рано после возврата с PROD"
+        return False, "рано после переключения с PROD"
     ls = pc.level_state()
     if ls.get("stale") or ls.get("level") not in BLOCKED:
         return False, "у Claude DEV есть, где работать"
@@ -279,7 +277,7 @@ def _queue_text():
 
 
 def _queue_taken(stamps):
-    """Эти сообщения уехали на PROD вместе с передачей — отмечаем разобранными (иначе их разберёт Claude DEV после возврата второй раз)."""
+    """Эти сообщения уехали на PROD вместе с передачей — отмечаем разобранными (иначе их разберёт Claude DEV после переключения второй раз)."""
     if not stamps:
         return
     try:
@@ -335,8 +333,7 @@ def _tick(ns, kicked=False):
         return None, False
     native, prod = _snapshot(ns, mid)
     md = M.mode()
-    mode = dict(active=bool(md.get("active")), busy=M.busy(), since=md.get("since") or 0,
-                auto=str(md.get("reason") or "").startswith("автопередача"))
+    mode = dict(active=bool(md.get("active")), busy=M.busy(), since=md.get("since") or 0)
     with _lock:
         if kicked:
             _memo["to_prod"] = max(0, int(cfg.get("ticks") or 2) - 1)
@@ -360,19 +357,18 @@ def _tick(ns, kicked=False):
                 _pause().release_for_remote()   # паузу по лимитам не держим: Claude DEV остановит передача, будить его не нужно
             except Exception as exc:
                 print("remote-auto: пауза не снята: %r" % (exc,), flush=True)
-            _notify(ns, "🔁 Переход на Claude PROD: %s. Лимиты сейчас: %s. Работа переходит на Claude PROD, "
-                        "вернётся на Claude DEV сама, когда у него сбросится лимит." % (sentence(reason), limits))
+            _notify(ns, "🔁 Переход на Claude PROD: %s. Лимиты сейчас: %s. Работа переходит на Claude PROD." % (sentence(reason), limits))
             return action, True
         print("remote-auto: передача не началась: %s" % res.get("message"), flush=True)
         _memo["to_prod"] = max(0, _memo["to_prod"])
     elif action == "to_native":
-        res = M.off("автовозврат: " + reason)
+        res = M.off("автопереключение: " + reason)
         if res.get("ok"):
             _memo["last_return"] = time.time()
-            _heartbeat()   # время возврата сразу в файл: по нему хук паузы знает про кулдаун
+            _heartbeat()   # время переключения сразу в файл: по нему хук паузы знает про кулдаун
             _notify(ns, "🔁 Переход на Claude DEV: %s. Лимиты сейчас: %s. Работа переходит на Claude DEV." % (sentence(reason), limits))
         else:
-            print("remote-auto: возврат не начался: %s" % res.get("message"), flush=True)
+            print("remote-auto: переключение не началось: %s" % res.get("message"), flush=True)
     elif action == "notify_both":
         _notify(ns, "⚠️ Лимиты закончились и у Claude DEV, и на Claude PROD. Переключи работу вручную: Codex или агент Notion AI.")
     return action, False
