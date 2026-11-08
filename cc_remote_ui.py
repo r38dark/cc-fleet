@@ -18,6 +18,9 @@ html:root:root.ag-live-prod #fleetActiveAccounts .fleet-live-account.prod{border
 html:root:root.ag-pause-prod .fleet-live-account.prod .fleet-live-name::before,html:root:root.ag-pause-prod .fleet-live-account.prod .cxdot,html:root:root.ag-pause-prod .fleet-compact-account.prod .fleet-compact-name::before,html:root:root.ag-pause-prod .fleet-console-toolbar #ctProd::before{--pz:var(--fleet-claude,#e7af85);width:7px!important;height:8px!important;border:0!important;border-radius:1px!important;box-shadow:none!important;animation:none!important;background:linear-gradient(90deg,var(--pz) 0 2.4px,transparent 2.4px 4.6px,var(--pz) 4.6px 7px)!important}
 .fleet-compact-account.prod[data-online="0"] .fleet-compact-name::before{background:var(--warn)}
 .fleet-remote-card{position:relative}
+.fleet-remote-card .fleet-card-footer{flex-wrap:wrap;row-gap:8px}
+.fleet-remote-card .fleet-card-caption{flex:1 1 100%;white-space:normal;overflow:visible;text-overflow:clip}
+.fleet-remote-card .rm-relogin{margin:0}
 .fleet-remote-card .fleet-card-state.off{color:var(--warn)}
 .fleet-remote-card .fleet-card-date b{font-variant-numeric:tabular-nums}
 .fleet-card-auto{display:flex;align-items:center;gap:8px;margin:10px 0 2px;font-size:12px;color:var(--fleet-muted);cursor:pointer}
