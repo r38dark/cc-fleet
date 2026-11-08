@@ -133,6 +133,7 @@ def _state():
     st.setdefault("next_task", 1)
     st.setdefault("pending", None)
     st.setdefault("tasks", {})
+    st.setdefault("inflight", None)  # запрос в консоль, ответ на который ещё не дошёл до Telegram (переживает перезапуск)
     return st
 
 
@@ -455,6 +456,7 @@ def reset_thread():
     with _lock:
         st = _state()
         st["threads"] = {}
+        st["inflight"] = None
         _state_save(st)
     if CONSOLE is not None:
         BRIDGE.cancel.set()  # идущий запрос в консоли снимается, консоль останавливается и забывает разговор
@@ -1191,6 +1193,7 @@ class Bridge:
         self.proc = None
         self.cancel = threading.Event()  # /stop и /new: прервать запрос, идущий в консоли
         self.in_console = False
+        self.inflight_owner = None  # id записи «жду ответ в консоли», у которой есть живой поток в этом процессе
         self.warned = set()
         self.albums = {}  # media_group_id → {"ids": [file_id], "caption": str, "timer": Timer}: альбом, который ещё собирается
         self.album_lock = threading.Lock()
@@ -1347,14 +1350,14 @@ class Bridge:
     def send_answer(self, text, act=None, s=None):
         s = s or load()
         if not (s.get("token") and chat_id(s)):
-            return
+            return True  # слать некуда — ждать нечего
         try:
             clean, files = answer_images(text, s)
         except Exception as e:
             log(f"answer images: {type(e).__name__}")
             clean, files = text, []
         if clean.strip() and not self.send(clean, s):
-            return
+            return False  # Telegram не принял: ответ остаётся в состоянии и уйдёт позже
         for filename, data, mime in files:
             if act:
                 act.set("upload_photo")
@@ -1368,6 +1371,7 @@ class Bridge:
             finally:
                 if act:
                     act.set("typing")
+        return True
 
     # --- обработка сообщения человека
     def handle_update(self, u):
@@ -1527,6 +1531,7 @@ class Bridge:
                 st = _state()
                 had = bool(st["pending"])
                 st["pending"] = None  # задание, ждущее «да», тоже снимается
+                st["inflight"] = None  # и ответ, который досылался после перезапуска
                 _state_save(st)
             queued = self._cancel_inputs()
             if p:
@@ -1581,25 +1586,135 @@ class Bridge:
         own = act is None  # индикатор передал ask_image — он же его и гасит
         act = ChatAction(s).start("typing") if own else act
         act.set("typing")
+        token = self._inflight_begin()
         try:
             try:
                 ask_started = time.monotonic()
                 answer, _ = run_codex(text, s)
             except Stopped:
+                self._inflight_end(token)
                 return
             except RunError as e:
                 log(f"delivery stage=codex_end outcome=error elapsed_ms={round((time.monotonic() - ask_started) * 1000) if 'ask_started' in locals() else -1}")
+                self._inflight_end(token)
                 return self.send(f"⚠️ {e}")
             except Exception as e:
                 log(f"run_codex: {type(e).__name__} {e}")
+                self._inflight_end(token)
                 return self.send("⚠️ Не удалось запустить Codex, подробности в журнале.")
             log(f"delivery stage=codex_end outcome=ok elapsed_ms={round((time.monotonic() - ask_started) * 1000)}")
-            self.send_answer(answer, act, s)
+            self._inflight_keep(token, answer)
+            if self.send_answer(answer, act, s) is not False:
+                self._inflight_end(token)
+            else:  # Telegram не принял ответ: он остаётся в состоянии, recover_loop досылает его, когда связь вернётся
+                self._inflight_release(token)
+                log("delivery stage=answer_held reason=telegram")
             if s["mode"] in ("mediator", "orchestrator") and TAKE_DRAFT_ALLOWED():
                 self.take_draft(s)
         finally:
             if own:
                 act.stop()
+
+    # --- ответ, который не должен потеряться (перезапуск балансера, сбой Telegram)
+    def _inflight_begin(self):
+        """Запомнить в состоянии, что сообщение ушло в консоль Codex. → id записи | None (консоли нет — запоминать нечего)."""
+        if CONSOLE is None or not hasattr(CONSOLE, 'mark'):
+            return None
+        try:
+            if not CONSOLE.usable():
+                return None
+            point = CONSOLE.mark()
+        except Exception as e:
+            log(f"inflight: {type(e).__name__}")
+            return None
+        token = secrets.token_hex(8)
+        self.inflight_owner = token  # до записи в состояние: recover_loop не должен принять живой запрос за брошенный
+        with _lock:
+            st = _state()
+            st["inflight"] = {"id": token, "sent": NOW(), "mark": point}
+            _state_save(st)
+        return token
+
+    def _inflight_keep(self, token, answer):
+        if not token:
+            return
+        with _lock:
+            st = _state()
+            cur = st.get("inflight") or {}
+            if cur.get("id") == token:
+                cur["answer"] = answer
+                st["inflight"] = cur
+                _state_save(st)
+
+    def _inflight_end(self, token):
+        if not token:
+            return
+        with _lock:
+            st = _state()
+            if (st.get("inflight") or {}).get("id") == token:
+                st["inflight"] = None
+                _state_save(st)
+        if self.inflight_owner == token:
+            self.inflight_owner = None
+
+    def _inflight_release(self, token):
+        if token and self.inflight_owner == token:
+            self.inflight_owner = None
+
+    def recover_once(self, ev):
+        """Запись, у которой нет живого хозяина (процесс перезапущен или Telegram не принял ответ): дочитать ход и доставить ответ."""
+        with _lock:
+            cur = _state().get("inflight")
+        if not cur or cur.get("id") == self.inflight_owner:
+            return
+        token = cur["id"]
+        s = load()
+        if not (s.get("enabled") and s.get("token") and chat_id(s)):
+            return
+
+        def deliver(answer):
+            if self.send_answer("⏳ Запоздавший ответ Codex (связь прервалась, досылаю):\n\n" + answer, None, s) is not False:
+                self._inflight_end(token)
+                log("delivery stage=answer_recovered")
+                return True
+            return False
+
+        if cur.get("answer"):
+            deliver(cur["answer"])
+            return
+
+        class Superseded:  # новый запрос или /stop заменили запись: старая больше не ждёт
+            @staticmethod
+            def is_set():
+                if ev.is_set():
+                    return True
+                with _lock:
+                    return (_state().get("inflight") or {}).get("id") != token
+
+        if CONSOLE is None or not hasattr(CONSOLE, 'recover'):
+            self._inflight_end(token)
+            return
+        log("delivery stage=recover_wait")
+        try:
+            answer, _tid = CONSOLE.recover(cur.get("mark"), cur.get("sent") or NOW(), abort=Superseded)
+        except CONSOLE.Aborted:
+            return
+        except CONSOLE.ConsoleError as e:
+            self._inflight_end(token)
+            return self.send(f"⚠️ Ответ Codex потерялся при перезапуске: {str(e)[:300]}")
+        if not answer:
+            self._inflight_end(token)
+            return self.send("⚠️ Ответ Codex на прошлое сообщение потерялся: балансер перезапускали, а ход в консоли прерван или не начался. Напиши ещё раз.")
+        self._inflight_keep(token, answer)
+        deliver(answer)
+
+    def recover_loop(self, ev):
+        while not ev.is_set():
+            try:
+                self.recover_once(ev)
+            except Exception as e:
+                log(f"recover: {type(e).__name__} {e}")
+            ev.wait(15)
 
     def take_draft(self, s):
         d = read_draft(exchange_dir(s))
@@ -1834,8 +1949,10 @@ class Bridge:
         ev = self.stop_ev = threading.Event()  # у каждого запуска своё событие: старые потоки гаснут сами, ждать их не нужно
         self.poll_t = threading.Thread(target=self.poll_loop, args=(ev,), daemon=True, name="codex-poll")
         self.watch_t = threading.Thread(target=self.watch_loop, args=(ev,), daemon=True, name="codex-watch")
+        self.rec_t = threading.Thread(target=self.recover_loop, args=(ev,), daemon=True, name="codex-recover")
         self.poll_t.start()
         self.watch_t.start()
+        self.rec_t.start()
 
     def stop(self):
         self.stop_ev.set()

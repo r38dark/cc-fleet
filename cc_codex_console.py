@@ -506,6 +506,74 @@ def _turn_open(path, since=0):
     return bool(_open_turn_id(path, since))
 
 
+def mark():
+    """Точка в файле сессии Codex перед отправкой сообщения: путь, сдвиг и открытый ход (если есть).
+    По ней recover() после перезапуска балансера находит ход, на который уже никто не ждёт. None — файла ещё нет."""
+    try:
+        meta = _meta()
+        saved = active_settings() if _pid() else {}
+        path = saved.get('rollout_path')
+        tid = saved.get('thread_id') or (meta.get('tids') or {}).get(os.path.realpath(meta.get('cwd') or ''))
+        if not path and tid:
+            path = find_rollout(meta.get('slot') or '', tid)
+        if not path or not os.path.isfile(path):
+            return None
+        return {'path': path, 'off': os.path.getsize(path), 'turn': _open_turn_id(path, meta.get('started') or 0) or None}
+    except Exception:
+        return None
+
+
+def recover(point, sent, abort=None, timeout=None, lang='ru'):
+    """Дочитать ход, ожидание которого оборвал перезапуск балансера. point — результат mark() до отправки сообщения,
+    sent — время отправки. → (ответ, id разговора); (None, id) — ход прерван или так и не начался.
+    ConsoleError — консоль закрылась, не ответив; Aborted — abort (Event) взведён."""
+    point = point or {}
+    meta = _meta()
+    slot, cwd = meta.get('slot') or '', meta.get('cwd') or ''
+    path, off, turn = point.get('path'), point.get('off') or 0, point.get('turn')
+    last_say, quiet, switched = '', time.time(), False
+    deadline = None if timeout is None else time.time() + timeout
+    while True:
+        if abort is not None and abort.is_set():
+            raise Aborted()
+        if path is None:
+            path, off = _new_rollout(slot, cwd, sent - 2), 0
+        events, off = _events(path, off) if path else ([], off)
+        for event in events:
+            payload = event.get('payload') or {}
+            kind = payload.get('type')
+            if event.get('type') == 'response_item' and kind == 'message':
+                if turn and payload.get('role') == 'assistant' and payload.get('channel') in (None, 'final'):
+                    for content in payload.get('content') or []:
+                        if content.get('type') == 'output_text' and (content.get('text') or '').strip():
+                            last_say = content['text'].strip()
+                continue
+            if event.get('type') != 'event_msg':
+                continue
+            if kind == 'task_started' and not turn and payload.get('root_turn_id', payload.get('turn_id')) == payload.get('turn_id'):
+                turn, last_say = payload.get('turn_id'), ''
+            elif turn and payload.get('turn_id') == turn:
+                if kind == 'task_complete':
+                    answer = (payload.get('last_agent_message') or '').strip() or last_say
+                    return (answer or None), _tid_of(path)
+                if kind == 'turn_aborted':  # уточнение могло оборвать ход и начать новый: ждём ещё START_WAIT
+                    turn, last_say, quiet = None, '', time.time()
+        now = time.time()
+        if not turn and now > quiet + START_WAIT:
+            if not switched and path:  # сообщение могло открыть новый файл сессии
+                switched = True
+                found = _new_rollout(slot, cwd, sent - 2, exclude=path)
+                if found:
+                    path, off, quiet = found, 0, now
+                    continue
+            return None, _tid_of(path) if path else None
+        if not _pid():
+            raise ConsoleError('Консоль Codex закрылась, не ответив.')
+        if deadline is not None and now > deadline:
+            raise ConsoleError('Codex не ответил за отведённое время.')
+        time.sleep(POLL)
+
+
 def _paste_text(text):
     """Что реально печатается в консоль: без управляющих символов (ESC закрыл бы вставку), без начала, которое
     консоль примет за команду (`/…` — команда Codex, `!…` — shell, `$…` — навык, `@…` — файл)."""

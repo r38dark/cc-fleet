@@ -664,6 +664,80 @@ class Ask(Rollout):
         with mock.patch.object(C.shutil, "which", return_value=None):
             self.assertFalse(C.usable())
 
+    # --- ответ, который не дошёл из-за перезапуска балансера: mark() до отправки, recover() после
+    def point(self, path, **kw):
+        return dict(path=path, off=os.path.getsize(path), turn=None, **kw)
+
+    def test_mark_points_at_end_of_current_rollout(self):
+        path = self.make(self.TID, self.work, [evt("task_started", turn_id="OPEN")])
+        self.meta(tids={os.path.realpath(self.work): self.TID}, started=0)
+        m = C.mark()
+        self.assertEqual((m["path"], m["off"], m["turn"]), (path, os.path.getsize(path), "OPEN"))
+
+    def test_mark_without_rollout_is_none(self):
+        self.assertIsNone(C.mark())
+
+    def test_recover_returns_answer_of_turn_finished_while_nobody_waited(self):
+        path = self.make(self.TID, self.work)
+        point = self.point(path)
+        append(path, evt("task_started", turn_id="T1"), say("черновик"),
+               evt("task_complete", turn_id="T1", last_agent_message="готовый ответ"))
+        self.assertEqual(C.recover(point, 1000), ("готовый ответ", self.TID))
+
+    def test_recover_falls_back_to_last_message(self):
+        path = self.make(self.TID, self.work)
+        point = self.point(path)
+        append(path, evt("task_started", turn_id="T1"), say("из сообщения"), evt("task_complete", turn_id="T1"))
+        self.assertEqual(C.recover(point, 1000)[0], "из сообщения")
+
+    def test_recover_waits_for_turn_that_was_open_when_message_was_sent(self):
+        path = self.make(self.TID, self.work, [evt("task_started", turn_id="T0")])
+        point = self.point(path, **{})
+        point["turn"] = "T0"
+        threading.Timer(0.2, append, (path, evt("task_complete", turn_id="T0", last_agent_message="дописал"))).start()
+        self.assertEqual(C.recover(point, 1000, timeout=5), ("дописал", self.TID))
+
+    def test_recover_ignores_other_turns(self):
+        path = self.make(self.TID, self.work)
+        point = self.point(path)
+        append(path, evt("task_started", turn_id="T1"), evt("task_complete", turn_id="SUB", last_agent_message="чужой"),
+               evt("task_complete", turn_id="T1", last_agent_message="свой"))
+        self.assertEqual(C.recover(point, 1000)[0], "свой")
+
+    def test_recover_gives_up_when_no_turn_started(self):
+        path = self.make(self.TID, self.work)
+        self.assertEqual(C.recover(self.point(path), 1000), (None, self.TID))
+
+    def test_recover_aborted_turn_without_new_one_is_none(self):
+        path = self.make(self.TID, self.work)
+        point = self.point(path)
+        append(path, evt("task_started", turn_id="T1"), evt("turn_aborted", turn_id="T1", reason="interrupted"))
+        self.assertEqual(C.recover(point, 1000), (None, self.TID))
+
+    def test_recover_follows_next_turn_after_abort(self):
+        path = self.make(self.TID, self.work)
+        point = self.point(path)
+        append(path, evt("task_started", turn_id="T1"), evt("turn_aborted", turn_id="T1"),
+               evt("task_started", turn_id="T2"), evt("task_complete", turn_id="T2", last_agent_message="после уточнения"))
+        self.assertEqual(C.recover(point, 1000)[0], "после уточнения")
+
+    def test_recover_console_closed_while_turn_open(self):
+        path = self.make(self.TID, self.work, [evt("task_started", turn_id="T0")])
+        point = self.point(path)
+        point["turn"] = "T0"
+        with mock.patch.object(C, "_pid", return_value=None):
+            with self.assertRaises(C.ConsoleError):
+                C.recover(point, 1000, timeout=5)
+
+    def test_recover_abort_event(self):
+        path = self.make(self.TID, self.work, [evt("task_started", turn_id="T0")])
+        point = self.point(path)
+        point["turn"] = "T0"
+        ev = threading.Event()
+        ev.set()
+        with self.assertRaises(C.Aborted):
+            C.recover(point, 1000, abort=ev)
+
 
 class Routes(unittest.TestCase):
     def get(self, query, snap=None, bin_="/x/codex", claude_running=True):
