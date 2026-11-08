@@ -831,7 +831,7 @@ class ProfilesDir(unittest.TestCase):
 
 
 class ConsoleColors(unittest.TestCase):
-    """Блок сообщения пользователя в Codex (фон SGR 48;5;8 = 7f7f7f у pyte) рисуется без серой полосы."""
+    """Блок сообщения пользователя в Codex (фон SGR 48;5;8 = 7f7f7f у pyte) рисуется тёмной читаемой полосой."""
 
     def _html(self, row_html):
         import pyte
@@ -839,10 +839,11 @@ class ConsoleColors(unittest.TestCase):
         pyte.Stream(screen).feed("\x1b[39;48;5;8m  вопрос        \x1b[0m\r\n\x1b[41mкрасный\x1b[0m")
         return [row_html(screen.buffer[y], 20) for y in range(2)]
 
-    def test_codex_mirror_drops_user_block_band(self):
-        # серой полосы нет вовсе (как в консоли Claude), текст остаётся
+    def test_codex_mirror_shows_user_block_on_dark_readable_band(self):
+        # сообщение человека выделено полосой, но не светло-серой: светлый текст на ней был нечитаем
         rows = self._html(L.cc_codex_console.ROW_HTML)
-        self.assertNotIn("background", rows[0])
+        self.assertIn("background:#303744", rows[0])
+        self.assertNotIn("#7f7f7f", rows[0])
         self.assertIn("вопрос", rows[0])
 
     def test_codex_mirror_keeps_other_backgrounds(self):
