@@ -15,7 +15,8 @@ from pathlib import Path
 import cc_remote as R
 
 MODE_FILE = R.BASE + "/remote_mode.json"
-INTRO_FILE = R.BASE + "/remote_friend_intro.md"
+INTRO_FILE = R.BASE + "/remote_friend_intro.md"            # шаблон из пакета (обновляется вместе с панелью)
+INTRO_LOCAL = R.BASE + "/remote_friend_intro.local.md"      # свой текст владельца: если файл есть, берётся он, обновление его не трогает
 CLAUDE_MD = "/root/.claude/CLAUDE.md"
 PROJ = "/root/.claude/projects/-root"
 CTL = R.BASE + "/remote_ctl.py"
@@ -193,7 +194,8 @@ def project_files_ok():
 
 
 def friend_claude_md():
-    intro = Path(INTRO_FILE).read_text(encoding="utf-8") if Path(INTRO_FILE).is_file() else ""
+    src = INTRO_LOCAL if Path(INTRO_LOCAL).is_file() else INTRO_FILE
+    intro = Path(src).read_text(encoding="utf-8") if Path(src).is_file() else ""
     m = R.members().get(_member_id()) or {}
     host, key = back_ssh(m)
     try:

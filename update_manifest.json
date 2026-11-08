@@ -34,6 +34,21 @@
     {"src": "cc_profile_tasks.py", "mode": "644"},
     {"src": "cc_profile_gate.py", "mode": "644"},
     {"src": "cc_claude_profile.py", "mode": "644"},
-    {"src": "cc_codex_models.py", "mode": "644"}
+    {"src": "cc_codex_models.py", "mode": "644"},
+    {"src": "cc_tz.py", "mode": "644"},
+    {"src": "cc_handoff_tail.py", "mode": "644"},
+    {"src": "cc_notion_ai.py", "mode": "644"},
+    {"src": "cc_remote.py", "mode": "644"},
+    {"src": "cc_remote_auto.py", "mode": "644"},
+    {"src": "cc_remote_mode.py", "mode": "644"},
+    {"src": "cc_remote_ui.py", "mode": "644"},
+    {"src": "remote_ctl.py", "mode": "644"},
+    {"src": "remote_usage.py", "mode": "644"},
+    {"src": "return_to_dev.py", "mode": "755"},
+    {"src": "cc-project", "mode": "755"},
+    {"src": "remote_friend_intro.md", "mode": "644"},
+    {"src": "scripts/start_claude.sh", "dst": "start_claude.sh", "mode": "755"},
+    {"src": "scripts/start_claude_side.sh", "dst": "start_claude_side.sh", "mode": "755"},
+    {"src": "scripts/claude_trust_fix.py", "dst": "claude_trust_fix.py", "mode": "755"}
   ]
 }
