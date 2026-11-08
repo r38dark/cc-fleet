@@ -103,6 +103,9 @@ class Page(unittest.TestCase):
         self.assertIn("#tpFrame{display:none;position:absolute;", L.PAGE)
         self.assertIn(".termwrap.tsplit:not(.nai-on) #tpFrame.on{display:block}", L.PAGE)
         self.assertIn("renderComps(ks);\n placeFrame(ks);", L.PAGE)
+        # края рамки — дробные размеры панели (округление уводило правый край под рамку блока), нижние углы — как у блока там, где часть к нему примыкает
+        self.assertIn("f.style.width=b.width.toFixed(2)+'px'", L.PAGE)
+        self.assertIn("f.style.borderBottomLeftRadius=idx===0?rad+'px':'0';f.style.borderBottomRightRadius=idx===PANES.length-1?rad+'px':'0';", L.PAGE)
         self.assertNotIn("tpstat", L.PAGE)
         self.assertNotIn(".termbox.tpact{box-shadow", L.PAGE)
 

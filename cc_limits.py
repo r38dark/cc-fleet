@@ -5358,7 +5358,10 @@ function placeFrame(ks){
  const P=PANES[splitActIdx(ks)];if(!P){f.classList.remove('on');return;}
  // рамка охватывает всю часть: шапку (лежит у верхнего края консоли), экран и окно ввода
  const w=wrap.getBoundingClientRect(),b=P.box.getBoundingClientRect(),bottom=P.comp?P.comp.w.getBoundingClientRect().bottom:b.bottom;
- f.style.left=Math.round(b.left-w.left-wrap.clientLeft)+'px';f.style.top=Math.round(b.top-w.top-wrap.clientTop)+'px';f.style.width=Math.round(b.width)+'px';f.style.height=Math.round(bottom-b.top)+'px';
+ // размеры дробные, без округления: иначе правый край рамки уходит на пиксель под рамку блока и обрезается; нижние углы повторяют скругление блока там, где часть к нему примыкает
+ const rad=Math.max(0,(parseFloat(getComputedStyle(wrap).borderBottomLeftRadius)||0)-(wrap.clientLeft||0)),idx=PANES.indexOf(P);
+ f.style.left=(b.left-w.left-wrap.clientLeft).toFixed(2)+'px';f.style.top=(b.top-w.top-wrap.clientTop).toFixed(2)+'px';f.style.width=b.width.toFixed(2)+'px';f.style.height=(bottom-b.top).toFixed(2)+'px';
+ f.style.borderBottomLeftRadius=idx===0?rad+'px':'0';f.style.borderBottomRightRadius=idx===PANES.length-1?rad+'px':'0';
  f.classList.add('on');
 }
 addEventListener('resize',()=>placeFrame(splitEff()));
