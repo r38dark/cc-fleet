@@ -109,6 +109,17 @@ class Page(unittest.TestCase):
         self.assertNotIn("tpstat", L.PAGE)
         self.assertNotIn(".termbox.tpact{box-shadow", L.PAGE)
 
+    def test_split_keeps_the_console_block_height(self):
+        # общее окно ввода со строкой статуса выше окон частей на 39px: добавлены к экрану, «Активные аккаунты» остаются на месте (Денис 62472)
+        self.assertIn("height:calc(clamp(360px,41dvh,510px) + 39px)", L.PAGE)
+        self.assertIn("height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)", L.PAGE)
+        self.assertIn("height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)", L.PAGE)
+
+    def test_claude_card_footer_has_a_visible_relogin_button(self):
+        # как у карточки PROD: «Войти заново» на виду в подвале, а не только в меню ⋯ (Денис 62472)
+        self.assertIn("if(engine==='claude'&&footer&&!footer.querySelector('.fleet-footer-relogin'))", L.PAGE)
+        self.assertIn("reloginAsk(slot,rb)", L.PAGE)
+
     def test_draft_follows_the_model(self):
         self.assertIn("const DRAFTS={};", L.PAGE)
         self.assertIn("DRAFTS[P.k]=input.value", L.PAGE)

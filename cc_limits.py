@@ -3437,8 +3437,9 @@ html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:r
 .tpheads,.tpadd{display:none}
 html:root:root #splitBtn[hidden]{display:none!important}  /* у кнопок блока масштаба display задаётся классом и перебивает hidden */
 .termwrap.tsplit .fleet-console-viewport{position:relative;display:flex!important;flex-direction:row;min-width:0;background:var(--fleet-terminal,#0b0d10)}
-html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:clamp(360px,41dvh,510px)}
-@media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:clamp(340px,calc(100dvh - 430px),640px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:clamp(320px,calc(100dvh - 470px),610px)}}
+/* общее окно ввода со строкой статуса выше окон частей на 39px: добавляем их к экрану, чтобы консоль и активные аккаунты занимали столько же места, как при одной консоли */
+html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(360px,41dvh,510px) + 39px)}
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)}}
 html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
 html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
 html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
