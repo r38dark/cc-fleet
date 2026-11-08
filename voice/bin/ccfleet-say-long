@@ -1,0 +1,41 @@
+#!/bin/bash
+# Озвучка длинного текста: режет на куски <=520 символов по предложениям, озвучивает каждый через ccfleet-say
+# и склеивает в один .ogg (ffmpeg concat).
+# Использование: ccfleet-say-long <файл_с_текстом> <выход.ogg> [голос=kseniya]
+set -e
+SRC="${1:-}"; OUT="${2:-}"; VOICE="${3:-kseniya}"
+[ -f "$SRC" ] && [ -n "$OUT" ] || { echo "Использование: ccfleet-say-long файл.txt выход.ogg [голос]" >&2; exit 2; }
+SAY="$(dirname "$(readlink -f "$0")")/ccfleet-say"
+[ -x "$SAY" ] || SAY="$(command -v ccfleet-say)"
+TMPD=$(mktemp -d)
+trap 'rm -rf "$TMPD"' EXIT
+python3 - "$SRC" "$TMPD" << 'PYEOF'
+import sys, re
+src, tmpd = sys.argv[1], sys.argv[2]
+text = open(src, encoding='utf-8').read().strip()
+paras = [p.strip() for p in text.split('\n\n') if p.strip()]
+chunks, cur = [], ''
+LIMIT = 520
+for p in paras:
+    parts = re.split(r'(?<=[.!?…]) ', p) if len(p) > LIMIT else [p]
+    for s in parts:
+        if len(cur) + len(s) + 1 > LIMIT and cur:
+            chunks.append(cur.strip()); cur = ''
+        cur += s + ' '
+    if cur.strip():
+        chunks.append(cur.strip()); cur = ''
+if cur.strip():
+    chunks.append(cur.strip())
+for i, c in enumerate(chunks):
+    open(f'{tmpd}/part_{i:03d}.txt', 'w', encoding='utf-8').write(c)
+print(len(chunks))
+PYEOF
+N=0
+for f in "$TMPD"/part_*.txt; do
+  [ -f "$f" ] || continue
+  "$SAY" "$(cat "$f")" "${f%.txt}.ogg" "$VOICE"
+  echo "file '${f%.txt}.ogg'" >> "$TMPD/list.txt"
+  N=$((N+1))
+done
+[ "$N" -gt 0 ] || { echo "ccfleet-say-long: в файле нет текста" >&2; exit 1; }
+ffmpeg -y -loglevel error -f concat -safe 0 -i "$TMPD/list.txt" -c copy "$OUT"

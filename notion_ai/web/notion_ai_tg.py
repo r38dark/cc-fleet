@@ -3,7 +3,7 @@
 Работает, только пока включён профиль «Notion AI · только он» (/opt/cc-limits/notion_ai_mode.json).
 Claude Code в это время остановлен, поэтому getUpdates бота слушает только этот мост.
 Сообщения владельца (allowFrom из access.json) пачкой уходят через notion-delegate (/post) в чат Notion AI.
-Голосовые расшифровываются /root/tts/transcribe.sh, фото и файлы сохраняются в /root/notion_ai_inbox.
+Голосовые расшифровываются ccfleet-transcribe (voice/install.sh; на серверах с ручной установкой — /root/tts/transcribe.sh), фото и файлы сохраняются в /root/notion_ai_inbox.
 Доставку в Notion отмечает реакция 👀; ответы Notion AI отправляет сам командой notion-ai-reply.
 Кнопки шагов оркестратора (callback nai:ok:<id> / nai:no:<id>) передаются в балансер: POST /api/notion-ai/step/confirm."""
 import json
@@ -113,9 +113,16 @@ def download(file_id, name_hint):
     return path
 
 
+def transcribe_tool():
+    for p in ("/usr/local/bin/ccfleet-transcribe", "/root/tts/transcribe.sh"):
+        if os.path.exists(p):
+            return p
+    return "/usr/local/bin/ccfleet-transcribe"
+
+
 def transcribe(path):
     try:
-        r = subprocess.run(["/root/tts/transcribe.sh", path], capture_output=True, text=True, timeout=300)
+        r = subprocess.run([transcribe_tool(), path], capture_output=True, text=True, timeout=300)
         return (r.stdout or "").strip() if r.returncode == 0 else ""
     except Exception:
         return ""

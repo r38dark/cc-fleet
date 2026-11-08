@@ -1,0 +1,3 @@
+# Расшифровка (venv-stt). av старше 19: у faster-whisper 1.2.1 с av 19 не открывается аудио (TypeError: metadata_errors).
+faster-whisper==1.2.1
+av>=14,<19

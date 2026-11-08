@@ -202,7 +202,7 @@ s2() {
   ask_yn WANT_CLAUDE "Claude Code: установить, если его нет (Node.js 18+ и npm install -g @anthropic-ai/claude-code)" "y"
   ask_yn WANT_CODEX "Codex (ChatGPT): подготовить отдельного пользователя ОС для него" "y"
   ask_yn WANT_NOTION "Notion AI: поставить службы (браузер Chromium ~300 МБ, нужен аккаунт Notion с Notion AI)" "n"
-  ask_yn WANT_VOICE "Голос: озвучка ответов и расшифровка голосовых (нужно ~3 ГБ места и 2 ГБ памяти)" "n"
+  ask_yn WANT_VOICE "Голос: озвучка ответов и расшифровка голосовых (нужно ~5 ГБ места и 2 ГБ памяти)" "n"
   ask_yn HOOK_QUEUE "Хук очереди входящих в settings.json Claude Code (рекомендуется)" "y"
   ask_yn HOOK_TOOLS "Стоп-кран инструментов на паузе в settings.json Claude Code (рекомендуется)" "y"
   [ -n "$CLAUDE_SETTINGS" ] || CLAUDE_SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"

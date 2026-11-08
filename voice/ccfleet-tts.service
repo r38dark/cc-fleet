@@ -1,0 +1,14 @@
+[Unit]
+Description=cc-fleet voice: local TTS daemon (Silero ru, localhost only)
+After=network-online.target
+
+[Service]
+ExecStart=@VOICE_DIR@/venv-tts/bin/python3 @VOICE_DIR@/server.py
+WorkingDirectory=@VOICE_DIR@
+Environment=CCFLEET_VOICE_DIR=@VOICE_DIR@
+Environment=HF_HOME=@VOICE_DIR@/hf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

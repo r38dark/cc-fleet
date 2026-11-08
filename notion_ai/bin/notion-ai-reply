@@ -3,7 +3,7 @@
 --agent: ответ от имени агента — в его чат Telegram (⚙ в окне агента; пусто — основной чат) и с пометкой «[имя]» в начале текста и голоса.
 --chat id: явный чат (проверка). --test: отправить пробное сообщение и напечатать {"ok":..., "error":...}.
 [notion-ai] 05.11.26. Ответ Notion AI владельцу в общий чат Telegram (бот Claude, chat_id из /opt/cc-limits/config.json):
-текст + голос тем же TTS и тем же голосом, что у Claude (/root/tts/say.sh, kseniya).
+текст + голос локальным TTS cc-fleet (ccfleet-say из voice/install.sh; на серверах с ручной установкой — /root/tts/say.sh), голос kseniya.
 Для кода, логов и длинных отчётов озвучивать краткое резюме через --voice. «-» — текст из stdin."""
 import argparse
 import json
@@ -111,6 +111,14 @@ def voice_text(text):
     return t
 
 
+def say_tool():
+    """Команда озвучки: ccfleet-say от установщика голоса, иначе прежний /root/tts/say.sh."""
+    for p in ("/usr/local/bin/ccfleet-say", "/root/tts/say.sh"):
+        if os.path.exists(p):
+            return p
+    return "/usr/local/bin/ccfleet-say"
+
+
 def tts_ok():
     try:
         with urllib.request.urlopen("http://127.0.0.1:8879/health", timeout=4) as r:
@@ -179,7 +187,7 @@ def main():
         if vt and tts_ok():
             out = "/tmp/notion_ai_voice_%d.ogg" % int(time.time() * 1000)
             try:
-                r = subprocess.run(["/root/tts/say.sh", vt, out, "kseniya"], capture_output=True, text=True, timeout=240)
+                r = subprocess.run([say_tool(), vt, out, "kseniya"], capture_output=True, text=True, timeout=240)
                 if r.returncode == 0 and os.path.exists(out):
                     upload("sendVoice", "voice", out, {"chat_id": cid})
                     res["voice"] = True

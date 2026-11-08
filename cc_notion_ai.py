@@ -2194,7 +2194,15 @@ AUTH_KEYS = '/root/.ssh/authorized_keys'
 KEY_MARK = 'ccfleet-notion-ai'
 KEY_TYPES = ('ssh-ed25519', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521', 'ssh-rsa')
 CHAT_HOSTS = ('app.notion.com', 'www.notion.so', 'notion.so')
-TTS = '/root/tts/say.sh'
+TTS = '/usr/local/bin/ccfleet-say'   # ставит voice/install.sh; на серверах с голосом, поставленным вручную — прежний /root/tts/say.sh (см. tts_path)
+TTS_LEGACY = '/root/tts/say.sh'
+
+
+def tts_path():
+    """Команда озвучки: ccfleet-say от установщика голоса, иначе прежний say.sh; считается при каждом вызове (голос можно поставить, не перезапуская панель)."""
+    return TTS if Path(TTS).exists() or not Path(TTS_LEGACY).exists() else TTS_LEGACY
+
+
 REPLY_BIN = '/usr/local/bin/notion-ai-reply'
 _TG_ME = {'ts': 0, 'v': None}
 
@@ -2426,7 +2434,7 @@ def cfg_status(cfg=None, fresh=False):
         view = dict(state='none', ts=0)
     return dict(units=units, auth=(h or {}).get('auth') or ('down' if h is None else 'unknown'), login_busy=bool((h or {}).get('login_busy')),
                 tg_bot=tg_me(fresh), tg_chat=tg_target(cfg), tg_default=_cc_chat_id(),
-                tts=Path(TTS).exists(), reply=Path(REPLY_BIN).exists(), keys=len(key_lines()), view=view)
+                tts=Path(tts_path()).exists(), reply=Path(REPLY_BIN).exists(), keys=len(key_lines()), view=view)
 
 
 TZ_IRK = cc_tz.zone()   # зона владельца из config.json «tz» (имя осталось от прежней версии)
@@ -2632,8 +2640,8 @@ def cfg_check():
     elif not cid:
         out.append(dict(name='Чат Telegram', ok=False, text='не задан ни здесь, ни у Claude'))
     out.append(dict(name='Ответ в Telegram', ok=Path(REPLY_BIN).exists(), text='notion-ai-reply на месте' if Path(REPLY_BIN).exists() else 'нет notion-ai-reply'))
-    out.append(dict(name='Голос', ok=Path(TTS).exists() or not cfg['voice'],
-                    text=('включён' if cfg['voice'] else 'выключен') + ('' if Path(TTS).exists() else ' · нет синтеза речи ' + TTS)))
+    out.append(dict(name='Голос', ok=Path(tts_path()).exists() or not cfg['voice'],
+                    text=('включён' if cfg['voice'] else 'выключен') + ('' if Path(tts_path()).exists() else ' · нет синтеза речи (поставь: sudo bash voice/install.sh)')))
     n = len(key_lines())
     out.append(dict(name='Ключ доступа Notion AI', ok=True, text='из панели добавлено: %d' % n if n else 'из панели не добавлялся (может быть добавлен вручную)'))
     try:
