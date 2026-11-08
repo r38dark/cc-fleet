@@ -2,22 +2,22 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
-      "v": "1.29.0",
+      "v": "2.0.0",
       "date": "2026-11-08",
       "ru": {
-        "t": "Установка «под ключ», агенты Notion, второй сервер и голос",
+        "t": "Установка «под ключ», второй сервер, агенты Notion, голос",
         "p": [
-          "Установщик из 14 шагов с проверкой каждого и пошаговая инструкция docs/INSTALL.md; мастер «Второй сервер» и необязательный голос",
-          "Агенты Notion: создание с полосой времени, постоянный SSH-ключ и свой Telegram-чат у каждого агента, блок Notion AI в меню консоли",
-          "Принудительное переключение, если второй сервер отвечает без пауз; подписи серверов «Claude A/B»; консоль делится на части и при смене исполнителя заменяет окно прежнего; баннер лимитов пишет «Ищу свободный аккаунт», пока работа уходит на второй сервер"
+          "Установщик на 14 шагов с проверкой и пошаговая инструкция docs/INSTALL.md; без личных данных в коде",
+          "Мастер «Второй сервер», необязательный голос, агенты Notion со своим SSH-ключом и Telegram-чатом",
+          "Консоль на 2–3 части идёт за исполнителем; при передаче на второй сервер баннер пишет «Ищу свободный аккаунт»"
         ]
       },
       "en": {
-        "t": "Turnkey install, Notion agents, second-server wizard and voice",
+        "t": "Turnkey install, second server, Notion agents and voice",
         "p": [
-          "A 14-step installer that checks every step and a step-by-step guide docs/INSTALL.md; a second-server wizard and optional voice",
-          "Notion agents: creation with a time progress bar, a persistent SSH key and own Telegram chat per agent, one Notion AI block in the console menu",
-          "Forced switch when the second server keeps answering; server names \"Claude A/B\"; the console can be split into parts and replaces the previous worker's part when the worker changes; the limits banner says \"Looking for a free account\" while work is moving to the second server"
+          "14-step installer with checks and a step-by-step guide docs/INSTALL.md; no personal data in the code",
+          "Second-server wizard, optional voice, Notion agents with their own SSH key and Telegram chat",
+          "Console splits into 2-3 parts and follows the worker; the limits banner says \"Looking for a free account\" on handoff"
         ]
       }
     },

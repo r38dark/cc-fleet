@@ -934,6 +934,15 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v2.0.0** — Turnkey install: the 14-step `install.sh` checks every step and follows `docs/INSTALL.md` (preparation, Claude
+  accounts, Telegram, Codex, Notion AI, second server, voice; every section has "Step N of M", a check and an "if it failed" table).
+  No personal data in the code: name, addresses, chat id and paths come from `config.json`. The "Second server" wizard in General
+  settings connects a second server without editing files; the server names "Claude A/B" can be renamed. Optional voice (local
+  text-to-speech and speech-to-text) with its own installer. Notion agents: a time progress bar on creation, a persistent SSH key and
+  an own Telegram chat per agent. The console splits into 2-3 parts and follows the worker, replacing the previous worker's part.
+  While work moves to the second server the banner says "Looking for a free account" and the "nowhere to switch" Telegram message
+  is not sent. Forced switch when the second server keeps answering. **Upgrading from versions before 1.28:** run `sudo ./install.sh`
+  from the release archive once (the manifest has `needs_install`).
 - **v1.25.28** — "Agent" profile: Claude and Codex hand tasks to the agent with the command from `notion_agent.delegate_cmd`
   instead of editing themselves; without the command the profile stays hidden. Emergency profile: a red frame around the whole
   block with a stripe on the left, the blinking button and dot are green, the Codex console tab hides after "Remove Codex
