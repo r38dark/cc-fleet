@@ -9,7 +9,7 @@ import sys
 import time
 
 HOME = os.environ.get("HOME") or "/root"
-TMUX = os.environ.get("CC_REMOTE_TMUX") or "friend"
+TMUX = os.environ.get("CC_REMOTE_TMUX") or "ccfleet"
 SETTINGS = HOME + "/.claude/settings.json"
 CLAUDE = "/usr/bin/claude"
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")

@@ -112,7 +112,8 @@ def _notify(text):
 
 
 def ctl(m, args, timeout=150):
-    code, text = R.ssh_run(m, "python3 /root/cc-remote/ctl.py " + args, timeout=timeout)
+    tmux = re.sub(r"[^A-Za-z0-9_-]", "", str((m or {}).get("tmux") or ""))   # имя сессии tmux на втором сервере — из записи пары
+    code, text = R.ssh_run(m, (("CC_REMOTE_TMUX=%s " % tmux) if tmux else "") + "python3 /root/cc-remote/ctl.py " + args, timeout=timeout)
     try:
         return json.loads(text.strip().splitlines()[-1])
     except Exception:

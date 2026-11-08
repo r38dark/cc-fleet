@@ -135,5 +135,5 @@ def claude_running(mid):
     m = members().get(mid)
     if not m:
         return False
-    code, text = ssh_run(m, "tmux has-session -t %s ; echo rc=$?" % m.get("tmux", "friend"))
+    code, text = ssh_run(m, "tmux has-session -t %s ; echo rc=$?" % m.get("tmux", "ccfleet"))
     return "rc=0" in text

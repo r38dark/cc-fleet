@@ -41,6 +41,7 @@
     {"src": "cc_notion_ai.py", "mode": "644"},
     {"src": "cc_remote.py", "mode": "644"},
     {"src": "cc_remote_auto.py", "mode": "644"},
+    {"src": "cc_remote_setup.py", "mode": "644"},
     {"src": "cc_remote_mode.py", "mode": "644"},
     {"src": "cc_remote_ui.py", "mode": "644"},
     {"src": "remote_ctl.py", "mode": "644"},

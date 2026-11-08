@@ -413,6 +413,11 @@ def install(ns):
         cc_remote_mode.install(ns)
     except Exception as exc:
         print('remote: режим передачи не подключён: %r' % (exc,), flush=True)
+    try:  # мастер «Второй сервер»: проверка, подключение, обратный ключ (⚙ Общие настройки)
+        import cc_remote_setup
+        cc_remote_setup.install(ns)
+    except Exception as exc:
+        print('remote: мастер второго сервера не подключён: %r' % (exc,), flush=True)
     ns['FLEET_ROTATION'] = rotation
     ns['FLEET_INPUT'] = inputs
     bridge.PROFILE_APPLIED = console.apply_plan
