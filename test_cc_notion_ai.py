@@ -151,6 +151,11 @@ class T(unittest.TestCase):
             def profile_slots(): raise OSError('нет доступа')
         s.ns['cc_codex'] = Bad
         s.assertEqual(s.nai.agents()['codex']['state'], 'run')   # не смогли проверить — рабочее не прячем
+    def test_updates_block_is_first_in_general_settings(s):
+        # «Обновления» — самым первым блоком окна «Общие настройки» (раньше шёл после Claude, Codex, Notion AI и Telegram)
+        src = Path(M.__file__).read_text(encoding='utf-8')
+        s.assertIn("[upd,cl,cx,nai,tg].forEach(function(x){if(x)c.append(x)});", src)
+        s.assertNotIn("[cl,cx,nai,tg,upd]", src)
     def test_ghost_tiles_ui_is_in_the_page(s):
         import cc_notion_ai as N
         src = Path(N.__file__).read_text(encoding='utf-8')

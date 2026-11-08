@@ -934,6 +934,7 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
 - **v2.0.1** — Unconnected Codex and Notion AI no longer say "working": while Codex has no accounts and Notion AI is not installed,
   their header tiles and rows in "Active accounts" are ghosts (faded, dashed) with an offer to connect or install, and their console
   tabs are hidden. A lone Claude row (no second server) spans the full width of "Active accounts"; once a second server appears the
