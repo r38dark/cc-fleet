@@ -23,6 +23,7 @@ MODE_FILE = os.environ.get("CC_REMOTE_MODE") or R.BASE + "/remote_mode.json"
 KICK_TTL = 90      # сек: за это время панель обязана взять запрос, иначе хук ставит обычную паузу
 HB_MAX = 90        # сек: пульс старше — потока нет, пауза как раньше
 PROD_FRESH = 600   # сек: цифры PROD старше не считаем (их обновляет тот же поток)
+FORCE_AFTER = 120  # сек: PROD выше порога, а ход не кончается (хука паузы на PROD нет) — после стольких секунд отказов переключаем принудительно
 BLOCKED = ("hard", "week", "weekrisk")   # у Claude DEV нет, где работать (уровни pause_ctl.level_state)
 _memo = dict(to_prod=0, to_native=0, both_notified=False, last_return=0.0, last_action="", last_reason="", last_at=0.0)
 _lock = threading.Lock()
@@ -338,6 +339,8 @@ def _tick(ns, kicked=False):
         if kicked:
             _memo["to_prod"] = max(0, int(cfg.get("ticks") or 2) - 1)
         action, reason = decide(time.time(), cfg, native, prod, mode, _memo)
+        if not mode["active"] or prod.get("usable"):
+            _memo["off_wait"] = 0.0   # работа уже на Claude DEV или на PROD снова есть лимит — отсчёт ожидания конца ответа сбрасываем
     if mode["busy"] and kicked:
         return None, True   # передача уже идёт (запрос пришёл повторно): паузу не ставим
     if not action:
@@ -363,7 +366,17 @@ def _tick(ns, kicked=False):
         _memo["to_prod"] = max(0, _memo["to_prod"])
     elif action == "to_native":
         res = M.off("автопереключение: " + reason)
+        if not res.get("ok") and res.get("answering"):
+            # Claude на PROD отвечает без пауз: на PROD нет хука, который не пустил бы следующий шаг, так что тишины можно не дождаться
+            # до самого конца лимита (08.11). Ждём FORCE_AFTER секунд с первого отказа, потом останавливаем его посреди хода.
+            if not _memo.get("off_wait"):
+                _memo["off_wait"] = time.time()
+            first = float(_memo["off_wait"])
+            if time.time() - first >= FORCE_AFTER:
+                print("remote-auto: Claude на PROD отвечает уже %d с при исчерпанном лимите — переключаю принудительно" % (time.time() - first), flush=True)
+                res = M.off("автопереключение: " + reason + " (PROD не замолкал %d с, остановлен посреди хода)" % (time.time() - first), force=True)
         if res.get("ok"):
+            _memo["off_wait"] = 0.0
             _memo["last_return"] = time.time()
             _heartbeat()   # время переключения сразу в файл: по нему хук паузы знает про кулдаун
             _notify(ns, "🔁 Переход на Claude DEV: %s. Лимиты сейчас: %s. Работа переходит на Claude DEV." % (sentence(reason), limits))

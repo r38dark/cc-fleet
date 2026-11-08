@@ -906,7 +906,16 @@ class TestHeaderPopups(unittest.TestCase):
         body = self.src[i:self.src.index("function ask(anchor)")]
         self.assertIn("ao=!!((rm.auto&&rm.auto()||{}).enabled)", body)
         self.assertIn("aria-checked=\"'+ao+'\"", body)
-        self.assertIn("(ao?'Выключить авто':'Включить авто')", body)
+        # подпись постоянная («Включить авто»), включено/выключено показывает сам переключатель; пояснение — с процентом порога
+        self.assertIn('<span class="nai-bl">Включить авто</span>', body)
+        self.assertNotIn("'Выключить авто'", body)
+        self.assertIn("thr=thrNow()", body)
+        self.assertIn("'% лимита работа сама перейдёт на второй аккаунт.'", body)
+        self.assertIn("'% лимита работа сама не перейдёт.'", body)
+        self.assertNotIn("Автопередача при лимитах: '", body)  # прежняя строка заменена пояснением, лишних строк в окне нет
+        self.assertIn("class=\"nai-lnk2\">Изменить порог</a>", body)
+        self.assertIn("document.getElementById('gear')", body)  # ссылка открывает «Настройки» с порогом
+        self.assertIn("typeof THR==='number'", self.src)
         self.assertIn('class="nai-bl"', body)  # подписи с многоточием: на узком экране не обрезаются молча
         self.assertIn("au.onclick=function(){var on=!((rm.auto()||{}).enabled);", body)  # по клику переключает то же, что раньше
 

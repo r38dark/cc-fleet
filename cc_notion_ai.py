@@ -1621,8 +1621,8 @@ html.nai-nosub .fleet-brand-sub{display:none!important}
 .nai-pop.rich.ag-notion button.nai-yes{background:#a78bfa;border-color:#a78bfa;color:#120b24}
 .nai-pop.rich.ag-notion button.nai-yes:hover{background:#b8a0fb;border-color:#b8a0fb}
 .nai-pop.rich button.nai-yes:disabled{opacity:.5;cursor:default}
-.nai-pop.rich .nai-lnk{color:#cbd2e4;text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap}
-.nai-pop.rich .nai-lnk:hover{color:#fff}
+.nai-pop.rich .nai-lnk,.nai-pop.rich .nai-lnk2{color:#cbd2e4;text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap}
+.nai-pop.rich .nai-lnk:hover,.nai-pop.rich .nai-lnk2:hover{color:#fff}
 .nai-pop.rich .nai-hand3{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .nai-pop.rich .nai-h3t{grid-column:1/-1;margin:2px 0 -1px;color:#a6adbf;font:600 12px system-ui,-apple-system,sans-serif}
 .nai-pop.rich .nai-h3n{grid-column:1/-1;color:#e0a96d;font:500 11.5px/1.35 system-ui,-apple-system,sans-serif}
@@ -1731,6 +1731,7 @@ function hand3(own,md,rm){var NMS={dev:'Claude DEV',prod:'Claude PROD',codex:'Co
  var bs=['dev','prod','codex','notion'].filter(function(t){return t!==own}).map(function(t){var h=rm.handInfo(t,md);if(h.dis&&!why)why=h.tt;
   return '<button type="button" class="nai-h3 t-'+t+'" data-t="'+t+'"'+(h.dis?' disabled':'')+' title="'+esc(h.tt)+'"><span class="nai-bl">'+NMS[t]+'</span></button>'}).join('');
  return '<div class="nai-hand3"><span class="nai-h3t">Передать работу в:</span>'+bs+(why?'<span class="nai-h3n">'+esc(why)+'</span>':'')+'</div>'}
+function thrNow(){try{return typeof THR==='number'&&THR>0?THR:90}catch(e){return 90}}
 function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'dev',prod:'prod',codex:'codex',notion:'notion'}[k],wk=md.worker||'dev',
   act=wk===own,hi=act?null:rm.handInfo(own,md),pair=k==='claude'||k==='prod',
   ao=!!((rm.auto&&rm.auto()||{}).enabled),notionOn=k==='notion'&&!!(st&&st.active),run=['run','lead','exec'].indexOf(gp.state)>=0,
@@ -1738,10 +1739,11 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   xi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
   oi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"/><path d="M6 8h8M11 5l3 3-3 3"/></svg>',
   base=esc((gp.label||names[k]).replace(/ · /g,' - ')),
-  txt=k==='prod'?base+'. Это Claude на втором сервере (PROD). Автопередача при лимитах: '+(ao?'включена':'выключена')+'.'
-   :base+'.'+(pair?' Автопередача при лимитах: '+(ao?'включена':'выключена')+'.':'')+(k==='notion'&&!notionOn?' После передачи Claude остановится, в Telegram ответит Notion AI.':'')+' Сменить профиль — в <a href="#" class="nai-lnk">Выборе профиля</a>.',
+  thr=thrNow(),autoTxt=(ao?'При '+thr+'% лимита работа сама перейдёт на второй аккаунт.':'Авто выключено: при '+thr+'% лимита работа сама не перейдёт.')+' <a href="#" class="nai-lnk2">Изменить порог</a>.',
+  txt=k==='prod'?base+'. Это Claude на втором сервере (PROD). '+autoTxt
+   :base+'.'+(pair?' '+autoTxt:'')+(k==='notion'&&!notionOn?' После передачи Claude остановится, в Telegram ответит Notion AI.':'')+' Сменить профиль — в <a href="#" class="nai-lnk">Выборе профиля</a>.',
   rowh='<button type="button" class="nai-no">'+xi+'<span class="nai-bl">Закрыть</span></button>'
-   +(pair?'<button type="button" class="nai-auto" role="switch" aria-checked="'+ao+'"><span class="nai-sw"></span><span class="nai-bl">'+(ao?'Выключить авто':'Включить авто')+'</span></button>':'')
+   +(pair?'<button type="button" class="nai-auto" role="switch" aria-checked="'+ao+'"><span class="nai-sw"></span><span class="nai-bl">Включить авто</span></button>':'')
    +(notionOn?'<button type="button" class="nai-tog"><span class="nai-bl">Выключить</span></button>':'')
    +(act?hand3(own,md,rm):'<button type="button" class="nai-yes"'+(hi.dis?' disabled':'')+' title="'+esc(hi.tt)+'">'+oi+'<span class="nai-bl">'+esc(hi.txt)+'</span></button>');
   var pp=openPop('<div class="nai-ph"><span class="nai-pi '+(gp.state==='pause'?'':run?'run':'off')+'">'+ic+'</span><b>'+esc(({claude:'Claude DEV',prod:'Claude PROD',codex:'Codex',notion:'Notion AI'})[k])+(gp.text?' - '+esc(gp.text):'')+'</b></div><p>'+txt+'</p><div class="nai-row">'+rowh+'</div>',false,anchor,'ag-'+k+' rich');
@@ -1749,6 +1751,7 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   pp.querySelector('.nai-no').onclick=closePop;var yb=pp.querySelector('.nai-yes');if(yb)yb.onclick=function(){closePop();rm.hand(own,anchor)};
   pp.querySelectorAll('.nai-h3').forEach(function(b){b.onclick=function(){var t=this.dataset.t;closePop();rm.hand(t,anchor)}});
   var lk=pp.querySelector('.nai-lnk');if(lk)lk.onclick=function(e){e.preventDefault();closePop();var c=document.getElementById('cxBtn');if(c)c.click()};
+  var ls=pp.querySelector('.nai-lnk2');if(ls)ls.onclick=function(e){e.preventDefault();closePop();var g=document.getElementById('gear');if(g)g.click()};
   var tg=pp.querySelector('.nai-tog');if(tg)tg.onclick=function(){closePop();send('off',{})};
   var au=pp.querySelector('.nai-auto');if(au)au.onclick=function(){var on=!((rm.auto()||{}).enabled);window.fleetAsk(this,(on?'Включить':'Выключить')+' автопередачу работы на PROD при лимитах?',on?'Включить':'Выключить').then(function(ok){if(!ok)return;closePop();rm.setAuto(on).then(function(j){toast(j&&j.message||'Готово')}).catch(function(){toast('Панель не ответила')})})}}
 function agentPop(k,anchor){if(window.fleetRemote&&window.fleetRemote.handInfo&&(k==='prod'||k==='claude'||k==='codex'))return richPop(k,anchor,window.fleetRemote);

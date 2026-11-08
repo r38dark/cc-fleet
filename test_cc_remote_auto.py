@@ -152,7 +152,7 @@ class Tick(unittest.TestCase):
         M.busy = lambda: False
         M.on = lambda mid, reason, *a, **k: (self.calls.append(('on', reason)), dict(ok=True))[1]
         M.off = lambda reason, *a, **k: (self.calls.append(('off', reason)), dict(ok=True))[1]
-        A._memo.update(to_prod=0, to_native=0, both_notified=False, last_return=0.0)
+        A._memo.update(to_prod=0, to_native=0, both_notified=False, last_return=0.0, off_wait=0.0)
         self.ns = dict(tg_notify=lambda t: self.sent.append(t))
 
     def test_disabled_never_touches_anything(self):
@@ -219,6 +219,46 @@ class Tick(unittest.TestCase):
         self.assertEqual(self.calls[0][0], 'off')
         self.assertIn('автопереключение', self.calls[0][1])
         self.assertNotIn('возврат', self.calls[0][1])
+
+    def _prod_answers(self):
+        """PROD выше порога, у Claude DEV лимит есть, а Claude на PROD отвечает без пауз: обычное переключение отказывает."""
+        A.set_enabled(True)
+        self.md = dict(active=True, since=time.time() - 3600, reason='по кнопке в панели')
+        self.state['native'] = native('none')
+        self.state['prod'] = dict(prod(False), row={})
+        def off(reason, force=False):
+            self.calls.append(('off-force' if force else 'off', reason))
+            return dict(ok=True) if force else dict(ok=False, busy=True, answering=True, message='отвечает')
+        M.off = off
+
+    def test_answering_prod_is_switched_by_force_after_grace(self):
+        # 08.11: PROD шёл одним длинным ходом, обычное переключение 17 минут получало «дождись конца ответа»
+        self._prod_answers()
+        for _ in range(2):
+            A.tick(self.ns)
+        self.assertEqual([c[0] for c in self.calls], ['off'])
+        self.assertTrue(A._memo['off_wait'] > 0)
+        A._memo['off_wait'] = time.time() - A.FORCE_AFTER + 20   # льгота ещё не вышла: снова только обычная попытка
+        for _ in range(2):
+            A.tick(self.ns)
+        self.assertEqual([c[0] for c in self.calls], ['off', 'off'])
+        A._memo['off_wait'] = time.time() - A.FORCE_AFTER - 5
+        for _ in range(2):
+            A.tick(self.ns)
+        self.assertEqual([c[0] for c in self.calls], ['off', 'off', 'off', 'off-force'])
+        self.assertIn('остановлен посреди хода', self.calls[-1][1])
+        self.assertEqual(A._memo['off_wait'], 0.0)
+        self.assertGreater(A._memo['last_return'], 0)
+        self.assertTrue(self.sent and 'Переход на Claude DEV' in self.sent[0])
+
+    def test_wait_is_dropped_when_prod_has_limit_again(self):
+        self._prod_answers()
+        for _ in range(2):
+            A.tick(self.ns)
+        self.assertTrue(A._memo['off_wait'] > 0)
+        self.state['prod'] = dict(prod(True), row={'five_hour': {'pct': 12.0}, 'seven_day': {'pct': 9.0}})
+        A.tick(self.ns)
+        self.assertEqual(A._memo['off_wait'], 0.0)
 
     def test_failed_start_is_retried_not_reported_as_done(self):
         A.set_enabled(True)
