@@ -98,15 +98,18 @@ class Page(unittest.TestCase):
         self.assertIn(".termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}", L.PAGE)
         self.assertIn(".termwrap.nai-on .tpcomps{display:none!important}", L.PAGE)
 
-    def test_selected_part_is_framed_as_a_whole_and_has_no_status_line(self):
-        # рамка охватывает шапку, экран и окно ввода выбранной части (Денис 62461); строки «Ввод в …» у части нет
-        self.assertIn("#tpFrame{display:none;position:absolute;", L.PAGE)
-        self.assertIn(".termwrap.tsplit:not(.nai-on) #tpFrame.on{display:block}", L.PAGE)
+    def test_every_part_has_a_gray_frame_and_the_selected_one_a_muted_green(self):
+        # открытая часть — тонкая прозрачная серая рамка по периметру, выбранная — такая же мягкого зелёного (Денис 62474);
+        # рамка охватывает шапку, экран и окно ввода, строки «Ввод в …» у части нет (62461)
+        self.assertIn(".tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid rgba(170,182,200,.26)}", L.PAGE)
+        self.assertIn(".tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}", L.PAGE)
+        self.assertIn(".termwrap.tsplit:not(.nai-on) .tpfr{display:block}", L.PAGE)
         self.assertIn("renderComps(ks);\n placeFrame(ks);", L.PAGE)
-        # края рамки — дробные размеры панели (округление уводило правый край под рамку блока), нижние углы — как у блока там, где часть к нему примыкает
-        self.assertIn("f.style.width=b.width.toFixed(2)+'px'", L.PAGE)
-        self.assertIn("f.style.borderBottomLeftRadius=idx===0?rad+'px':'0';f.style.borderBottomRightRadius=idx===PANES.length-1?rad+'px':'0';", L.PAGE)
+        # размеры дробные (округление уводило правый край под рамку блока), нижние углы — как у блока, соседние рамки перекрываются на 1px
+        self.assertIn("f.style.width=(b.width+lap).toFixed(2)+'px'", L.PAGE)
+        self.assertIn("f.style.borderBottomLeftRadius=i===0?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1?rad+'px':'0';", L.PAGE)
         self.assertNotIn("tpstat", L.PAGE)
+        self.assertNotIn("#tpFrame", L.PAGE)
         self.assertNotIn(".termbox.tpact{box-shadow", L.PAGE)
 
     def test_split_keeps_the_console_block_height(self):
@@ -119,6 +122,28 @@ class Page(unittest.TestCase):
         # как у карточки PROD: «Войти заново» на виду в подвале, а не только в меню ⋯ (Денис 62472)
         self.assertIn("if(engine==='claude'&&footer&&!footer.querySelector('.fleet-footer-relogin'))", L.PAGE)
         self.assertIn("reloginAsk(slot,rb)", L.PAGE)
+
+    def test_notion_chat_can_be_a_part_of_the_split_console(self):
+        # Notion AI (главный чат и агенты) — отдельная часть с тем же управлением: перетаскивание, свой чат и своё окно ввода (Денис 62474/62479)
+        for part in ("function chatHtml(d,rows,stale,aid,nm,pl){", "view.innerHTML=chatHtml(d,rows,stale,agentAid,agentName,pend);",
+                     "window.naiChat=function(el,aid){", "window.naiKeys=function(){", "window.naiClose=function(){if(on)close()};"):
+            self.assertIn(part, L.PAGE, part)
+        # ключи частей: claude / prod / codex и Notion ('notion', 'notion:<id агента>')
+        self.assertIn("/^(claude|prod|codex|notion(:\\S+)?)$/.test(k)", L.PAGE)
+        self.assertIn("function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[],naiList().map(x=>x.key));}", L.PAGE)
+        # чат в части: своя область, опрос и отправка у самого чата; сообщение идёт в чат, а не в консоль
+        self.assertIn("P.box.classList.add('tpchat');P.nv=document.createElement('div');P.nv.className='nai-view tpnai';", L.PAGE)
+        self.assertIn("if(isNai(P.k))return;", L.PAGE)
+        self.assertIn("e.stopImmediatePropagation();const text=input.value;if(!text.trim())return;P.chat.send(text,", L.PAGE)
+        self.assertIn("c.form.querySelector('.tpkey').hidden=isNai(P.k);", L.PAGE)
+        # при разделении вкладками Notion ведёт cc_limits.py, вне разделения — прежнее окно поверх консоли
+        self.assertIn("sp=window.fleetSplitOn&&window.fleetSplitOn()", L.PAGE)
+        self.assertIn("if(window.fleetSplitOn&&window.fleetSplitOn()){if(on)close();return}", L.PAGE)
+        self.assertIn("!(window.fleetSplitWanted&&window.fleetSplitWanted())", L.PAGE)
+        self.assertIn("if(isNai(k)&&!splitEff())return;", L.PAGE)
+        self.assertIn("if(ks&&window.naiClose)window.naiClose();", L.PAGE)
+        # вкладки агентов создаются позже страницы — перетаскивание делегировано на #cTabs
+        self.assertIn("$('#cTabs').addEventListener('dragstart',", L.PAGE)
 
     def test_draft_follows_the_model(self):
         self.assertIn("const DRAFTS={};", L.PAGE)

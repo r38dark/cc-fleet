@@ -3442,12 +3442,10 @@ html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(360p
 @media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)}}
 html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
 html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
-html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
 .tpextra{background:var(--fleet-terminal,#0b0d10);color:#d2dce9;white-space:pre;font:calc(12px*var(--tz,1)*var(--pz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace}
 .termwrap.tsplit .termbox.tpdrop{box-shadow:inset 0 0 0 2px var(--fleet-accent,#73dbb7);background-image:linear-gradient(rgba(115,219,183,.08),rgba(115,219,183,.08))}
 .termwrap.tsplit .tpheads{display:flex;position:absolute;left:0;right:0;top:0;height:30px;z-index:5;pointer-events:none}
 .tphd{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;padding:0 10px;margin:0;font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#9fb0c3;cursor:grab;pointer-events:auto;background:#0e1219;border-bottom:1px solid #263140;user-select:none}
-.tphd+.tphd{border-left:1px solid #263140}
 .tphd.on{color:#eaf2fb}
 .tphd.tpdrop{background:#173a33}
 .tphd b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3462,7 +3460,6 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .termwrap.tsplit.tpcomps-on:not(.nai-on)>.tpcomps{display:flex;flex:none;min-width:0}
 .termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}
 .tpcw{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
-.tpcw+.tpcw{border-left:1px solid #263140}
 .tpcomp{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-top:1px solid #263140;background:#101620;color:#dbe3ed}
 .tpcomp::before{content:"›";color:#73dbb7;font:20px ui-monospace,monospace}
 .tpcomp textarea{flex:1;min-width:0;resize:vertical;min-height:26px;max-height:140px;margin:0;padding:4px 0;background:none;color:#dbe3ed;border:0;outline:0;border-radius:0;font:12px/1.5 ui-monospace,Consolas,monospace}
@@ -3472,8 +3469,14 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .tpcomp .tpsend{display:grid;place-items:center;width:28px;height:28px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;box-shadow:none}
 .tpcomp .tpsend svg{display:block;width:16px;height:16px;pointer-events:none}
 .tpcomp .tpkey{background:transparent;color:#73869d;border:1px solid #2a3644;padding:2px 5px;border-radius:4px;font:10px ui-monospace,monospace}
-#tpFrame{display:none;position:absolute;z-index:7;pointer-events:none;box-sizing:border-box;border:1px solid var(--fleet-accent,#73dbb7);box-shadow:0 0 0 1px rgba(115,219,183,.22)}
-.termwrap.tsplit:not(.nai-on) #tpFrame.on{display:block}
+/* --- чат Notion AI в части разделённой консоли --- */
+.termbox.tpchat{display:flex!important;flex-direction:column;overflow:hidden!important}
+html:root:root #termBox.tpchat,html:root:root .tpextra.tpchat{white-space:normal!important;font-family:ui-monospace,"SFMono-Regular",Consolas,monospace}
+.termbox.tpchat>span,.termbox.tpchat>.termidle{display:none!important}
+html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 auto;min-height:0;width:auto;height:auto;margin:0;padding:0;overflow-x:hidden;overflow-y:auto;font:inherit;color:inherit;white-space:normal}
+.tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid rgba(170,182,200,.26)}
+.tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}
+.termwrap.tsplit:not(.nai-on) .tpfr{display:block}
 .termwrap.nai-on .tpcomps{display:none!important}
 html:root:root .ctab.tshown:not(.on){text-decoration:underline;text-decoration-color:rgba(200,215,230,.45);text-decoration-thickness:1px;text-underline-offset:7px}
 /* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
@@ -5108,7 +5111,10 @@ function splitCloseAt(keys,act,i){const ks=keys.filter((_,x)=>x!==i);let a=act>i
 function splitPick(keys,act,k){const j=keys.indexOf(k);if(j>=0)return {keys:keys,act:j};const ks=keys.slice();ks[act]=k;return {keys:ks,act:act};}
 /*SPLIT-PURE-END*/
 let SPLIT={keys:[],act:0};  // keys — модели по панелям при разделении; пусто — одна панель (вкладки как раньше)
-try{const _sp=JSON.parse(localStorage.getItem('cc_split')||'null');if(_sp&&Array.isArray(_sp.keys))SPLIT={keys:_sp.keys.filter((k,i,a)=>(k==='claude'||k==='prod'||k==='codex')&&a.indexOf(k)===i).slice(0,SPLIT_MAX),act:Math.max(0,+_sp.act||0)};}catch(e){}
+function isKey(k){return typeof k==='string'&&/^(claude|prod|codex|notion(:\S+)?)$/.test(k);}
+function isNai(k){return typeof k==='string'&&k.indexOf('notion')===0;}
+function naiAid(k){return k.length>6?k.slice(7):'';}
+try{const _sp=JSON.parse(localStorage.getItem('cc_split')||'null');if(_sp&&Array.isArray(_sp.keys))SPLIT={keys:_sp.keys.filter((k,i,a)=>isKey(k)&&a.indexOf(k)===i).slice(0,SPLIT_MAX),act:Math.max(0,+_sp.act||0)};}catch(e){}
 function splitSave(){try{localStorage.setItem('cc_split',JSON.stringify(SPLIT));}catch(e){}}
 const splitMq=matchMedia('(min-width:1100px) and (pointer:fine)');
 // серая плашка «консоль не запущена» под последним экраном — общая для Claude, Claude на PROD и Codex:
@@ -5128,7 +5134,8 @@ function idleUi(P,d,dot,txt,who,go){
 try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
 function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
 function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
-function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[]);}
+function naiList(){try{return window.naiKeys?window.naiKeys():[]}catch(e){return []}}
+function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[],naiList().map(x=>x.key));}
 // модели по панелям при разделении (только доступные); null — разделения нет (узкий экран, одна модель, не включено)
 function splitEff(){
  if(!splitMq.matches)return null;
@@ -5145,6 +5152,7 @@ function consQuery(s,P){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='
 function dotOf(P){return {set className(v){P.dotCls=v;if(P.chipDot)P.chipDot.className=v+' tpdot';if(P===activePane())$('#termDot').className=v;}};}
 async function ccConsoleHistory(P){
  P=P||PANES[0];
+ if(isNai(P.k))return;
  const s=P.k;
  try{
   const r=await fetch(API+'console?token='+TOKEN+'&history=1'+consQuery(s,P));const d=await r.json();
@@ -5168,6 +5176,7 @@ function cxConsUi(d){
 }
 async function ccConsole(P){
  if(!P)return tickAll();
+ if(isNai(P.k))return;
  const box=P.box,dot=dotOf(P),s=P.k,requestSeq=++P.seq;
  ctActsSync();
  try{
@@ -5239,6 +5248,7 @@ function wirePane(P){
 // в узкой панели экран не ломаем переносом строк, а уменьшаем шрифт (не мельче половины), дальше — прокрутка вправо
 function fitPane(P){
  const b=P.box;
+ if(isNai(P.k)){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  if(!b.closest('.termwrap.tsplit')){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  b.style.setProperty('--pz','1');
  const cs=getComputedStyle(b),pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight),avail=b.clientWidth-pad,need=b.scrollWidth-pad;
@@ -5306,22 +5316,32 @@ function consTabs(){
   b.title=on?'':tr('cxcSw')+b.textContent;
   b.draggable=splitMq.matches&&(av||pv);
  });
+ // вкладки Notion AI: при разделении подсвечиваются так же; вне разделения ими ведает cc_notion_ai.py
+ document.querySelectorAll('#cTabs .ctab[data-s="notion"]').forEach(b=>{const k=tabKey(b),on=ks.length>0&&k===cur;b.draggable=splitMq.matches&&isKey(k);b.classList.toggle('tshown',ks.length>0&&!on&&ks.includes(k));if(ks.length>0&&b.classList.contains('on')!==on){b.classList.toggle('on',on);b.setAttribute('aria-selected',on);}});
  splitBtnSync();
  ctActsSync();  // подсказки кнопок — по текущей вкладке (раньше здесь жёстко стояли подсказки Codex)
  syncPanes();
 }
 function consPick(k){
+ if(isNai(k)&&!splitEff())return;  // вне разделения чат Notion AI открывает его собственная вкладка (окно поверх консоли)
  const ks=splitEff();
  if(ks){const r=splitPick(ks,splitActIdx(ks),k);SPLIT={keys:r.keys,act:r.act};splitSave();}
  CONS=k;try{localStorage.setItem('cc_contab',k);}catch(e){}
  consTabs();
 }
-$('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(b&&b.dataset.s!==consCur())consPick(b.dataset.s);});
+$('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(!b)return;const k=tabKey(b);if(isKey(k)&&k!==consCur())consPick(k);});
 // ---- разделение: панели, заголовки, перетаскивание
-function tabName(k){const b=$({claude:'#ctClaude',prod:'#ctProd',codex:'#ctCodex'}[k]);return b?b.textContent.trim():k;}
+function tabKey(b){const s=b.dataset.s;return s==='notion'?(b.dataset.aid?'notion:'+b.dataset.aid:'notion'):s;}
+function tabName(k){const b=[...document.querySelectorAll('#cTabs .ctab')].find(x=>tabKey(x)===k);return b?b.textContent.trim():k;}
+function paneClean(P){if(P.chat){P.chat.stop();P.chat=null;}if(P.nv){P.nv.remove();P.nv=null;}P.box.classList.remove('tpchat');}
 function resetPane(P,k){
+ paneClean(P);
  P.k=k;P.cxRun=null;P.prodRun=false;P.idleKey='';P.stick=true;P.dotCls='';
  P.hist.innerHTML='';P.cur.innerHTML='';P.idle.hidden=true;P.box.classList.remove('termempty');
+ if(isNai(k)){  // чат Notion AI: своя прокручиваемая область внутри части, опрос — у чата
+  P.box.classList.add('tpchat');P.nv=document.createElement('div');P.nv.className='nai-view tpnai';P.box.appendChild(P.nv);
+  P.chat=typeof window.naiChat==='function'?window.naiChat(P.nv,naiAid(k)):null;P.dotCls='termdot';if(P.chipDot)P.chipDot.className='termdot tpdot';return;
+ }
  ccConsoleHistory(P);ccConsole(P);
 }
 function newPane(){
@@ -5340,12 +5360,14 @@ function compMake(P){
  input.addEventListener('input',()=>{DRAFTS[P.k]=input.value;});
  w.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
  window.fleetBindComposer(form,input,send,stat,()=>P.k);
+ form.addEventListener('submit',e=>{if(!isNai(P.k)||!P.chat)return;e.preventDefault();e.stopImmediatePropagation();const text=input.value;if(!text.trim())return;P.chat.send(text,ok=>{if(ok&&input.value===text){input.value='';DRAFTS[P.k]='';}});},true);  // у части с чатом Notion AI сообщение идёт в чат (capture — раньше отправки в консоль)
  return w;
 }
 function compSync(P,on){
  const c=P.comp;if(!c)return;
  const n=tabName(P.k);
  c.w.classList.toggle('on',on);
+ c.form.querySelector('.tpkey').hidden=isNai(P.k);  // Esc — только для консолей
  if(c.model!==P.k){
   c.model=P.k;c.input.value=DRAFTS[P.k]||'';
   c.input.placeholder=(LANG==='en'?'Message to ':'Сообщение в ')+n+'…';c.input.setAttribute('aria-label',c.input.placeholder);
@@ -5353,17 +5375,23 @@ function compSync(P,on){
  }
 }
 function placeFrame(ks){
- const wrap=document.querySelector('.termwrap');let f=document.getElementById('tpFrame');
- if(!ks){if(f)f.classList.remove('on');return;}
- if(!f){f=document.createElement('div');f.id='tpFrame';wrap.appendChild(f);if(window.ResizeObserver)new ResizeObserver(()=>placeFrame(splitEff())).observe(wrap);}
- const P=PANES[splitActIdx(ks)];if(!P){f.classList.remove('on');return;}
- // рамка охватывает всю часть: шапку (лежит у верхнего края консоли), экран и окно ввода
- const w=wrap.getBoundingClientRect(),b=P.box.getBoundingClientRect(),bottom=P.comp?P.comp.w.getBoundingClientRect().bottom:b.bottom;
- // размеры дробные, без округления: иначе правый край рамки уходит на пиксель под рамку блока и обрезается; нижние углы повторяют скругление блока там, где часть к нему примыкает
- const rad=Math.max(0,(parseFloat(getComputedStyle(wrap).borderBottomLeftRadius)||0)-(wrap.clientLeft||0)),idx=PANES.indexOf(P);
- f.style.left=(b.left-w.left-wrap.clientLeft).toFixed(2)+'px';f.style.top=(b.top-w.top-wrap.clientTop).toFixed(2)+'px';f.style.width=b.width.toFixed(2)+'px';f.style.height=(bottom-b.top).toFixed(2)+'px';
- f.style.borderBottomLeftRadius=idx===0?rad+'px':'0';f.style.borderBottomRightRadius=idx===PANES.length-1?rad+'px':'0';
- f.classList.add('on');
+ const wrap=document.querySelector('.termwrap');
+ let fr=[...wrap.querySelectorAll(':scope > .tpfr')];
+ if(!ks){fr.forEach(f=>f.remove());return;}
+ if(!wrap.dataset.tpro&&window.ResizeObserver){wrap.dataset.tpro='1';new ResizeObserver(()=>placeFrame(splitEff())).observe(wrap);}
+ while(fr.length<PANES.length){const f=document.createElement('div');f.className='tpfr';wrap.appendChild(f);fr.push(f);}
+ while(fr.length>PANES.length)fr.pop().remove();
+ // по рамке на часть вокруг шапки (у верхнего края консоли), экрана и окна ввода; у выбранной цвет другой. Размеры дробные, без округления:
+ // иначе правый край уходит на пиксель под рамку блока и обрезается; нижние углы повторяют скругление блока там, где часть к нему примыкает.
+ // Соседние рамки перекрываются на 1px — между частями одна линия, а не две
+ const w=wrap.getBoundingClientRect(),act=splitActIdx(splitEff()||[0]),rad=Math.max(0,(parseFloat(getComputedStyle(wrap).borderBottomLeftRadius)||0)-(wrap.clientLeft||0));
+ PANES.forEach((P,i)=>{
+  const f=fr[i],b=P.box.getBoundingClientRect(),bottom=P.comp?P.comp.w.getBoundingClientRect().bottom:b.bottom,lap=i>0?1:0;
+  f.style.left=(b.left-w.left-wrap.clientLeft-lap).toFixed(2)+'px';f.style.top=(b.top-w.top-wrap.clientTop).toFixed(2)+'px';
+  f.style.width=(b.width+lap).toFixed(2)+'px';f.style.height=(bottom-b.top).toFixed(2)+'px';
+  f.style.borderBottomLeftRadius=i===0?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1?rad+'px':'0';
+  f.classList.toggle('on',i===act);
+ });
 }
 addEventListener('resize',()=>placeFrame(splitEff()));
 function renderComps(ks){
@@ -5378,6 +5406,7 @@ function renderComps(ks){
 function syncPanes(){
  const ks=splitEff(),keys=ks||[baseCur()],vp=PANES[0].box.parentNode;
  $('.termwrap').classList.toggle('tsplit',!!ks);
+ if(ks&&window.naiClose)window.naiClose();  // окно чата Notion AI поверх консоли при разделении не нужно: чат живёт в своей части
  if(ks)CONS=ks[splitActIdx(ks)];
  while(PANES.length<keys.length){const P=newPane();vp.appendChild(P.box);PANES.push(P);wirePane(P);}
  while(PANES.length>keys.length){const P=PANES.pop();P.box.remove();if(P.comp){P.comp.w.remove();P.comp=null;}}
@@ -5470,9 +5499,13 @@ function splitBtnSync(){
  b.title=t;b.setAttribute('aria-label',t);b.classList.toggle('on',!!ks);
 }
 document.getElementById('splitBtn').addEventListener('click',splitToggle);
-document.querySelectorAll('.ctab').forEach(b=>{b.addEventListener('dragstart',e=>{const k=b.dataset.s;if(!(k==='claude'||k==='prod'||k==='codex')||!splitMq.matches){e.preventDefault();return;}DRAG={t:'tab',v:k};try{e.dataTransfer.setData('text/plain','tab:'+k);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});b.addEventListener('dragend',dragEnd);});
+$('#cTabs').addEventListener('dragstart',e=>{const b=e.target.closest&&e.target.closest('.ctab');if(!b)return;const k=tabKey(b);if(!isKey(k)||!splitMq.matches||!splitKeysAvail().includes(k)){e.preventDefault();return;}DRAG={t:'tab',v:k};try{e.dataTransfer.setData('text/plain','tab:'+k);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
+$('#cTabs').addEventListener('dragend',dragEnd);
 splitMq.addEventListener('change',()=>{consTabs();fitAll();});
-function tickAll(){syncPanes();for(const P of PANES)ccConsole(P);}
+function tickAll(){syncPanes();document.querySelectorAll('#cTabs .ctab').forEach(b=>{const d=splitMq.matches&&isKey(tabKey(b))&&splitKeysAvail().includes(tabKey(b));if(b.draggable!==d)b.draggable=d;});for(const P of PANES)ccConsole(P);}
+window.fleetSplitOn=function(){try{return !!splitEff()}catch(e){return false}};
+window.fleetSplitWanted=function(){return splitMq.matches&&SPLIT.keys.length>1};
+window.fleetSplitShow=function(k){if(isKey(k))consPick(k);};
 // консоль идёт за исполнителем: панель знает, кто сейчас работает (remote_mode.worker: dev/prod/codex/notion).
 // Сменился — вкладка консоли переключается сама. Пока исполнитель тот же, ручной выбор вкладки не трогаем.
 let consFollowed='',consFollowWait=0;

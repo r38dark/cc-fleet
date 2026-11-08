@@ -1995,8 +1995,8 @@ var agentAid='',agentName='Notion AI',atabs={},savedAid='';  // [агенты No
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function $i(id){return document.getElementById(id)}
 function curTab(){return agentAid&&atabs[agentAid]?atabs[agentAid]:tab}
-function fixTabs(){if(!tab)return;var tabs=$i('cTabs'),codex=$i('ctCodex'),ct=curTab(),all=[tab].concat(Object.keys(atabs).map(function(k){return atabs[k]}));
- if(on){['ctClaude','ctProd','ctCodex'].forEach(function(id){var b=$i(id);if(b&&b.classList.contains('on')){b.classList.remove('on');b.setAttribute('aria-selected','false')}});all.forEach(function(b){var o=b===ct;if(b.classList.contains('on')!==o){b.classList.toggle('on',o);b.setAttribute('aria-selected',String(o))}})}
+function fixTabs(){if(!tab)return;var sp=window.fleetSplitOn&&window.fleetSplitOn(),tabs=$i('cTabs'),codex=$i('ctCodex'),ct=curTab(),all=[tab].concat(Object.keys(atabs).map(function(k){return atabs[k]}));
+ if(sp){}else if(on){['ctClaude','ctProd','ctCodex'].forEach(function(id){var b=$i(id);if(b&&b.classList.contains('on')){b.classList.remove('on');b.setAttribute('aria-selected','false')}});all.forEach(function(b){var o=b===ct;if(b.classList.contains('on')!==o){b.classList.toggle('on',o);b.setAttribute('aria-selected',String(o))}})}
  else all.forEach(function(b){if(b.classList.contains('on')){b.classList.remove('on');b.setAttribute('aria-selected','false')}});
  if(typeof cxAvail==='function'&&tabs&&codex){var av=!!cxAvail();if(tabs.hidden)tabs.hidden=false;if(codex.hidden!==!av)codex.hidden=!av}}
 // [notion-ai] Окно чата лежит поверх #termBox (тот скрыт через visibility): тот же размер, отступы, фон и шрифт в любом режиме.
@@ -2035,9 +2035,8 @@ function close(){on=false;try{localStorage.setItem('nai_contab','0')}catch(_){}c
  var cur=typeof consCur==='function'?consCur():'claude',b=$i(cur==='codex'?'ctCodex':cur==='prod'?'ctProd':'ctClaude');if(b){b.classList.add('on');b.setAttribute('aria-selected','true')}}
 function load(){clearTimeout(timer);if(!on)return;if(document.hidden){timer=setTimeout(load,4000);return}place();
  var want=agentAid;fetch(agentAid?base+'notion-ai/agents/view/'+agentAid:api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&on&&want===agentAid)render(d)}).catch(function(){}).then(function(){if(on){clearTimeout(timer);timer=setTimeout(load,3000)}})}
-function render(d){var rows=d.rows||[],now=Date.now()/1000,stale=d.state==='ok'&&d.ts&&now-d.ts>30;checkPend(rows);
- var s=JSON.stringify([rows.length,rows.slice(-4),d.state,d.running,d.message,stale,pend]);if(s===sig)return;sig=s;
- var html='',prev=null,head='<div class="nv-h nv-ai"><span class="nv-dot"></span>'+esc(agentAid?agentName:'Notion AI')+'</div>';
+function chatHtml(d,rows,stale,aid,nm,pl){
+ var html='',prev=null,head='<div class="nv-h nv-ai"><span class="nv-dot"></span>'+esc(aid?nm:'Notion AI')+'</div>';
  rows.forEach(function(r){var need=prev===null||prev==='user'||prev==='end';
   if(r.kind==='user')html+='<div class="nv-u"><div class="nv-h"><span class="nv-who">'+esc(who)+'</span><span class="nv-meta">'+esc(r.src||'Notion')+(r.time?' · '+esc(r.time):'')+'</span></div><div class="nv-t">'+esc(r.text)+'</div></div>';
   else if(r.kind==='ai')html+=(need?head:'')+'<div class="nv-a">'+esc(r.text)+((r.pics||[]).length?'<div class="nv-pics">'+r.pics.map(function(p){return '🖼 '+esc(p)}).join('<br>')+'</div>':'')+'</div>';
@@ -2046,14 +2045,17 @@ function render(d){var rows=d.rows||[],now=Date.now()/1000,stale=d.state==='ok'&
   else if(r.kind==='end')html+='<div class="nv-e">'+esc(r.time||'')+'</div>';
   prev=r.kind});
  var last=rows[rows.length-1];
- if(d.running&&!(last&&last.kind==='step'))html+='<div class="nv-s">⏳ '+esc(agentAid?agentName:'Notion AI')+' работает…</div>';
- pend.forEach(function(p){var tm=new Date(p.t),hm=('0'+tm.getHours()).slice(-2)+':'+('0'+tm.getMinutes()).slice(-2),er=p.status==='error';
+ if(d.running&&!(last&&last.kind==='step'))html+='<div class="nv-s">⏳ '+esc(aid?nm:'Notion AI')+' работает…</div>';
+ pl.forEach(function(p){var tm=new Date(p.t),hm=('0'+tm.getHours()).slice(-2)+':'+('0'+tm.getMinutes()).slice(-2),er=p.status==='error';
   html+='<div class="nv-u nv-pend"><div class="nv-h"><span class="nv-who">'+esc(who)+'</span><span class="nv-meta'+(er?' nv-err':'')+'">Панель · '+hm+' · '+(er?'не доставлено: '+esc(p.error||'ошибка'):p.status==='done'?'доставлено':'отправляется…')+'</span></div><div class="nv-t">'+esc(p.text)+'</div></div>'});
  if(d.state==='starting')html+='<div class="nv-st">Подключаюсь к чату Notion AI…</div>';
  else if(d.state==='error')html+='<div class="nv-st nv-err">'+esc(d.message||'Не удалось прочитать чат.')+'</div>';
  else if(stale)html+='<div class="nv-st">Нет свежих данных из чата. Проверяю…</div>';
  if(!rows.length&&d.state==='ok')html+='<div class="nv-st">В чате пока нет сообщений.</div>';
- view.innerHTML=html;if(stick)view.scrollTop=view.scrollHeight}
+ return html}
+function render(d){var rows=d.rows||[],now=Date.now()/1000,stale=d.state==='ok'&&d.ts&&now-d.ts>30;checkPend(rows);
+ var s=JSON.stringify([rows.length,rows.slice(-4),d.state,d.running,d.message,stale,pend]);if(s===sig)return;sig=s;
+ view.innerHTML=chatHtml(d,rows,stale,agentAid,agentName,pend);if(stick)view.scrollTop=view.scrollHeight}
 // [агенты Notion] переключение чата: '' — главный агент (вкладка «Notion AI»), иначе id агента
 function switchTo(aid){var a=aid&&window.naiAgentsData?(window.naiAgentsData.agents||[]).filter(function(x){return x.aid===aid})[0]:null;if(aid&&!a)aid='';
  agentAid=aid;agentName=a?a.name:'Notion AI';sig='';pend=[];lastReq=null;try{localStorage.setItem('nai_contab_aid',aid)}catch(_){}
@@ -2070,7 +2072,34 @@ function syncTabs(d){if(!tab||!d||!d.ok)return;var L=(d.agents||[]).filter(funct
  if(savedAid&&atabs[savedAid]&&on&&!agentAid){var s0=savedAid;savedAid='';switchTo(s0)}else if(savedAid&&!atabs[savedAid])savedAid='';
  fixTabs()}
 window.addEventListener('nai-agents',function(e){syncTabs(e.detail)});
-window.naiConsoleOpen=function(aid){switchTo(aid||'');var b=$i('termBox');if(b)b.scrollIntoView({block:'center',behavior:'smooth'})};
+window.naiConsoleOpen=function(aid){if(window.fleetSplitOn&&window.fleetSplitOn()&&window.fleetSplitShow){window.fleetSplitShow(aid?'notion:'+aid:'notion');return}switchTo(aid||'');var b=$i('termBox');if(b)b.scrollIntoView({block:'center',behavior:'smooth'})};
+// [notion-ai] Чат Notion AI в отдельной части разделённой консоли (cc_limits.py): свой опрос, свои ожидающие сообщения, тот же вид (chatHtml).
+window.naiChat=function(el,aid){
+ var st={aid:aid||'',timer:0,sig:'',stick:true,pend:[],lastReq:null,sending:false,dead:false};
+ function nm(){var a=st.aid&&window.naiAgentsData?(window.naiAgentsData.agents||[]).filter(function(x){return x.aid===st.aid})[0]:null;return a?a.name:'Notion AI'}
+ el.addEventListener('scroll',function(){st.stick=el.scrollHeight-el.scrollTop-el.clientHeight<40});
+ function checkP(rows){var now=Date.now(),seen={};rows.forEach(function(r){if(r.kind==='user'&&r.src==='Панель')seen[norm(r.text)]=1});
+  st.pend=st.pend.filter(function(p){if(seen[norm(p.text)])return false;if(p.status==='done'&&now-p.t>300000)return false;return now-p.t<900000});
+  st.pend.forEach(function(p){if(p.status==='queued'||p.status==='running'){fetch(sendApi+'/'+p.id,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(j&&j.status&&j.status!=='unknown'){p.status=j.status;p.error=j.error||''}}).catch(function(){})}})}
+ function render(d){var rows=d.rows||[],now=Date.now()/1000,stale=d.state==='ok'&&d.ts&&now-d.ts>30;checkP(rows);
+  var s=JSON.stringify([rows.length,rows.slice(-4),d.state,d.running,d.message,stale,st.pend]);if(s===st.sig)return;st.sig=s;
+  el.innerHTML=chatHtml(d,rows,stale,st.aid,nm(),st.pend);if(st.stick)el.scrollTop=el.scrollHeight}
+ function load(){clearTimeout(st.timer);if(st.dead)return;if(document.hidden){st.timer=setTimeout(load,4000);return}
+  fetch(st.aid?base+'notion-ai/agents/view/'+st.aid:api,{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&!st.dead)render(d)}).catch(function(){}).then(function(){if(!st.dead){clearTimeout(st.timer);st.timer=setTimeout(load,3000)}})}
+ function send(text,done){if(st.sending||!String(text).trim()){if(done)done(false);return}
+  st.sending=true;
+  var rid=(st.lastReq&&st.lastReq.text===text)?st.lastReq.id:(st.lastReq={text:text,id:(window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random())}).id;
+  fetch(sendApi,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify({text:text,request_id:rid,aid:st.aid})}).then(function(r){return r.json()}).then(function(d){
+   if(!d||!d.ok)throw Error(d&&d.message||'Не отправлено');
+   st.lastReq=null;if(!st.pend.some(function(p){return p.id===d.id}))st.pend.push({id:d.id,text:String(text).trim(),t:Date.now(),status:'queued',error:''});
+   st.stick=true;load();if(done)done(true)
+  }).catch(function(err){if(typeof window.toast==='function')window.toast('⚠ '+(err.message||'Не отправлено'));if(done)done(false)}).then(function(){st.sending=false})}
+ el.innerHTML='<div class="nv-st">Подключаюсь к чату «'+esc(nm())+'»…</div>';
+ load();
+ return {send:send,aid:st.aid,stop:function(){st.dead=true;clearTimeout(st.timer)}}};
+// вкладки Notion AI для частей: главный чат и агенты (ключи 'notion' и 'notion:<aid>'); пусто, если вкладка выключена в настройках
+window.naiKeys=function(){if(!tab||!tabOn)return[];var ks=[{key:'notion',name:'Notion AI'}];Object.keys(atabs).forEach(function(k){ks.push({key:'notion:'+k,name:atabs[k].textContent})});return ks};
+window.naiClose=function(){if(on)close()};
 function setup(){var tabs=$i('cTabs'),codex=$i('ctCodex'),box=$i('termBox');
  if(!tabs||!codex||!box||!$i('fleetInput')){if(++tries<60)setTimeout(setup,250);return}
  if($i('ctNotion'))return;
@@ -2078,7 +2107,7 @@ function setup(){var tabs=$i('cTabs'),codex=$i('ctCodex'),box=$i('termBox');
  codex.after(tab);
  view=document.createElement('div');view.id='naiView';view.className='termbox nai-view';view.setAttribute('role','log');view.setAttribute('aria-label','Чат Notion AI');view.tabIndex=0;box.after(view);
  view.addEventListener('scroll',function(){stick=view.scrollHeight-view.scrollTop-view.clientHeight<40});
- tabs.addEventListener('click',function(e){var b=e.target.closest('.ctab');if(!b)return;if(b===tab||b.classList.contains('nai-atab')){e.preventDefault();e.stopPropagation();var aid=b===tab?'':b.dataset.aid;if(!on||aid!==agentAid)switchTo(aid)}else if(on)close()},true);
+ tabs.addEventListener('click',function(e){var b=e.target.closest('.ctab');if(!b)return;if(window.fleetSplitOn&&window.fleetSplitOn()){if(on)close();return}if(b===tab||b.classList.contains('nai-atab')){e.preventDefault();e.stopPropagation();var aid=b===tab?'':b.dataset.aid;if(!on||aid!==agentAid)switchTo(aid)}else if(on)close()},true);
  new MutationObserver(fixTabs).observe(tabs,{subtree:true,attributes:true,attributeFilter:['class','hidden']});
  var form=$i('fleetConsoleForm');if(form)form.addEventListener('submit',function(e){if(on){e.preventDefault();e.stopImmediatePropagation();sendMsg()}},true);
  var tw0=document.querySelector('.termwrap');if(tw0)tw0.addEventListener('scroll',function(){if(on&&tw0.scrollLeft)setTimeout(unshift,0)});
@@ -2086,7 +2115,7 @@ function setup(){var tabs=$i('cTabs'),codex=$i('ctCodex'),box=$i('termBox');
  if(window.ResizeObserver){var ro=new ResizeObserver(function(){place()});ro.observe(box);var tw=document.querySelector('.termwrap');if(tw)ro.observe(tw)}
  window.addEventListener('resize',function(){setTimeout(place,80)});
  document.addEventListener('visibilitychange',function(){if(on&&!document.hidden)load()});
- fixTabs();cfgSync();try{savedAid=localStorage.getItem('nai_contab_aid')||'';if(localStorage.getItem('nai_contab')==='1')open()}catch(_){}
+ fixTabs();cfgSync();try{savedAid=localStorage.getItem('nai_contab_aid')||'';if(localStorage.getItem('nai_contab')==='1'&&!(window.fleetSplitWanted&&window.fleetSplitWanted()))open()}catch(_){}
  if(window.naiAgentsData)syncTabs(window.naiAgentsData)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(setup,0)});else setTimeout(setup,0);
 }catch(e){console.warn('notion-ai console',e)}})();
