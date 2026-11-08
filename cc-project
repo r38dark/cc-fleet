@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import sys
+import tempfile
+import unicodedata
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+TZ = timezone(timedelta(hours=8))
+DEFAULT_DIR = '/opt/cc-limits/profile_exchange/codex/outbox/agent_handoff/current_project'
+
+
+def slugify(text):
+    parts = []
+    for c in text.lower():
+        if 'a' <= c <= 'z' or '0' <= c <= '9' or chr(0x0430) <= c <= chr(0x044f) or c == 'ё':
+            parts.append(c)
+        elif parts and parts[-1] != chr(95):
+            parts.append(chr(95))
+    return ''.join(parts)[:40].strip(chr(95)) or 'card'
+
+
+def chmod_open(path):
+    try:
+        os.chmod(path, 0o777)
+    except OSError:
+        pass  # чужая папка: права уже выставил владелец
+
+
+def inspect_card(folder):
+    card = folder / 'card.md'
+    try:
+        stat = card.stat()
+        text = card.read_text(encoding='utf-8', errors='replace')
+    except FileNotFoundError:
+        return dict(exists=False, size=0, age=0.0, empty=False, stale=False, big=False)
+    age = (datetime.now(TZ).timestamp() - stat.st_mtime) / 86400
+    return dict(exists=True, size=stat.st_size, age=age, empty=not text.strip(),
+                stale=age > 7, big=stat.st_size > 8000)
+
+
+def show(folder, checking):
+    state = inspect_card(folder)
+    print('Папка:', folder)
+    print('Карточка:', 'есть' if state['exists'] else 'нет')
+    print('Размер:', state['size'])
+    print('Возраст:', format(state['age'], '.1f'))
+    if checking and not state['exists']:
+        print('Карточки нет')
+    if state['stale']:
+        print('Устарела (старше 7 дней)')
+    if state['empty']:
+        print('Пуста')
+    if state['big']:
+        print('Слишком длинная (больше 8000 байт)')
+    if checking and (not state['exists'] or state['stale'] or state['empty'] or state['big']):
+        return 1
+    return 0
+
+
+def new_card(folder, title, by):
+    title = title.strip()
+    if not 1 <= len(title) <= 100 or any(unicodedata.category(c) == 'Cc' for c in title):
+        print('Название: от 1 до 100 знаков, без управляющих символов.', file=sys.stderr)
+        return 2
+    by = ''.join(' ' if unicodedata.category(c) == 'Cc' else c for c in by).strip() or 'Модель'
+    now = datetime.now(TZ)
+    date = now.strftime('%d.%m.%Y %H:%M')
+    lines = ['# Карточка дела: ' + title,
+            'Начато: ' + date + ' (' + by + '). Обновлено: ' + date + ' (' + by + ')', '',
+            '## Цель (что хочет владелец)', '-', '', '## Этап (где мы сейчас)', '-', '',
+            '## Сделано и проверено', '-', '', '## Следующий шаг', '-', '',
+            '## Файлы и места (пути и ссылки, не копии)', '-', '',
+            '## Открытые вопросы к владельцу', '-', '',
+            '## Нельзя без слова владельца (релиз, коммиты и т.п.)', '-', '']
+    folder.mkdir(parents=True, exist_ok=True)
+    chmod_open(folder)
+    card = folder / 'card.md'
+    old = card.read_text(encoding='utf-8', errors='replace') if card.exists() else ''
+    fd, temp = tempfile.mkstemp(prefix='.card-', dir=str(folder))
+    archived = None
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as out:
+            os.fchmod(out.fileno(), 0o666)
+            out.write(chr(10).join(lines))
+        if old.strip():
+            archive = folder / 'archive'
+            archive.mkdir(exist_ok=True)
+            chmod_open(archive)
+            first = old.splitlines()[0].lstrip('# ').strip() if old.splitlines() else ''
+            stem = now.strftime('%Y%m%d-%H%M') + '_' + slugify(first or 'card')
+            number = 1
+            while True:
+                suffix = '' if number == 1 else '-' + str(number)
+                candidate = archive / (stem + suffix + '.md')
+                try:
+                    os.link(card, candidate)
+                    archived = candidate
+                    break
+                except FileExistsError:
+                    number += 1
+        os.replace(temp, card)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+    print('Новая карточка:', card)
+    if archived:
+        print('Старая в архиве:', archived)
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(prog='cc-project')
+    commands = parser.add_subparsers(dest='command', required=True)
+    commands.add_parser('show')
+    commands.add_parser('check')
+    new = commands.add_parser('new')
+    new.add_argument('title')
+    new.add_argument('--by', default='Модель')
+    args = parser.parse_args()
+    folder = Path(os.environ.get('CC_PROJECT_DIR') or DEFAULT_DIR)
+    try:
+        if args.command == 'new':
+            return new_card(folder, args.title, args.by)
+        return show(folder, args.command == 'check')
+    except OSError as exc:
+        print('Ошибка работы с карточкой: ' + str(exc), file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

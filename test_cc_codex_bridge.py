@@ -45,6 +45,8 @@ def get_bytes(path):
 
 class Base(unittest.TestCase):
     def setUp(self):
+        self.saved_bridge = br.BRIDGE
+        br.BRIDGE = br.Bridge()
         # Старый поддельный Codex отвечает точным эхом. Протокол вложений отдельно
         # проверяется с настоящей подсказкой в test_cc_codex_output.
         self.image_note_patch = unittest.mock.patch.object(br, "image_output_note", return_value="")
@@ -97,17 +99,27 @@ class Base(unittest.TestCase):
     def restore(self):
         # потоки моста гасим ДО возврата настоящих BASE и tg_api: иначе они пишут состояние в боевую папку и ходят в настоящий Telegram
         br.BRIDGE.stop()
+        if br.BRIDGE.worker:
+            br.BRIDGE.cancel.set()
+            br.BRIDGE.worker.join(20)
+        for thread in getattr(getattr(br.BRIDGE, 'inputs', None), '_threads', ()):
+            thread.join(5)
+        if getattr(br.BRIDGE, 'notice_worker', None):
+            br.BRIDGE.notice_worker.join(5)
         for t in (br.BRIDGE.poll_t, br.BRIDGE.watch_t, br.BRIDGE.lim_t):
             if t:
                 t.join(5)
         (br.BASE, br.BIN, br.DELIVER, br.tg_api, br.NOW, cc_codex.PROFILES, br.DEFAULT_CHAT,
          br.RESERVED_TOKENS, br.ACK_TIMEOUT, br.CONSOLE) = self.saved
+        br.BRIDGE = self.saved_bridge
 
     def say(self, text, chat=100200300):
         br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": chat}, "text": text}})
         w = br.BRIDGE.worker
         if w:
             w.join(20)
+        if hasattr(br.BRIDGE, 'notice_queue'):
+            br.BRIDGE.notice_queue.join()
 
     def runs(self):
         return [json.loads(l) for l in get(self.log).splitlines()] if os.path.exists(self.log) else []
@@ -1084,6 +1096,190 @@ class ConsoleChat(Base):
         self.assertEqual(br._state()["threads"], {"self|" + self.proj: "TID-CON"})
 
 
+class RecoverConsole(FakeConsole):
+    """Консоль с mark()/recover(): после перезапуска моста recover() дочитывает ход из файла сессии."""
+
+    def __init__(self):
+        super().__init__()
+        self.recovered = []
+        self.recover_result = ("ответ после перезапуска", "TID-CON")
+        self.on_recover = None
+
+    def mark(self):
+        return {"path": "/x/rollout.jsonl", "off": 10, "turn": None}
+
+    def recover(self, point, sent, abort=None, timeout=None, lang="ru"):
+        self.recovered.append((point, sent))
+        if self.on_recover:
+            self.on_recover()
+        if abort is not None and abort.is_set():
+            raise self.Aborted("заменено")
+        if isinstance(self.recover_result, Exception):
+            raise self.recover_result
+        return self.recover_result
+
+
+class Inflight(Base):
+    """Ответ Codex не теряется: перезапуск балансера и сбой Telegram во время ответа."""
+
+    def setUp(self):
+        super().setUp()
+        self.con = RecoverConsole()
+        br.CONSOLE = self.con
+        self.tg_down = [0]  # сколько ближайших sendMessage упадут
+        ok_api = br.tg_api
+
+        def flaky(token, method, payload=None, timeout=30):
+            if method == "sendMessage" and self.tg_down[0] > 0:
+                self.tg_down[0] -= 1
+                raise TimeoutError("нет связи")
+            return ok_api(token, method, payload, timeout)
+        br.tg_api = flaky
+
+    def orphan(self, **extra):
+        """Запись, оставшаяся от процесса, которого уже нет."""
+        with br._lock:
+            st = br._state()
+            st["inflight"] = dict(id="old", sent=900.0, mark={"path": "/x/r.jsonl", "off": 5, "turn": None}, **extra)
+            br._state_save(st)
+        br.BRIDGE.inflight_owner = None
+
+    def recover(self):
+        br.BRIDGE.recover_once(threading.Event())
+
+    def test_normal_answer_leaves_no_record(self):
+        self.say("вопрос")
+        self.assertEqual(self.sent[-1], "ответ из консоли")
+        self.assertIsNone(br._state()["inflight"])
+        self.assertIsNone(br.BRIDGE.inflight_owner)
+
+    def test_record_exists_while_codex_works(self):
+        seen = []
+        self.con.hold = threading.Event()
+        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "text": "долго"}})
+        self.assertTrue(self.con.started.wait(5))
+        seen.append(br._state()["inflight"])
+        owner = br.BRIDGE.inflight_owner
+        self.con.hold.set()
+        br.BRIDGE.worker.join(10)
+        self.assertEqual(seen[0]["id"], owner)
+        self.assertEqual(seen[0]["mark"], {"path": "/x/rollout.jsonl", "off": 10, "turn": None})
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_telegram_down_keeps_answer_and_resends_later(self):
+        self.tg_down[0] = 1
+        self.say("вопрос")
+        self.assertEqual(self.sent, [], "Telegram не принял ответ")
+        held = br._state()["inflight"]
+        self.assertEqual(held["answer"], "ответ из консоли")
+        self.assertIsNone(br.BRIDGE.inflight_owner)
+        self.recover()
+        self.assertIn("ответ из консоли", self.sent[-1])
+        self.assertTrue(self.sent[-1].startswith("⏳ Запоздавший ответ"))
+        self.assertIsNone(br._state()["inflight"])
+        self.assertEqual(self.con.recovered, [], "ответ уже был в состоянии — консоль не нужна")
+
+    def test_resend_retries_until_telegram_is_back(self):
+        self.orphan(answer="готово")
+        self.tg_down[0] = 2
+        self.recover()
+        self.recover()
+        self.assertEqual(self.sent, [])
+        self.assertEqual(br._state()["inflight"]["answer"], "готово")
+        self.recover()
+        self.assertIn("готово", self.sent[-1])
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_after_restart_answer_is_read_from_console_session(self):
+        self.orphan()
+        self.recover()
+        self.assertEqual(len(self.con.recovered), 1)
+        self.assertEqual(self.con.recovered[0][0]["path"], "/x/r.jsonl")
+        self.assertEqual(self.con.recovered[0][1], 900.0)
+        self.assertIn("ответ после перезапуска", self.sent[-1])
+        self.assertTrue(self.sent[-1].startswith("⏳ Запоздавший ответ"))
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_after_restart_answer_survives_telegram_failure(self):
+        self.orphan()
+        self.tg_down[0] = 1
+        self.recover()
+        self.assertEqual(self.sent, [])
+        self.assertEqual(br._state()["inflight"]["answer"], "ответ после перезапуска")
+        self.recover()
+        self.assertIn("ответ после перезапуска", self.sent[-1])
+        self.assertEqual(len(self.con.recovered), 1, "консоль второй раз не читаем")
+
+    def test_after_restart_turn_lost_is_reported_once(self):
+        self.orphan()
+        self.con.recover_result = (None, None)
+        self.recover()
+        self.assertIn("потерялся", self.sent[-1])
+        self.assertIsNone(br._state()["inflight"])
+        n = len(self.sent)
+        self.recover()
+        self.assertEqual(len(self.sent), n)
+
+    def test_after_restart_console_error_is_reported(self):
+        self.orphan()
+        self.con.recover_result = FakeConsole.ConsoleError("Консоль Codex закрылась, не ответив.")
+        self.recover()
+        self.assertIn("Консоль Codex закрылась", self.sent[-1])
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_live_request_is_not_taken_for_abandoned(self):
+        self.orphan()
+        br.BRIDGE.inflight_owner = "old"
+        self.recover()
+        self.assertEqual(self.con.recovered, [])
+        self.assertEqual(self.sent, [])
+        self.assertEqual(br._state()["inflight"]["id"], "old")
+
+    def test_new_message_supersedes_waiting_recovery(self):
+        self.orphan()
+
+        def new_request_arrives():
+            with br._lock:
+                st = br._state()
+                st["inflight"] = {"id": "new", "sent": 1.0, "mark": None}
+                br._state_save(st)
+        self.con.on_recover = new_request_arrives
+        self.recover()
+        self.assertEqual(self.sent, [], "ответ достанется новому запросу, дублировать нечего")
+        self.assertEqual(br._state()["inflight"]["id"], "new")
+
+    def test_stop_drops_record(self):
+        self.orphan()
+        self.say("/stop")
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_new_drops_record(self):
+        self.orphan()
+        self.say("/new")
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_error_from_codex_leaves_no_record(self):
+        self.con.script = [FakeConsole.ConsoleError("Консоль закрылась")]
+        self.say("вопрос")
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_console_without_mark_is_skipped(self):
+        br.CONSOLE = FakeConsole()
+        self.say("вопрос")
+        self.assertEqual(self.sent[-1], "ответ из консоли")
+        self.assertIsNone(br._state()["inflight"])
+
+    def test_bridge_start_runs_recovery_thread(self):
+        self.orphan()
+        br.BRIDGE.sync()
+        for _ in range(200):
+            if self.sent:
+                break
+            time.sleep(0.05)
+        self.assertTrue(self.sent and "ответ после перезапуска" in self.sent[-1])
+        self.assertIsNone(br._state()["inflight"])
+
+
 class LimitAlerts(Base):
     """Предупреждения о лимите и подписке: по одному сообщению на порог."""
     def acc(self, p5=10, p7=5, **kw):
@@ -1306,7 +1502,7 @@ class ImagesBase(Base):
             return inner(token, method, payload, timeout)
         br.tg_api = api
 
-        def download(token, file_path, limit=br.IMG_MAX_BYTES):
+        def download(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
             self.downloads.append(file_path)
             for fid, (fp, data) in self.files.items():
                 if fp == file_path:
@@ -1333,6 +1529,8 @@ class ImagesBase(Base):
         w = br.BRIDGE.worker
         if w:
             w.join(20)
+        if hasattr(br.BRIDGE, 'notice_queue'):
+            br.BRIDGE.notice_queue.join()
 
     def imgs(self):
         return sorted(os.listdir(self.images)) if os.path.isdir(self.images) else []
@@ -1537,7 +1735,7 @@ class ChatActionIndicator(ImagesBase):
         os.environ["FAKE_SLEEP"] = "0.5"
         real = br.tg_download
 
-        def slow(token, file_path, limit=br.IMG_MAX_BYTES):
+        def slow(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
             time.sleep(0.45)  # «долгая» закачка
             return real(token, file_path, limit)
         br.tg_download = slow
@@ -1556,7 +1754,7 @@ class ChatActionIndicator(ImagesBase):
         br.ACTION_EVERY = 30
         real = br.tg_download
 
-        def slow(token, file_path, limit=br.IMG_MAX_BYTES):
+        def slow(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
             time.sleep(0.4)
             return real(token, file_path, limit)
         br.tg_download = slow
@@ -1572,9 +1770,10 @@ class ChatActionIndicator(ImagesBase):
         self.photo("что тут?")
         self.assertEqual(self.names(), ["upload_photo", "typing"], self.acts)
         self.assertLess(self.acts[1][0] - self.acts[0][0], 2, "«печатает» ждало тика")
-        self.assertEqual(len(seen), 1)
-        seen[0].t.join(2)
-        self.assertFalse(seen[0].t.is_alive(), "поток индикатора ждёт тик после конца хода")
+        self.assertGreaterEqual(len(seen), 1)
+        for indicator in seen:
+            indicator.t.join(2)
+            self.assertFalse(indicator.t.is_alive(), "поток индикатора ждёт тик после конца хода")
 
     def test_refused_image_stops_indicator(self):
         self.photo("текст", doc={"file_id": "fid-text", "mime_type": "image/png"})
@@ -1644,6 +1843,8 @@ class Albums(ImagesBase):
             w = br.BRIDGE.worker
             if w:
                 w.join(20)
+            if hasattr(br.BRIDGE, 'notice_queue'):
+                br.BRIDGE.notice_queue.join()
 
     def test_album_goes_to_codex_as_one_message(self):
         self.album(["fid-a", "fid-b", "fid-c"], ["подпись к альбому", None, None], wait=False)

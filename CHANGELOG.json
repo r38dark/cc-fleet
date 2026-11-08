@@ -1,6 +1,612 @@
 {
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
+    {
+      "v": "2.0.0",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Установка «под ключ», второй сервер, агенты Notion, голос",
+        "p": [
+          "Установщик на 14 шагов с проверкой и пошаговая инструкция docs/INSTALL.md; без личных данных в коде",
+          "Мастер «Второй сервер», необязательный голос, агенты Notion со своим SSH-ключом и Telegram-чатом",
+          "Консоль на 2–3 части идёт за исполнителем; при передаче на второй сервер баннер пишет «Ищу свободный аккаунт»"
+        ]
+      },
+      "en": {
+        "t": "Turnkey install, second server, Notion agents and voice",
+        "p": [
+          "14-step installer with checks and a step-by-step guide docs/INSTALL.md; no personal data in the code",
+          "Second-server wizard, optional voice, Notion agents with their own SSH key and Telegram chat",
+          "Console splits into 2-3 parts and follows the worker; the limits banner says \"Looking for a free account\" on handoff"
+        ]
+      }
+    },
+    {
+      "v": "1.28.26",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Переключение резерва и доставка сообщений",
+        "p": [
+          "Консоль дожидается освобождения прежней службы перед повторным запуском",
+          "Подтверждённое восстановление профиля снимает блокировку очереди без нового перезапуска",
+          "Причины неудачного переключения и отката сохраняются для диагностики"
+        ]
+      },
+      "en": {
+        "t": "Reserve switching and message delivery",
+        "p": [
+          "Console startup waits for the previous transient service to be released",
+          "A verified restored profile releases queued messages without another restart",
+          "Failed transitions and rollbacks retain diagnostic error codes"
+        ]
+      }
+    },
+    {
+      "v": "1.28.25",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Защита от циклического восстановления",
+        "p": [
+          "Управляемая консоль Codex получает собственный процесс без общего фонового сервера",
+          "Неудачный откат останавливается вместо бесконечных перезапусков; выбор профиля позволяет повторить восстановление",
+          "Готовность проверяется по текущему экрану; отсутствие остановленной Claude не блокирует Codex"
+        ]
+      },
+      "en": {
+        "t": "Bounded console recovery",
+        "p": [
+          "Managed Codex TUI owns its runtime without the shared daemon",
+          "Failed recovery stops automatic restarts and can be retried by an explicit profile choice",
+          "Readiness uses the visible terminal frame; an absent paused Claude does not block Codex"
+        ]
+      }
+    },
+    {
+      "v": "1.28.24",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Подтверждение рядом с резервом",
+        "p": [
+          "Небольшое окно «Да / Нет» открывается у кнопки «Резерв» и указывает на неё",
+          "Подложка и затемнение убраны; окно следует за кнопкой при прокрутке",
+          "Нажатие снаружи или Escape отменяет включение"
+        ]
+      },
+      "en": {
+        "t": "Reserve confirmation beside its switch",
+        "p": [
+          "Small Yes/No popover points to the Reserve switch",
+          "No backdrop or dimming; follows the switch while scrolling",
+          "Outside click or Escape cancels without enabling reserve"
+        ]
+      }
+    },
+    {
+      "v": "1.28.23",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Резерв поверх Full",
+        "p": [
+          "Включение резерва и авторезерва подтверждается компактным окном «Да / Нет» без ввода слова",
+          "Профиль остаётся Full: задачи передаются Notion-агенту, модель внедряет и проверяет результат",
+          "При недоступности агента самостоятельное выполнение требует согласования"
+        ]
+      },
+      "en": {
+        "t": "Reserve over Full",
+        "p": [
+          "Compact Yes/No confirmation for reserve and auto-reserve without typing",
+          "Full remains the selected profile while tasks go to the Notion agent for implementation and verification",
+          "Unavailable agent does not cause a silent fallback to independent work"
+        ]
+      }
+    },
+    {
+      "v": "1.28.22",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Full с резервом Notion",
+        "p": [
+          "Включение резерва сохраняет уже действующие права Full у Claude и Codex",
+          "Ограниченные и прежние профили резерва не получают дополнительные права",
+          "Единая инструкция с выбранным агентом, четырьмя инструментами и проверкой результата"
+        ]
+      },
+      "en": {
+        "t": "Full with Notion reserve",
+        "p": [
+          "Reserve preserves existing Full access for Claude and Codex",
+          "Restricted and legacy reserve sessions receive no implicit access upgrade",
+          "Shared prompt identifies the configured agent and verifies its results"
+        ]
+      }
+    },
+    {
+      "v": "1.28.21",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Оркестратор и совместимость профилей",
+        "p": [
+          "Оркестратор возвращён для Claude и Codex; Full другой модели при его выборе блокируется",
+          "Вторая модель подключается для выполнения шагов отдельным выбором до общего применения",
+          "Явное выделение профиля, компактный ПК-интерфейс и мобильное окно сохранены"
+        ]
+      },
+      "en": {
+        "t": "Orchestrator and profile compatibility",
+        "p": [
+          "Orchestrator restored for Claude and Codex; the other model Full is blocked when selected",
+          "Companion is chosen explicitly before applying the shared scenario",
+          "Clear selection, compact desktop and mobile overlay preserved"
+        ]
+      }
+    },
+    {
+      "v": "1.28.20",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Только Full для Claude и Codex",
+        "p": [
+          "В выборе рабочих профилей остались только Claude Full и Codex Full",
+          "Выбранная карточка отмечена яркой рамкой, заливкой, галочкой и подписью",
+          "Действующая сессия сохраняется до явного применения профиля"
+        ]
+      },
+      "en": {
+        "t": "Full-only Claude and Codex profiles",
+        "p": [
+          "Claude Full and Codex Full are the only selectable work profiles",
+          "Selected card has a distinct border, fill, tick and label",
+          "Existing sessions stay unchanged until explicit profile application"
+        ]
+      }
+    },
+    {
+      "v": "1.28.19",
+      "date": "2026-11-05",
+      "ru": {
+        "t": "Единый выбор сценария Claude и Codex",
+        "p": [
+          "Full, оркестратор и исполнитель выбираются в общем окне с блокировкой несовместимых ролей",
+          "Выбор применяется одной транзакцией после общей кнопки; до неё продолжается прежняя работа",
+          "Компактное окно на ПК и верхнее мобильное меню сохранены"
+        ]
+      },
+      "en": {
+        "t": "Shared Claude and Codex scenario selection",
+        "p": [
+          "Full, orchestrator and executor share one window with incompatible roles blocked",
+          "One explicit apply commits both roles atomically; drafts preserve the running scenario",
+          "Compact desktop layout and top-aligned mobile overlay retained"
+        ]
+      }
+    },
+    {
+      "v": "1.28.18",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Компактный выбор профилей на ПК",
+        "p": [
+          "Профили и резерв помещаются в одном окне на экране компьютера",
+          "Окно использует доступную высоту и открывается в пределах экрана",
+          "Мобильное меню сохраняет собственную прокрутку"
+        ]
+      },
+      "en": {
+        "t": "Compact desktop profile picker",
+        "p": [
+          "Profiles and reserve fit together in one desktop window",
+          "Picker uses available height and stays inside the viewport",
+          "Mobile overlay keeps its independent scrolling"
+        ]
+      }
+    },
+    {
+      "v": "1.28.17",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Общая иконка Codex и Claude",
+        "p": [
+          "Выбранный робот на прозрачном фоне установлен в шапке",
+          "Сохранены тёмная тема, индикатор состояния и расположение кнопок"
+        ]
+      },
+      "en": {
+        "t": "Shared Codex and Claude icon",
+        "p": [
+          "Selected transparent robot icon displayed in the header",
+          "Dark theme, status dot and header action alignment preserved"
+        ]
+      }
+    },
+    {
+      "v": "1.28.16",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Кнопки шапки у правого края",
+        "p": [
+          "Обновление и настройки снова прижаты к правому краю на мобильном",
+          "Индикатор состояния остаётся возле ccfleet"
+        ]
+      },
+      "en": {
+        "t": "Header actions at the right edge",
+        "p": [
+          "Refresh and settings stay at the right edge on mobile",
+          "Status indicator stays beside ccfleet"
+        ]
+      }
+    },
+    {
+      "v": "1.28.15",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Индикатор состояния у логотипа",
+        "p": [
+          "Индикатор консоли перенесён к верхнему правому углу надписи ccfleet",
+          "Цвета и обновление состояния сохранены"
+        ]
+      },
+      "en": {
+        "t": "Status indicator by the wordmark",
+        "p": [
+          "Console status is positioned at the upper-right corner of the ccfleet wordmark",
+          "Status colors and updates are preserved"
+        ]
+      }
+    },
+    {
+      "v": "1.28.14",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Выбор профиля поверх мобильной страницы",
+        "p": [
+          "Окно профилей открывается от верхнего края и занимает доступную высоту экрана",
+          "Список профилей прокручивается отдельно, основная страница заблокирована",
+          "После закрытия восстанавливаются положение страницы и фокус"
+        ]
+      },
+      "en": {
+        "t": "Mobile profile picker overlay",
+        "p": [
+          "Profile picker opens at the top and fills the available viewport",
+          "The profile list scrolls independently while the underlying page stays fixed",
+          "Closing restores page position and focus"
+        ]
+      }
+    },
+    {
+      "v": "1.28.13",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Активные аккаунты под мобильной консолью",
+        "p": [
+          "На телефоне раскрытые карточки активных аккаунтов расположены под консолью",
+          "Карточки открыты постоянно; компактная сводка и кнопки раскрытия скрыты",
+          "На компьютере сохраняются прежнее положение и сворачивание"
+        ]
+      },
+      "en": {
+        "t": "Active accounts below the mobile console",
+        "p": [
+          "Expanded active account tiles appear below the console on mobile",
+          "Tiles stay open; the compact summary and disclosure controls are hidden",
+          "Desktop placement and disclosure behavior are preserved"
+        ]
+      }
+    },
+    {
+      "v": "1.28.12",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Сводка активных аккаунтов только на компьютере",
+        "p": [
+          "В мобильной версии полностью скрыта верхняя сводка активных аккаунтов",
+          "Нижний список аккаунтов и мобильная консоль остаются доступны"
+        ]
+      },
+      "en": {
+        "t": "Active account summary is desktop only",
+        "p": [
+          "The upper active account summary is fully hidden on mobile",
+          "The account list below the console and mobile console controls remain available"
+        ]
+      }
+    },
+    {
+      "v": "1.28.11",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Мобильная консоль и прокрутка",
+        "p": [
+          "Масштаб и полный экран — в правом верхнем углу внутри консоли",
+          "Действия Codex перенесены внутрь консоли и сделаны прозрачными",
+          "Исправлены сохранённый мобильный режим, прокрутка и наложение старой панели аккаунтов"
+        ]
+      },
+      "en": {
+        "t": "Mobile console and scrolling",
+        "p": [
+          "Zoom and fullscreen controls sit inside the terminal at the upper right",
+          "Codex actions are transparent controls inside the terminal",
+          "Fixed restored mobile focus mode, scrolling and the legacy account dock overlap"
+        ]
+      }
+    },
+    {
+      "v": "1.28.10",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Минималистичное раскрытие лимитов",
+        "p": [
+          "Только текст «Развернуть» / «Свернуть» без стрелок",
+          "Убраны рамки, фон кнопок и выступающая вкладка"
+        ]
+      },
+      "en": {
+        "t": "Minimal limit disclosure",
+        "p": [
+          "Text-only Expand / Collapse controls without arrows",
+          "Removed button borders, backgrounds and the protruding tab"
+        ]
+      }
+    },
+    {
+      "v": "1.28.9",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Раскрытие внутри блока лимитов",
+        "p": [
+          "«Развернуть» встроено справа в компактную строку",
+          "«Свернуть» встроено под раскрытыми карточками; повторные кнопки и стрелки убраны"
+        ]
+      },
+      "en": {
+        "t": "Inline limit disclosure",
+        "p": [
+          "Expand is integrated into the compact limit row",
+          "Collapse is attached below the expanded cards; duplicate controls and arrows are removed"
+        ]
+      }
+    },
+    {
+      "v": "1.28.8",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Сворачивание лимитов и время до сброса",
+        "p": [
+          "Явная кнопка раскрывает и сворачивает активные аккаунты",
+          "В пятичасовых лимитах — «через …», в недельных — только дата и время сброса",
+          "cxw автоматически подключается к новой консоли после смены сессии"
+        ]
+      },
+      "en": {
+        "t": "Limit disclosure and reset times",
+        "p": [
+          "A visible button expands and collapses the active accounts",
+          "Five-hour limits show time remaining; weekly limits show only the reset date and time",
+          "cxw reconnects automatically after a new console session"
+        ]
+      }
+    },
+    {
+      "v": "1.28.7",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Переключение вида активных аккаунтов",
+        "p": [
+          "Раскрытие заменяет компактную строку прежними карточками",
+          "Конечная дата сброса видна и в строке, и в карточках",
+          "Пятичасовые окна без дня недели; недельные с полными названиями дней"
+        ]
+      },
+      "en": {
+        "t": "Active account view transformation",
+        "p": [
+          "Expanded cards replace the compact summary",
+          "Reset dates remain visible in both states",
+          "No weekdays for five-hour windows; full weekday names for weekly windows"
+        ]
+      }
+    },
+    {
+      "v": "1.28.6",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Компактная сводка активных лимитов",
+        "p": [
+          "Активные карточки скрыты в спойлер по умолчанию",
+          "В одной строке видны проценты, начало и сброс окон с датой и временем",
+          "Время указано по Иркутску; все настройки доступны при раскрытии"
+        ]
+      },
+      "en": {
+        "t": "Compact active limit summary",
+        "p": [
+          "Active account cards are collapsed by default",
+          "Percentages and window start/reset dates are visible inline",
+          "Irkutsk time; existing controls remain available when expanded"
+        ]
+      }
+    },
+    {
+      "v": "1.28.5",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Текст и фото в текущей беседе",
+        "p": [
+          "Фото и альбомы загружаются во время ответа и поступают в общий ввод",
+          "Порядок сообщений сохраняется; ошибка загрузки не задерживает следующий текст",
+          "Отмена защищает от поздней доставки старых вложений"
+        ]
+      },
+      "en": {
+        "t": "Text and photos in the current conversation",
+        "p": [
+          "Photos and albums prepare during a reply and use the common input path",
+          "Keep receipt order and release later text after media failures",
+          "Cancellation prevents stale attachment delivery"
+        ]
+      }
+    },
+    {
+      "v": "1.28.4",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Тихая передача сообщений в консоль",
+        "p": [
+          "Убрано уведомление Screen о загрузке текста в буфер",
+          "Сохранены вставка длинного текста и общая беседа Telegram/консоли"
+        ]
+      },
+      "en": {
+        "t": "Quiet console message delivery",
+        "p": [
+          "Hide the Screen buffer-read notification",
+          "Keep long-text paste and the shared Telegram/console conversation"
+        ]
+      }
+    },
+    {
+      "v": "1.28.3",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "RGB-цвета Codex через cxw",
+        "p": [
+          "Отдельный Screen 5 сохраняет RGB-цвета консоли",
+          "cxw использует версию и сокет действующей сессии",
+          "Беседа, модель, усилие, права и остальные консоли сохранены"
+        ]
+      },
+      "en": {
+        "t": "Codex RGB colors through cxw",
+        "p": [
+          "Private Screen 5 preserves terminal RGB colors",
+          "cxw uses the running session’s client and socket",
+          "Conversation, model, effort, access and other consoles are retained"
+        ]
+      }
+    },
+    {
+      "v": "1.28.2",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Стабильное подключение cxw и 256 цветов",
+        "p": [
+          "Подключение cxw к живой консоли больше не пересоздаёт Codex и мост",
+          "Общая консоль использует screen-256color с сохранённым исправлением ввода мыши",
+          "Сохраняются ID беседы, модель, усилие, аккаунт и права"
+        ]
+      },
+      "en": {
+        "t": "Stable cxw attachment and 256 colors",
+        "p": [
+          "Attaching cxw does not recreate a live console or bridge",
+          "Shared console uses screen-256color and retains the mouse-input fix",
+          "Conversation, model, effort, account and access are preserved"
+        ]
+      }
+    },
+    {
+      "v": "1.28.1",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Надёжный приём Telegram и состояние консоли",
+        "p": [
+          "Исправлено ложное ожидание подтверждения при удалении пустых строк из вставки",
+          "Ошибки опроса и запоздавшие ответы больше не показывают остановленную консоль и не вызывают автоматический запуск",
+          "Живой screen определяется по процессу, владельцу и сокету"
+        ]
+      },
+      "en": {
+        "t": "Reliable Telegram receipt and console status",
+        "p": [
+          "A collapsed blank line no longer causes a false receipt timeout",
+          "Polling errors and stale responses preserve the console and do not trigger automatic start",
+          "Validate the live screen process, owner and socket"
+        ]
+      }
+    },
+    {
+      "v": "1.28.0",
+      "date": "2026-11-04",
+      "ru": {
+        "t": "Три сценария работы без таймеров",
+        "p": [
+          "У Claude и Codex остались Full, Оркестратор и единственный резерв с Notion",
+          "Удалены сроки профилей и отдельный аварийный сценарий; сохранены подтверждённые шаги с прежним пределом «дев»",
+          "Включены поиск моделей Codex и передача текста Telegram во время ответа"
+        ]
+      },
+      "en": {
+        "t": "Three work scenarios without expiration",
+        "p": [
+          "Claude and Codex retain Full, Orchestrator and Notion reserve only",
+          "Removed profile deadlines and the standalone emergency scenario; human-confirmed steps retain the legacy dev ceiling",
+          "Includes Codex model discovery and Telegram text steering during active replies"
+        ]
+      }
+    },
+    {
+      "v": "1.27.2",
+      "date": "2026-11-03",
+      "ru": {
+        "t": "Telegram: уточнения во время ответа",
+        "p": [
+          "Текст из Telegram передаётся в текущую консоль во время ответа Codex, включая разговор, начатый в терминале",
+          "Убраны служебные уведомления о постановке текста и фото в очередь",
+          "Сохраняются порядок сообщений, один получатель результата и /stop; поиск новых моделей Codex включён в этот выпуск"
+        ]
+      },
+      "en": {
+        "t": "Telegram: follow-ups during a reply",
+        "p": [
+          "Telegram text steers the active native Codex conversation, including turns started in the terminal",
+          "Removed routine text and photo queue notifications",
+          "Ordered input, a single reply reader and /stop are retained; includes Codex model discovery"
+        ]
+      }
+    },
+    {
+      "v": "1.27.1",
+      "date": "2026-11-03",
+      "ru": {
+        "t": "Проверка новых моделей Codex",
+        "p": [
+          "Кнопка «Проверить новые модели» в настройках Codex с результатом и пометкой новых моделей",
+          "Проверка активного аккаунта в фоне, отдельный каталог для каждого аккаунта и сохранение списка при ошибке",
+          "Найденные модели доступны в выборе; текущие модель, усилие и беседа сохраняются"
+        ]
+      },
+      "en": {
+        "t": "Check for new Codex models",
+        "p": [
+          "Check for new models in Codex settings, with results and new model badges",
+          "Background checks for the active account, separate catalogs per account and retained lists on errors",
+          "Discovered models appear in the picker; current model, effort and conversation are preserved"
+        ]
+      }
+    },
+    {
+      "v": "1.26.0",
+      "date": "2026-11-03",
+      "ru": {
+        "t": "Обзор: консоли, аккаунты Claude и Codex",
+        "p": [
+          "Консоль первой, аккаунты Claude и Codex ниже; прежние кнопки и настройки сохранены, добавлен ввод в выбранную консоль",
+          "Отдельная оптимизация лимитов Codex: свежие данные, ожидание конца ответа, сохранение модели, усилия и беседы, откат при неудаче",
+          "Профили с поиском; выбор модели применяется сразу или после текущего ответа, без незаметного сброса"
+        ]
+      },
+      "en": {
+        "t": "Overview: consoles, Claude and Codex accounts",
+        "p": [
+          "Console first, followed by Claude and Codex accounts; existing controls retained, input targets the selected console",
+          "Separate Codex quota optimization with fresh data, idle switching, model/effort/thread preservation and rollback",
+          "Searchable profiles; model selection applies immediately or after the current response"
+        ]
+      }
+    },
     {"v": "1.25.28", "date": "2026-11-02",
      "ru": {"t": "Профиль «Агент», аварийный блок и скриншоты Codex", "p": ["Профиль «Агент»: Claude и Codex ставят задачи агенту командой из delegate_cmd; без неё профиль скрыт", "Аварийный блок: красная рамка целиком, кнопка и точка зелёные; консоль Codex прячется после удаления", "Мост шлёт скриншоты PNG и JPEG из Codex в Telegram оригинальными файлами"]},
      "en": {"t": "Agent profile, emergency block and Codex screenshots", "p": ["Agent profile: Claude and Codex hand tasks to the agent via delegate_cmd; hidden without it", "Emergency block: full red frame, green button and dot; the Codex console hides after removal", "The bridge sends PNG and JPEG screenshots from Codex to Telegram as original files"]}},

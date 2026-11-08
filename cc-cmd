@@ -4,13 +4,13 @@
 #   cla  — только подключиться к живой сессии Claude
 #   cln  — создать НОВУЮ сессию Claude (если есть живая — спросит, убивать ли)
 #   clw  — вернуться в рабочую сессию Claude (жива — подключиться, иначе пересоздать с --resume); clw -f — пересоздать
-#   cxw  — зайти в консоль Codex (screen cc-codex от пользователя codex_user); имя сессии — аргументом
+#   cxw  — подключиться к общей screen-сессии Codex, принимающей сообщения балансера и Telegram
 # Ссылки cl/cla/cln/clw/cxw в /usr/local/bin создаёт сам балансер при старте (cc_limits.ensure_cmd_links) и сам обновляет с релизом.
 # Настройки — из config.json балансера (рядом с этим файлом):
 #   screen_session — имя screen-сессии Claude (по умолчанию claude)
 #   claude_cmd     — как запускать Claude, целиком (по умолчанию просто claude),
 #                    например: IS_SANDBOX=1 claude --dangerously-skip-permissions --channels plugin:telegram@claude-plugins-official
-#   codex_user     — под кем живёт консоль Codex (по умолчанию codextrial)
+#   codex_user     — под кем живёт консоль Codex (по умолчанию codex)
 
 self=$(readlink -f "$0")
 name=$(basename "$0")
@@ -55,6 +55,31 @@ launch() {
     screen -r "$SESS"
 }
 
+# [notion-ai] 06.11: clw поднял Claude при профиле Notion AI — бота Telegram слушали двое.
+# Пока профиль Notion AI включён, новую сессию Claude не создаём; подключиться к живой можно.
+notion_ai_on() {
+    python3 -c 'import json,sys
+try:
+    sys.exit(0 if json.load(open(sys.argv[1])).get("active") else 1)
+except Exception:
+    sys.exit(1)' "$(dirname "$CONF")/notion_ai_mode.json" 2>/dev/null || return 1
+    echo "Включён профиль «Notion AI» — Claude не запускаю: бот Telegram сейчас слушает Notion AI, второй слушатель отнимает сообщения."
+    echo "Сначала выключи профиль: кнопка «Notion AI» в шапке панели или команда notion-ai-mode off. Потом снова $name."
+    return 0
+}
+
+# [remote] 06.11: работа передана на PROD - бота слушает Claude там, здесь новую сессию не создаём.
+remote_on() {
+    python3 -c 'import json,sys
+try:
+    sys.exit(0 if json.load(open(sys.argv[1])).get("active") else 1)
+except Exception:
+    sys.exit(1)' "$(dirname "$CONF")/remote_mode.json" 2>/dev/null || return 1
+    echo "Работа сейчас на PROD - Claude здесь не запускаю: бота Telegram слушает Claude на PROD."
+    echo "Сначала верни работу: кнопка «Вернуть мне» в панели у плитки «Аккаунт PROD». Потом снова $name."
+    return 0
+}
+
 inside_screen() {
     [ -z "$STY" ] && return 1
     echo "Ты ВНУТРИ screen ($STY). Сначала detach: Ctrl+A, потом d. Затем $name."
@@ -67,6 +92,8 @@ case "$name" in
         if alive; then
             exec screen -DR "$SESS"
         fi
+        notion_ai_on && exit 1
+        remote_on && exit 1
         launch "$CMD --continue || $CMD"
         ;;
     cla)
@@ -79,6 +106,8 @@ case "$name" in
         ;;
     cln)
         need_screen
+        notion_ai_on && exit 1
+        remote_on && exit 1
         if alive; then
             read -r -p "screen $SESS уже существует. Убить и создать новую? [y/N] " ans </dev/tty
             case "$ans" in
@@ -96,30 +125,102 @@ case "$name" in
             echo "$SESS жив — переподключаюсь (пересоздать с нуля: clw -f)"
             exec screen -rd "$SESS"
         fi
+        notion_ai_on && exit 1
+        remote_on && exit 1
         screen -S "$SESS" -X quit 2>/dev/null
         sleep 1
         launch "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 $CMD --resume"
         ;;
     cxw)
         inside_screen && exit 1
-        u=$(cfgget codex_user codextrial)
+        u=$(cfgget codex_user codex)
         sname="${1:-cc-codex}"
-        home=$(getent passwd "$u" | cut -d: -f6)
-        if [ -z "$home" ]; then
+        case "$sname" in *[!A-Za-z0-9_-]*|"") exit 2 ;; esac
+        codex_home=$(getent passwd "$u" | cut -d: -f6)
+        if [ -z "$codex_home" ]; then
             echo "Пользователь $u не найден (config.json → codex_user)."
             exit 1
         fi
-        need_screen
-        run=(env HOME="$home" TERM="${TERM:-xterm-256color}")
-        [ "$(id -u)" = 0 ] && run=(runuser -u "$u" -- "${run[@]}")
-        "${run[@]}" screen -wipe >/dev/null 2>&1
-        if ! "${run[@]}" screen -ls 2>/dev/null | grep -q "[0-9]\.$sname\b"; then
+        if [ -x /usr/local/sbin/cc-codex-console-localize ]; then
+            if [ "$(id -u)" = 0 ]; then
+                /usr/local/sbin/cc-codex-console-localize || exit $?
+            else
+                sudo -n /usr/local/sbin/cc-codex-console-localize || exit $?
+            fi
+        fi
+        base="$(dirname "$self")"
+        cx_transport() {
+            transport=$(python3 "$base/cc_codex_terminal.py" "$base" "$codex_home/codex_console") || return $?
+            mapfile -t terminal <<< "$transport"
+            screen_bin="${terminal[0]}"
+            screen_dir="${terminal[1]}"
+            [ -x "$screen_bin" ] || return 1
+            run=(env -u SCREENDIR HOME="$codex_home" TERM="${TERM:-xterm-256color}")
+            [ -n "$screen_dir" ] && run+=(SCREENDIR="$screen_dir")
+            [ "$(id -u)" = 0 ] && run=(/usr/sbin/runuser -u "$u" -- "${run[@]}")
+            return 0
+        }
+        cx_pid() {
+            "${run[@]}" "$screen_bin" -ls 2>/dev/null |
+                sed '/Dead/d' | sed -nE "s/^[[:space:]]*([0-9]+)\.${sname}[[:space:]].*/\1/p" | head -n 1
+        }
+        cx_new_pending() {
+            [ "$sname" = cc-codex ] || return 1
+            # /new saves its intent before closing Screen. A completed restart
+            # has a new PID; this also covers its first message already being accepted.
+            # Other exits (detach, /stop, SSH disconnect) must leave the client.
+            python3 - "$codex_home/codex_console/console.json" "$connected_pid" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1]) as stream:
+        meta = json.load(stream)
+    pending = (meta.get('pending_settings') or {}).get('new_session')
+    replacement_pid = str(meta.get('pid') or '')
+    replaced = replacement_pid.isdigit() and replacement_pid != sys.argv[2]
+except (OSError, ValueError, AttributeError):
+    sys.exit(1)
+sys.exit(0 if pending or replaced else 1)
+PY
+        }
+        if ! cx_transport; then
+            echo "Не найден Screen для текущей консоли Codex."
+            exit 1
+        fi
+        connected_pid=$(cx_pid)
+        if [ -z "$connected_pid" ]; then
             echo "Консоль Codex не запущена (screen $sname нет)."
             echo "Запусти её на странице балансера: вкладка Codex → «Запустить». Потом снова cxw."
             exit 1
         fi
-        echo "Подключаюсь к $sname (пользователь $u). Выйти, не останавливая Codex: Ctrl+A, потом d."
-        exec "${run[@]}" screen -rd "$sname"
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        while :; do
+            echo "Подключаюсь к $sname (пользователь $u). Выйти, не останавливая Codex: Ctrl+A, потом d."
+            "${run[@]}" "$screen_bin" -rd "$connected_pid.$sname"
+            attach_status=$?
+            cx_transport || exit "$attach_status"
+            current_pid=$(cx_pid)
+            [ "$current_pid" = "$connected_pid" ] && exit "$attach_status"
+            cx_new_pending || exit "$attach_status"
+            echo "Новая сессия Codex — переподключаюсь…"
+            deadline=$((SECONDS + 15))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+                if cx_transport; then
+                    current_pid=$(cx_pid)
+                    if [ -n "$current_pid" ] && [ "$current_pid" != "$connected_pid" ]; then
+                        break
+                    fi
+                fi
+                current_pid=""
+                sleep 0.2
+            done
+            if [ -z "$current_pid" ]; then
+                echo "Новая консоль Codex не запустилась. Проверь её состояние в балансере."
+                exit 1
+            fi
+            connected_pid=$current_pid
+        done
         ;;
     *)
         echo "cc-cmd: команды cl, cla, cln, clw (Claude) и cxw (Codex). Запускай их по имени, например: cl"

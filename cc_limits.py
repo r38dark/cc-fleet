@@ -12,12 +12,13 @@ import cc_codex_bridge
 import cc_codex_console
 import cc_codex_emergency
 import cc_notion
+import cc_remote
 import cc_lock
 import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "1.25.28"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -191,34 +192,13 @@ cc_codex.EXTRA_ENV = cc_codex_emergency.env_extra
 # Notion-агент: карточка на странице; вход берём из файла входа Claude Code, имя агента — из config.json
 cc_notion.CREDS = lambda: LIVE_CREDS
 cc_notion.CONFIG = lambda: cfg().get("notion_agent") or {}
-# резерв «Claude недоступен»: признак — тот же расчёт паузы, что у баннера; сообщение — в телеграм; аварийный режим — вместе с ним
-cc_notion.BASE = BASE
-cc_notion.LEVEL = lambda: pause_state()
-cc_notion.NOTIFY = tg_notify
-cc_notion.EMERGENCY = cc_codex_emergency
-# инструменты Notion-агента у Codex — только пока резерв включён; при смене резерва консоль перезапускается (не посреди ответа)
+# [notion-ai] резерв (Codex + Notion-агент вместо Claude) убран: сторожа, паузы и служебного профиля больше нет
+cc_notion.SOLO_PROFILE = lambda: cc_codex_bridge.active_profile(cc_codex_bridge.load()) == "codex_solo_full"
 cc_codex_bridge.MCP_ARGS = cc_notion.codex_args
 cc_codex_bridge.RESERVE_NOTE = cc_notion.codex_note
-cc_codex_bridge.DELEGATE_CMD = cc_notion.delegate_cmd
+cc_codex_bridge.PROFILE_APPLIED = cc_codex_emergency._restart_console
 cc_codex_console.MCP = cc_notion.codex_args
-cc_notion.APPLY = cc_codex_emergency._restart_console
 cc_codex_bridge.EMERGENCY = cc_codex_emergency
-
-
-def _reserve_pause(on):
-    """Резерв включён галочкой вручную → Claude на паузу (аккаунты не тратятся); снята → пауза снимается, сессия просыпается."""
-    import sys
-    if BASE not in sys.path:
-        sys.path.insert(0, BASE)
-    import pause_ctl
-    if on:
-        pause_ctl.reserve_hold("резерв: Codex + Notion-агент вместо Claude")
-    else:
-        pause_ctl.reserve_release()
-
-
-cc_notion.PAUSE = _reserve_pause
-cc_notion.PROFILE = cc_codex_bridge.reserve_profile  # профиль Codex сам встаёт на «Резерв» и возвращается назад
 
 
 # автообновление из GitHub Releases (cc_update.py): проверка раз в 6 часов, ручной/авто режим
@@ -768,7 +748,7 @@ def collect(force=False, force_account=None, renew_account=None):
                         and (old.get("plan") == "free" or not cc_avail.reset_passed(old)))
         # после 429 этот аккаунт не трогаем до конца его паузы — показываем кэш.
         # Без исключения для force_account: кнопка "Я продлил" раньше била мимо
-        # паузы и могла продлевать 429 повторным запросом (та же дыра из 52631).
+        # паузы и могла продлевать 429 повторным запросом.
         if old.get("ts") and time.time() < backoff_until.get(n, 0):
             stale_ok = True
         if stale_ok:
@@ -1440,9 +1420,10 @@ def _row_html(line, ncols, bg_map=None):
     return "".join(out) or " "
 
 
-# Codex рисует блок сообщения пользователя серой полосой (SGR 48;5;8): pyte отдаёт индекс 8 как 7f7f7f.
-# В консоли Claude таких полос нет, и текст на них не читается, поэтому в Codex-зеркале фон убираем.
-CODEX_BG_MAP = {"#7f7f7f": None}
+# Codex рисует блок сообщения пользователя полосой (SGR 48;5;8): pyte отдаёт индекс 8 как 7f7f7f, и светлый текст
+# на таком сером нечитаем. Полоса нужна, чтобы отличать сообщение человека от ответа, поэтому в Codex-зеркале
+# подменяем её на тёмный сине-серый фон, на котором текст читается. В консоли Claude таких полос нет.
+CODEX_BG_MAP = {"#7f7f7f": "#303744"}
 
 
 def _row_html_codex(line, ncols):
@@ -1508,6 +1489,53 @@ def _console_feed():
     if data:
         _console_stream.feed(data)
         _console_offset += len(data)
+
+
+def console_idle_reason():
+    """Подпись в пустой консоли Claude (сессии нет). cc_notion_ai подменяет: «включён профиль Notion AI…»."""
+    return "Claude сейчас не запущен — консоль появится, когда сессию Claude запустят."
+
+
+# Последний экран остановленной сессии: console.log.prev разбирается один раз (кэш по mtime+size),
+# хвост не больше CONSOLE_FROZEN_MAX — инцидент 12.07: многомегабайтный лог через pyte вешал сервер.
+CONSOLE_FROZEN_MAX = 1536 * 1024
+_frozen_lock = threading.Lock()
+_frozen = {"key": None, "current": "", "history": ""}
+
+
+def _frozen_cols(data):
+    # ширину мёртвой сессии уже не спросить у pty — берём по самой длинной линии ─ (Claude рисует её во всю ширину)
+    txt = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", data[-300000:]).decode("utf-8", "replace")
+    runs = [len(m) for m in re.findall("─{40,}", txt)]
+    return max(40, min(400, max(runs))) if runs else 120
+
+
+def console_frozen_snapshot(want_history=False):
+    path = CONSOLE_LOG + ".prev"
+    try:
+        st = os.stat(path)
+    except OSError:
+        return "", ("" if want_history else None), 0
+    key = (st.st_mtime_ns, st.st_size)
+    with _frozen_lock:
+        if _frozen["key"] != key:
+            try:
+                with open(path, "rb") as f:
+                    if st.st_size > CONSOLE_FROZEN_MAX:
+                        f.seek(st.st_size - CONSOLE_FROZEN_MAX)
+                    data = f.read()
+                cols = _frozen_cols(data)
+                scr = pyte.HistoryScreen(cols, 50, history=CONSOLE_HISTORY_LINES)
+                pyte.ByteStream(scr).feed(data)
+                cur = list(zip(scr.display, (_row_html(scr.buffer[y], cols) for y in range(scr.lines))))
+                while cur and not cur[-1][0].strip():
+                    cur.pop()
+                _frozen.update(key=key, current="\n".join(h for _, h in cur),
+                               history="\n".join(_row_html(line, cols) for line in scr.history.top))
+            except Exception as e:
+                print("console: последний экран не разобран:", type(e).__name__, flush=True)
+                _frozen.update(key=key, current="", history="")
+        return _frozen["current"], (_frozen["history"] if want_history else None), int(st.st_mtime)
 
 
 def console_snapshot(want_history=False):
@@ -1584,7 +1612,7 @@ def session_model():
             except Exception:
                 continue
             m = (d.get("message") or {}).get("model")
-            if d.get("type") == "assistant" and m:
+            if d.get("type") == "assistant" and m and not m.startswith("<"):  # «<synthetic>» — служебный ответ Claude Code, не модель
                 model = m
     except Exception:
         pass
@@ -2112,6 +2140,8 @@ def autoswitch_check(snap):
         if cc_avail.availability(row, thr, cap)[0]:
             cand.append((fh, n))
     if not cand:
+        if _handoff_coming():
+            return  # работа уходит на Claude PROD: «некуда» неправда, флаг эпизода не ставим — если передача не выйдет, сообщение уйдёт на следующем проходе
         text, lvl = _nowhere_text(accs, act, act_free)
         if not st.get("all_high_notified") or _week_news(st, lvl):
             tg_notify(text)
@@ -2225,6 +2255,12 @@ def _renewal_applicable(row):
     return row.get("plan") == "pro"
 
 
+def _page_tz():
+    """IANA-имя зоны для времени на странице (config.json "tz"); пусто — браузер показывает свою зону."""
+    name = str(cfg().get("tz") or "")
+    return name if re.fullmatch(r"[A-Za-z0-9_+./-]{1,64}", name) else ""
+
+
 def _local_hm(iso):
     # время сброса, коротко: «07:40». Если self-host крутится не в твоём
     # часовом поясе (сервер в одном регионе, ты в другом) — голый
@@ -2300,8 +2336,9 @@ def _nowhere_text(accs, act, act_free=False):
         head = f"⛔ Claude: {act} слетел в Free, остальные недоступны — переключаться некуда, жду, пока освободится другой."
     elif lvl == "week" and not override:
         head = (f"⏸ Claude: неделя {act} — {w}% (потолок {cap:.0f}%), переключаться некуда — Claude встаёт на паузу. "
-                "Поднимется сам, когда освободится другой аккаунт или сбросится неделя; продолжить сразу — "
-                "«Отключить паузу» на панели.")
+                "Поднимется сам, когда освободится другой аккаунт или сбросится неделя"
+                # [notion-ai] на 100% недели настоящий лимит исчерпан — отключать паузу бесполезно
+                + ("." if w >= 100 else "; продолжить сразу — «Отключить паузу» на панели."))
     elif lvl in WEEK_LEVELS:
         head = (f"⚠️ Claude: неделя {act} — {w}%, переключаться некуда. Балансер не остановит заполнение "
                 "до 100% — работаешь на свой страх и риск.")
@@ -2315,6 +2352,16 @@ def _nowhere_text(accs, act, act_free=False):
     else:
         head = f"⛔ Claude: переключаться некуда — работа идёт дальше на {act} сверх порога, пока не освободится другой аккаунт."
     return head + tail, lvl
+
+
+def _handoff_coming():
+    """[remote] Работа вот-вот уйдёт на Claude PROD (автопередача готова) или уже идёт там: «переключаться некуда» в Telegram не пишем —
+    о переходе скажет сама передача; не вышла — встанет обычная пауза со своим сообщением (владелец 62582, как баннер 62577)."""
+    try:
+        d = pause_state()
+        return bool(d.get("handoff") or d.get("remote"))
+    except Exception:
+        return False
 
 
 def _week_news(st, lvl):
@@ -2362,7 +2409,7 @@ def _week_cap_warn(snap):
         head = f"⚠️ Claude: неделя {n} дошла до {round(w)}% (потолок {cap:g}%)."
         text = None
         if n != act:
-            # обычная смена аккаунта, а не пауза: «Пауза на недельном потолке» тут ни при чём (51618)
+            # обычная смена аккаунта, а не пауза: «Пауза на недельном потолке» тут ни при чём
             text = (f"ℹ️ Claude: неделя {n} — {round(w)}%, это потолок балансера"
                     + (f" (последний {100 - cap:g}% — запас)" if cap < 100 else "") + "."
                     + f" {n} отдыхает до сброса недели"
@@ -2517,6 +2564,8 @@ def optimize_check(snap):
         if forced:
             _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd,
                               nearest=_nearest_reset(accs))
+        if forced and _handoff_coming():
+            return  # работа уходит на Claude PROD (см. autoswitch_check): «некуда» не пишем
         text, lvl = _nowhere_text(accs, act, act_free) if forced else ("", "")
         if forced and (not st.get("all_high_notified") or _week_news(st, lvl)):
             # раньше уведомление отсюда убрали как спам, и «упёрлись ВСЕ аккаунты» стало
@@ -2613,6 +2662,74 @@ def optimize_check(snap):
         tg_notify("⚠️ Claude (оптимизация): переключение на %s не удалось: %s" % (target, out))
 
 
+LIM_WARN, LIM_CLEAR = 90, 80  # [notion-ai] как у Codex (cc_codex_bridge): «подходит» с 90%, порог взводится снова ниже 80%
+
+
+def _lim_at(iso):
+    """ISO-время → «21:40» (сегодня) или «06.11 02:00» — как в сообщениях Codex; зона — cfg «tz»."""
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        tzname = cfg().get("tz")
+        if tzname:
+            from zoneinfo import ZoneInfo
+            dt, now = dt.astimezone(ZoneInfo(tzname)), datetime.now(ZoneInfo(tzname))
+        else:
+            dt, now = dt.astimezone(), datetime.now().astimezone()
+        return dt.strftime("%H:%M") if dt.date() == now.date() else dt.strftime("%d.%m %H:%M")
+    except Exception:
+        return ""
+
+
+def claude_limit_alerts(accs, prev):
+    """[notion-ai] Сообщения о лимитах Claude в том же виде, что у Codex: на каждом пороге одно —
+    «израсходовано на 90%», «исчерпан» (100%) и «снова доступен». По каждому аккаунту и окну
+    (5 ч, неделя); имя аккаунта — только если аккаунтов больше одного. Ошибка чтения или Free —
+    состояние аккаунта не меняется. → (сообщения, новое состояние)."""
+    prev = {n: dict(v) for n, v in (prev or {}).items() if n in accs}
+    out, multi = [], len(accs) > 1
+    for n, row in sorted(accs.items()):
+        if row.get("error") or row.get("plan") == "free":
+            continue
+        mem, who = prev.setdefault(n, {}), (f" ({n})" if multi else "")
+        for key, nm in (("five_hour", "5 ч"), ("seven_day", "неделя")):
+            w = row.get(key) or {}
+            pct = w.get("pct")
+            if pct is None:
+                continue
+            old = int(mem.get(key, 0))
+            lvl = 100 if pct >= 100 else LIM_WARN if pct >= LIM_WARN else 0
+            at = _lim_at(w["resets_at"]) if w.get("resets_at") else ""
+            tail = f" Сбросится в {at}." if at else ""
+            if lvl > old:
+                out.append(f"⚠ Лимит Claude{who} исчерпан: окно {nm}.{tail}" if lvl == 100 else
+                           f"⚠ Лимит Claude{who}: окно {nm} израсходовано на {round(pct)}%.{tail}")
+                mem[key] = lvl
+            elif old == 100 and lvl < 100:
+                out.append(f"✅ Лимит Claude{who} снова доступен: окно {nm}, занято {round(pct)}%.")
+                mem[key] = lvl
+            elif lvl < old and pct < LIM_CLEAR:
+                mem[key] = lvl  # спад ниже гистерезиса — порог взведён заново, сообщать не о чем
+    return out, prev
+
+
+def _claude_limit_tick(snap):
+    """Сверить лимиты Claude после опроса и написать в Telegram о новом пороге (config «limit_alerts»: false — выкл.)."""
+    if cfg().get("limit_alerts") is False:
+        return
+    accs = snap.get("accounts") or {}
+    if not accs:
+        return
+    st = jload(STATE, {})
+    first = "limit_alerts" not in st
+    msgs, st["limit_alerts"] = claude_limit_alerts(accs, st.get("limit_alerts"))
+    jsave(STATE, st)
+    if first:
+        return  # первый запуск: запоминаем текущие пороги молча — не пишем о том, что было до установки
+    for m in msgs:
+        tg_notify(m)
+
+
 def switch_policy_check(snap):
     # оптимизация — отдельный режим, при включении полностью заменяет простой
     # авто-порог (пороговые уходы с забитого аккаунта в неё встроены)
@@ -2624,6 +2741,10 @@ def switch_policy_check(snap):
         _week_cap_warn(snap)
     except Exception as e:
         print(f"week cap warn fail: {e}", flush=True)
+    try:
+        _claude_limit_tick(snap)
+    except Exception as e:
+        print(f"limit alerts fail: {e}", flush=True)
 
 
 def poll_loop():
@@ -2675,6 +2796,18 @@ def pause_state():
             sys.path.insert(0, BASE)
         import pause_ctl  # данные модуль читает с диска на каждый вызов — кэш не мешает
         d = pause_ctl.level_state()
+        # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем
+        d["remote"] = pause_ctl._remote_active()
+        # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
+        d["handoff"] = ""
+        if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
+            try:
+                import cc_remote_auto
+                ok, why = cc_remote_auto.handoff_ready()
+                if ok:
+                    d["handoff"] = why
+            except Exception:
+                pass  # нет модуля или сбой — баннер как раньше
         d["ok"] = True
         return d
     except Exception as e:
@@ -2737,7 +2870,7 @@ class H(BaseHTTPRequestHandler):
             if not self.headers.get("X-Auth-User"):
                 return self._send(403, {"error": "forbidden"})
             # токен вшивается в страницу: браузер может не переслать Basic Auth в fetch
-            html = PAGE.replace("__TOKEN__", cfg().get("hook_token", "")).replace("__PAGE_VER__", VERSION)
+            html = PAGE.replace("__TOKEN__", cfg().get("hook_token", "")).replace("__PAGE_VER__", VERSION).replace("__FLEET_TZ__", _page_tz())
             return self._send(200, html.encode(), "text/html; charset=utf-8")
         if u.path == "/api/limits":
             if not self._authed():
@@ -2763,8 +2896,15 @@ class H(BaseHTTPRequestHandler):
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
             snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
             snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
+            snap["config"]["codex_hidden"] = list(cfg().get("codex_hidden") or [])  # [notion-ai] модели Codex, убранные из быстрого меню
             snap["model"] = model_info()
             snap["notion"] = cc_notion.public()
+            snap["remote"] = cc_remote.cached()
+            try:
+                import cc_remote_mode
+                snap["remote_mode"] = cc_remote_mode.public()
+            except Exception:
+                snap["remote_mode"] = {}  # [remote] аккаунты на чужих серверах: только показ, в автовыборе не участвуют
             return self._send(200, snap)
         if u.path == "/api/pause":
             if not self._authed():
@@ -2800,9 +2940,22 @@ class H(BaseHTTPRequestHandler):
                     resp["current"] = snap[0]
                     if snap[1] is not None:
                         resp["history"] = snap[1]
+                else:
+                    # остановлена: как у Claude — последний экран из лога и время, когда он остановился
+                    cur, hist, stopped = cc_codex_console.frozen_snapshot(want_history=bool(q.get("history")))
+                    resp.update(current=cur, stopped=stopped)
+                    if hist is not None:
+                        resp["history"] = hist
                 return self._send(200, resp)
-            current_html, history_html = console_snapshot(want_history=bool(q.get("history")))
-            resp = {"ok": True, "current": current_html}
+            # При остановленной сессии не читать живой лог: показываем сохранённый экран и причину остановки.
+            running = _current_screen_pid(cfg().get("screen_session", "claude")) is not None
+            if running:
+                current_html, history_html = console_snapshot(want_history=bool(q.get("history")))
+                resp = {"ok": True, "current": current_html, "running": True}
+            else:
+                current_html, history_html, stopped = console_frozen_snapshot(want_history=bool(q.get("history")))
+                resp = {"ok": True, "current": current_html, "running": False,
+                        "idle": console_idle_reason(), "stopped": stopped}
             if history_html is not None:
                 resp["history"] = history_html
             return self._send(200, resp)
@@ -3078,7 +3231,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/backup/restore":  # «Восстановить недостающие»: живые профили не трогаются
             res = cc_backup.restore_missing(PROFILES, BACKUP_DIR)
             return self._send(200, dict(backup_status(), ok=True, restored=res["restored"]))
-        if u.path == "/api/notion/save":  # окно ⚙ блока Notion и переключатель резерва: имя агента / ссылка агента / галочки резерва
+        if u.path == "/api/notion/save":  # имя и ссылка Notion-агента ([notion-ai] резерва больше нет)
             c = cfg()  # без lock — как /api/config: он не реентерабельный и занят на время опроса
             ok, conf, err = cc_notion.save(c.get("notion_agent") or {}, body)
             if not ok:
@@ -3086,11 +3239,6 @@ class H(BaseHTTPRequestHandler):
                     body.get("lang"), "Не принято поле «%s»." % err, "Field “%s” was not accepted." % err)})
             c["notion_agent"] = conf
             jsave(CONFIG, c)
-            # любое сохранение (переключатель резерва, галочки, имя/ссылка агента) действует сразу, а не через TICK секунд;
-            # аварийный режим включается долго — его в запросе не ждём. Такты идут по одному (cc_notion._run)
-            th = threading.Thread(target=cc_notion.tick, daemon=True, name="notion-reserve-now")
-            th.start()
-            th.join(2)  # быстрый случай (без аварийного режима) успевает — ответ уже с новым состоянием; долгий догонит опрос страницы
             return self._send(200, {"ok": True, "notion": cc_notion.public()})
         if u.path == "/api/config":
             c = cfg()
@@ -3105,6 +3253,16 @@ class H(BaseHTTPRequestHandler):
                 c["weekly_pause"] = body["weekly_pause"]
             if isinstance(body.get("profile_backup"), bool):
                 c["profile_backup"] = body["profile_backup"]
+            if "weekly_cap" in body:  # [notion-ai] «Неделя, %» в «⚙ Настройки Claude» → «Переключение и лимиты»
+                try:
+                    cap = int(body["weekly_cap"])
+                except (TypeError, ValueError):
+                    cap = 0
+                if not 50 <= cap <= 100:
+                    return self._send(200, {"ok": False, "message": "Неделя: число от 50 до 100 %"})
+                c["weekly_cap"] = cap
+            if isinstance(body.get("codex_hidden"), list):  # [notion-ai] галочки «в быстром меню» в «⚙ Настройки Codex»
+                c["codex_hidden"] = sorted({m.strip()[:80] for m in body["codex_hidden"] if isinstance(m, str) and m.strip()})[:200]
             if "enabled_models" in body:
                 # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
                 # хотя бы одна модель должна остаться доступной для переключения
@@ -3133,6 +3291,7 @@ class H(BaseHTTPRequestHandler):
             UPDATER.kick()  # сменили режим обновлений — пусть петля пересмотрит сразу
             return self._send(200, {"ok": True, "autoswitch": c.get("autoswitch"),
                                     "threshold": c.get("threshold"), "optimize": c.get("optimize"),
+                                    "weekly_cap": c.get("weekly_cap", 99), "codex_hidden": list(c.get("codex_hidden") or []),
                                     "model": model_info()})
         if u.path == "/api/models/candidates":
             # add: {id: показываемое_имя} — принять кандидата в оборот;
@@ -3193,12 +3352,13 @@ class H(BaseHTTPRequestHandler):
 
 
 PAGE = r"""<!doctype html>
-<html lang="ru"><head>
+<html lang="ru"><head><script>try{if(localStorage.getItem('cc_has_prod')!=='1')document.documentElement.classList.add('no-prod')}catch(e){document.documentElement.classList.add('no-prod')}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude — лимиты аккаунтов</title>
 <link rel="icon" href="data:,">
-<script>try{var _s=localStorage.getItem('cc_skin');if(/^(phosphor|aurora|slate|blocks)$/.test(_s))document.documentElement.setAttribute('data-skin',_s)}catch(e){}try{if(localStorage.getItem('cc_conly')==='1')document.documentElement.classList.add('conly')}catch(e){}</script>
+<script>window.FLEET_TZ='__FLEET_TZ__'||undefined;</script>
+<script>try{localStorage.removeItem('cc_skin')}catch(e){}try{if(localStorage.getItem('cc_conly')==='1')document.documentElement.classList.add('conly')}catch(e){}</script>
 <style>
 :root{--bg:#0f1115;--card:#181c24;--txt:#e8eaf0;--mut:#8b93a7;--ok:#34c07c;--warn:#e8b93e;--bad:#e05b5b;--acc:#7c9aff}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -3240,8 +3400,6 @@ h1{font-size:19px;margin:0}
 .chip.login.warn svg{color:var(--warn)}
 .chip.login.urgent svg{color:var(--bad)}
 .acts .chip.login{height:26px;box-sizing:border-box;padding:0 10px;gap:5px;font-size:12px}
-html[data-skin="blocks"] .chip.login svg{color:var(--bk)}
-html[data-skin="phosphor"] .chip.login svg{color:var(--ph)}
 .ring{position:relative;flex:none}
 .ring svg{display:block}
 .ringtxt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--txt);font-weight:700}
@@ -3267,7 +3425,9 @@ button:disabled{opacity:.35;cursor:default}
 .tzoom{position:absolute;top:7px;right:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:rgba(0,0,0,.6)}
 /* вкладки консолей Claude | Codex: слева над консолью, без своей плашки; показываются, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:transparent}
-.ctabs[hidden],.ctstop[hidden],.cxcons[hidden]{display:none}
+.ctabs[hidden],.ctstop[hidden],.ctab[hidden]{display:none}
+html.no-prod #ctProd,html.no-prod .nai-seg[data-ag="prod"],html.no-prod .fleet-live-account.prod,html.no-prod .fleet-compact-account.prod,html.no-prod .fleet-acc[data-engine="prod"],html.no-prod .nai-h3.t-prod,html.no-prod .rm-hand[data-target="prod"],html.no-prod .tpmi[data-k="prod"]{display:none!important}
+@media(max-width:520px){.ctab .ctlong{display:none}}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
 .iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
 .iconbtn.ctab.on{border-color:var(--acc);color:var(--txt);background:rgba(255,255,255,.08)}
@@ -3279,20 +3439,93 @@ html:root:root .iconbtn.ctab[data-s="codex"]{--tc:104,154,236;--tt:#aac6f6;--ton
 html:root:root .iconbtn.ctab[data-s]:hover{background:transparent;border-color:rgb(var(--tc));color:var(--tt)}
 html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:rgb(var(--tc));color:var(--ton);box-shadow:none;text-shadow:none}
 .termwrap.hastabs .termbox{padding-top:42px}
-.cxcons{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:48px 18px 18px;text-align:center;pointer-events:none}
-.cxcons>*{pointer-events:auto}
-.cxcmsg{font-size:14px;font-weight:600;color:var(--txt)}
-.cxcsub{max-width:420px;font-size:12.5px;line-height:1.45;color:var(--mut);overflow-wrap:anywhere}
-.cxcons button{margin-top:6px;padding:9px 20px}
 .hdrl{display:flex;align-items:center;gap:10px;min-width:0}
 .hdrgear:disabled svg{animation:ccspin .8s linear infinite}
 .tzval{margin:0;padding:0 4px;min-width:48px;background:transparent;border:0;color:var(--mut);font-family:inherit;font-size:12.5px;font-weight:600;text-align:center;cursor:pointer}
 .tzval:hover{color:var(--txt)}
 .termdot.err{background:var(--bad);margin:0}
+.termdot.idle{background:#6b7280;margin:0}
+.termidle{position:sticky;bottom:0;white-space:normal;font:13px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#d6dbe4;background:rgba(23,27,35,.96);border:1px solid #3a4250;border-radius:8px;padding:9px 12px;margin-top:10px}
+.termidle{display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px}
+.termidle span{flex:1 1 240px;min-width:0}
+.termidle button{flex:none;padding:6px 16px;margin:0}
+.termidle[hidden],.termidle button[hidden]{display:none}
+/* экрана нет (PROD ещё не запускали, у Codex нет лога): sticky не к чему прижимать — плашку опускаем вниз колонкой */
+.termbox.termempty{display:flex;flex-direction:column}
+.termbox.termempty .termidle{margin-top:auto}
 .termbox{background:#0b0d10;border:1px solid #232a36;border-radius:8px;padding:10px 12px;overflow-x:hidden;overflow-y:auto;margin:0;font:11px/1.3 ui-monospace,Consolas,monospace;font-size:calc(11px*var(--tz,1));color:#c8d0dc;white-space:pre-wrap;word-break:break-word;scrollbar-width:thin;scrollbar-color:#3a3f4b #14171c}
 .termbox::-webkit-scrollbar{width:9px}
 .termbox::-webkit-scrollbar-track{background:#14171c}
 .termbox::-webkit-scrollbar-thumb{background:#3a3f4b;border-radius:99px;border:2px solid #14171c;background-clip:padding-box}
+
+/* --- разделение консоли (ПК, ≥1100px): 2–3 панели рядом --- */
+.tpheads,.tpadd{display:none}
+html:root:root #splitBtn[hidden]{display:none!important}  /* у кнопок блока масштаба display задаётся классом и перебивает hidden */
+.termwrap.tsplit .fleet-console-viewport{position:relative;display:flex!important;flex-direction:row;min-width:0;background:var(--fleet-terminal,#0b0d10)}
+/* общее окно ввода со строкой статуса выше окон частей на 39px: добавляем их к экрану, чтобы консоль и активные аккаунты занимали столько же места, как при одной консоли */
+html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(360px,41dvh,510px) + 39px)}
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)}}
+html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
+html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
+html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
+.tpextra{background:var(--fleet-terminal,#0b0d10);color:#d2dce9;white-space:pre;font:calc(12px*var(--tz,1)*var(--pz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace}
+.termwrap.tsplit .termbox.tpdrop{box-shadow:inset 0 0 0 2px var(--fleet-accent,#73dbb7);background-image:linear-gradient(rgba(115,219,183,.08),rgba(115,219,183,.08))}
+.termwrap.tsplit .tpheads{display:flex;position:absolute;left:0;right:0;top:0;height:30px;z-index:5;pointer-events:none}
+.tphd{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;padding:0 10px;margin:0;font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#9fb0c3;cursor:grab;pointer-events:auto;background:#0e1219;border-bottom:1px solid #263140;user-select:none}
+.tphd.on{color:#eaf2fb}
+.tphd+.tphd{border-left:1px solid #263140}
+.tphd.tpdrop{background:#173a33}
+.tphd b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tphd .tpdot{flex:none}
+.tphd{cursor:pointer}
+.tphd .tpcaret{flex:none;color:#7d8ea3;font-size:10px;margin-left:-2px}
+.tphd:hover .tpcaret{color:#cfe9e0}
+.tpmenu{position:fixed;z-index:70;min-width:224px;max-width:min(320px,calc(100vw - 16px));padding:6px;background:#141a23;border:1px solid #2a3644;border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,.5);font:500 13px system-ui,-apple-system,Segoe UI,sans-serif;color:#c9d4e0}
+.tpmt{padding:5px 10px 6px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6d7f94}
+.tpmi{display:flex;align-items:center;gap:9px;width:100%;margin:0;padding:8px 10px;border:0;border-radius:7px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.tpmi:hover,.tpmi:focus-visible{background:rgba(255,255,255,.07);outline:0}
+.tpmi.cur{color:#e7f3ee}
+.tpmd{width:7px;height:7px;border-radius:50%;flex:none;background:#e0905a}
+.tpmd[data-m=codex]{background:#4cdbb0}.tpmd[data-m=notion]{background:#a78bfa}
+.tpmn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tpmw{flex:none;font-size:11px;color:#6d7f94}
+.tpmc{flex:none;color:#68ac92}
+.tphd .tpx{margin:0 0 0 auto;padding:0 4px;min-height:0;width:auto;background:none;border:0;color:#7d8ea3;font:16px/1 system-ui,sans-serif;cursor:pointer}
+.tphd .tpx:hover{color:#eaf2fb}
+body.tpdraging .tpadd{display:flex;position:fixed;z-index:60;align-items:center;justify-content:center;text-align:center;padding:14px;font:600 13px system-ui,sans-serif;color:#cfe9e0;background:rgba(25,60,52,.78);border:2px dashed var(--fleet-accent,#73dbb7);box-sizing:border-box}
+body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
+.termwrap.nai-on .tpextra,.termwrap.nai-on .tpheads{display:none!important}
+/* --- у каждой части разделённой консоли своё окно ввода (форма — как общее окно, отправка — его же код) --- */
+.tpcomps{display:none}
+.termwrap.tsplit.tpcomps-on:not(.nai-on)>.tpcomps{display:flex;flex:none;min-width:0}
+.termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}
+.tpcw{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+.tpcw+.tpcw{border-left:1px solid #263140}
+.tpcomp{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-top:1px solid #263140;background:#101620;color:#dbe3ed}
+.tpcomp::before{content:"›";color:#73dbb7;font:20px ui-monospace,monospace}
+.tpcomp textarea{flex:1;min-width:0;resize:vertical;min-height:26px;max-height:140px;margin:0;padding:4px 0;background:none;color:#dbe3ed;border:0;outline:0;border-radius:0;font:12px/1.5 ui-monospace,Consolas,monospace}
+.tpcomp textarea::placeholder{color:#65768c}
+.tpcomp textarea:focus-visible{box-shadow:0 1px #45d6ab}
+.tpcomp button{margin:0;min-height:0;padding:0;flex:none}
+.tpcomp .tpsend{display:grid;place-items:center;width:28px;height:28px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;box-shadow:none}
+.tpcomp .tpsend svg{display:block;width:16px;height:16px;pointer-events:none}
+.tpcomp .tpkey{background:transparent;color:#73869d;border:1px solid #2a3644;padding:2px 5px;border-radius:4px;font:10px ui-monospace,monospace}
+/* --- чат Notion AI в части разделённой консоли --- */
+.termbox.tpchat{display:flex!important;flex-direction:column;overflow:hidden!important}
+html:root:root #termBox.tpchat,html:root:root .tpextra.tpchat{white-space:normal!important;font-family:ui-monospace,"SFMono-Regular",Consolas,monospace}
+.termbox.tpchat>span,.termbox.tpchat>.termidle{display:none!important}
+html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 auto;min-height:0;width:auto;height:auto;margin:0;padding:0;overflow-x:hidden;overflow-y:auto;font:inherit;color:inherit;white-space:normal}
+.tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid transparent}
+.tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}
+.termwrap.tsplit:not(.nai-on) .tpfr{display:block}
+.termwrap.nai-on .tpcomps{display:none!important}
+/* верхнее меню (ПК): открытая консоль — аккуратная прозрачная серая рамка вокруг вкладки, активная — такая же мягкого приглушённого зелёного */
+@media(min-width:1100px) and (pointer:fine){
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s]{align-self:center;height:30px!important;padding:0 12px!important;border-radius:8px}
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].tshown:not(.on){box-shadow:inset 0 0 0 1px rgba(170,182,200,.28)!important}
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].on{box-shadow:inset 0 0 0 1px rgba(104,172,146,.62)!important}
+ html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].on::after{display:none}
+}
 /* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
 .ccpause{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid #232a36;border-left:4px solid var(--ccp-accent,var(--mut))}
 .ccpause[hidden]{display:none}
@@ -3309,8 +3542,6 @@ html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:r
 .ccp-btn:disabled{opacity:.55;cursor:wait}
 .ccp-hint{font-size:11.5px;color:var(--mut)}
 /* баннер обновления и блок «Обновления» в настройках */
-html[data-skin] .ccp-btn.sec{border-color:rgba(127,127,127,.4);color:var(--mut);background:transparent}
-html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accent)}
 .ccp-link{font-size:12px;color:var(--mut);text-decoration:underline}
 .ccp-link:hover{color:var(--txt)}
 .upd-notes{margin-top:8px;font-size:12px;color:var(--mut)}
@@ -3384,309 +3615,18 @@ html[data-skin] .ccp-btn.sec:hover{color:var(--txt);border-color:var(--ccp-accen
 .poolname{width:100%;box-sizing:border-box;background:#0f1115;border:1px solid #2a3140;color:inherit;border-radius:6px;padding:5px 8px;font-size:13px}
 .modal{max-width:380px;max-height:90vh;overflow-y:auto}
 .modalh{font-size:12.5px;font-weight:700;margin:14px 0 4px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
-.skgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:4px}
-.skgrid .skopt{font:inherit;font-size:13px;font-weight:400;text-align:left;margin:0;background:rgba(127,127,127,.12);border:1px solid rgba(127,127,127,.35);color:var(--txt);border-radius:10px;padding:8px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
-.skgrid .skopt:hover{border-color:var(--acc)}
-.skgrid .skopt.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
-.sknm{font-size:13px;font-weight:700;margin-top:6px}
-.sksb{font-size:11px;color:var(--mut)}
-.skp{display:grid;grid-template-columns:1.5fr 1fr;grid-template-rows:repeat(3,1fr);gap:4px;height:62px;padding:6px;border-radius:7px;background:#0e1116}
-.skp i{display:block;border-radius:3px}
-.skp .c{grid-row:1/4;background:#0b0d10;border:1px solid #2a2f37}
-.skp .a{background:#14171c;border:1px solid #2a2f37}
-.skp-classic .a:nth-of-type(1){border-color:#7c9aff}
-.skp-phosphor{background:#040905;border:1px solid #12351d}
-.skp-phosphor .c{background:#020603;border-color:#1f6b36;background-image:repeating-linear-gradient(0deg,rgba(109,255,154,.5) 0 1px,transparent 1px 4px)}
-.skp-phosphor .a{background:transparent;border:0;border-top:1px dashed #1f6b36;border-radius:0;background-image:repeating-linear-gradient(90deg,#6dff9a 0 3px,transparent 3px 4px);background-size:60% 3px;background-repeat:no-repeat;background-position:0 70%}
-.skp-aurora{background:radial-gradient(60px 40px at 15% 0%,rgba(124,92,255,.7),transparent),radial-gradient(60px 40px at 95% 100%,rgba(255,90,170,.5),transparent),#0a0b14;border-radius:12px}
-.skp-aurora .c{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:8px}
-.skp-aurora .a{background:linear-gradient(90deg,rgba(124,92,255,.8),rgba(34,211,238,.8));border:0;border-radius:99px}
-.skp-slate{background:#0e0f12;border:1px solid #24272d}
-.skp-slate .c{background:#08090b;border:1px solid #31353d;border-radius:4px}
-.skp-slate .a{background:#14161a;border:1px solid #24272d;border-top:2px solid #e7e9ee;border-radius:3px}
-.skp-blocks{background:#ffd23f}
-.skp-blocks .c{background:#111;border:2px solid #111;border-radius:0;box-shadow:2px 2px 0 #111}
-.skp-blocks .a{background:#fff;border:2px solid #111;border-radius:0;box-shadow:2px 2px 0 #111}
-.skp-blocks .a:nth-of-type(1){background:#b6f23a}
 .scrim{z-index:50}
 #msg{z-index:70}
 /* скин: phosphor */
 /* PHOSPHOR — терминал на зелёном люминофоре: моноширинный шрифт, секционные рамки, сегментные полосы */
-html[data-skin="phosphor"]{--bg:#020603;--card:#031008;--txt:#c9ffd9;--mut:#4f9f6b;--ok:#6dff9a;--warn:#ffd24a;--bad:#ff6b5e;--acc:#6dff9a;--ph:#6dff9a;--ph2:#9bf5b5;--phd:#4f9f6b;--phl:#1f6b36;--phbg:#031008}
-html[data-skin="phosphor"] body{font-family:ui-monospace,"IBM Plex Mono","SF Mono","Cascadia Mono","Roboto Mono",Consolas,monospace;font-size:13.5px;color:var(--ph2)}
-html[data-skin="phosphor"]::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px)}
-html[data-skin="phosphor"] h1{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#d8ffe4;text-shadow:0 0 8px rgba(109,255,154,.7);filter:url(#ccPhosphor)}
-html[data-skin="phosphor"] h1::before{content:"▌";color:var(--ph);margin-right:4px}
-html[data-skin="phosphor"] .hdr{padding-bottom:6px;border-bottom:1px dashed var(--phl)}
-html[data-skin="phosphor"] .hdrgear,html[data-skin="phosphor"] .iconbtn{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--ph)}
-html[data-skin="phosphor"] .hdrgear:hover,html[data-skin="phosphor"] .iconbtn:hover{background:#0c2a17;border-color:var(--ph);color:var(--ph)}
-html[data-skin="phosphor"] .tzval{color:var(--ph);text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] .iconbtn.ctab{text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] .iconbtn.ctab.on{background:#0c2a17;border-color:var(--ph);color:var(--ph)}
-html[data-skin="phosphor"] .termdot{border-radius:0;background:var(--ph);box-shadow:0 0 8px var(--ph)}
-html[data-skin="phosphor"] .termdot.err{background:#ff6b5e;box-shadow:0 0 8px #ff6b5e}
-html[data-skin="phosphor"] .termbox{font-family:ui-monospace,"IBM Plex Mono","SF Mono","Cascadia Mono",Consolas,monospace;background:#010502;color:#c8d0dc;border:1px solid var(--phl);border-radius:2px;padding:12px 14px;filter:url(#ccPhosphorT);box-shadow:inset 0 0 70px rgba(60,255,120,.10);scrollbar-color:#1f6b36 #010502}
-html[data-skin="phosphor"] .termbox::-webkit-scrollbar-track{background:#010502}
-html[data-skin="phosphor"] .termbox::-webkit-scrollbar-thumb{background:#1f6b36;border:2px solid #010502;border-radius:0;background-clip:padding-box}
-html[data-skin="phosphor"] .termbox::-webkit-scrollbar-thumb:hover{background:#6dff9a;background-clip:padding-box}
-html[data-skin="phosphor"] .switchrow{gap:6px;color:var(--phd);font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;transition:color .15s}
-html[data-skin="phosphor"] .switchrow:hover,html[data-skin="phosphor"] .switchrow:has(input:checked){color:var(--ph2)}
-html[data-skin="phosphor"] .switchrow input[type=checkbox],html[data-skin="phosphor"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;flex:none;margin:0;width:3ch;height:1.25em;font:700 12px/1.25 ui-monospace,Consolas,monospace;letter-spacing:0;cursor:pointer;vertical-align:middle}
-html[data-skin="phosphor"] .switchrow input[type=checkbox]::before,html[data-skin="phosphor"] .wkchk input[type=checkbox]::before{content:"[ ]";color:var(--phd)}
-html[data-skin="phosphor"] .switchrow input[type=checkbox]:checked::before,html[data-skin="phosphor"] .wkchk input[type=checkbox]:checked::before{content:"[x]";color:var(--ph);text-shadow:0 0 8px rgba(109,255,154,.8)}
-html[data-skin="phosphor"] .thrbtn{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--ph);font-family:inherit}
-html[data-skin="phosphor"] .thrbtn:hover{border-color:var(--ph);background:#0c2a17}
-html[data-skin="phosphor"] .mchip{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--ph2);font-family:inherit;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] .mchip:hover{border-color:var(--ph)}
-html[data-skin="phosphor"] .mchip.active{background:var(--ph);color:#021006;border-color:var(--ph);box-shadow:0 0 14px rgba(109,255,154,.45)}
-html[data-skin="phosphor"] .card{background:var(--phbg);border:1px solid var(--phl);border-radius:0;box-shadow:inset 0 0 40px rgba(60,255,120,.04)}
-html[data-skin="phosphor"] .card.active{border-color:var(--ph);box-shadow:0 0 0 1px var(--ph),0 0 30px rgba(109,255,154,.22),inset 0 0 50px rgba(60,255,120,.09)}
-html[data-skin="phosphor"] .tag{border-radius:0;background:transparent;color:var(--ph2);border:1px solid #2fb15a;font-family:inherit;font-size:9.5px;letter-spacing:.08em;padding:0 6px}
-html[data-skin="phosphor"] .tag.free{color:var(--phd);border-color:var(--phl);background:transparent}
-html[data-skin="phosphor"] .tag.plan{background:transparent;color:var(--ph2)}
-html[data-skin="phosphor"] .tag.pin{background:var(--ph);color:#021006;border-color:var(--ph);right:auto;left:12px;transform:translateY(-62%);box-shadow:0 0 12px rgba(109,255,154,.6);padding:1px 8px;font-weight:700;font-size:10.5px}
-html[data-skin="phosphor"] .chip{background:transparent;border:1px dashed var(--phl);border-radius:0;color:var(--phd);font-family:inherit}
-html[data-skin="phosphor"] .chip b{color:var(--ph2)}
-html[data-skin="phosphor"] .chip.urgent{border-color:#ff6b5e}
-html[data-skin="phosphor"] .chip.warn{border-color:#ffd24a}
-html[data-skin="phosphor"] .chip.warn b{color:#ffd24a}
-html[data-skin="phosphor"] .email{font-weight:700;font-size:13px;color:#d8ffe4;text-shadow:0 0 6px rgba(109,255,154,.45)}
-html[data-skin="phosphor"] .err{color:#ff6b5e}
-html[data-skin="phosphor"] .ring svg circle:first-child{stroke:#0f2e19}
-html[data-skin="phosphor"] .ring svg circle{stroke-linecap:butt}
-html[data-skin="phosphor"] .ringtxt{color:var(--ph2);text-shadow:0 0 6px rgba(109,255,154,.5)}
-html[data-skin="phosphor"] .lbl{color:var(--phd);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] .lbl b{letter-spacing:0;text-shadow:0 0 8px currentColor}
-html[data-skin="phosphor"] .lbl span:last-child{text-transform:none;letter-spacing:0}
-html[data-skin="phosphor"] .bar{height:9px;border-radius:0;background:repeating-linear-gradient(90deg,#0d2c18 0 5px,transparent 5px 7px)}
-html[data-skin="phosphor"] .fill{border-radius:0;-webkit-mask:repeating-linear-gradient(90deg,#000 0 5px,transparent 5px 7px);mask:repeating-linear-gradient(90deg,#000 0 5px,transparent 5px 7px)}
-html[data-skin="phosphor"] .btn-sw{background:transparent;border:1px dashed #2fb15a;border-radius:0;color:var(--ph);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] .btn-sw:disabled{opacity:1;border:1px dotted var(--phl);color:var(--phd)}
-html[data-skin="phosphor"] .btn-sw:hover:not(:disabled){background:#0c2a17;border:1px solid var(--ph);box-shadow:0 0 12px rgba(109,255,154,.3)}
-html[data-skin="phosphor"] .btn-relogin{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] .btn-relogin:hover:not(:disabled){border-color:var(--ph);color:var(--ph)}
 @keyframes ccBlinkPh{0%,55%{opacity:1}56%,100%{opacity:0}}
-html[data-skin="phosphor"] .btn-renew{display:inline-flex;align-items:center;padding:2px 2px;background:transparent;color:var(--ph);border:0;border-radius:0;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;text-shadow:0 0 8px rgba(109,255,154,.55)}
-html[data-skin="phosphor"] .btn-renew::before{content:"[";color:var(--phd);margin-right:8px}
-html[data-skin="phosphor"] .btn-renew::after{content:"]";color:var(--phd);margin-left:8px}
-html[data-skin="phosphor"] .rn-ic{font-size:0;display:inline-block;width:7px;height:12px;margin-right:9px;flex:none;background:var(--ph);box-shadow:0 0 8px var(--ph);animation:ccBlinkPh 1.1s steps(1) infinite}
-html[data-skin="phosphor"] .btn-renew:hover:not(:disabled){background:var(--ph);color:#021006;text-shadow:none;box-shadow:0 0 16px rgba(109,255,154,.5)}
-html[data-skin="phosphor"] .btn-renew:hover::before,html[data-skin="phosphor"] .btn-renew:hover::after{color:#021006}
-html[data-skin="phosphor"] .btn-renew:hover .rn-ic{background:#021006;box-shadow:none;animation:none}
-html[data-skin="phosphor"] .modal{background:var(--phbg);border:1px solid var(--phl);border-radius:0;box-shadow:0 0 40px rgba(60,255,120,.12)}
-html[data-skin="phosphor"] .poolrow{border-color:#0f2e19}
-html[data-skin="phosphor"] .newbadge{border-radius:0;background:transparent;border:1px solid var(--ph);color:var(--ph)}
-html[data-skin="phosphor"] .ghostbtn{border-radius:0;border-color:var(--phl);color:var(--ph);font-family:inherit}
-html[data-skin="phosphor"] #modalDone{border-radius:0;background:var(--ph);color:#021006;font-family:inherit}
-html[data-skin="phosphor"] .ccpause{border-radius:0}
-html[data-skin="phosphor"] .ccp-btn{border-radius:0;font-family:inherit;text-transform:uppercase;letter-spacing:.05em;border-color:var(--ccp-accent);background:transparent}
-html[data-skin="phosphor"] .ccp-chip{border-radius:0}
-html[data-skin="phosphor"] #msg{background:#031008;border:1px solid var(--ph);border-radius:0;color:var(--ph2)}
-html[data-skin="phosphor"] .skopt.on{box-shadow:0 0 0 1px var(--ph)}
 /* скин: aurora */
 /* AURORA — тёмное стекло и свечение: плавные градиенты, пилюли */
-html[data-skin="aurora"]{--bg:#080915;--card:rgba(255,255,255,.06);--txt:#e8eaff;--mut:#8d94bd;--ok:#34d399;--warn:#fbbf24;--bad:#fb7185;--acc:#7c5cff;--au1:#7c5cff;--au2:#22d3ee;--au3:#ff5aaa}
-html[data-skin="aurora"] body{font-family:"Manrope","Inter",-apple-system,"Segoe UI",system-ui,sans-serif;color:var(--txt);
- background:radial-gradient(900px 520px at 4% -12%,rgba(124,92,255,.40),transparent 62%),radial-gradient(820px 520px at 104% 112%,rgba(34,211,238,.26),transparent 62%),radial-gradient(520px 320px at 72% -6%,rgba(255,90,170,.18),transparent 70%),#080915;background-attachment:fixed}
-html[data-skin="aurora"] h1{font-weight:800;letter-spacing:.01em;background:linear-gradient(90deg,#fff,#b9a8ff 60%,#7de7f7);-webkit-background-clip:text;background-clip:text;color:transparent}
-html[data-skin="aurora"] .hdrgear,html[data-skin="aurora"] .iconbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:50%;color:#bfc6ee}
-html[data-skin="aurora"] .hdrgear:hover,html[data-skin="aurora"] .iconbtn:hover{border-color:#7de7f7;color:#fff;box-shadow:0 0 14px -2px rgba(34,211,238,.6)}
-html[data-skin="aurora"] .iconbtn.ctab{border-radius:99px}
-html[data-skin="aurora"] .iconbtn.ctab.on{border-color:#7de7f7;color:#fff;background:rgba(124,92,255,.35)}
-html[data-skin="aurora"] .termdot{width:9px;height:9px;background:#34d399;box-shadow:0 0 10px #34d399,0 0 22px rgba(52,211,153,.6)}
-html[data-skin="aurora"] .termdot.err{background:#fb7185;box-shadow:0 0 10px #fb7185}
-html[data-skin="aurora"] .termbox{font-family:"DM Mono",ui-monospace,Consolas,monospace;font-synthesis:none;background:rgba(3,4,12,.95);color:#eef0ff;border:1px solid rgba(160,150,255,.28);border-radius:18px;padding:14px 16px;box-shadow:0 24px 60px -24px rgba(0,0,0,.9),0 0 0 1px rgba(124,92,255,.12),inset 0 1px 0 rgba(255,255,255,.08);scrollbar-color:rgba(124,92,255,.6) transparent}
-html[data-skin="aurora"] .termbox::-webkit-scrollbar-track{background:transparent}
-html[data-skin="aurora"] .termbox::-webkit-scrollbar-thumb{background:linear-gradient(#7c5cff,#22d3ee);border:2px solid transparent;background-clip:padding-box}
-html[data-skin="aurora"] .switchrow{gap:9px;color:var(--mut);font-weight:600;cursor:pointer}
-html[data-skin="aurora"] .switchrow:has(input:checked){color:var(--txt)}
-html[data-skin="aurora"] .switchrow input[type=checkbox],html[data-skin="aurora"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:30px;height:18px;border-radius:99px;background:rgba(255,255,255,.14);transition:background .2s;cursor:pointer}
-html[data-skin="aurora"] .switchrow input[type=checkbox]::after,html[data-skin="aurora"] .wkchk input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#c9cff5;transition:transform .2s,background .2s}
-html[data-skin="aurora"] .switchrow input[type=checkbox]:checked,html[data-skin="aurora"] .wkchk input[type=checkbox]:checked{background:linear-gradient(90deg,#7c5cff,#22d3ee)}
-html[data-skin="aurora"] .switchrow input[type=checkbox]:checked::after,html[data-skin="aurora"] .wkchk input[type=checkbox]:checked::after{transform:translateX(12px);background:#fff}
-html[data-skin="aurora"] .thrbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:99px;color:var(--txt)}
-html[data-skin="aurora"] .thrbtn:hover{border-color:#7de7f7}
-html[data-skin="aurora"] .mchip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--txt);font-weight:600}
-html[data-skin="aurora"] .mchip:hover{border-color:#7de7f7}
-html[data-skin="aurora"] .mchip.active{background:linear-gradient(135deg,#7c5cff,#c24bd6);border-color:transparent;color:#fff;box-shadow:0 6px 20px -6px rgba(124,92,255,.9)}
-html[data-skin="aurora"] .card{background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.025));border:1px solid rgba(255,255,255,.12);border-radius:16px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 18px 40px -22px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.07)}
-html[data-skin="aurora"] .card.active{border:1px solid transparent;box-shadow:0 0 46px -12px rgba(124,92,255,.75),0 18px 40px -22px rgba(0,0,0,.9);background:linear-gradient(#10112a,#0c0d1f) padding-box,linear-gradient(135deg,#7c5cff,#22d3ee 55%,#ff5aaa) border-box}
-html[data-skin="aurora"] .tag{background:rgba(255,255,255,.1);color:#d8dcff;font-weight:800;letter-spacing:.04em;padding:2px 9px}
-html[data-skin="aurora"] .tag.free{background:rgba(255,255,255,.08);color:var(--mut)}
-html[data-skin="aurora"] .tag.plan{background:linear-gradient(135deg,rgba(124,92,255,.55),rgba(34,211,238,.45));color:#fff}
-html[data-skin="aurora"] .tag.pin{background:linear-gradient(135deg,#7c5cff,#ff5aaa);color:#fff;right:22px;transform:translateY(-58%);box-shadow:0 6px 18px -4px rgba(255,90,170,.7);padding:3px 12px}
-html[data-skin="aurora"] .chip{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12);color:var(--mut);font-family:inherit}
-html[data-skin="aurora"] .chip b{color:var(--txt)}
-html[data-skin="aurora"] .chip.urgent{border-color:rgba(251,113,133,.6)}
-html[data-skin="aurora"] .chip.warn{border-color:rgba(251,191,36,.6)}
-html[data-skin="aurora"] .chip.warn b{color:#fbbf24}
-html[data-skin="aurora"] .email{font-weight:800;letter-spacing:.005em}
-html[data-skin="aurora"] .ring{filter:drop-shadow(0 0 10px rgba(124,92,255,.35))}
-html[data-skin="aurora"] .ring svg circle:first-child{stroke:rgba(255,255,255,.10)}
-html[data-skin="aurora"] .ringtxt{color:#fff;font-weight:800}
-html[data-skin="aurora"] .lbl{font-weight:600}
-html[data-skin="aurora"] .lbl b{font-weight:800}
-html[data-skin="aurora"] .bar{height:7px;background:rgba(255,255,255,.08);overflow:visible}
-html[data-skin="aurora"] .fill[data-t=ok]{background:linear-gradient(90deg,#22d3ee,#34d399);box-shadow:0 0 14px -2px rgba(52,211,153,.8)}
-html[data-skin="aurora"] .fill[data-t=warn]{background:linear-gradient(90deg,#fbbf24,#fb923c);box-shadow:0 0 14px -2px rgba(251,191,36,.75)}
-html[data-skin="aurora"] .fill[data-t=bad]{background:linear-gradient(90deg,#fb7185,#f43f5e);box-shadow:0 0 14px -2px rgba(244,63,94,.8)}
-html[data-skin="aurora"] .btn-sw{background:linear-gradient(135deg,rgba(124,92,255,.85),rgba(34,211,238,.75));color:#fff;border-radius:99px;font-weight:700}
-html[data-skin="aurora"] .btn-sw:disabled{opacity:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#c9cff5;padding:7px 13px}
-html[data-skin="aurora"] .btn-sw:hover:not(:disabled){box-shadow:0 0 22px -4px rgba(34,211,238,.7)}
-html[data-skin="aurora"] .btn-relogin{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--mut);border-radius:99px;font-weight:600}
-html[data-skin="aurora"] .btn-relogin:hover:not(:disabled){border-color:#7de7f7;color:#fff}
-html[data-skin="aurora"] .btn-renew{display:inline-flex;align-items:center;gap:8px;padding:3px 16px 3px 4px;border:1px solid transparent;border-radius:99px;font-size:12.5px;font-weight:700;color:#eaf6ff;background:linear-gradient(#141633,#0e1027) padding-box,linear-gradient(135deg,#34d399,#22d3ee 55%,#7c5cff) border-box;box-shadow:0 8px 22px -10px rgba(34,211,238,.7)}
-html[data-skin="aurora"] .rn-ic{font-size:0;width:20px;height:20px;border-radius:50%;flex:none;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/12px no-repeat,linear-gradient(135deg,#34d399,#22d3ee);box-shadow:0 0 12px rgba(52,211,153,.7)}
-html[data-skin="aurora"] .btn-renew:hover:not(:disabled){box-shadow:0 0 26px -2px rgba(34,211,238,.75);background:linear-gradient(#1a1d42,#121534) padding-box,linear-gradient(135deg,#34d399,#22d3ee 55%,#c24bd6) border-box}
-html[data-skin="aurora"] .modal{background:#12132b;border:1px solid rgba(255,255,255,.14);border-radius:20px;box-shadow:0 30px 80px -20px rgba(0,0,0,.9)}
-html[data-skin="aurora"] .poolrow{border-color:rgba(255,255,255,.08)}
-html[data-skin="aurora"] .newbadge{background:rgba(124,92,255,.3);color:#d8dcff}
-html[data-skin="aurora"] .ghostbtn{border-radius:99px;border-color:rgba(255,255,255,.14);color:var(--txt)}
-html[data-skin="aurora"] #modalDone{background:linear-gradient(135deg,#7c5cff,#c24bd6);color:#fff;border-radius:99px}
-html[data-skin="aurora"] .ccpause{border-radius:16px}
-html[data-skin="aurora"] .ccp-btn{border-radius:99px;background:rgba(255,255,255,.06)}
-html[data-skin="aurora"] #msg{background:#1a1c3a;border:1px solid rgba(255,255,255,.14)}
-html[data-skin="aurora"] .skopt.on{background:#20203a;box-shadow:0 0 0 1px #7c5cff}
 /* скин: slate */
 /* SLATE — графит и тишина: одна гарнитура, тонкие линии, акцент только цветом статуса */
-html[data-skin="slate"]{--bg:#0e0f12;--card:#14161a;--txt:#e7e9ee;--mut:#8a909c;--ok:#3ecf8e;--warn:#e8b84a;--bad:#ef6a6a;--acc:#e7e9ee;--sl-line:#24272d;--sl-line2:#31353d;--sl-dim:#5f6570}
-html[data-skin="slate"],html[data-skin="slate"] body{background:var(--bg);color:var(--txt);font-family:"Inter",-apple-system,"Segoe UI",system-ui,sans-serif;font-feature-settings:"tnum","cv11"}
-html[data-skin="slate"] h1{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
-html[data-skin="slate"] .hdr{padding-bottom:10px;border-bottom:1px solid var(--sl-line)}
-html[data-skin="slate"] .hdrgear,html[data-skin="slate"] .iconbtn{background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:#aab0bc}
-html[data-skin="slate"] .hdrgear:hover,html[data-skin="slate"] .iconbtn:hover{background:#1b1e24;border-color:#4d525d;color:#fff}
-html[data-skin="slate"] .iconbtn.ctab.on{background:#1b1e24;border-color:#4d525d;color:#fff}
-html[data-skin="slate"] .termdot{width:7px;height:7px;background:var(--ok);box-shadow:0 0 0 3px rgba(62,207,142,.15)}
-html[data-skin="slate"] .termdot.err{background:var(--bad);box-shadow:0 0 0 3px rgba(239,106,106,.15)}
-html[data-skin="slate"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;background:#08090b;color:#e3e7ee;border:1px solid var(--sl-line);border-radius:10px;padding:14px 16px;scrollbar-color:#3a3f48 transparent}
-html[data-skin="slate"] .termbox::-webkit-scrollbar-track{background:transparent}
-html[data-skin="slate"] .termbox::-webkit-scrollbar-thumb{background:#3a3f48;border-color:#08090b}
-html[data-skin="slate"] .switchrow{gap:10px;color:var(--mut);font-size:12.5px;cursor:pointer}
-html[data-skin="slate"] .switchrow input[type=checkbox],html[data-skin="slate"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:26px;height:15px;border-radius:99px;background:#262a31;box-shadow:inset 0 0 0 1px var(--sl-line2);transition:background .15s;cursor:pointer}
-html[data-skin="slate"] .switchrow input[type=checkbox]::after,html[data-skin="slate"] .wkchk input[type=checkbox]::after{content:"";position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:#8a909c;transition:transform .15s,background .15s}
-html[data-skin="slate"] .switchrow input[type=checkbox]:checked,html[data-skin="slate"] .wkchk input[type=checkbox]:checked{background:#e7e9ee;box-shadow:none}
-html[data-skin="slate"] .switchrow input[type=checkbox]:checked::after,html[data-skin="slate"] .wkchk input[type=checkbox]:checked::after{transform:translateX(11px);background:#0e0f12}
-html[data-skin="slate"] .switchrow input[type=checkbox]:focus-visible,html[data-skin="slate"] .wkchk input[type=checkbox]:focus-visible{outline:1px solid #e7e9ee;outline-offset:2px}
-html[data-skin="slate"] .switchrow:has(input:checked),html[data-skin="slate"] #autoWrap:has(input:checked){color:var(--txt)}
-html[data-skin="slate"] .thrbtn{background:transparent;border:1px solid var(--sl-line2);color:#aab0bc;border-radius:6px;font-family:inherit;font-weight:500}
-html[data-skin="slate"] .thrbtn:hover{border-color:#e7e9ee;color:#fff}
-html[data-skin="slate"] .btn-sw,html[data-skin="slate"] .btn-relogin,html[data-skin="slate"] .ghostbtn,html[data-skin="slate"] #modalDone,html[data-skin="slate"] .ccp-btn{font-family:inherit;font-weight:500;background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:#c7ccd6;transition:background .15s,border-color .15s,color .15s}
-html[data-skin="slate"] .btn-sw:hover:not(:disabled),html[data-skin="slate"] .btn-relogin:hover:not(:disabled),html[data-skin="slate"] .ghostbtn:hover,html[data-skin="slate"] #modalDone:hover,html[data-skin="slate"] .ccp-btn:hover{background:#1b1e24;border-color:#4d525d;color:#fff}
-html[data-skin="slate"] .mchip{border-color:var(--sl-line2);color:#c7ccd6;border-radius:7px;font-weight:500;font-size:12px;padding:4px 11px}
-html[data-skin="slate"] .mchip.active{background:#e7e9ee;border-color:#e7e9ee;color:#0e0f12;font-weight:600}
-html[data-skin="slate"] .mchip.active:hover:not(:disabled){background:#e7e9ee;color:#0e0f12}
-html[data-skin="slate"] .card{background:var(--card);border:1px solid var(--sl-line);border-radius:12px;padding:13px 16px}
-html[data-skin="slate"] .card.active{background:#181b20;border-color:#555b66;box-shadow:inset 0 2px 0 #e7e9ee}
-html[data-skin="slate"] .tag{background:#1f2228;color:#b3b9c4;border:1px solid var(--sl-line2);border-radius:5px;font-size:10px;font-weight:600;letter-spacing:.07em;padding:1px 6px}
-html[data-skin="slate"] .tag.free{background:transparent;color:var(--mut)}
-html[data-skin="slate"] .tag.plan{background:#1f2228;color:#e7e9ee}
-html[data-skin="slate"] .tag.pin{background:#e7e9ee;color:#0e0f12;border-color:#e7e9ee;padding:2px 9px;box-shadow:none}
-html[data-skin="slate"] .chip{background:transparent;border:0;border-radius:0;color:var(--mut);font-family:"JetBrains Mono",monospace;font-size:11.5px;padding:0}
-html[data-skin="slate"] .chip b{color:#c7ccd6;font-weight:500}
-html[data-skin="slate"] .chip.urgent b{color:var(--bad)}
-html[data-skin="slate"] .chip.warn b{color:#e0a64a}
-html[data-skin="slate"] .email{font-size:13.5px;font-weight:600;letter-spacing:-.005em}
-html[data-skin="slate"] .ring svg circle:first-child{stroke:#23262d}
-html[data-skin="slate"] .ring svg circle{stroke-width:2.6}
-html[data-skin="slate"] .ringtxt{color:#c7ccd6;font-family:"JetBrains Mono",monospace;font-weight:500}
-html[data-skin="slate"] .lbl{color:var(--mut);font-size:12px}
-html[data-skin="slate"] .lbl span:last-child{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--sl-dim)}
-html[data-skin="slate"] .lbl b{font-family:"JetBrains Mono",monospace;font-size:13px;font-weight:600}
-html[data-skin="slate"] .bar{height:4px;border-radius:2px;background:#1f2228}
-html[data-skin="slate"] .fill{border-radius:2px}
-html[data-skin="slate"] .btn-sw{color:#e7e9ee;border-color:#4d525d}
-html[data-skin="slate"] .btn-sw:disabled{opacity:1;color:var(--mut);border-color:var(--sl-line2);border-style:dashed}
-html[data-skin="slate"] .btn-sw:hover:not(:disabled){background:#e7e9ee;color:#0e0f12;border-color:#e7e9ee}
-html[data-skin="slate"] .ccp-btn{border-color:var(--ccp-accent)}
-html[data-skin="slate"] .btn-renew{display:inline-flex;align-items:center;gap:9px;border:0;padding:8px 0;background:transparent;color:#aab0bc;font-size:12px}
-html[data-skin="slate"] .btn-renew:hover:not(:disabled){background:transparent;color:#fff}
-html[data-skin="slate"] .rn-ic{font-size:0;width:17px;height:17px;border-radius:50%;flex:none;border:1px solid #4d525d;box-sizing:border-box;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/9px no-repeat;transition:background-color .15s,border-color .15s}
-html[data-skin="slate"] .rn-t{border-bottom:1px solid #3a3f48;padding-bottom:1px;transition:border-color .15s}
-html[data-skin="slate"] .btn-renew:hover .rn-ic{background-color:#e7e9ee;border-color:#e7e9ee;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E")}
-html[data-skin="slate"] .btn-renew:hover .rn-t{border-color:#e7e9ee}
-html[data-skin="slate"] .btn-relogin{color:var(--mut);border-color:var(--sl-line2)}
-html[data-skin="slate"] .modal{background:#14161a;border:1px solid var(--sl-line2);border-radius:14px}
-html[data-skin="slate"] .poolrow{border-color:var(--sl-line)}
-html[data-skin="slate"] .newbadge{background:#1f2228;color:#e7e9ee}
-html[data-skin="slate"] .ccpause{border-radius:12px}
-html[data-skin="slate"] .skopt.on{box-shadow:0 0 0 1px #e7e9ee}
 /* скин: blocks */
 /* BLOCKS — нео-брутализм: плоские цвета, толстые чёрные рамки, жёсткие тени */
-html[data-skin="blocks"]{--bg:#ffd84d;--card:#fff;--txt:#111;--mut:#2b2b2b;--ok:#00d084;--warn:#ffb400;--bad:#ff3d3d;--acc:#4b3fff;--bk:#111;--by:#ffd84d;--bl:#c6f432;--bb:#4b3fff}
-html[data-skin="blocks"] body{font-family:"Space Grotesk",-apple-system,"Segoe UI",system-ui,sans-serif;font-weight:500;color:var(--bk)}
-html[data-skin="blocks"] h1{display:inline-block;background:var(--bk);color:var(--by);font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 12px;transform:rotate(-1deg)}
-html[data-skin="blocks"] .hdrgear,html[data-skin="blocks"] .iconbtn{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);box-shadow:2px 2px 0 var(--bk)}
-html[data-skin="blocks"] .hdrgear:hover,html[data-skin="blocks"] .iconbtn:hover{background:var(--bl);border-color:var(--bk);color:var(--bk)}
-html[data-skin="blocks"] .tzval{color:#fff;font-weight:700}
-html[data-skin="blocks"] .iconbtn.ctab.on{background:var(--bl);color:var(--bk)}
-html[data-skin="blocks"] .termdot{border-radius:0;width:11px;height:11px;background:#00d084;border:2px solid var(--bk)}
-html[data-skin="blocks"] .termdot.err{background:#ff3d3d}
-html[data-skin="blocks"] .termbox{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;background:#0a0a0a;color:#fff;border:3px solid var(--bk);border-radius:0;padding:10px 14px;box-shadow:5px 5px 0 var(--bb),5px 5px 0 3px var(--bk);scrollbar-color:#ffd84d #111}
-html[data-skin="blocks"] .termbox::-webkit-scrollbar-track{background:#111}
-html[data-skin="blocks"] .termbox::-webkit-scrollbar-thumb{background:#ffd84d;border:2px solid #111;border-radius:0;background-clip:padding-box}
-html[data-skin="blocks"] .termwrap{margin-bottom:22px}
-html[data-skin="blocks"] .switchrow{gap:9px;color:var(--bk);font-weight:700;cursor:pointer}
-html[data-skin="blocks"] .switchrow input[type=checkbox],html[data-skin="blocks"] .wkchk input[type=checkbox]{-webkit-appearance:none;appearance:none;transform:none;position:relative;flex:none;margin:0;width:20px;height:20px;background:#fff;border:2px solid var(--bk);border-radius:0;box-shadow:2px 2px 0 var(--bk);cursor:pointer}
-html[data-skin="blocks"] .switchrow input[type=checkbox]:checked,html[data-skin="blocks"] .wkchk input[type=checkbox]:checked{background:var(--bb)}
-html[data-skin="blocks"] .switchrow input[type=checkbox]:checked::after,html[data-skin="blocks"] .wkchk input[type=checkbox]:checked::after{content:"";position:absolute;inset:1px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/14px no-repeat}
-html[data-skin="blocks"] .thrbtn{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);font-weight:700;box-shadow:2px 2px 0 var(--bk)}
-html[data-skin="blocks"] .thrbtn:hover{background:var(--bl);border-color:var(--bk)}
-html[data-skin="blocks"] .mchip{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);font-weight:700;box-shadow:3px 3px 0 var(--bk);transition:transform .08s,box-shadow .08s}
-html[data-skin="blocks"] .mchip:hover{background:var(--bl);border-color:var(--bk);transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--bk)}
-html[data-skin="blocks"] .mchip.active{background:var(--bb);color:#fff;border-color:var(--bk)}
-html[data-skin="blocks"] .card{background:#fff;border:3px solid var(--bk);border-radius:0;box-shadow:4px 4px 0 var(--bk);margin-bottom:16px}
-html[data-skin="blocks"] .card.active{background:var(--bl);border:3px solid var(--bk);box-shadow:4px 4px 0 var(--bk)}
-html[data-skin="blocks"] .tag{background:var(--bk);color:#fff;border-radius:0;font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:1px 7px}
-html[data-skin="blocks"] .tag.free{background:#fff;color:var(--bk);border:2px solid var(--bk)}
-html[data-skin="blocks"] .tag.plan{background:var(--by);color:var(--bk);border:2px solid var(--bk)}
-html[data-skin="blocks"] .tag.pin{background:var(--bb);color:#fff;border:2px solid var(--bk);right:14px;transform:translateY(-62%) rotate(-2deg);box-shadow:3px 3px 0 var(--bk);padding:2px 10px;font-size:11.5px}
-html[data-skin="blocks"] .chip{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);font-weight:700}
-html[data-skin="blocks"] .chip b{color:var(--bk)}
-html[data-skin="blocks"] .chip.urgent{background:#ff3d3d;color:#fff}
-html[data-skin="blocks"] .chip.urgent b{color:#fff}
-html[data-skin="blocks"] .chip.warn{background:#ffd23f}
-html[data-skin="blocks"] .chip.warn b{color:var(--bk)}
-html[data-skin="blocks"] .email{font-size:15px;font-weight:700;color:var(--bk)}
-html[data-skin="blocks"] .err{color:#d41818;font-weight:700}
-html[data-skin="blocks"] .ring svg circle{stroke-width:4.5;stroke-linecap:butt}
-html[data-skin="blocks"] .ring svg circle:first-child{stroke:#111;opacity:.14}
-html[data-skin="blocks"] .ringtxt{color:var(--bk)}
-html[data-skin="blocks"] .lbl{color:var(--bk);font-weight:700}
-html[data-skin="blocks"] .lbl b{color:var(--bk)!important;font-size:18px;letter-spacing:-.02em}
-html[data-skin="blocks"] .lbl span:last-child{font-weight:500;opacity:.8}
-html[data-skin="blocks"] .bar{height:12px;border-radius:0;background:#fff;border:2px solid var(--bk)}
-html[data-skin="blocks"] .fill{border-radius:0;border-right:2px solid var(--bk)}
-html[data-skin="blocks"] .btn-sw{background:var(--bk);color:var(--by);border:2px solid var(--bk);border-radius:0;font-weight:700;box-shadow:3px 3px 0 var(--bb);transition:transform .08s,box-shadow .08s,background .08s}
-html[data-skin="blocks"] .btn-sw:disabled{opacity:1;background:#fff;color:var(--bk);border:2px solid var(--bk);box-shadow:none}
-html[data-skin="blocks"] .btn-sw:hover:not(:disabled){background:var(--bb);color:#fff;transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--bk)}
-html[data-skin="blocks"] .btn-sw:active:not(:disabled){transform:translate(3px,3px);box-shadow:0 0 0 var(--bk)}
-html[data-skin="blocks"] .btn-relogin{background:#fff;border:2px solid var(--bk);color:var(--bk);border-radius:0;font-weight:700;box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="blocks"] .btn-relogin:hover:not(:disabled){background:var(--bl)}
-html[data-skin="blocks"] .btn-renew{display:inline-flex;align-items:center;gap:10px;padding:5px 14px 5px 6px;border:3px solid var(--bk);border-radius:0;background:var(--bb);color:#fff;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;box-shadow:4px 4px 0 var(--bk);transition:transform .08s,box-shadow .08s}
-html[data-skin="blocks"] .rn-ic{font-size:0;width:18px;height:18px;flex:none;border:2px solid var(--bk);background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/12px no-repeat,var(--bl)}
-html[data-skin="blocks"] .btn-renew:hover:not(:disabled){background:var(--bl);color:var(--bk);transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--bk)}
-html[data-skin="blocks"] .btn-renew:hover .rn-ic{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.5l5 5L19.5 6.5'/%3E%3C/svg%3E") center/12px no-repeat,var(--bb)}
-html[data-skin="blocks"] .btn-renew:active:not(:disabled){transform:translate(4px,4px);box-shadow:0 0 0 var(--bk)}
-html[data-skin="blocks"] .modal{background:#fff;color:var(--bk);border:3px solid var(--bk);border-radius:0;box-shadow:6px 6px 0 var(--bk)}
-html[data-skin="blocks"] .modalsub{color:var(--mut)}
-html[data-skin="blocks"] .poolrow{border-color:var(--bk)}
-html[data-skin="blocks"] .newbadge{background:var(--bb);color:#fff;border-radius:0}
-html[data-skin="blocks"] .ghostbtn{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk);font-weight:700;box-shadow:2px 2px 0 var(--bk)}
-html[data-skin="blocks"] #modalDone{background:var(--bk);color:var(--by);border-radius:0;box-shadow:3px 3px 0 var(--bb)}
-html[data-skin="blocks"] .ccpause,html[data-skin="blocks"] .ccpause.lvl-hard,html[data-skin="blocks"] .ccpause.lvl-gate,html[data-skin="blocks"] .ccpause.lvl-pause,html[data-skin="blocks"] .ccpause.lvl-off,html[data-skin="blocks"] .ccpause.lvl-upd,html[data-skin="blocks"] .ccpause.lvl-updok,html[data-skin="blocks"] .ccpause.lvl-upderr{background:#fff;color:var(--bk);border:3px solid var(--bk);border-left:12px solid var(--ccp-accent,var(--bk));border-radius:0;box-shadow:4px 4px 0 var(--bk)}
-html[data-skin="blocks"] .ccp-title,html[data-skin="blocks"] .ccp-sub .num,html[data-skin="blocks"] .ccp-chip b{color:var(--bk)}
-html[data-skin="blocks"] .ccpause.lvl-upd .ccp-title b{color:#1f62c4}html[data-skin="blocks"] .ccpause.lvl-updok .ccp-title b{color:#18804a}html[data-skin="blocks"] .ccpause.lvl-upderr .ccp-title b{color:#c0392b}
-html[data-skin="blocks"] .ccp-sub,html[data-skin="blocks"] .ccp-hint,html[data-skin="blocks"] .ccp-timer .l{color:var(--mut)}
-html[data-skin="blocks"] .ccp-chip{background:#fff;border:2px solid var(--bk);border-radius:0;color:var(--bk)}
-html[data-skin="blocks"] .ccp-chip.hot{background:#ff3d3d;color:var(--bk)}
 /* акцент баннера (заголовок, таймер, полоса) на белом — тёмные варианты, светлые не читались (2,7–3,6) */
-html[data-skin="blocks"] .ccpause.lvl-hard{--ccp-accent:#c0392b}html[data-skin="blocks"] .ccpause.lvl-pause{--ccp-accent:#6d28d9}
-html[data-skin="blocks"] .ccpause.lvl-gate{--ccp-accent:#8a5a00}html[data-skin="blocks"] .ccpause.lvl-off{--ccp-accent:#18804a}
-html[data-skin="blocks"] .ccp-btn{background:var(--bk);color:var(--by);border:2px solid var(--bk);border-radius:0;box-shadow:3px 3px 0 var(--ccp-accent,var(--bb))}
-html[data-skin="blocks"] .ccp-btn:hover{background:var(--bb);color:#fff}
-html[data-skin="blocks"] .ccp-err{color:#d41818}
-html[data-skin="blocks"] #msg{background:var(--bk);color:var(--by);border:3px solid var(--bk);border-radius:0;font-weight:700}
-html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:var(--bk)}
 
 /* ---- добавление/удаление аккаунтов ---- */
 .hdrgear svg{width:14px;height:14px;display:block}
@@ -3706,41 +3646,6 @@ html[data-skin="blocks"] .skopt.on{box-shadow:3px 3px 0 var(--bk);border-color:v
 .efB .tk.pass{background:rgba(255,255,255,.55)}
 .efB .tk.off{background:#1a1e27;box-shadow:0 0 0 1px #2a2f3a;cursor:not-allowed}
 .efB .th{position:absolute;top:2px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--bg);border:2px solid var(--ef);box-shadow:0 0 0 3px color-mix(in srgb,var(--ef) 22%,transparent);transition:left .25s,border-color .25s}
-html[data-skin="aurora"] .efrow{color:var(--mut)}
-html[data-skin="aurora"] .efB .tr{height:5px;top:5.5px;background:rgba(255,255,255,.08)}
-html[data-skin="aurora"] .efB .fl{top:5.5px;height:5px;background:linear-gradient(90deg,#22d3ee,var(--ef));box-shadow:0 0 12px -2px var(--ef)}
-html[data-skin="aurora"] .efB .tk{background:rgba(255,255,255,.18)}
-html[data-skin="aurora"] .efB .tk.pass{background:rgba(255,255,255,.7)}
-html[data-skin="aurora"] .efB .tk.off{background:transparent;box-shadow:0 0 0 1px rgba(255,255,255,.18)}
-html[data-skin="aurora"] .efB .th{background:#fff;border:0;box-shadow:0 0 0 3px color-mix(in srgb,var(--ef) 45%,transparent),0 0 16px var(--ef)}
-html[data-skin="blocks"] .efrow{color:var(--bk);font-weight:700}
-html[data-skin="blocks"] .efrow .eflbl b{color:var(--bk)!important}
-html[data-skin="blocks"] .efB{--ef:#4b3fff!important}
-html[data-skin="blocks"] .efB .tr{height:8px;top:4px;background:#fff;border:2px solid var(--bk);border-radius:0;box-sizing:border-box}
-html[data-skin="blocks"] .efB .fl{top:4px;height:8px;border-radius:0;background:var(--bb);border:2px solid var(--bk);box-sizing:border-box}
-html[data-skin="blocks"] .efB .tk{border-radius:0;background:var(--bk);width:2px;height:8px;top:4px;margin-left:-1px}
-html[data-skin="blocks"] .efB .tk.pass{background:var(--bk)}
-html[data-skin="blocks"] .efB .tk.off{background:transparent;box-shadow:none}
-html[data-skin="blocks"] .efB .th{border-radius:0;width:15px;height:15px;margin-left:-7.5px;top:.5px;background:var(--by);border:3px solid var(--bk);box-shadow:2px 2px 0 var(--bk)}
-html[data-skin="phosphor"] .efrow{color:var(--phd)}
-html[data-skin="phosphor"] .efrow .eflbl{text-transform:uppercase;letter-spacing:.08em}
-html[data-skin="phosphor"] .efrow .eflbl b{color:var(--ph)!important}
-html[data-skin="phosphor"] .efB{--ef:#6dff9a!important}
-html[data-skin="phosphor"] .efB .tr{height:2px;top:7px;border-radius:0;background:#0f2e19}
-html[data-skin="phosphor"] .efB .fl{top:7px;height:2px;border-radius:0;background:var(--ph);box-shadow:0 0 8px var(--ph)}
-html[data-skin="phosphor"] .efB .tk{border-radius:0;background:#1f6b36;top:6px;width:4px;height:4px;margin-left:-2px}
-html[data-skin="phosphor"] .efB .tk.pass{background:var(--ph)}
-html[data-skin="phosphor"] .efB .tk.off{background:#031008;box-shadow:0 0 0 1px #12351d}
-html[data-skin="phosphor"] .efB .th{border-radius:0;background:#010502;border:2px solid var(--ph);box-shadow:0 0 10px rgba(109,255,154,.7);width:10px;height:10px;margin-left:-5px;top:3px}
-html[data-skin="slate"] .efrow{color:var(--mut)}
-html[data-skin="slate"] .efrow .eflbl b{color:#e7e9ee!important;font-family:"JetBrains Mono",monospace;font-weight:600}
-html[data-skin="slate"] .efB{--ef:#e7e9ee!important}
-html[data-skin="slate"] .efB .tr{height:2px;top:7px;border-radius:1px;background:#23262d}
-html[data-skin="slate"] .efB .fl{top:7px;height:2px;border-radius:1px;background:#e7e9ee}
-html[data-skin="slate"] .efB .tk{width:2px;height:6px;top:5px;margin-left:-1px;border-radius:1px;background:#3a3f48}
-html[data-skin="slate"] .efB .tk.pass{background:#e7e9ee}
-html[data-skin="slate"] .efB .tk.off{background:#23262d;box-shadow:none}
-html[data-skin="slate"] .efB .th{width:11px;height:11px;margin-left:-5.5px;top:2.5px;border:0;border-radius:50%;background:#e7e9ee;box-shadow:0 0 0 4px rgba(231,233,238,.14)}
 .btn-del{margin:0 0 0 auto;display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid #333c4d;color:var(--mut)}
 .btn-del svg{width:14px;height:14px}
 .btn-del:hover:not(:disabled){border-color:var(--bad);color:var(--bad)}
@@ -3763,77 +3668,6 @@ html[data-skin="slate"] .efB .th{width:11px;height:11px;margin-left:-5.5px;top:2
 #acctScrim.side #acctBox{max-width:min(400px,92vw);height:100%;max-height:none;overflow-y:auto;border-radius:0;border-width:0 0 0 1px;box-shadow:-8px 0 24px rgba(0,0,0,.35);animation:acctSide .25s ease}
 #acctBox .modalfoot button{margin-top:0}
 @keyframes acctSide{from{transform:translateX(100%)}to{transform:none}}
-html[data-skin="phosphor"] .btn-del{background:transparent;border:1px solid var(--phl);border-radius:0;color:var(--phd);font-family:inherit;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] .btn-del:hover:not(:disabled){border-color:#ff6b5e;color:#ff6b5e}
-html[data-skin="phosphor"] .dlgwarn{border:1px dashed #ff6b5e;border-radius:0;background:rgba(255,107,94,.06);color:#ffd9d4}
-html[data-skin="phosphor"] .dlginp{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--ph)}
-html[data-skin="phosphor"] .dlginp:focus{border-color:var(--ph);box-shadow:0 0 10px rgba(109,255,154,.25)}
-html[data-skin="phosphor"] .btn-danger{background:#ff6b5e;color:#1a0300;border-radius:0;font-family:inherit;text-transform:uppercase;letter-spacing:.06em}
-html[data-skin="phosphor"] #acctBox button:not(.ghostbtn):not(.btn-danger){border-radius:0;background:var(--ph);color:#021006;font-family:inherit;font-weight:700}
-html[data-skin="phosphor"] #acctBox .ghostbtn{border-radius:0}
-html[data-skin="phosphor"] .dlgstep i{border-radius:0;background:var(--ph);color:#021006}
-html[data-skin="phosphor"] .dlgurl{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--phd)}
-html[data-skin="aurora"] .btn-del{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:var(--mut);border-radius:99px;font-weight:600}
-html[data-skin="aurora"] .btn-del:hover:not(:disabled){border-color:var(--bad);color:#fff;background:rgba(251,113,133,.16)}
-html[data-skin="aurora"] .dlgwarn{border:1px solid rgba(251,113,133,.45);border-radius:14px;background:rgba(251,113,133,.09)}
-html[data-skin="aurora"] .dlginp{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px}
-html[data-skin="aurora"] .dlginp:focus{border-color:#7de7f7}
-html[data-skin="aurora"] .btn-danger{background:linear-gradient(135deg,#fb7185,#c24bd6);color:#fff;border-radius:99px}
-html[data-skin="aurora"] .dlgstep i{background:linear-gradient(135deg,#7c5cff,#22d3ee);color:#fff}
-html[data-skin="aurora"] .dlgurl{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:12px}
-html[data-skin="slate"] .btn-del{font-family:inherit;font-weight:500;background:transparent;border:1px solid var(--sl-line2);border-radius:7px;color:var(--mut)}
-html[data-skin="slate"] .btn-del:hover:not(:disabled){border-color:var(--bad);color:var(--bad);background:#1b1e24}
-html[data-skin="slate"] .dlgwarn{border:1px solid rgba(239,106,106,.4);border-radius:10px;background:rgba(239,106,106,.07)}
-html[data-skin="slate"] .dlginp{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
-html[data-skin="slate"] .dlginp:focus{border-color:#8a909c}
-html[data-skin="slate"] .btn-danger{font-weight:500;background:transparent;border:1px solid var(--bad);color:var(--bad);border-radius:7px}
-html[data-skin="slate"] .btn-danger:hover:not(:disabled){background:var(--bad);color:#0e0f12}
-html[data-skin="slate"] .dlgstep i{background:transparent;border:1px solid var(--sl-line2);color:#c7ccd6}
-html[data-skin="slate"] .dlgurl{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
-html[data-skin="blocks"] .btn-del{background:#fff;border:2px solid var(--bk);color:var(--bk);border-radius:0;font-weight:700;box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="blocks"] .btn-del:hover:not(:disabled){background:var(--bad);color:#fff}
-html[data-skin="blocks"] .dlgwarn{border:2px solid var(--bk);border-radius:0;background:#ffe3e3;color:var(--bk);box-shadow:3px 3px 0 var(--bad)}
-html[data-skin="blocks"] .dlgwarn b{color:#c40000}
-html[data-skin="blocks"] .dlginp{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
-html[data-skin="blocks"] .dlginp:focus{background:#fffbe0}
-html[data-skin="blocks"] .poolname{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
-html[data-skin="blocks"] .poolname:focus{outline:none;background:#fffbe0}
-html[data-skin="blocks"] .btn-danger{background:var(--bad);color:#fff;border:2px solid var(--bk);border-radius:0;box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="blocks"] .dlgstep i{background:var(--bk);color:var(--by);border-radius:0}
-html[data-skin="blocks"] .dlgurl{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
-html[data-skin="blocks"] .dlgerr{color:#c40000;font-weight:700}
-html[data-skin="phosphor"] .segctl{border-color:var(--phl);border-radius:0}
-html[data-skin="phosphor"] .segctl button{font-family:inherit;text-transform:uppercase;letter-spacing:.06em;color:var(--phd)}
-html[data-skin="phosphor"] .segctl button.on{background:var(--ph);color:#021006}
-html[data-skin="aurora"] .segctl{border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(255,255,255,.05)}
-html[data-skin="aurora"] .segctl button{background:transparent;color:var(--mut);font-weight:700}
-html[data-skin="aurora"] .segctl button.on{background:linear-gradient(135deg,#7c5cff,#c24bd6);color:#fff}
-html[data-skin="slate"] .segctl{border:1px solid var(--sl-line2);border-radius:7px;background:var(--card)}
-html[data-skin="slate"] .segctl button{border:0;background:transparent;color:var(--mut)}
-html[data-skin="slate"] .segctl button.on{background:#e7e9ee;color:#0e0f12}
-html[data-skin="blocks"] .segctl{border:2px solid var(--bk);border-radius:0;background:#fff;box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="blocks"] .segctl button{background:transparent;color:var(--bk);font-weight:700}
-html[data-skin="blocks"] .segctl button.on{background:var(--bk);color:var(--by)}
-html[data-skin="phosphor"] .updlog{border-color:var(--phl);border-radius:0}
-html[data-skin="phosphor"] .updlog>summary{color:var(--ph);text-transform:uppercase;letter-spacing:.06em;font-size:12px}
-html[data-skin="phosphor"] .updlog-list,html[data-skin="phosphor"] .ul-it{border-color:#0f2e19}
-html[data-skin="phosphor"] .ul-h{color:var(--ph2)}
-html[data-skin="phosphor"] .ul-cur{border-radius:0}
-html[data-skin="aurora"] .updlog{border-color:rgba(255,255,255,.14);border-radius:14px;background:rgba(255,255,255,.03)}
-html[data-skin="aurora"] .updlog-list,html[data-skin="aurora"] .ul-it{border-color:rgba(255,255,255,.08)}
-html[data-skin="aurora"] .ul-cur{color:#c4b5ff}
-html[data-skin="slate"] .updlog{border-color:var(--sl-line2);border-radius:7px}
-html[data-skin="slate"] .updlog>summary{font-weight:500}
-html[data-skin="slate"] .updlog-list,html[data-skin="slate"] .ul-it{border-color:var(--sl-line)}
-html[data-skin="slate"] .ul-cur{color:var(--mut)}
-html[data-skin="blocks"] .updlog{border:2px solid var(--bk);border-radius:0;background:#fff;box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="blocks"] .updlog>summary{color:var(--bk);font-weight:800}
-html[data-skin="blocks"] .updlog[open]>summary{background:var(--by)}
-html[data-skin="blocks"] .updlog-list{border-top:2px solid var(--bk)}
-html[data-skin="blocks"] .ul-it{border-color:#d9d9d9}
-html[data-skin="blocks"] .ul-h{color:var(--bk)}
-html[data-skin="blocks"] .ul-d,html[data-skin="blocks"] .ul-it li{color:#3a3a3a}
-html[data-skin="blocks"] .ul-cur{color:var(--bk);background:var(--bl);border:2px solid var(--bk);border-radius:0;font-weight:700}
 
 /* ---- вёрстка «вписано в окно» (ПК): консоль забирает всю свободную высоту, остальное компактно;
    «−/+» над консолью меняют только шрифт внутри неё — размер блока от масштаба не зависит ---- */
@@ -3887,13 +3721,14 @@ html:root:root .acts .chip{padding:2px 5px;font-size:10.5px}
 /* ---- версия приложения: мелко, справа внизу под карточками ---- */
 /* подпись версии — в нижнем отступе под карточками, строку не занимает: карточки и консоль не сжимаются */
 #verTag{align-self:flex-end;flex:none;height:0;overflow:visible;text-align:right;margin:0 2px;font-size:9px;line-height:1;color:var(--mut);letter-spacing:.03em;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none;user-select:none}
-@media (min-width:900px){#verTag{position:fixed;right:18px;bottom:0;height:auto;margin:0}html[data-skin="blocks"] #verTag{bottom:-2px}}
+@media (min-width:900px){#verTag{position:fixed;right:18px;bottom:0;height:auto;margin:0}}
 html.conly #verTag{display:none}
 /* ---- режим «только консоль» ---- */
 #fsBtn .fsx{display:none}
 html.conly #fsBtn .fsi{display:none}
 html.conly #fsBtn .fsx{display:block}
-html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause{display:none!important}
+html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause,html.conly #cxPause{display:none!important}
+#cxPause:not([hidden]){display:block;padding:0;overflow:visible;margin:0 0 8px}
 html:root:root.conly body{height:100vh;height:100dvh;display:flex;flex-direction:column;padding:0}
 html:root:root.conly .termwrap{flex:1 1 0;min-height:0;margin:0}
 html:root:root.conly .termbox{flex:1 1 0;height:auto;min-height:0;border:0;border-radius:0;box-shadow:none;padding-bottom:36px}
@@ -3926,22 +3761,6 @@ html.conly .dock{display:block}
 .dpop .lbl span{white-space:nowrap}
 .dpop .dpa{font-size:11px;color:var(--ok);font-weight:700}
 .dpop .row:first-of-type{margin-top:8px}
-html[data-skin="phosphor"] .dockpanel{border-top:1px dashed var(--phl)}
-html[data-skin="phosphor"] .dchip,html[data-skin="phosphor"] .dpop{border:1px solid var(--phl);border-radius:0;background:var(--phbg)}
-html[data-skin="phosphor"] .dchip.act{border-color:var(--ph);box-shadow:0 0 14px rgba(109,255,154,.25)}
-html[data-skin="phosphor"] .ddot{border-radius:0}
-html[data-skin="aurora"] .dockpanel{border-top:1px solid rgba(255,255,255,.12)}
-html[data-skin="aurora"] .dchip,html[data-skin="aurora"] .dpop{border:1px solid rgba(255,255,255,.14);border-radius:14px}
-html[data-skin="aurora"] .dchip.act{border-color:#7c5cff;box-shadow:0 0 22px -6px rgba(124,92,255,.8)}
-html[data-skin="slate"] .dockpanel{border-top:1px solid var(--sl-line)}
-html[data-skin="slate"] .dchip,html[data-skin="slate"] .dpop{border:1px solid var(--sl-line2);border-radius:8px}
-html[data-skin="slate"] .dchip.act{border-color:#555b66;box-shadow:inset 0 2px 0 #e7e9ee}
-html[data-skin="blocks"] .dockpanel{border-top:3px solid var(--bk);box-shadow:none}
-html[data-skin="blocks"] .dchip,html[data-skin="blocks"] .dpop{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0;box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="blocks"] .dchip.act{background:var(--bl)}
-html[data-skin="blocks"] .dbar{background:#e6e6e6;border:1px solid var(--bk)}
-html[data-skin="blocks"] .ddot{border-radius:0;border:2px solid var(--bk)}
-html[data-skin="blocks"] .docktab{background:var(--bk);color:var(--by)}
 /* ---- телефон (≤640 px): компактная шапка, высокая консоль, масштаб над консолью, карточки плотнее ---- */
 @media (max-width:640px){
 html:root:root body{padding:10px 10px 14px}
@@ -3982,18 +3801,10 @@ html:root:root .dmet .dtop{gap:6px}
 }
 /* ---- слетевший с Pro на Free аккаунт: красная рамка и «неактивный» — во всех скинах (!important
    перебивает рамки .card/.card.active скинов; рамка = border + кольцо box-shadow, как у .card.active) ---- */
-html[data-skin] .card.lapsed,.card.lapsed{border-color:#e5484d !important;box-shadow:0 0 0 1px #e5484d,0 0 22px -6px rgba(229,72,77,.75) !important}
-html[data-skin="blocks"] .card.lapsed{box-shadow:4px 4px 0 #e5484d !important}
-html[data-skin] .tag.lpt,.tag.lpt{background:#e5484d !important;color:#fff !important;border-color:#e5484d !important}
 .lpnote{display:flex;align-items:flex-start;gap:8px;margin:9px 0 2px;padding:7px 10px;border-radius:8px;background:rgba(229,72,77,.13);border:1px solid rgba(229,72,77,.5);color:#ffaaa6;font-size:12.5px;line-height:1.35}
 .lpnote svg{flex:none;width:16px;height:16px;margin-top:1px;display:block}
 .lpnote b{color:#ff8d88}
-html[data-skin="phosphor"] .lpnote{border-radius:0;color:#ff9d94}
-html[data-skin="blocks"] .lpnote{border-radius:0;background:#fde8e6;border:2px solid #e5484d;color:#7a1812}
-html[data-skin="blocks"] .lpnote b{color:#b3261e}
-html[data-skin] .dchip.lapsed,.dchip.lapsed{border-color:#e5484d !important;box-shadow:0 0 0 1px #e5484d !important}
 .dchip.lapsed .ddot{background:#e5484d;box-shadow:0 0 0 3px rgba(229,72,77,.22)}
-html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 
 .cxsec{margin-top:6px}
 .cxsec[hidden]{display:none}
@@ -4035,40 +3846,6 @@ html[data-skin="blocks"] .dchip.lapsed{box-shadow:3px 3px 0 #e5484d !important}
 @keyframes cxpulse{50%{opacity:.35}}
 .cxbtn[aria-expanded="true"],.cxgbtn[aria-expanded="true"]{border-color:var(--acc);color:var(--acc)}
 /* профиль и настройки — одна плашка: слева меню профилей, справа ⚙ */
-.ntgrp{display:flex;align-items:center;flex:none}
-.ntgrp[hidden]{display:none}
-.hdrgear.ntind{width:auto;padding:0 9px 0 8px;gap:6px;border-radius:8px 0 0 8px;cursor:default;color:var(--txt)}
-.hdrgear.ntbtn{width:auto;padding:0 9px 0 8px;gap:7px;font-size:12px;font-weight:600;color:var(--txt);border-radius:0;margin-left:-1px;cursor:pointer}
-.hdrgear.ntbtn.dis{opacity:.5;cursor:not-allowed}
-.hdrgear.ntgbtn{border-radius:0 8px 8px 0;margin-left:-1px;cursor:pointer}
-.ntgrp .hdrgear:hover,.ntgrp .hdrgear[aria-expanded="true"]{position:relative;z-index:1}
-.ntgbtn[aria-expanded="true"]{color:var(--acc)}
-/* рамка блока Notion — одна по периметру на ВСЮ группу (индикатор + переключатель резерва + ⚙), цвет задаёт класс группы:
-   без класса — обычная серая рамка скина, как у группы Codex (резерв выключен);
-   зелёная — пока работает резерв; красная — Notion не подключён или нужен вход заново (обе перебивают скины) */
-html:root .ntgrp.res .hdrgear{border-color:rgba(52,192,124,.75)}
-html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
-.hdrgear.ntind svg{width:15px;height:15px;flex:none}
-.ntsw{position:relative;width:22px;height:12px;border-radius:99px;background:#2a3140;flex:none;transition:background .15s}
-.ntsw::after{content:"";position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--mut);transition:transform .15s,background .15s}
-.ntbtn[aria-checked="true"] .ntsw{background:rgba(52,192,124,.3)}
-.ntbtn[aria-checked="true"] .ntsw::after{transform:translateX(10px);background:var(--ok)}
-.ntbtn.res{color:var(--ok)}
-.ntgrp.bad .cxdot{background:var(--bad)}
-.ntgrp:not(.bad) .cxdot{background:var(--ok)}
-.ntres .updchk{font-size:13px;color:var(--txt);margin-top:10px}
-.ntres .updchk.dis{opacity:.5;cursor:default}
-.ntres .cxsub{margin-top:10px}
-.cxpop.ntpop{width:min(420px,calc(100vw - 20px))}
-.ntpop .cxpbody{padding-bottom:16px}
-.ntrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0;font-size:14px;color:var(--mut)}
-.ntrow b{color:var(--txt);font-weight:600;text-align:right;min-width:0;overflow-wrap:anywhere}
-.ntrow b.ok{color:var(--ok)}.ntrow b.bad{color:var(--bad)}
-.ntsec{margin-top:16px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mut)}
-.ntnote{margin-top:4px;font-size:12.5px;line-height:1.45;color:var(--mut)}
-.ntsteps{margin:6px 0 0 18px;padding:0;font-size:12.5px;line-height:1.5;color:var(--mut)}
-.ntsteps li{margin-top:4px}
-.ntsteps code{display:inline-block;margin-top:3px;font:11.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:#0f1115;border:1px solid #2a3140;border-radius:6px;padding:2px 6px;color:var(--txt);overflow-wrap:anywhere;user-select:all}
 .cxgrp{display:flex;align-items:center;flex:none}
 .cxgrp[hidden]{display:none}
 .cxgrp .hdrgear.cxbtn{border-radius:8px 0 0 8px}
@@ -4132,8 +3909,6 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxprof::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc,var(--acc))}
 .cxprof[data-id="orchestrator"]{--pc:linear-gradient(180deg,#19c3a0,#f0905f)}
 .cxprof[data-id="codex"]{--pc:#19c3a0}
-.cxprof[data-id="agent"]{--pc:linear-gradient(180deg,#f0905f,#9b8cff)}
-.cxprof[data-id="reserve"]{--pc:linear-gradient(180deg,#9b8cff,#19c3a0)}
 .cxprof.rsv:not(.act){opacity:.65;cursor:default}
 .cxprof.rsv:not(.act):hover{border-color:#2a3140}
 .cxprof .cxpn{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
@@ -4170,8 +3945,7 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxw.rd{color:var(--bad);background:rgba(224,91,91,.12);border-color:rgba(224,91,91,.5)}
 .cxemg{display:flex;align-items:flex-start;gap:10px;position:relative;overflow:hidden;margin:8px 0 0;padding:10px 12px 10px 15px;border:1px solid rgba(224,91,91,.5);border-radius:12px;background:rgba(224,91,91,.07)}
 .cxemg::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--bad),#f0905f)}
-.cxemg.on{border:2px solid var(--bad);padding:9px 11px 9px 14px;box-shadow:none;background:rgba(224,91,91,.24)}
-.cxemg.on::before{background:var(--bad)}
+.cxemg.on{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad);background:rgba(224,91,91,.15)}
 .cxemg .cxemm{flex:1;min-width:0;display:block}
 .cxemg .cxen{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
 .cxemg .cxen .cxpnm{color:var(--bad)}
@@ -4186,8 +3960,8 @@ html:root .ntgrp.bad .hdrgear{border-color:var(--bad)}
 .cxemg .cxembtn.off{background:var(--bad);color:#fff}
 .cxemg .cxemtime{margin-top:4px;font-size:13px;font-weight:700;color:var(--bad)}
 .cxemg .cxemj{margin-top:8px;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,.18);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:var(--mut);white-space:pre-wrap;word-break:break-word}
-.cxdot.emg{background:var(--ok);animation:cxpulse 1.1s ease-in-out infinite}
-#cxBtn.emg{border-color:var(--ok)}
+.cxdot.emg{background:var(--bad);animation:cxpulse 1.1s ease-in-out infinite}
+#cxBtn.emg{border-color:var(--bad)}
 .cxeul{margin:0 0 12px;padding-left:18px;font-size:13px;line-height:1.5}
 .cxeul li{margin:2px 0}
 #cxeGo{background:var(--bad);color:#fff;border-color:var(--bad)}
@@ -4284,7 +4058,6 @@ html:root:root .cxbtnname{max-width:84px}
 /* с счётчиками кнопка профиля не помещается в одну строку с остальными кнопками — занимает свою строку на всю ширину */
 html:root:root .hdrctl{flex:1 1 100%;min-width:0;flex-wrap:wrap;justify-content:flex-end}
 html:root:root .cxgrp{flex:1 1 280px;min-width:0}  /* меньше 280 px группе Codex не отдаём: не помещается рядом с группой Notion — уходит на свою строку */
-html:root:root .ntgrp{flex:none}
 html:root:root .cxgrp .hdrgear.cxbtn{flex:1 1 auto;min-width:0;justify-content:flex-start}
 html:root:root .cxlim{margin-left:auto}
 html:root:root .hdrgear.cxmodbtn{flex:0 1 auto;min-width:0;padding:0 6px;gap:5px}
@@ -4296,48 +4069,16 @@ html:root:root .cxbtnname{max-width:104px}
 html:root:root .cxmodn{display:none}
 html:root:root .hdrgear.cxmodbtn svg{display:block}
 }
-html[data-skin="phosphor"] .cxpop{background:var(--phbg);border:1px solid var(--phl);border-radius:0;box-shadow:0 0 40px rgba(60,255,120,.12)}
-html[data-skin="aurora"] .cxpop{background:#12132b;border:1px solid rgba(255,255,255,.14);border-radius:20px;box-shadow:0 30px 80px -20px rgba(0,0,0,.9)}
-html[data-skin="slate"] .cxpop{background:#14161a;border:1px solid var(--sl-line2);border-radius:14px}
-html[data-skin="blocks"] .cxpop{background:#fff;color:var(--bk);border:3px solid var(--bk);border-radius:0;box-shadow:6px 6px 0 var(--bk)}
-html[data-skin="blocks"] .cxprof,html[data-skin="blocks"] .cxacch,html[data-skin="blocks"] .cxqm,html[data-skin="blocks"] .cxqe{color:var(--bk)}
-html[data-skin="blocks"] .cxprof,html[data-skin="blocks"] .cxqm,html[data-skin="blocks"] .cxqe{border:2px solid var(--bk);border-radius:0}
-html[data-skin="blocks"] .cxprof.act{background:var(--bl);box-shadow:3px 3px 0 var(--bk)}
-html[data-skin="phosphor"] .cxprof{border-radius:0;border-color:var(--phl)}
-html[data-skin="phosphor"] .cxemg,html[data-skin="phosphor"] .cxemg .cxembtn{border-radius:0}
-html[data-skin="blocks"] .cxemg{border:2px solid var(--bk);border-radius:0;color:var(--bk);background:#ffd6d6}
-html[data-skin="blocks"] .cxw.rd{background:#ffb3b3}
-html[data-skin="phosphor"] .cxw,html[data-skin="phosphor"] .cxpf>span{border-radius:0}
-html[data-skin="blocks"] .cxw,html[data-skin="blocks"] .cxpf>span{color:var(--bk);border:2px solid var(--bk);border-radius:0}
-html[data-skin="blocks"] .cxw.cx,html[data-skin="blocks"] .cxpf .g{background:#7ff0d6}
-html[data-skin="blocks"] .cxw.cl,html[data-skin="blocks"] .cxpf .o{background:#ffc999}
-html[data-skin="blocks"] .cxw.nat,html[data-skin="blocks"] .cxpf .b{background:#cfc8ff}
-html[data-skin="blocks"] .cxw.ok{background:#b8f5c8}
-html[data-skin="blocks"] .cxw.me{background:#eee}
-html[data-skin="blocks"] .cxpf .r{background:#ffb3b3}
-html[data-skin="blocks"] .cxpinfo .cxpik.can{color:#007a4d}
-html[data-skin="blocks"] .cxpinfo .cxpik.not{color:#c40000}
-html[data-skin="phosphor"] .cxprof.act{background:#0c2a17}
-html[data-skin="phosphor"] .cxacc,html[data-skin="phosphor"] .cxwipe{border-color:var(--phl)}
-html[data-skin="blocks"] .cxacc,html[data-skin="blocks"] .cxwipe{border-color:var(--bk)}
-html[data-skin="blocks"] .hdrgear.cxbtn,html[data-skin="blocks"] .hdrgear.cxmodbtn,html[data-skin="blocks"] .hdrgear.ntbtn,html[data-skin="blocks"] .hdrgear.ntind{color:var(--bk)}
-html[data-skin="blocks"] .ntsteps code{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
-html[data-skin="phosphor"] .ntsteps code{background:#020603;border-color:var(--phl);border-radius:0;color:var(--ph)}
-html[data-skin="phosphor"] .cxcode{background:#020603;border:1px solid var(--phl);border-radius:0;color:var(--ph)}
-html[data-skin="aurora"] .cxcode{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:12px}
-html[data-skin="slate"] .cxcode{background:#0e0f12;border:1px solid var(--sl-line2);border-radius:8px}
-html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px solid var(--bk);border-radius:0}
 </style></head><body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="ccPhosphor" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.1 0.34 0.03 0 0  0.28 0.95 0.1 0 0  0.16 0.52 0.05 0 0  0 0 0 1 0"/></filter><filter id="ccPhosphorT" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.075 0.255 0.0225 0 0  0.21 0.7125 0.075 0 0  0.12 0.39 0.0375 0 0  0 0 0 1 0"/></filter></svg>
-<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="ntgrp" id="ntGrp" hidden><span id="ntInd" class="hdrgear ntind" role="img" aria-label="Notion"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="3"/><path d="M9 16V8l6 8V8"/></svg><i class="cxdot" id="ntDot"></i></span><button id="ntBtn" class="hdrgear ntbtn" type="button" role="switch" aria-checked="false"><span class="ntname" id="ntBtnName">Резерв</span><i class="ntsw" aria-hidden="true"></i></button><button id="ntGear" class="hdrgear ntgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
+<div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
- <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude">Claude</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctStop" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
- <div class="cxcons" id="cxCons" hidden><div class="cxcmsg" id="cxConsMsg"></div><div class="cxcsub" id="cxConsSub"></div><button type="button" id="cxConsGo"></button></div>
- <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
+ <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
+ <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="splitBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
-<span id="termCurrent">Загрузка…</span></pre>
+<span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden><span id="termIdleTxt"></span><button type="button" id="termIdleGo" hidden></button></div></pre>
 </div>
 <div class="toolrow"><div class="tgrp">
 <div id="mrow" class="mrowslim"></div>
@@ -4356,10 +4097,6 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
   <div class="cxwipe" id="cxWipeW" hidden><button type="button" class="btn-del" id="cxWipe" onclick="cxWipe()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span id="cxWipeT"></span></button></div>
  </div>
 </div>
-<div id="ntPop" class="cxpop ntpop" role="dialog" aria-labelledby="ntPopTitle" hidden>
- <div class="cxphead"><b id="ntPopTitle">Notion</b><span class="cxsub" id="ntPopSt"></span><button type="button" class="hdrgear" id="ntPopX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
- <div class="cxpbody" id="ntPopB"></div>
-</div>
 <div id="cxInstPop" class="cxpop cxinstpop" role="dialog" aria-labelledby="cxInstTitle" hidden>
  <div class="cxphead"><b id="cxInstTitle">Codex</b><span class="cxsub"></span><button type="button" class="hdrgear" id="cxInstX" style="margin:0" aria-label="×"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
  <div class="cxpbody" id="cxInstB"></div>
@@ -4374,8 +4111,6 @@ html[data-skin="blocks"] .cxcode{background:#fff;color:var(--bk);border:2px soli
   <div class="switchrow"><span id="autoWrap"><input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label></span><button type="button" class="thrbtn" id="thrMinus" aria-label="−"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="thrbtn" id="thrPlus" aria-label="+"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
   <div class="modalsub" id="autoNote" hidden></div>
   <label class="updchk wkchk"><input type="checkbox" id="wkPause"><span id="wkLbl">Пауза на недельном потолке</span></label>
-  <div class="modalh" id="skinTitle">Оформление</div>
-  <div class="skgrid" id="skinGrid" role="radiogroup"></div>
   <div class="modalh" id="updHdr">Обновления</div>
   <div id="updBox"></div>
   <div class="modalh" id="bkHdr">Копии аккаунтов</div>
@@ -4396,7 +4131,7 @@ const I18N={
   loading:'Загрузка…',
   autoLbl:thr=>'Авто-переключение при <span id="thrLbl">'+thr+'</span>% сессии',
   optLbl:'Оптимизация переключений лимитов',
-  optDisabledTitle:'Неактивно: включена оптимизация лимитов',
+  optDisabledTitle:'Не действует: включён «Автовыбор» в «Управление аккаунтами» — он сам выбирает аккаунт по этим порогам',
   refresh:'Обновить сейчас',
   updated:'Обновлено',
   active:'АКТИВНЫЙ',
@@ -4409,51 +4144,6 @@ const I18N={
   switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
   extended:'Я продлил',
   lapsedTag:'НЕАКТИВНЫЙ',
-  ntGearTip:'Notion-агент: настройки и пояснения',
-  ntIndTip:'Notion-агент',
-  ntSwTipOff:'Перейти в резервный режим: Claude на паузе, работают Codex + агент',
-  ntSwTipOn:'Резервный режим включён вручную — нажми, чтобы выключить и вернуть Claude',
-  ntSwTipAuto:'Резерв включился сам, потому что кончились лимиты. Нажми, чтобы включить его вручную',
-  ntResConfirm:'Точно перейти в резервный режим?\n\nЧто это значит:\n• Claude встанет на паузу: аккаунты не тратятся, входящие сообщения ждут в очереди. Две минуты у него есть, чтобы закончить начатое.\n• Работают Codex и Notion-агент: ты ставишь задачу Codex, он отправляет агенту нужный текст, агент возвращает результат, Codex внедряет его и проверяет. Каждое изменение — только после твоего «да».\n• Профиль Codex сам переключится на служебный «Резерв».\n\nВыключишь переключатель — всё вернётся сразу, Claude продолжит с места остановки.',
-  ntTitle:'Notion-агент',
-  ntLogin:'Вход в Notion',
-  ntLoginOk:'подключён',
-  ntLoginBad:'нужен вход заново',
-  ntName:'Имя агента',
-  ntNamePh:'как называется в Notion',
-  ntUrl:'Ссылка агента',
-  ntUrlSet:'Ссылка задана и скрыта. Чтобы заменить — вставь новую.',
-  ntUrlNone:'Ссылка не задана. Скопируй её в Notion у своего агента (agent://…).',
-  ntUrlClear:'Стереть ссылку',
-  ntUrlClearQ:'Стереть ссылку агента? Вернуть её можно только вставив заново.',
-  ntSave:'Сохранить',
-  ntSaved:'Сохранено',
-  ntErr:'Не сохранилось',
-  ntWhat:'Что это',
-  ntWhatTxt:'Помощник в Claude Code: получает задание текстом и отвечает. Файлы на сервере сам не правит — изменения делает тот, кто его позвал, и только после твоего «да». Значок N в шапке — индикатор подключения.',
-  ntSetup:'Как подключить с нуля',
-  ntStep1:'Подключить Notion в Claude Code (команда в терминале):',
-  ntStep2:'В Claude Code открыть /mcp, выбрать notion и войти в свой аккаунт Notion. Блок появится в шапке сам.',
-  ntStep3:'В Notion создать своего агента и скопировать его имя и ссылку (agent://…).',
-  ntStep4:'Вставить имя и ссылку выше и нажать «Сохранить».',
-  ntStep5:'Только для резерва: Codex тоже должен войти в Notion — команда и проверка в README, раздел «Notion-агент и резерв».',
-  ntBtnRes:'Резерв',
-  ntResSwNote:'Переключатель «Резерв» в шапке переводит в резервный режим вручную: Claude встаёт на паузу (аккаунты не тратятся, входящие сообщения ждут в очереди, две минуты на то, чтобы закончить начатое), а работают Codex и агент. Включается только после подтверждения; выключил — Claude сразу возвращается и продолжает с места остановки. Значок N рядом — просто индикатор: зелёная точка, когда Notion подключён, красная — нужен вход заново.',
-  ntRes:'Резерв: когда Claude недоступен',
-  ntResTxt:'Когда лимиты всех аккаунтов Claude кончились, Claude стоит на паузе. Работать дальше может Codex: ты ставишь задачу ему, он отправляет агенту нужный текст, агент возвращает результат, Codex внедряет его и проверяет. Каждое изменение — только после твоего «да».',
-  ntResAuto:'Включать само, когда лимиты всех аккаунтов Claude кончились',
-  ntResEmg:'и сразу включать аварийный режим Codex — полный доступ к проекту, чтобы он мог внедрять результат',
-  ntResEmgNo:'Аварийный режим не настроен — резерв будет работать без полного доступа.',
-  ntResNotReady:'Резерв недоступен: нужен подключённый Notion и ссылка агента (⚙).',
-  ntResIdle:'Сейчас: Claude работает, резерв не нужен.',
-  ntResIdleAuto:'Сейчас: Claude работает. Резерв включится сам, когда лимиты кончатся.',
-  ntResWait:'Сейчас: лимиты кончились, проверяю, что это не сбой…',
-  ntResUnknown:'Сейчас: данные о лимитах устарели — резерв не меняю.',
-  ntResOnManual:'Сейчас: резерв включён вручную — Claude на паузе.',
-  ntResOnAuto:'Сейчас: лимиты кончились — резерв включён.',
-  ntResReset:t=>' Ближайший сброс в '+t+'.',
-  ntResEmgOn:' Аварийный режим включён.',
-  ntResErr:'Не сохранилось',
   lapsedTitle:'Аккаунт неактивный',
   lapsedNote:'подписка закончилась, в ротации не участвует. Опрос остановлен, пока не нажмёшь «Я продлил»',
   lapsedSince:t=>` (с ${t})`,
@@ -4486,6 +4176,19 @@ const I18N={
   delGo:'Удалить навсегда',
   delWorking:'Удаляю…',
   cancel:'Отмена',
+  askYes:'Да',
+  askCompact:'Сжать контекст Claude (/compact)?',
+  askProdCompact:'Сжать контекст Claude PROD (/compact)?',
+  confirmNewProd:'Начать новую сессию Claude PROD (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли PROD. Продолжить?',
+  askCxCompact:'Сжать контекст Codex (/compact)?',
+  askStartCx:'Запустить консоль Codex?',
+  askStartProd:'Запустить консоль PROD?',
+  askOptOn:'Включить оптимизацию переключений лимитов? Ручные переключения аккаунтов Claude будут заблокированы.',
+  askOptOff:'Выключить оптимизацию переключений лимитов? Ручные переключения аккаунтов Claude снова станут доступны.',
+  askRelogin:'Войти заново в этот аккаунт? Запустится новый вход: понадобятся ссылка и код.',
+  askRenew:'Отметить, что подписка продлена, и проверить вход?',
+  askCxPref:'Применить выбор модели Codex для этого аккаунта?',
+  askCxSet:w=>'Применить для Codex: '+w+'?',
   relTitle:'Войти заново',
   relStep1:email=>`Открой ссылку и войди под ${email}`,
   relHint:'Если браузер предлагает другой аккаунт — выбери «Использовать другой аккаунт».',
@@ -4595,8 +4298,6 @@ const I18N={
   ccpResGraceNow:'Claude получил отказ и доделывает начатое; после отсчёта его инструменты блокируются.',
   ccpResGraceL:'Claude доделывает начатое',
   ccpResLocked:'Инструменты Claude заблокированы.',
-  ntResOnToast:'Резерв включён: Claude на паузе, работают Codex + агент',
-  ntResOffToast:down=>down?'Резерв выключен, но лимиты Claude ещё кончились: он остаётся на паузе':'Резерв выключен: Claude снова работает и продолжит с места остановки',
   ccpHintResOff:'аварийный выход: Claude продолжит сразу, резерв останется включённым',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
@@ -4614,11 +4315,22 @@ const I18N={
   ccpBtnOn:'Включить паузу',
   ccpHintOff:thr=>`Claude продолжит сразу, сверх порога ${thr}%`,
   ccpHintHardOff:'следующее сообщение не встанет в очередь',
+  ccpHintLimitOut:'настоящий лимит аккаунта исчерпан — отключать паузу бесполезно, Claude продолжит сам после сброса',
+  cxlpBrief:at=>`Codex на паузе · сброс в ${at}`,
+  cxlpBriefNoAt:'Codex на паузе · ждём сброса лимита',
+  cxlpTitle:'⏸ Codex на <b>паузе по лимитам</b> — подъём автоматический',
+  cxlpSub:(n,why,at,nl)=>`Лимит Codex${n?` <b>${n}</b>`:''} исчерпан: ${why}. Переключаться некуда — сообщения из Telegram ждут в очереди и уйдут сами`+(at?` после сброса в <span class="num">${at}</span>`:' после сброса')+(nl?` (раньше всех освободится <b>${nl}</b>)`:'')+'.',
+  cxlpWin:m=>m===300?'окно 5 ч':m===10080?'окно неделя':`окно ${Math.round(m/60)} ч`,
+  cxlpWinAny:'сервис сообщил о лимите',
+  cxlpTill:'до сброса',
+  cxlpHint:'настоящий лимит исчерпан — отключать паузу бесполезно, Codex продолжит сам после сброса',
   ccpHintOnHard:'окно забито — пауза встанет сразу',
   ccpHintOnFree:'окно уже свободно — пауза просто снова начнёт работать',
   ccpErr:e=>'не получилось: '+e,
   ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
   ccpGateWeekTitle:'⏸ Неделя активного аккаунта <b>на потолке</b>',
+  ccpSearchTitle:'🔎 Ищу свободный аккаунт — <b>переключусь сам</b>',
+  ccpSearchSub:(n,why)=>`${n}: ${why}. Свободного аккаунта здесь нет — смотрю Claude PROD. Если там есть лимит, работа перейдёт туда сама в течение минуты; если нет — здесь встанет пауза.`,
   ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'Свободный аккаунт есть — балансер переключится на следующем тике'+(bg?', после него задачи пойдут сами.':'.'):'Свободный аккаунт есть, но авто-переключение выключено — переключись вручную.'),
   ccpManTitle:n=>`✋ ${n} <b>выбран вручную</b> — балансер не уводит с него`,
   ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Работа идёт до 100% или до сброса окна`+(at?` в <span class="num">${at}</span>`:'')+' — паузы не будет. Вернуть авто-выбор — переключиться на свободный аккаунт.'+(bg?' Фоновые задачи не стартуют, пока сессия выше порога.':''),
@@ -4635,10 +4347,7 @@ const I18N={
   modelsBtnTitle:'Настройки',
   modelsTitle:'Настройки',
   modelsHdr:'Модели',
-  skinTitle:'Оформление',
-  skin_classic:'Классика',skin_phosphor:'Phosphor',skin_aurora:'Aurora',skin_slate:'Slate',skin_blocks:'Blocks',
-  skinSub_classic:'как раньше',skinSub_phosphor:'терминал, зелёный люминофор',skinSub_aurora:'тёмное стекло и свечение',skinSub_slate:'графит, тонкие линии',skinSub_blocks:'крупные блоки, жёсткие тени',
-  modelsSub:'Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»',
+  modelsSub:'Отмеченные модели показываются в быстром меню плитки Claude. Применяется сразу.',
   tzMinusTitle:'Шрифт консоли меньше',tzPlusTitle:'Шрифт консоли крупнее',tzResetTitle:'Размер шрифта консоли — клик вернёт 100%',
   fsTitle:'Только консоль, во весь экран',fsExitTitle:'Вернуться к обычному виду (Esc)',dockTab:'Аккаунты',dockSes:'Сессия 5ч',dockWeek:'Неделя',autoHdr:'Авто-переключение',optHint:'Рулит сервис, ручные кнопки блокируются',
   modelsDone:'Готово',
@@ -4665,7 +4374,7 @@ const I18N={
   newSessionTitle:'Новая сессия (/clear)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
   cxTitle:'ChatGPT (Codex)',
-  cxHint:'Отдельная программа со своим входом — в ротацию Claude не входит',
+  cxHint:'Отдельные аккаунты, модели и оптимизация лимитов Codex',
   cxAddTitle:'Добавить аккаунт ChatGPT',
   cxAddSub:'Пароль и почту вводить не нужно — вход по коду устройства. Сначала включи его в ChatGPT → Настройки → Безопасность («вход по коду устройства для Codex»); в рабочем пространстве это делает администратор. Если страница входа не принимает код — причина почти всегда в этом.',
   cxLabelLbl:'Название (необязательно)',
@@ -4759,31 +4468,28 @@ const I18N={
   cxpHint:'Выбери — применится сразу.',
   cxpN_orchestrator:'Оркестратор',
   cxpN_codex:'Codex',
-  cxpN_agent:'Агент',
-  cxpN_reserve:'Резерв',
-  cxpS_reserve:'Включается само вместе с резервом Notion: Codex работает вместе с агентом, Claude на паузе. Вручную не выбирается.',
-  cxpS_reserveOn:'Сейчас включён: Codex ведёт работу вместе с Notion-агентом. Прежний профиль вернётся, когда резерв закончится.',
+  cxpN_codex_solo_full:'Codex Full · сам',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Нативный ИИ'],
-  cxpRoute_agent:['Claude','Notion'],
+  cxpRoute_codex_solo_full:['Codex','Самостоятельно'],
   cxpS_orchestrator:'Codex — главный: ведёт цель к результату и принимает работу. Claude выполняет шаги, но каждый — только после твоего «да».',
-  cxpS_agent:'Claude и Codex только ставят задачи Notion-агенту: он делает всю черновую работу и присылает готовый результат, они проверяют и докладывают. Экономит лимиты.',
   cxpS_codex:'Работает сам, без Claude: отвечает на твои сообщения, читает и пишет в своей рабочей папке. Проект только читает.',
+  cxpS_codex_solo_full:'Работает один, без Claude и Notion-агента. Полная песочница Codex действует с правами настроенного пользователя ОС; root и SSH-доступ профиль не выдаёт.',
   cxpF_orchestrator:['Codex ведёт цель','Шаг — по твоему «да»','Claude исполняет','«Стоп» снимает всё'],
   cxpF_codex:['Работает сам','Пишет в своей папке','Проект — только чтение'],
-  cxpF_agent:['Ты даёшь задание','Агент делает работу','Claude проверяет'],
+  cxpF_codex_solo_full:['Без Claude и агента','Полная песочница Codex','Права пользователя ОС','Нужно подтверждение'],
   cxpFlowLbl:'Как это идёт',
   cxpFlow_orchestrator:['Ты','Codex: составляет шаг','Твоё «да»','Claude: выполняет','Codex: принимает'],
   cxpFlow_codex:['Ты','Codex','Ответ и файлы'],
-  cxpFlow_agent:['Ты','Claude: ставит задачу','Агент: делает','Claude: проверяет'],
+  cxpFlow_codex_solo_full:['Ты','Codex','Ответ и файлы'],
   cxpCanL:'Может:',
   cxpNotL:'Не может:',
   cxpCan_orchestrator:'Составлять шаги, вести цель, принимать результат от Claude и писать в общую папку обмена.',
   cxpNot_orchestrator:'Менять проект сам и отправлять шаг Claude без твоего «да». «Стоп» в Telegram снимает задание и ожидание.',
   cxpCan_codex:'Отвечать сам, читать проект, создавать и править файлы в своей рабочей папке.',
+  cxpCan_codex_solo_full:'Самостоятельно выполнять задачи с полным доступом Codex в пределах прав пользователя ОС, включая доступные ему файлы и команды.',
   cxpNot_codex:'Менять проект, видеть секреты и подключать Claude.',
-  cxpCan_agent:'Отправлять агенту задания, получать готовый результат, проверять его и внедрять.',
-  cxpNot_agent:'Присылать агенту ключи и пароли и принимать его ответ без проверки. Агент видит только присланный текст.',
+  cxpNot_codex_solo_full:'Самостоятельно получать root или SSH-ключи. Доступ к серверам и перезапуск служб возможны только если уже разрешены пользователю ОС и настройкам аварийного режима.',
   cxpManual:'Настройки изменены вручную — ни один профиль не выбран.',
   cxpManualShort:'Свои настройки',
   cxpDel:'Удалить профиль',
@@ -4794,8 +4500,8 @@ const I18N={
   cxpInfo:'Что делает этот профиль',
   cxpWhenLbl:'Когда выбрать:',
   cxpWhen_orchestrator:'Большая цель в несколько шагов: Codex планирует и проверяет, Claude делает.',
-  cxpWhen_agent:'Большая работа и мало лимитов: черновую часть делает агент, а Claude и Codex только ставят задачу, проверяют и внедряют.',
   cxpWhen_codex:'Нужен отдельный помощник: разобрать код, подготовить текст или скрипт, дать второе мнение — пока Claude занят своим.',
+  cxpWhen_codex_solo_full:'Нужно, чтобы Codex сам выполнял работу с полным доступом своей учётной записи ОС. Для серверных привилегий отдельно настрой аварийный режим.',
   cxeN:'Аварийный',
   cxeHdr:'🆘 Аварийный',
   cxeRoute:['Codex','Полный доступ к проекту'],
@@ -4890,9 +4596,13 @@ const I18N={
   cxbDelPick:'Сначала выбери аккаунт в поле «Аккаунт ChatGPT» выше',
   cxbNoSlot:'Нет аккаунта ChatGPT — сначала добавь его выше.',
   cxcOff:'Консоль Codex не запущена',
-  cxcSub:(sb,cwd)=>'Только просмотр: печатать в неё со страницы нельзя. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
+  cxcSub:(sb,cwd)=>'Ввод — под выбранной консолью. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
   cxcStart:'Запустить',
   cxcStarting:'Запускаю консоль Codex…',
+  cxcShown:(who,at)=>'Показан последний экран '+who+' на '+at+', он не обновляется.',
+  cxcPaused:'Codex на паузе: профиль балансера его не использует, ввод не принимается.',
+  cxcFrozen:'Процесс заморожен, экран не обновляется.',
+  cxcPausedOff:'Профиль балансера держит Codex на паузе, поэтому сам он не запускается: только кнопкой.',
   cxcStopTip:'Остановить консоль Codex',
   cxcCompactTip:'Сжать контекст (/compact)',
   cxcNewTip:'Новая сессия Codex',
@@ -4909,7 +4619,7 @@ const I18N={
   loading:'Loading…',
   autoLbl:thr=>'Auto-switch at <span id="thrLbl">'+thr+'</span>% of session',
   optLbl:'Limit optimization',
-  optDisabledTitle:'Inactive: limit optimization is on',
+  optDisabledTitle:'Inactive: Auto-pick in Account management chooses the account by these thresholds',
   refresh:'Refresh now',
   updated:'Updated',
   active:'ACTIVE',
@@ -4922,51 +4632,6 @@ const I18N={
   switchBlockedTitle:'Blocked: limit-switch optimization is on',
   extended:'I renewed',
   lapsedTag:'INACTIVE',
-  ntGearTip:'Notion agent: settings and notes',
-  ntIndTip:'Notion agent',
-  ntSwTipOff:'Switch to reserve mode: Claude is paused, Codex + the agent work',
-  ntSwTipOn:'Reserve mode was turned on by hand — press to turn it off and bring Claude back',
-  ntSwTipAuto:'The reserve switched on by itself because the limits ran out. Press to turn it on by hand',
-  ntResConfirm:'Really switch to reserve mode?\n\nWhat it means:\n• Claude is paused: accounts are not spent, incoming messages wait in the queue. It gets two minutes to finish what it started.\n• Codex and the Notion agent work instead: you give Codex the task, it sends the agent the text it needs, the agent returns a result, and Codex applies and checks it. Every change waits for your "yes".\n• The Codex profile switches by itself to the service profile "Reserve".\n\nTurn the switch off and everything returns at once; Claude continues where it stopped.',
-  ntTitle:'Notion agent',
-  ntLogin:'Notion sign-in',
-  ntLoginOk:'connected',
-  ntLoginBad:'sign in again',
-  ntName:'Agent name',
-  ntNamePh:'its name in Notion',
-  ntUrl:'Agent link',
-  ntUrlSet:'The link is set and hidden. Paste a new one to replace it.',
-  ntUrlNone:'No link yet. Copy it in Notion from your agent (agent://…).',
-  ntUrlClear:'Erase the link',
-  ntUrlClearQ:'Erase the agent link? You can only get it back by pasting it again.',
-  ntSave:'Save',
-  ntSaved:'Saved',
-  ntErr:'Could not save',
-  ntWhat:'What it is',
-  ntWhatTxt:'A helper inside Claude Code: it takes a task as text and replies. It does not edit server files itself — whoever called it applies the change, and only after your "yes". The N icon in the header is a connection indicator.',
-  ntSetup:'Set it up from scratch',
-  ntStep1:'Connect Notion in Claude Code (terminal command):',
-  ntStep2:'In Claude Code open /mcp, pick notion and sign in to your Notion account. The block appears in the header by itself.',
-  ntStep3:'In Notion create your own agent and copy its name and link (agent://…).',
-  ntStep4:'Paste the name and link above and press "Save".',
-  ntStep5:'Reserve only: Codex has to sign in to Notion too — the command and a check are in the README, section "Notion agent and the reserve".',
-  ntBtnRes:'Reserve',
-  ntResSwNote:'The "Reserve" switch in the header moves to reserve mode by hand: Claude is paused (accounts are not spent, incoming messages wait in the queue, two minutes to finish what it started), and Codex plus the agent work. It turns on only after a confirmation; turn it off and Claude comes back at once and continues where it stopped. The N icon next to it is just an indicator: a green dot when Notion is connected, red when you need to sign in again.',
-  ntRes:'Reserve: when Claude is unavailable',
-  ntResTxt:'When every Claude account has run out of limits, Claude is paused. Codex can carry on: you give it the task, it sends the agent the text it needs, the agent returns a result, and Codex applies and checks it. Every change waits for your "yes".',
-  ntResAuto:'Turn on by itself when the limits of every Claude account are used up',
-  ntResEmg:'and also turn on Codex emergency mode — full access to the project, so it can apply the result',
-  ntResEmgNo:'Emergency mode is not set up — the reserve will work without full access.',
-  ntResNotReady:'Reserve is unavailable: it needs Notion connected and the agent link (⚙).',
-  ntResIdle:'Now: Claude is working, no reserve needed.',
-  ntResIdleAuto:'Now: Claude is working. The reserve will switch on by itself when the limits run out.',
-  ntResWait:'Now: limits are used up, checking it is not a glitch…',
-  ntResUnknown:'Now: the limits data is stale — leaving the reserve as it is.',
-  ntResOnManual:'Now: the reserve was turned on by hand — Claude is paused.',
-  ntResOnAuto:'Now: limits are used up — the reserve is on.',
-  ntResReset:t=>' Nearest reset at '+t+'.',
-  ntResEmgOn:' Emergency mode is on.',
-  ntResErr:'Could not save',
   lapsedTitle:'Account inactive',
   lapsedNote:'the subscription has ended, so it is out of the rotation. Polling is stopped until you press “I renewed”',
   lapsedSince:t=>` (since ${t})`,
@@ -4999,6 +4664,19 @@ const I18N={
   delGo:'Delete for good',
   delWorking:'Deleting…',
   cancel:'Cancel',
+  askYes:'Yes',
+  askCompact:'Compact the Claude context (/compact)?',
+  askProdCompact:'Compact the Claude PROD context (/compact)?',
+  confirmNewProd:'Start a new Claude PROD session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the PROD console. Continue?',
+  askCxCompact:'Compact the Codex context (/compact)?',
+  askStartCx:'Start the Codex console?',
+  askStartProd:'Start the PROD console?',
+  askOptOn:'Enable limit optimization? Manual switching of Claude accounts will be blocked.',
+  askOptOff:'Disable limit optimization? Manual switching of Claude accounts will be available again.',
+  askRelogin:'Sign in to this account again? A new sign-in starts: you will need the link and the code.',
+  askRenew:'Mark the subscription as renewed and check the sign-in?',
+  askCxPref:'Apply the Codex model choice for this account?',
+  askCxSet:w=>'Apply for Codex: '+w+'?',
   relTitle:'Log in again',
   relStep1:email=>`Open the link and sign in as ${email}`,
   relHint:'If the browser offers another account, choose “Use another account”.',
@@ -5108,8 +4786,6 @@ const I18N={
   ccpResGraceNow:'Claude got the refusal and is finishing what it started; its tools are blocked when the countdown ends.',
   ccpResGraceL:'Claude is finishing up',
   ccpResLocked:'Claude’s tools are blocked.',
-  ntResOnToast:'Reserve on: Claude is paused, Codex + the agent are working',
-  ntResOffToast:down=>down?'Reserve off, but Claude’s limits are still used up: it stays paused':'Reserve off: Claude is working again and continues where it stopped',
   ccpHintResOff:'emergency exit: Claude continues right away, the reserve stays on',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
@@ -5127,11 +4803,22 @@ const I18N={
   ccpBtnOn:'Enable pause',
   ccpHintOff:thr=>`Claude continues right away, past the ${thr}% threshold`,
   ccpHintHardOff:'the next message will not be queued',
+  ccpHintLimitOut:'the real account limit is used up — disabling the pause would not help; Claude resumes by itself after the reset',
+  cxlpBrief:at=>`Codex paused · resets at ${at}`,
+  cxlpBriefNoAt:'Codex paused · waiting for the limit reset',
+  cxlpTitle:'⏸ Codex is <b>paused on limits</b> — it resumes on its own',
+  cxlpSub:(n,why,at,nl)=>`Codex limit${n?` <b>${n}</b>`:''} is used up: ${why}. Nowhere to switch — Telegram messages wait in the queue and go out by themselves`+(at?` after the reset at <span class="num">${at}</span>`:' after the reset')+(nl?` (first to free up: <b>${nl}</b>)`:'')+'.',
+  cxlpWin:m=>m===300?'5 h window':m===10080?'weekly window':`${Math.round(m/60)} h window`,
+  cxlpWinAny:'the service reported the limit',
+  cxlpTill:'until reset',
+  cxlpHint:'the real limit is used up — disabling the pause would not help; Codex resumes by itself after the reset',
   ccpHintOnHard:'window is full — the pause starts right away',
   ccpHintOnFree:'window is already free — the pause simply works again',
   ccpErr:e=>'failed: '+e,
   ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
   ccpGateWeekTitle:'⏸ Active account <b>at the weekly cap</b>',
+  ccpSearchTitle:'🔎 Looking for a free account — <b>will switch by itself</b>',
+  ccpSearchSub:(n,why)=>`${n}: ${why}. No free account here — checking Claude PROD. If it has room, work moves there by itself within a minute; if not, a pause starts here.`,
   ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'A free account exists — the balancer switches on the next tick'+(bg?', after that jobs resume by themselves.':'.'):'A free account exists, but auto-switching is off — switch manually.'),
   ccpManTitle:n=>`✋ ${n} <b>picked manually</b> — the balancer keeps it`,
   ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Work goes on up to 100% or until the window resets`+(at?` at <span class="num">${at}</span>`:'')+' — no pause. To bring back automatic choice, switch to a free account.'+(bg?' Background jobs stay down while the session is above the threshold.':''),
@@ -5148,10 +4835,7 @@ const I18N={
   modelsBtnTitle:'Settings',
   modelsTitle:'Settings',
   modelsHdr:'Models',
-  skinTitle:'Appearance',
-  skin_classic:'Classic',skin_phosphor:'Phosphor',skin_aurora:'Aurora',skin_slate:'Slate',skin_blocks:'Blocks',
-  skinSub_classic:'as before',skinSub_phosphor:'terminal, green phosphor',skinSub_aurora:'dark glass and glow',skinSub_slate:'graphite, thin lines',skinSub_blocks:'bold blocks, hard shadows',
-  modelsSub:'Pick which ones show as quick-switch buttons — applies instantly, no Save button',
+  modelsSub:'Checked models show in the Claude tile quick menu. Applies instantly.',
   tzMinusTitle:'Smaller console font',tzPlusTitle:'Larger console font',tzResetTitle:'Console font size — click to reset to 100%',
   fsTitle:'Console only, full screen',fsExitTitle:'Back to the normal view (Esc)',dockTab:'Accounts',dockSes:'Session 5h',dockWeek:'Week',autoHdr:'Auto-switch',optHint:'The service decides, manual buttons are blocked',
   modelsDone:'Done',
@@ -5272,31 +4956,28 @@ const I18N={
   cxpHint:'Pick one — it applies right away.',
   cxpN_orchestrator:'Orchestrator',
   cxpN_codex:'Codex',
-  cxpN_agent:'Agent',
-  cxpN_reserve:'Reserve',
-  cxpS_reserve:'Turns on by itself with the Notion reserve: Codex works together with the agent, Claude is paused. Cannot be picked by hand.',
-  cxpS_reserveOn:'On now: Codex works together with the Notion agent. The previous profile comes back when the reserve ends.',
+  cxpN_codex_solo_full:'Codex Full · solo',
   cxpRoute_orchestrator:['Codex','Claude'],
   cxpRoute_codex:['Native AI'],
-  cxpRoute_agent:['Claude','Notion'],
+  cxpRoute_codex_solo_full:['Codex','Standalone'],
   cxpS_orchestrator:'Codex is in charge: it drives the goal and accepts the work. Claude runs the steps, but each one only after your "yes".',
-  cxpS_agent:'Claude and Codex only set tasks for the Notion agent: it does all the draft work and sends back a finished result, they check and report. Saves limits.',
   cxpS_codex:'Works on its own, without Claude: answers your messages, reads and writes in its own working folder. Only reads the project.',
+  cxpS_codex_solo_full:'Works alone, without Claude or the Notion agent. Codex gets its full sandbox under the configured OS user; this profile does not grant root or SSH access.',
   cxpF_orchestrator:['Codex drives the goal','Step — on your "yes"','Claude executes','"Stop" cancels all'],
   cxpF_codex:['Works on its own','Writes in its folder','Project — read only'],
-  cxpF_agent:['You give the task','Agent does the work','Claude checks'],
+  cxpF_codex_solo_full:['No Claude or agent','Full Codex sandbox','OS user permissions','Confirmation required'],
   cxpFlowLbl:'How it goes',
   cxpFlow_orchestrator:['You','Codex: drafts a step','Your "yes"','Claude: executes','Codex: accepts'],
   cxpFlow_codex:['You','Codex','Answer and files'],
-  cxpFlow_agent:['You','Claude: sets the task','Agent: does it','Claude: checks'],
+  cxpFlow_codex_solo_full:['You','Codex','Answer and files'],
   cxpCanL:'Can:',
   cxpNotL:'Cannot:',
   cxpCan_orchestrator:'Draft steps, drive the goal, accept Claude\'s result and write to the shared exchange folder.',
   cxpNot_orchestrator:'Change the project itself or send a step to Claude without your "yes". "Stop" in Telegram cancels the task and the wait.',
   cxpCan_codex:'Answer on its own, read the project, create and edit files in its own working folder.',
+  cxpCan_codex_solo_full:'Complete tasks independently with Codex full access, within the configured OS user permissions, including files and commands available to that user.',
   cxpNot_codex:'Change the project, see secrets or involve Claude.',
-  cxpCan_agent:'Send tasks to the agent, get a finished result, check it and apply it.',
-  cxpNot_agent:'Send the agent keys or passwords, or accept its answer unchecked. The agent sees only the text it is sent.',
+  cxpNot_codex_solo_full:'Grant itself root or SSH keys. Server access and service restarts work only if already allowed for the OS user and configured in emergency mode.',
   cxpManual:'Settings were changed by hand — no profile is selected.',
   cxpManualShort:'Custom settings',
   cxpDel:'Delete profile',
@@ -5307,8 +4988,8 @@ const I18N={
   cxpInfo:'What this profile does',
   cxpWhenLbl:'When to pick it:',
   cxpWhen_orchestrator:'A big goal in several steps: Codex plans and checks, Claude does.',
-  cxpWhen_agent:'Big job, few limits left: the agent does the draft work, while Claude and Codex only set the task, check and apply.',
   cxpWhen_codex:'You need a separate helper: go through code, prepare a text or script, give a second opinion — while Claude is busy.',
+  cxpWhen_codex_solo_full:'You want Codex to do the work itself with full access for its OS account. Configure emergency mode separately for server privileges.',
   cxeN:'Emergency',
   cxeHdr:'🆘 Emergency',
   cxeRoute:['Codex','Full access to the project'],
@@ -5403,9 +5084,13 @@ const I18N={
   cxbDelPick:'First pick an account in the “ChatGPT account” field above',
   cxbNoSlot:'No ChatGPT account — add one above first.',
   cxcOff:'The Codex console is not running',
-  cxcSub:(sb,cwd)=>'View only: you cannot type into it from this page. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
+  cxcSub:(sb,cwd)=>'Use the input below the selected console. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
   cxcStart:'Start',
   cxcStarting:'Starting the Codex console…',
+  cxcShown:(who,at)=>'Showing the last '+who+' screen from '+at+'; it is not updating.',
+  cxcPaused:'Codex is paused: the balancer profile does not use it, input is not accepted.',
+  cxcFrozen:'The process is frozen, the screen is not updating.',
+  cxcPausedOff:'The balancer profile keeps Codex paused, so it does not start by itself: use the button.',
   cxcStopTip:'Stop the Codex console',
   cxcCompactTip:'Compact context (/compact)',
   cxcNewTip:'New Codex session',
@@ -5426,11 +5111,11 @@ let WCAP=99;
 function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);$('#wkLbl').innerHTML=tr('wkLbl',WCAP);}
 function applyI18n(){
  document.title=tr('title');document.documentElement.lang=LANG;
- $('#h1').textContent=tr('h1');
+ if(!$('#h1').querySelector('.fleet-brand-name'))$('#h1').textContent=tr('h1');
  $('#optLbl').textContent=tr('optLbl');$('#rfBtn').title=tr('refresh');$('#rfBtn').setAttribute('aria-label',tr('refresh'));
  renderAutoLbl();
  $('#gear').title=tr('modelsBtnTitle');$('#addAcct').title=tr('addBtnTitle');$('#addAcct').setAttribute('aria-label',tr('addBtnTitle'));$('#modalTitle').textContent=tr('modelsTitle');
- $('#modelsHdr').textContent=tr('modelsHdr');$('#skinTitle').textContent=tr('skinTitle');buildSkinGrid();
+ $('#modelsHdr').textContent=tr('modelsHdr');
  $('#tzMinus').title=tr('tzMinusTitle');$('#tzPlus').title=tr('tzPlusTitle');$('#tzVal').title=tr('tzResetTitle');
  $('#updHdr').textContent=tr('updHdr');$('#bkHdr').textContent=tr('bkHdr');
  $('#autoHdr').textContent=tr('autoHdr');$('#optWrap').title=tr('optHint');$('#dockTabLbl').textContent=tr('dockTab');
@@ -5439,7 +5124,8 @@ function applyI18n(){
  $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
- if(typeof ccpRender==='function')ccpRender();  // смена языка перерисовывает баннер без запроса
+ if(typeof ccpRender==='function')ccpRender();
+ if(typeof cxlpRender==='function')cxlpRender();  // смена языка перерисовывает баннер без запроса
  if(lastSnap){
   renderCards(lastSnap);
   setUpd(lastSnap.ts);
@@ -5450,83 +5136,145 @@ function applyI18n(){
  cxAll();
 }
 // линии из ─ шире консоли переносятся на несколько строк и рвутся: укорачиваем до числа колонок, которые помещаются (заметно на телефоне)
-function termCols(){
- const b=$('#termBox'),cs=getComputedStyle(b),p=document.createElement('span');
+function termCols(box){
+ const b=box||$('#termBox'),cs=getComputedStyle(b),p=document.createElement('span'),pz=b.style.getPropertyValue('--pz');
+ if(pz)b.style.setProperty('--pz','1');  // в разделённой панели мерим при обычном шрифте: уменьшенный дал бы больше колонок и ещё меньший шрифт
  p.textContent='0000000000';p.style.cssText='position:absolute;visibility:hidden;white-space:pre';b.appendChild(p);
  const w=p.getBoundingClientRect().width/10;b.removeChild(p);
  const avail=b.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+ if(pz)b.style.setProperty('--pz',pz);
  return w>0?Math.max(10,Math.floor(avail/w)-1):0;
 }
-function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
+function fitSep(h,box){const c=termCols(box);return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
-let CONS='claude',consShown='claude',cxConsRun=null;
-try{if(localStorage.getItem('cc_contab')==='codex')CONS='codex';}catch(e){}
-function consCur(){return CONS==='codex'&&cxConsOn()?'codex':'claude';}
-async function ccConsoleHistory(){
- const s=consCur();
+let CONS='claude';
+let prodStarting=false;
+// ---- панели консоли: одна панель = один экран консоли модели. Панель 0 — прежний #termBox; в режиме «разделение» (ПК)
+// справа добавляются ещё панели (всего до 3), у каждой свой экран, история, плашка и опрос
+const SPLIT_MAX=3;
+const PANES=[{k:'claude',primary:true,seq:0,applied:0,idleKey:'',cxRun:null,prodRun:false,stick:true,dotCls:'',chipDot:null,
+ box:$('#termBox'),hist:$('#termHistory'),cur:$('#termCurrent'),idle:$('#termIdle'),idleTxt:$('#termIdleTxt'),idleGo:$('#termIdleGo')}];
+/*SPLIT-PURE-START*/
+function splitDrop(keys,act,i,k){keys=keys.slice();const j=keys.indexOf(k);if(j>=0&&j!==i)keys[j]=keys[i];keys[i]=k;return {keys:keys,act:i};}
+function splitSwap(keys,act,i,j){keys=keys.slice();if(i===j)return {keys:keys,act:act};const t=keys[i];keys[i]=keys[j];keys[j]=t;return {keys:keys,act:act===i?j:act===j?i:act};}
+function splitAdd(keys,avail,k){if(keys.length>=SPLIT_MAX)return null;const n=k&&avail.includes(k)&&!keys.includes(k)?k:avail.find(x=>!keys.includes(x));return n?keys.concat(n):null;}
+function splitCloseAt(keys,act,i){const ks=keys.filter((_,x)=>x!==i);let a=act>i?act-1:act;if(act===i)a=Math.min(i,ks.length-1);return {keys:ks,act:Math.max(0,Math.min(a,ks.length-1))};}
+function splitPick(keys,act,k){const j=keys.indexOf(k);if(j>=0)return {keys:keys,act:j};const ks=keys.slice();ks[act]=k;return {keys:ks,act:act};}
+// консоль идёт за исполнителем: новый занимает часть ПРЕЖНЕГО исполнителя (кончился аккаунт — его окно и меняется), а не ту, что выбрана рукой (владелец 62577); уже показан — выбираем его часть; прежнего нет на экране — как обычная вкладка
+function splitFollow(keys,act,oldK,newK){const j=keys.indexOf(newK);if(j>=0)return {keys:keys,act:j};const i=oldK?keys.indexOf(oldK):-1;if(i<0)return splitPick(keys,act,newK);const ks=keys.slice();ks[i]=newK;return {keys:ks,act:i};}
+/*SPLIT-PURE-END*/
+let SPLIT={keys:[],act:0};  // keys — модели по панелям при разделении; пусто — одна панель (вкладки как раньше)
+function isKey(k){return typeof k==='string'&&/^(claude|prod|codex|notion(:\S+)?)$/.test(k);}
+function isNai(k){return typeof k==='string'&&k.indexOf('notion')===0;}
+function naiAid(k){return k.length>6?k.slice(7):'';}
+try{const _sp=JSON.parse(localStorage.getItem('cc_split')||'null');if(_sp&&Array.isArray(_sp.keys))SPLIT={keys:_sp.keys.filter((k,i,a)=>isKey(k)&&a.indexOf(k)===i).slice(0,SPLIT_MAX),act:Math.max(0,+_sp.act||0)};}catch(e){}
+function splitSave(){try{localStorage.setItem('cc_split',JSON.stringify(SPLIT));}catch(e){}}
+const splitMq=matchMedia('(min-width:1100px) and (pointer:fine)');
+// серая плашка «консоль не запущена» под последним экраном — общая для Claude, Claude на PROD и Codex:
+// причина, время последнего экрана и (у PROD и Codex) кнопка запуска; пока консоль идёт, плашки нет
+function idleUi(P,d,dot,txt,who,go){
+ const idle=d.running===false?String(d.stopped||0):d.paused?'paused':'';  // остановлена — по времени остановки; заморожена паузой профиля — своя метка
+ if(idle!==P.idleKey){P.idleKey=idle;P.hist.innerHTML='';ccConsoleHistory(P);}
+ const note=P.idle,b=P.idleGo;note.hidden=!idle;
+ if(!idle)return;
+ dot.className='termdot idle';
+ let t=txt;
+ if(d.stopped){const at=new Date(d.stopped*1000).toLocaleTimeString('ru-RU',{timeZone:window.FLEET_TZ,hour:'2-digit',minute:'2-digit'});t+=' '+tr('cxcShown',who,at);}
+ P.idleTxt.textContent='⏸ '+t;
+ b.hidden=!go;
+ if(go){b.textContent=go.label;b.disabled=!!go.disabled;b.dataset.go=go.id;}
+}
+try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
+function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
+// второй сервер не подключён — прячем всё, что с ним связано (вкладка, плашка шапки, карточка, кнопки передачи); запоминаем, чтобы страница не мигала при загрузке
+function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
+function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
+function naiList(){try{return window.naiKeys?window.naiKeys():[]}catch(e){return []}}
+function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[],naiList().map(x=>x.key));}
+// модели по панелям при разделении (только доступные); null — разделения нет (узкий экран, одна модель, не включено)
+function splitEff(){
+ if(!splitMq.matches)return null;
+ const av=splitKeysAvail(),ks=[];
+ for(const k of SPLIT.keys)if(av.includes(k)&&!ks.includes(k))ks.push(k);
+ return ks.length>1?ks.slice(0,SPLIT_MAX):null;
+}
+function splitActIdx(ks){return Math.min(Math.max(0,SPLIT.act|0),ks.length-1);}
+// выбранная консоль: при разделении — модель подсвеченной панели; иначе прежняя вкладка
+function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}
+function activePane(){const ks=splitEff();return ks&&PANES[splitActIdx(ks)]||PANES[0];}
+function consQuery(s,P){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='+termCols(P&&P.box):'';}
+// значок состояния панели: у выбранной ещё и общий кружок в шапке
+function dotOf(P){return {set className(v){P.dotCls=v;if(P.chipDot)P.chipDot.className=v+' tpdot';if(P===activePane())$('#termDot').className=v;}};}
+async function ccConsoleHistory(P){
+ P=P||PANES[0];
+ if(isNai(P.k))return;
+ const s=P.k;
  try{
-  const r=await fetch(API+'console?token='+TOKEN+'&history=1'+(s==='codex'?'&s=codex':''));const d=await r.json();
-  if(s!==consCur())return;  // пока шёл запрос, переключили вкладку
-  if(d.ok&&d.history!=null){const box=$('#termBox');$('#termHistory').innerHTML=fitSep(d.history);box.scrollTop=box.scrollHeight;}
+  const r=await fetch(API+'console?token='+TOKEN+'&history=1'+consQuery(s,P));const d=await r.json();
+  if(s!==P.k)return;  // пока шёл запрос, переключили вкладку
+  if(d.ok&&d.history!=null){P.histW=P.box.clientWidth;P.hist.innerHTML=fitSep(d.history,P.box);P.box.scrollTop=P.box.scrollHeight;fitPane(P);}
  }catch(e){}
 }
 function cxConsSb(sb){return tr(sb==='workspace-write'?'cxcSbWrite':sb==='danger-full-access'?'cxcSbFull':'cxcSbRead');}
 // «не запущена» / кнопка остановки — для вкладки Codex
 let cxAutoGo=true;  // вкладка Codex сама запускает консоль (как у Claude); после остановки или ошибки — только кнопкой
 let cxStarting=false;
+// «Сжать контекст» и «Новая сессия» в панели консоли на вкладках Claude DEV, Claude PROD и Codex: видны всегда, сессия не запущена — нажатие вернёт понятную ошибку.
+// Кнопки «Остановить консоль» нет: консоль Codex запускается сама и гасится профилем.
+function ctActsSync(){const k=consCur(),show=k==='claude'||k==='prod'||k==='codex';
+ $('#ctCompact').hidden=$('#ctNew').hidden=!show;
+ $('#cTabs').classList.toggle('cacts',show);$('.termwrap').classList.toggle('hascacts',show);
+ if(show)for(const [id,t] of [['#ctCompact',k==='codex'?'cxcCompactTip':'compactTitle'],['#ctNew',k==='codex'?'cxcNewTip':'newSessionTitle']]){const b=$(id);b.title=tr(t);b.setAttribute('aria-label',tr(t));}}
 function cxConsUi(d){
- const on=consCur()==='codex'&&!!d&&d.available!==false;
- $('#ctStop').hidden=!(on&&d.running);
- $('#ctCompact').hidden=$('#ctNew').hidden=$('#ctStop').hidden;
- $('#cTabs').classList.toggle('cacts',!$('#ctStop').hidden);$('.termwrap').classList.toggle('hascacts',!$('#ctStop').hidden);
- if(on&&d.running)$('#ctStop').title=tr('cxcStopTip')+' — '+cxConsSb(d.sandbox);
- const ov=$('#cxCons');
- ov.hidden=!(on&&!d.running);
- if(!ov.hidden){
-  $('#cxConsMsg').textContent=tr(cxStarting?'cxcStarting':'cxcOff');
-  $('#cxConsSub').textContent=tr('cxcSub',cxConsSb(d.plan_sandbox),d.plan_cwd||'');
-  $('#cxConsGo').textContent=tr('cxcStart');
- }
+ if(!d||d.ok!==true||typeof d.running!=='boolean')return;
+ ctActsSync();
 }
-async function ccConsole(){
- const box=$('#termBox'),dot=$('#termDot'),s=consCur();
+async function ccConsole(P){
+ if(!P)return tickAll();
+ if(isNai(P.k))return;
+ const box=P.box,dot=dotOf(P),s=P.k,requestSeq=++P.seq;
+ ctActsSync();
  try{
-  const r=await fetch(API+'console?token='+TOKEN+(s==='codex'?'&s=codex':''));const d=await r.json();
-  if(s!==consCur())return;
-  if(s==='codex'){
-   cxConsUi(d);
-   if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
-   else if(cxAutoGo&&d.available!==false&&d.ok!==false){cxAutoGo=false;cxConsAct('start',true);}  // один раз за загрузку страницы
-   if(!d.ok){dot.className='termdot err';return;}
+  const r=await fetch(API+'console?token='+TOKEN+consQuery(s,P));const d=await r.json();
+  if(s!==P.k||requestSeq<P.applied)return;
+  if(s==='prod'){  // Claude на сервере PROD: живой экран; остановлен — последний сохранённый экран и плашка
+   P.applied=requestSeq;
+   if(!d.ok){  // нет связи: экран не трогаем, плашка только объясняет
+    dot.className='termdot err';P.idleKey='x';
+    P.idleTxt.textContent='⏸ '+(d.message||d.error||'Нет связи с сервером PROD.');P.idleGo.hidden=true;P.idle.hidden=false;
+    return;
+   }
    dot.className='termdot';
-   if(d.current==null){$('#termCurrent').innerHTML='';$('#termHistory').innerHTML='';cxConsRun=null;return;}
-   if(d.started!==cxConsRun){cxConsRun=d.started;ccConsoleHistory();}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку
+   const go=d.starting||prodStarting;
+   if(d.running){if(!P.prodRun){P.prodRun=true;ccConsoleHistory(P);}}else P.prodRun=false;
+   idleUi(P,d,dot,go?'Запускаю Claude на PROD…':(d.idle||'Claude на PROD не запущен.')+' Запускается без Telegram. Когда работу передают на PROD, он запускается сам.','Claude на PROD',d.running?null:{id:'prod',label:'Запустить',disabled:!!go});
   }else{
-   if(!d.ok||d.current==null){dot.className='termdot err';return;}
-   dot.className='termdot';
+   if(s==='codex'&&(d.ok!==true||typeof d.running!=='boolean')){dot.className='termdot err';return;}
+   P.applied=requestSeq;
+   if(s==='codex'){
+    cxConsUi(d);
+    if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
+    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true,P);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
+    if(!d.ok){dot.className='termdot err';return;}
+    dot.className='termdot';
+    if(d.running){if(d.started!==P.cxRun){P.cxRun=d.started;ccConsoleHistory(P);}}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку
+    else P.cxRun=null;
+    idleUi(P,d,dot,d.running&&d.paused?tr('cxcPaused')+(d.frozen?' '+tr('cxcFrozen'):''):tr(cxStarting?'cxcStarting':'cxcOff')+'. '+tr('cxcSub',cxConsSb(d.plan_sandbox),d.plan_cwd||'')+(d.profile_paused&&!cxStarting?' '+tr('cxcPausedOff'):''),'Codex',d.running?null:{id:'codex',label:tr('cxcStart'),disabled:cxStarting});
+   }else{
+    if(!d.ok||d.current==null){dot.className='termdot err';return;}
+    dot.className='termdot';
+    // сессии Claude нет (напр. профиль «Notion AI · только он»): сервер отдаёт последний экран остановленной
+    // сессии (не обновляется) — показываем его и плашку «почему»; при переходе туда/обратно подтягиваем прокрутку заново
+    idleUi(P,d,dot,d.idle||'Claude сейчас не запущен.','Claude',null);
+   }
   }
   const atBottom=box.scrollTop+box.clientHeight>=box.scrollHeight-20;
-  $('#termCurrent').innerHTML=fitSep(d.current||'');
+  P.cur.innerHTML=fitSep(d.current||'',box);fitPane(P);
+  box.classList.toggle('termempty',!P.idle.hidden&&!P.cur.textContent.trim()&&!P.hist.textContent.trim());
   if(atBottom)box.scrollTop=box.scrollHeight;
  }catch(e){dot.className='termdot err';}
 }
-// ---- оформление: скины ----
-const SKINS=['classic','phosphor','aurora','slate','blocks'];
-let SKIN='classic';
-try{const _s=localStorage.getItem('cc_skin');if(SKINS.includes(_s))SKIN=_s;}catch(e){}
-function buildSkinGrid(){
- $('#skinGrid').innerHTML=SKINS.map(id=>'<button type="button" class="skopt'+(id===SKIN?' on':'')+'" data-skin="'+id+'" role="radio" aria-checked="'+(id===SKIN)+'">'
-  +'<span class="skp skp-'+id+'"><i class="c"></i><i class="a"></i><i class="a"></i><i class="a"></i></span>'
-  +'<span class="sknm">'+tr('skin_'+id)+'</span><span class="sksb">'+tr('skinSub_'+id)+'</span></button>').join('');
-}
-function applySkin(id,save){
- if(!SKINS.includes(id))id='classic';
- SKIN=id;
- if(id==='classic')document.documentElement.removeAttribute('data-skin');else document.documentElement.setAttribute('data-skin',id);
- if(save){try{localStorage.setItem('cc_skin',id);}catch(e){}}
- document.querySelectorAll('#skinGrid .skopt').forEach(b=>{const on=b.dataset.skin===id;b.classList.toggle('on',on);b.setAttribute('aria-checked',on);});
- const box=$('#termBox');box.scrollTop=box.scrollHeight;
-}
+// [notion-ai] Скины убраны: панель всегда в классическом оформлении (без атрибута data-skin).
 // ---- масштаб шрифта консоли: процент от базового размера, запоминается в браузере ----
 const TZ_STEPS=[50,60,70,80,90,100,110,125,150,175,200,250,300];
 let TZ=100;
@@ -5536,7 +5284,7 @@ function applyTz(save){
  $('#tzVal').textContent=TZ+'%';
  $('#tzMinus').disabled=TZ<=TZ_STEPS[0];$('#tzPlus').disabled=TZ>=TZ_STEPS[TZ_STEPS.length-1];
  if(save){try{localStorage.setItem('cc_termzoom',TZ);}catch(e){}}
- const box=$('#termBox');box.scrollTop=box.scrollHeight;
+ stickBottom();fitAll();
 }
 function tzStep(d){const i=TZ_STEPS.indexOf(TZ)+d;if(i<0||i>=TZ_STEPS.length)return;TZ=TZ_STEPS[i];applyTz(true);}
 $('#tzMinus').addEventListener('click',()=>tzStep(-1));
@@ -5544,10 +5292,26 @@ $('#tzPlus').addEventListener('click',()=>tzStep(1));
 $('#tzVal').addEventListener('click',()=>{TZ=100;applyTz(true);});
 applyTz(false);
 // консоль «прилипает» ко дну: пока читатель внизу, любая смена размера блока (выход из полноэкранного режима, поворот экрана) оставляет на виду последние строки
-let STICK=true;
-function stickBottom(){const b=$('#termBox');b.scrollTop=b.scrollHeight;}
-$('#termBox').addEventListener('scroll',()=>{const b=$('#termBox');STICK=b.scrollTop+b.clientHeight>=b.scrollHeight-20;},{passive:true});
-if(window.ResizeObserver)new ResizeObserver(()=>{if(STICK)stickBottom();}).observe($('#termBox'));
+function stickBottom(){for(const P of PANES)P.box.scrollTop=P.box.scrollHeight;}
+function wirePane(P){
+ P.box.addEventListener('scroll',()=>{P.stick=P.box.scrollTop+P.box.clientHeight>=P.box.scrollHeight-20;},{passive:true});
+ if(window.ResizeObserver)new ResizeObserver(()=>{if(P.stick)P.box.scrollTop=P.box.scrollHeight;fitPane(P);if(P.k==='prod'&&Math.abs(P.box.clientWidth-(P.histW||0))>24)ccConsoleHistory(P);}).observe(P.box);  // PROD отдаёт историю под заданную ширину: панель стала другой — берём заново
+ P.box.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
+ dropTarget(P.box,()=>PANES.indexOf(P));
+ P.idleGo.addEventListener('click',()=>paneGo(P));
+}
+// в узкой панели экран не ломаем переносом строк, а уменьшаем шрифт (не мельче половины), дальше — прокрутка вправо
+function fitPane(P){
+ const b=P.box;
+ if(isNai(P.k)){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
+ if(!b.closest('.termwrap.tsplit')){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
+ b.style.setProperty('--pz','1');
+ const cs=getComputedStyle(b),pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight),avail=b.clientWidth-pad,need=b.scrollWidth-pad;
+ const f=need>avail+1&&avail>0?Math.max(.5,avail/need):1;
+ b.style.setProperty('--pz',f.toFixed(3));
+}
+function fitAll(){for(const P of PANES)fitPane(P);}
+addEventListener('resize',fitAll);
 
 // ---- режим «только консоль»: виден лишь терминал; у нижнего края — панель аккаунтов по наведению ----
 function setConly(on,save){
@@ -5556,7 +5320,7 @@ function setConly(on,save){
  if(save){try{localStorage.setItem('cc_conly',on?'1':'0');}catch(e){}}
  $('#dockZone').classList.remove('pin');
  try{if(!on&&document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}
- STICK=true;stickBottom();
+ PANES.forEach(P=>{P.stick=true});stickBottom();
  requestAnimationFrame(stickBottom);
  setTimeout(stickBottom,350);
 }
@@ -5592,63 +5356,303 @@ $('#dockPanel').addEventListener('mouseover',e=>{
  p.style.left=(Math.max(8,Math.min(r.left+r.width/2-w/2,innerWidth-w-8))-r.left)+'px';
 });
 setConly(document.documentElement.classList.contains('conly'),false);
-$('#skinGrid').addEventListener('click',e=>{const b=e.target.closest('.skopt');if(b)applySkin(b.dataset.skin,true);});
 document.addEventListener('keydown',e=>{
  if(e.key!=='Escape')return;
  if(!$('#acctScrim').hidden){acctClose();return;}
  if(!$('#scrim').hidden){$('#scrim').hidden=true;return;}
 });
-buildSkinGrid();applySkin(SKIN,false);
+document.documentElement.removeAttribute('data-skin');{const box=$('#termBox');box.scrollTop=box.scrollHeight;}
 function consTabs(){
- const av=cxConsOn(),cur=consCur();
- $('#cTabs').hidden=!av;$('.termwrap').classList.toggle('hastabs',av);
- [['claude','#ctClaude'],['codex','#ctCodex']].forEach(([k,id])=>{
+ const av=cxAvail(),pv=prodAvail(),cur=consCur(),ks=splitEff()||[];
+ $('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;
+ [['claude','#ctClaude'],['prod','#ctProd'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
-  b.classList.toggle('on',on);b.setAttribute('aria-selected',on);
+  b.classList.toggle('on',on);b.classList.toggle('tshown',!on&&ks.includes(k));b.setAttribute('aria-selected',on);
   b.title=on?'':tr('cxcSw')+b.textContent;
+  b.draggable=splitMq.matches&&(av||pv);
  });
- $('#ctStop').setAttribute('aria-label',tr('cxcStopTip'));
- for(const [id,k] of [['#ctCompact','cxcCompactTip'],['#ctNew','cxcNewTip']]){const b=$(id);b.title=tr(k);b.setAttribute('aria-label',tr(k));}
- const key=cur;
- if(key!==consShown){
-  consShown=key;cxConsRun=null;
-  $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
-  $('#cxCons').hidden=true;$('#ctStop').hidden=$('#ctCompact').hidden=$('#ctNew').hidden=true;$('#cTabs').classList.remove('cacts');$('.termwrap').classList.remove('hascacts');
-  STICK=true;ccConsoleHistory();ccConsole();
- }
+ // вкладки Notion AI: при разделении подсвечиваются так же; вне разделения ими ведает cc_notion_ai.py
+ document.querySelectorAll('#cTabs .ctab[data-s="notion"]').forEach(b=>{const k=tabKey(b),on=ks.length>0&&k===cur;b.draggable=splitMq.matches&&isKey(k);b.classList.toggle('tshown',ks.length>0&&!on&&ks.includes(k));if(ks.length>0&&b.classList.contains('on')!==on){b.classList.toggle('on',on);b.setAttribute('aria-selected',on);}});
+ splitBtnSync();
+ ctActsSync();  // подсказки кнопок — по текущей вкладке (раньше здесь жёстко стояли подсказки Codex)
+ syncPanes();
 }
 function consPick(k){
+ if(isNai(k)&&!splitEff())return;  // вне разделения чат Notion AI открывает его собственная вкладка (окно поверх консоли)
+ const ks=splitEff();
+ if(ks){const r=splitPick(ks,splitActIdx(ks),k);SPLIT={keys:r.keys,act:r.act};splitSave();}
  CONS=k;try{localStorage.setItem('cc_contab',k);}catch(e){}
  consTabs();
 }
-$('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(b&&b.dataset.s!==consCur())consPick(b.dataset.s);});
-async function cxConsAct(path,quiet){
- const g=$('#cxConsGo'),st=$('#ctStop');g.disabled=true;st.disabled=true;
- cxStarting=path==='start';if(cxStarting)$('#cxConsMsg').textContent=tr('cxcStarting');
+$('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(!b)return;const k=tabKey(b);if(isKey(k)&&k!==consCur())consPick(k);});
+// ---- разделение: панели, заголовки, перетаскивание
+function tabKey(b){const s=b.dataset.s;return s==='notion'?(b.dataset.aid?'notion:'+b.dataset.aid:'notion'):s;}
+function tabName(k){const b=[...document.querySelectorAll('#cTabs .ctab')].find(x=>tabKey(x)===k);return b?b.textContent.trim():k;}
+function paneClean(P){if(P.chat){P.chat.stop();P.chat=null;}if(P.nv){P.nv.remove();P.nv=null;}P.box.classList.remove('tpchat');}
+function resetPane(P,k){
+ paneClean(P);
+ P.k=k;P.cxRun=null;P.prodRun=false;P.idleKey='';P.stick=true;P.dotCls='';
+ P.hist.innerHTML='';P.cur.innerHTML='';P.idle.hidden=true;P.box.classList.remove('termempty');
+ if(isNai(k)){  // чат Notion AI: своя прокручиваемая область внутри части, опрос — у чата
+  P.box.classList.add('tpchat');P.nv=document.createElement('div');P.nv.className='nai-view tpnai';P.box.appendChild(P.nv);
+  P.chat=typeof window.naiChat==='function'?window.naiChat(P.nv,naiAid(k)):null;P.dotCls='termdot';if(P.chipDot)P.chipDot.className='termdot tpdot';return;
+ }
+ ccConsoleHistory(P);ccConsole(P);
+}
+function newPane(){
+ const box=document.createElement('pre');box.className='termbox tpextra';
+ box.innerHTML='<span class="tph"></span>\n<span class="tpc"></span><div class="termidle" hidden><span></span><button type="button" hidden></button></div>';
+ const P={k:null,primary:false,seq:0,applied:0,idleKey:'',cxRun:null,prodRun:false,stick:true,dotCls:'',chipDot:null,box:box,hist:box.children[0],cur:box.children[1],idle:box.children[2],idleTxt:box.children[2].children[0],idleGo:box.children[2].children[1]};
+ return P;
+}
+// ---- у каждой части своё окно ввода: форма как у общего окна (cc_overview.py), отправка — его же код (window.fleetBindComposer)
+const DRAFTS={};  // черновик по модели: переставили части местами — текст ушёл вместе с моделью
+function compMake(P){
+ const w=document.createElement('div');w.className='tpcw';
+ w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form>';
+ const form=w.children[0],input=form.children[0],send=form.children[2],stat=document.createElement('span');  // строки «Ввод в …» у части нет: статус отправки пишется в невидимый узел, ошибки показывает toast
+ P.comp={w:w,form:form,input:input,send:send,stat:stat,model:null};
+ input.addEventListener('input',()=>{DRAFTS[P.k]=input.value;});
+ w.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
+ window.fleetBindComposer(form,input,send,stat,()=>P.k);
+ form.addEventListener('submit',e=>{if(!isNai(P.k)||!P.chat)return;e.preventDefault();e.stopImmediatePropagation();const text=input.value;if(!text.trim())return;P.chat.send(text,ok=>{if(ok&&input.value===text){input.value='';DRAFTS[P.k]='';}});},true);  // у части с чатом Notion AI сообщение идёт в чат (capture — раньше отправки в консоль)
+ return w;
+}
+function compSync(P,on){
+ const c=P.comp;if(!c)return;
+ const n=tabName(P.k);
+ c.w.classList.toggle('on',on);
+ c.form.querySelector('.tpkey').hidden=isNai(P.k);  // Esc — только для консолей
+ if(c.model!==P.k){
+  c.model=P.k;c.input.value=DRAFTS[P.k]||'';
+  c.input.placeholder=(LANG==='en'?'Message to ':'Сообщение в ')+n+'…';c.input.setAttribute('aria-label',c.input.placeholder);
+  c.send.title=LANG==='en'?'Send':'Отправить';c.form.querySelector('.tpkey').title=LANG==='en'?'Esc to console':'Esc в консоль';
+ }
+}
+function placeFrame(ks){
+ const wrap=document.querySelector('.termwrap');
+ let fr=[...wrap.querySelectorAll(':scope > .tpfr')];
+ if(!ks){fr.forEach(f=>f.remove());return;}
+ if(!wrap.dataset.tpro&&window.ResizeObserver){wrap.dataset.tpro='1';new ResizeObserver(()=>placeFrame(splitEff())).observe(wrap);}
+ while(fr.length<PANES.length){const f=document.createElement('div');f.className='tpfr';wrap.appendChild(f);fr.push(f);}
+ while(fr.length>PANES.length)fr.pop().remove();
+ // по рамке на часть вокруг шапки (у верхнего края консоли), экрана и окна ввода; у выбранной цвет другой. Размеры дробные, без округления:
+ // иначе правый край уходит на пиксель под рамку блока и обрезается; нижние углы повторяют скругление блока там, где часть к нему примыкает.
+ // Соседние рамки перекрываются на 1px — между частями одна линия, а не две
+ const w=wrap.getBoundingClientRect(),act=splitActIdx(splitEff()||[0]),rad=Math.max(0,(parseFloat(getComputedStyle(wrap).borderBottomLeftRadius)||0)-(wrap.clientLeft||0));
+ PANES.forEach((P,i)=>{
+  const f=fr[i],b=P.box.getBoundingClientRect(),bottom=P.comp?P.comp.w.getBoundingClientRect().bottom:b.bottom,lap=i>0?1:0;
+  f.style.left=(b.left-w.left-wrap.clientLeft-lap).toFixed(2)+'px';f.style.top=(b.top-w.top-wrap.clientTop).toFixed(2)+'px';
+  f.style.width=(b.width+lap).toFixed(2)+'px';f.style.height=(bottom-b.top).toFixed(2)+'px';
+  f.style.borderBottomLeftRadius=i===0?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1?rad+'px':'0';
+  f.classList.toggle('on',i===act);
+ });
+}
+addEventListener('resize',()=>placeFrame(splitEff()));
+function renderComps(ks){
+ const wrap=document.querySelector('.termwrap'),shared=document.getElementById('fleetConsoleForm');
+ let row=document.getElementById('tpComps');
+ if(!ks||!shared||typeof window.fleetBindComposer!=='function'){if(row)row.remove();wrap.classList.remove('tpcomps-on');PANES.forEach(P=>{P.comp=null});return;}
+ if(!row){row=document.createElement('div');row.id='tpComps';row.className='tpcomps';shared.before(row);}
+ wrap.classList.add('tpcomps-on');
+ const act=splitActIdx(ks);
+ PANES.forEach((P,i)=>{if(!P.comp)row.appendChild(compMake(P));compSync(P,i===act);});
+}
+function syncPanes(){
+ const ks=splitEff(),keys=ks||[baseCur()],vp=PANES[0].box.parentNode;
+ $('.termwrap').classList.toggle('tsplit',!!ks);
+ if(ks&&window.naiClose)window.naiClose();  // окно чата Notion AI поверх консоли при разделении не нужно: чат живёт в своей части
+ if(ks)CONS=ks[splitActIdx(ks)];
+ while(PANES.length<keys.length){const P=newPane();vp.appendChild(P.box);PANES.push(P);wirePane(P);}
+ while(PANES.length>keys.length){const P=PANES.pop();P.box.remove();if(P.comp){P.comp.w.remove();P.comp=null;}}
+ PANES.forEach((P,i)=>{if(P.k!==keys[i])resetPane(P,keys[i]);});
+ const act=ks?splitActIdx(ks):-1;
+ PANES.forEach((P,i)=>P.box.classList.toggle('tpact',i===act));
+ if(ks&&PANES[act]&&PANES[act].dotCls)$('#termDot').className=PANES[act].dotCls;
+ renderHeads(ks);
+ renderComps(ks);
+ placeFrame(ks);
+ if(ks)fitAll();
+}
+// ---- выпадающее меню моделей в шапке части: выбрать модель для этой части сразу, без перетаскивания
+function closeModelMenu(){const m=document.getElementById('tpMenu');if(m)m.remove();document.removeEventListener('pointerdown',menuOutside,true);document.removeEventListener('keydown',menuKey,true);removeEventListener('resize',closeModelMenu);}
+function menuOutside(e){const m=document.getElementById('tpMenu');if(m&&!m.contains(e.target)&&!(e.target.closest&&e.target.closest('.tphd')))closeModelMenu();}
+function menuKey(e){if(e.key==='Escape'){e.stopPropagation();closeModelMenu();}}
+function openModelMenu(i){
+ closeModelMenu();
+ const ks=splitEff();if(!ks||i<0||i>=ks.length)return;
+ const chip=document.querySelector('#tpHeads .tphd[data-i="'+i+'"]');if(!chip)return;
+ const m=document.createElement('div');m.id='tpMenu';m.className='tpmenu';m.dataset.i=i;m.setAttribute('role','menu');
+ m.innerHTML='<div class="tpmt">'+(LANG==='en'?'Model in this part':'Модель в этой части')+'</div>'+splitKeysAvail().map(k=>{
+  const j=ks.indexOf(k),cur=j===i;
+  return '<button type="button" role="menuitem" class="tpmi'+(cur?' cur':'')+'" data-k="'+acctEsc(k)+'"><span class="tpmd" data-m="'+(isNai(k)?'notion':k)+'"></span><span class="tpmn">'+acctEsc(tabName(k))+'</span>'
+   +(j>=0&&!cur?'<span class="tpmw">'+(LANG==='en'?'part ':'часть ')+(j+1)+'</span>':'')+(cur?'<span class="tpmc">✓</span>':'')+'</button>';}).join('');
+ document.body.appendChild(m);
+ const r=chip.getBoundingClientRect();m.style.left=Math.max(8,Math.min(r.left,innerWidth-m.offsetWidth-8))+'px';m.style.top=(r.bottom+4)+'px';
+ m.addEventListener('click',e=>{const b=e.target.closest('.tpmi');if(!b)return;const k=b.dataset.k;closeModelMenu();pickPartModel(i,k);});
+ document.addEventListener('pointerdown',menuOutside,true);document.addEventListener('keydown',menuKey,true);addEventListener('resize',closeModelMenu);
+ const f=m.querySelector('.tpmi.cur')||m.querySelector('.tpmi');if(f)f.focus({preventScroll:true});
+}
+// выбрана модель для части i: показана в другой части — части меняются местами (как при перетаскивании), иначе заменяется
+function pickPartModel(i,k){const ks=splitEff();if(!ks||!isKey(k))return;if(ks[i]===k){splitActivate(i);return;}splitCommit(splitDrop(ks,splitActIdx(ks),i,k),k);}
+function renderHeads(ks){
+ const vp=PANES[0].box.parentNode;let h=document.getElementById('tpHeads');
+ if(!ks){if(h)h.remove();PANES.forEach(P=>{P.chipDot=null});return;}
+ if(!h){
+  h=document.createElement('div');h.id='tpHeads';h.className='tpheads';vp.appendChild(h);
+  h.addEventListener('click',e=>{const x=e.target.closest('[data-x]');if(x){splitClose(+x.dataset.x);return;}const c=e.target.closest('.tphd');if(c){const i=+c.dataset.i,m=document.getElementById('tpMenu');if(m&&+m.dataset.i===i){closeModelMenu();return;}splitActivate(i);openModelMenu(i);}});
+  h.addEventListener('dragstart',e=>{const c=e.target.closest('.tphd');if(!c)return;DRAG={t:'pane',v:+c.dataset.i};try{e.dataTransfer.setData('text/plain','pane:'+c.dataset.i);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
+  h.addEventListener('dragend',dragEnd);
+  dropTarget(h,e=>{const c=e.target.closest('.tphd');return c?+c.dataset.i:-1;});
+ }
+ const act=splitActIdx(ks),sig=ks.join()+'|'+act+'|'+LANG+'|'+ks.map(tabName).join();
+ if(h.dataset.sig===sig)return;
+ h.dataset.sig=sig;
+ h.innerHTML=ks.map((k,i)=>'<div class="tphd'+(i===act?' on':'')+'" data-i="'+i+'" draggable="true" title="'+(LANG==='en'?'Drag onto another part to swap':'Перетащи на другую часть, чтобы поменять местами')+'"><span class="termdot tpdot" data-i="'+i+'"></span><b>'+tabName(k)+'</b><span class="tpcaret" aria-hidden="true">▾</span><button type="button" class="tpx" data-x="'+i+'" title="'+(LANG==='en'?'Close this part':'Закрыть часть')+'" aria-label="'+(LANG==='en'?'Close this part':'Закрыть часть')+'">×</button></div>').join('');
+ PANES.forEach((P,i)=>{P.chipDot=h.querySelector('.tpdot[data-i="'+i+'"]');if(P.chipDot&&P.dotCls)P.chipDot.className=P.dotCls+' tpdot';});
+}
+let DRAG=null;
+function dragBegin(){
+ const ks=splitEff();
+ if(DRAG&&DRAG.t==='tab'&&splitMq.matches&&(!ks||(ks.length<SPLIT_MAX&&!ks.includes(DRAG.v)))){
+  const z=ensureAddZone(),a=PANES[0].box.getBoundingClientRect(),c=PANES[PANES.length-1].box.getBoundingClientRect();
+  let w=Math.round((c.right-a.left)*.34);if(ks)w=Math.min(w,170);  // при разделении — узкая полоса у правого края, остальное остаётся под замену частей
+  z.style.left=Math.round(c.right-w)+'px';z.style.top=Math.round(a.top+30)+'px';z.style.width=w+'px';z.style.height=Math.max(60,Math.round(a.height-30))+'px';
+  document.body.classList.add('tpdraging');
+ }
+}
+function dragEnd(){DRAG=null;document.body.classList.remove('tpdraging');document.querySelectorAll('.tpdrop').forEach(e=>e.classList.remove('tpdrop'));}
+function ensureAddZone(){
+ let z=document.getElementById('tpAdd');
+ if(z)return z;
+ z=document.createElement('div');z.id='tpAdd';z.className='tpadd';document.body.appendChild(z);
+ z.textContent=LANG==='en'?'Drop here to open on the right':'Отпусти, чтобы открыть справа';
+ z.addEventListener('dragover',e=>{if(DRAG&&DRAG.t==='tab'){e.preventDefault();z.classList.add('tpdrop');}});
+ z.addEventListener('dragleave',()=>z.classList.remove('tpdrop'));
+ z.addEventListener('drop',e=>{e.preventDefault();const d=DRAG;dragEnd();if(d&&d.t==='tab')splitAddDrop(d.v);});
+ return z;
+}
+function dropTarget(el,idxOf){
+ el.addEventListener('dragover',e=>{const i=idxOf(e);if(i<0||!DRAG||!splitEff())return;e.preventDefault();try{e.dataTransfer.dropEffect='move';}catch(x){}
+  document.querySelectorAll('.tpdrop').forEach(n=>n.classList.remove('tpdrop'));
+  if(PANES[i])PANES[i].box.classList.add('tpdrop');const c=document.querySelector('#tpHeads .tphd[data-i="'+i+'"]');if(c)c.classList.add('tpdrop');});
+ el.addEventListener('dragleave',e=>{if(e.relatedTarget&&el.contains(e.relatedTarget))return;document.querySelectorAll('.tpdrop').forEach(n=>n.classList.remove('tpdrop'));});
+ el.addEventListener('drop',e=>{const i=idxOf(e);if(i<0||!DRAG||!splitEff())return;e.preventDefault();const d=DRAG;dragEnd();splitDropOn(i,d);});
+}
+function splitCommit(r,cur){SPLIT={keys:r.keys,act:r.act};splitSave();CONS=cur||SPLIT.keys[SPLIT.act];try{localStorage.setItem('cc_contab',CONS);}catch(e){}consTabs();}
+function splitDropOn(i,d){
+ const ks=splitEff();if(!ks)return;
+ if(d.t==='tab'){const r=splitDrop(ks,splitActIdx(ks),i,d.v);splitCommit(r,d.v);}
+ else if(d.t==='pane'){const r=splitSwap(ks,splitActIdx(ks),d.v,i);splitCommit(r);}
+}
+function splitAddDrop(k){
+ const av=splitKeysAvail(),ks=splitEff()||[consCur()],nk=splitAdd(ks,av,k);
+ if(!nk)return;
+ splitCommit({keys:nk,act:nk.length-1},k);
+}
+function splitActivate(i){const ks=splitEff();if(!ks||i===splitActIdx(ks)||i<0||i>=ks.length)return;splitCommit({keys:ks,act:i});}
+function splitClose(i){
+ const ks=splitEff();if(!ks)return;
+ const r=splitCloseAt(ks,splitActIdx(ks),i);
+ if(r.keys.length<2){SPLIT={keys:[],act:0};splitSave();CONS=r.keys[0]||'claude';try{localStorage.setItem('cc_contab',CONS);}catch(e){}consTabs();return;}
+ splitCommit(r);
+}
+// кнопка в блоке масштаба: 1 → 2 → 3 части → обратно в одну (3-й нет, если моделей меньше)
+function splitToggle(){
+ const av=splitKeysAvail();if(av.length<2||!splitMq.matches)return;
+ const ks=splitEff();
+ if(!ks){const nk=splitAdd([consCur()],av,null);if(nk)splitCommit({keys:nk,act:0},consCur());return;}
+ const nk=splitAdd(ks,av,null);
+ if(nk){splitCommit({keys:nk,act:splitActIdx(ks)});return;}
+ const cur=ks[splitActIdx(ks)];SPLIT={keys:[],act:0};splitSave();CONS=cur;try{localStorage.setItem('cc_contab',CONS);}catch(e){}consTabs();
+}
+function splitBtnSync(){
+ const b=document.getElementById('splitBtn');if(!b)return;
+ const ok=splitMq.matches&&splitKeysAvail().length>1,ks=splitEff();
+ b.hidden=!ok;
+ const more=ks?(ks.length<Math.min(SPLIT_MAX,splitKeysAvail().length)):true;
+ const t=LANG==='en'?(ks?(more?'Add a part':'Back to one console'):'Split console'):(ks?(more?'Добавить часть':'Вернуть одну консоль'):'Разделить консоль');
+ b.title=t;b.setAttribute('aria-label',t);b.classList.toggle('on',!!ks);
+}
+document.getElementById('splitBtn').addEventListener('click',splitToggle);
+$('#cTabs').addEventListener('dragstart',e=>{const b=e.target.closest&&e.target.closest('.ctab');if(!b)return;const k=tabKey(b);if(!isKey(k)||!splitMq.matches||!splitKeysAvail().includes(k)){e.preventDefault();return;}DRAG={t:'tab',v:k};try{e.dataTransfer.setData('text/plain','tab:'+k);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
+$('#cTabs').addEventListener('dragend',dragEnd);
+splitMq.addEventListener('change',()=>{consTabs();fitAll();});
+function tickAll(){syncPanes();document.querySelectorAll('#cTabs .ctab').forEach(b=>{const d=splitMq.matches&&isKey(tabKey(b))&&splitKeysAvail().includes(tabKey(b));if(b.draggable!==d)b.draggable=d;});for(const P of PANES)ccConsole(P);}
+window.fleetSplitOn=function(){try{return !!splitEff()}catch(e){return false}};
+window.fleetSplitWanted=function(){return splitMq.matches&&SPLIT.keys.length>1};
+window.fleetSplitShow=function(k){if(isKey(k))consPick(k);};
+// консоль идёт за исполнителем: панель знает, кто сейчас работает (remote_mode.worker: dev/prod/codex/notion).
+// Сменился — вкладка консоли переключается сама. Пока исполнитель тот же, ручной выбор вкладки не трогаем.
+let consFollowed='',consFollowWait=0;
+// сохранённая раскладка ещё не собралась: модели частей приходят в панель позже страницы — следом за исполнителем идём, когда она готова
+function splitPending(){const av=splitKeysAvail();return splitMq.matches&&SPLIT.keys.length>1&&SPLIT.keys.some(k=>!av.includes(k));}
+function consFollow(d){
+ try{
+  const w=d&&d.remote_mode&&d.remote_mode.worker;if(!w)return;
+  let seen=consFollowed;if(!seen){try{seen=localStorage.getItem('cc_conworker')||'';}catch(e){}}
+  if(seen===w)return;
+  const b=document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[w]||'ctClaude');
+  if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())||splitPending()){
+   // страница только открылась: вкладка Notion и данные Codex приходят чуть позже — ждём до 30 с, потом отстаём до следующего опроса
+   const t=Date.now();if(!consFollowWait||t-consFollowWait>30000)consFollowWait=t;
+   if(t-consFollowWait<30000)setTimeout(()=>consFollow(lastSnap),700);
+   return;
+  }
+  consFollowed=w;try{localStorage.setItem('cc_conworker',w);}catch(e){}  // запоминаем до клика: сам клик зовёт consTabs
+  // разделённая консоль: окно нового исполнителя встаёт на место окна прежнего, выбранная рукой часть (например, Notion) остаётся (владелец 62577)
+  const ks=splitEff();
+  if(ks&&splitKeysAvail().includes(tabKey(b))){const ob=seen?document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[seen]||'ctClaude'):null;splitCommit(splitFollow(ks,splitActIdx(ks),ob?tabKey(ob):'',tabKey(b)),tabKey(b));return;}
+  b.click();  // обычный клик: вкладка Notion открывает его чат, остальные закрывают чат Notion и зовут consPick
+ }catch(e){}
+}
+async function cxConsAct(path,quiet,P){
+ P=P||PANES[0];
+ const g=P.idleGo;g.disabled=true;
+ cxStarting=path==='start';if(cxStarting&&!P.idle.hidden)P.idleTxt.textContent='⏸ '+tr('cxcStarting');
  try{
   const r=await acctPost('chatgpt/console/'+path,{});
   if(!(r.ok&&quiet))toast(r.ok?r.message:'⚠ '+r.message);
-  cxConsRun=null;cxConsUi(r);
-  $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
-  await ccConsole();ccConsoleHistory();
+  P.cxRun=null;cxConsUi(r);
+  P.hist.innerHTML='';P.cur.innerHTML='';
+  await ccConsole(P);ccConsoleHistory(P);
  }catch(e){toast('⚠ '+e);}
- cxStarting=false;g.disabled=false;st.disabled=false;
+ cxStarting=false;g.disabled=false;
 }
-$('#cxConsGo').addEventListener('click',()=>cxConsAct('start'));
-$('#ctStop').addEventListener('click',()=>{if(confirm(tr('cxcStopQ'))){cxAutoGo=false;cxConsAct('stop');}});
+async function prodStart(P){
+ P=P||PANES[0];
+ prodStarting=true;P.idleTxt.textContent='⏸ Запускаю Claude на PROD…';P.idleGo.disabled=true;
+ try{const r=await fetch(API+'remote/console/start',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:'{}'});const j=await r.json();if(!j.ok)toast('⚠ '+(j.message||'Не запустилось'));}
+ catch(e){toast('⚠ Панель не ответила');}
+ prodStarting=false;ccConsole(P);
+}
+// одна кнопка в плашке: что она запускает, решает вкладка (ставит idleUi)
+async function paneGo(P){const b=P.idleGo,w=b.dataset.go;if(w!=='codex'&&w!=='prod')return;if(!await window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start',false,P);else prodStart(P);}
+wirePane(PANES[0]);
 async function cxConsCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Codex
+ if(cmd==='compact'&&!await window.fleetAsk($('#ctCompact'),tr('askCxCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;
- const bs=[$('#ctCompact'),$('#ctNew'),$('#ctStop')];bs.forEach(b=>b.disabled=true);
+ const bs=[$('#ctCompact'),$('#ctNew')];bs.forEach(b=>b.disabled=true);
  try{
   const r=await acctPost('chatgpt/console/cmd',{cmd});
   toast(r.ok?'✅ '+r.message:'⚠ '+r.message);
-  if(cmd==='new'&&r.ok){cxConsRun=null;cxConsUi(r);$('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';await ccConsole();ccConsoleHistory();}
+  if(cmd==='new'&&r.ok){const P=activePane();P.cxRun=null;cxConsUi(r);P.hist.innerHTML='';P.cur.innerHTML='';await ccConsole(P);ccConsoleHistory(P);}
  }catch(e){toast('⚠ '+e);}
  bs.forEach(b=>b.disabled=false);
 }
-$('#ctCompact').addEventListener('click',()=>cxConsCmd('compact'));
-$('#ctNew').addEventListener('click',()=>cxConsCmd('new'));
-setTimeout(()=>{ccConsoleHistory();ccConsole();},0);setInterval(ccConsole,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
+async function prodSessionCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Claude PROD: команда вводится в консоль PROD, как её набрал бы человек
+ const b=$(cmd==='compact'?'#ctCompact':'#ctNew');
+ if(cmd==='compact'&&!await window.fleetAsk(b,tr('askProdCompact'),tr('askYes')))return;
+ if(cmd==='new'&&!confirm(tr('confirmNewProd')))return;
+ try{
+  const r=await fetch(API+'console/input?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:'prod',text:cmd==='compact'?'/compact':'/clear'})});
+  const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+(d.message||''));
+ }catch(e){toast('⚠ '+e)}
+}
+function consActCmd(cmd){const s=consCur();return s==='codex'?cxConsCmd(cmd):s==='prod'?prodSessionCmd(cmd):sessionCmd(cmd,$(cmd==='compact'?'#ctCompact':'#ctNew'));}
+$('#ctCompact').addEventListener('click',()=>consActCmd('compact'));
+$('#ctNew').addEventListener('click',()=>consActCmd('new'));
+setTimeout(()=>{consTabs();ccConsoleHistory();tickAll();},0);setInterval(tickAll,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
 function tone(p){return p==null?'na':p<60?'ok':p<85?'warn':'bad'}
 function rst(iso){if(!iso)return'';const d=new Date(iso),m=Math.max(0,Math.round((d-Date.now())/60000));
@@ -5676,7 +5680,7 @@ function renderCards(d){
  $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>{
   const plan=a.plan==='free'?'<span class="tag free">FREE</span> ':a.plan?'<span class="tag plan">'+a.plan.toUpperCase()+'</span> ':'';
   const icons=a.active?`<div class="iconrow">
-    <button class="iconbtn" title="${tr('compactTitle')}" onclick="sessionCmd('compact')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button>
+    <button class="iconbtn" title="${tr('compactTitle')}" onclick="sessionCmd('compact',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button>
     <button class="iconbtn" title="${tr('newSessionTitle')}" onclick="sessionCmd('new')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button>
    </div>`:'';
   const lp=!!a.lapsed;  // слетел с Pro на Free: опрос остановлен до «Я продлил»
@@ -5691,18 +5695,17 @@ function renderCards(d){
    ${a.error&&!lp?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour&&!lp?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
    <div class="acts">${lp&&!a.active?'':`<button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>`}
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
-   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="relogin('${n}')">${tr('relogin')}</button>
+   ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="reloginAsk('${n}',this)">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
   </div>`;
  }).join('');
- ntApply(d.notion);
  renderDock(d);
 }
 // время последнего обновления данных — в подсказки зелёной точки и кнопки «Обновить»
 function setUpd(ts){const t=tr('updated')+' '+new Date(ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');$('#termDot').title=t;$('#rfBtn').title=tr('refresh')+' · '+t}
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
- lastSnap=d;
+ lastSnap=d;noProdSync();consFollow(d);
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
  const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
  $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';
@@ -5841,7 +5844,8 @@ async function sw(n){
  const r=await fetch(API+'switch?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
  const d=await r.json();toast(d.ok?'✅ '+d.message.split('\n')[0]:'⚠ '+d.message);load();
 }
-async function sessionCmd(cmd){
+async function sessionCmd(cmd,btn){
+ if(cmd==='compact'&&!await window.fleetAsk(btn,tr('askCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('confirmNewSession')))return;
  try{
   const r=await fetch(API+'session?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd})});
@@ -5866,8 +5870,11 @@ $('#wkPause').addEventListener('change',async e=>{
 $('#thrMinus').addEventListener('click',()=>setThr(THR-5));
 $('#thrPlus').addEventListener('click',()=>setThr(THR+5));
 $('#opt').addEventListener('change',async e=>{
- await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({optimize:e.target.checked})});
- toast(e.target.checked?tr('optOn'):tr('optOff'));load();
+ const box=e.target,on=box.checked;box.checked=!on;
+ if(!await window.fleetAsk(box.closest('label,.switchrow')||box,tr(on?'askOptOn':'askOptOff'),tr('askYes')))return;
+ box.checked=on;
+ await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({optimize:on})});
+ toast(on?tr('optOn'):tr('optOff'));load();
 });
 async function recheck(n,btn){
  btn.disabled=true;const orig=btn.innerHTML;btn.innerHTML='<span class="rn-t">'+tr('checking')+'</span>';
@@ -5880,22 +5887,24 @@ async function recheck(n,btn){
 // «Войти заново» — боковая панель (#acctScrim.side): ссылка входа + поле для кода.
 // Без новой вкладки и prompt(): вкладку блокирует попап-блокер или она открывается
 // не в том профиле браузера, а prompt остаётся на исходной вкладке.
-function relogin(n){
- const a=((lastSnap&&lastSnap.accounts)||{})[n]||{};
- const who=a.email&&a.email!=='?'?a.email:n;
+// remote=true — Claude на втором сервере (PROD): вход идёт там же, токены остаются на нём
+function reloginAsk(n,btn,remote){window.fleetAsk(btn,tr('askRelogin'),tr('askYes')).then(ok=>{if(ok)relogin(n,remote)})}
+function relogin(n,remote){
+ const a=remote?{}:(((lastSnap&&lastSnap.accounts)||{})[n]||{});
+ const who=remote?'Claude PROD':(a.email&&a.email!=='?'?a.email:n);
  const head=`<h3>${tr('relTitle')}</h3><div class="modalsub"><b>${acctEsc(who)}</b> · ${acctEsc(n)}</div>`;
  $('#acctScrim').classList.add('side');
  acctShow(`${head}<div class="modalsub" id="relWait">${tr('addStarting')}</div><div class="dlgerr" id="acctErr" hidden></div>
   <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button></div>`);
  $('#acctCancel').onclick=acctClose;
  acctBusy=true;
- acctPost('relogin/start',{account:n}).then(d=>{
+ acctPost(remote?'remote/relogin/start':'relogin/start',remote?{}:{account:n}).then(d=>{
   acctBusy=false;
   if(!d.ok){$('#relWait').hidden=true;acctErr(d.message);return;}
-  reloginStep2(n,head,d);
+  reloginStep2(n,head,d,remote);
  }).catch(e=>{acctBusy=false;$('#relWait').hidden=true;acctErr(String(e));});
 }
-function reloginStep2(n,head,d){
+function reloginStep2(n,head,d,remote){
  acctShow(`${head}
   <div class="dlgstep"><i>1</i><span>${tr('relStep1',acctEsc(d.email||n))}</span></div>
   <div class="modalsub" style="margin:0 0 6px">${tr('relHint')}</div>
@@ -5915,11 +5924,11 @@ function reloginStep2(n,head,d){
   if(!code.value.trim()){acctErr(tr('addNeedCode'));return;}
   acctBusy=true;send.disabled=true;send.textContent=tr('relChecking');acctErr('');
   try{
-   const r=await acctPost('relogin/submit',{account:n,code:code.value.trim()});
+   const r=await acctPost(remote?'remote/relogin/submit':'relogin/submit',remote?{code:code.value.trim()}:{account:n,code:code.value.trim()});
    acctBusy=false;
    if(r.ok){acctClose();toast(r.message);load();return;}
    // неудачная попытка на сервере уже сброшена — тот же код второй раз не пройдёт, нужна новая ссылка
-   acctErr(r.message);send.disabled=false;send.textContent=tr('addRestart');send.onclick=()=>relogin(n);
+   acctErr(r.message);send.disabled=false;send.textContent=tr('addRestart');send.onclick=()=>relogin(n,remote);
   }catch(e){acctBusy=false;acctErr(String(e));send.disabled=false;send.textContent=tr('relSubmit');}
  };
  setTimeout(()=>code.focus(),30);
@@ -6063,9 +6072,9 @@ function cxSelects(a){
  const eOpts=`<option value=""${ef?'':' selected'}>${acctEsc(tr('cxEffort')+': '+tr('cxDefault')+(cur.default_effort?' ('+cur.default_effort+')':''))}</option>`
   +efs.map(e=>`<option value="${acctEsc(e)}"${e===ef?' selected':''}>${acctEsc(tr('cxEffort')+': '+e)}</option>`).join('');
  return`<div class="cxsel">
-   <select class="dlginp" id="cxm-${sl}" title="${tr('cxModelTip')}" aria-label="${tr('cxModelTip')}" onchange="cxPref('${sl}')">${mOpts}</select>
-   ${efs.length?`<select class="dlginp" id="cxe-${sl}" title="${tr('cxEffortTip')}" aria-label="${tr('cxEffortTip')}" onchange="cxPref('${sl}')">${eOpts}</select>`:''}
-   <label class="cxfast${canFast?'':' off'}" title="${acctEsc(canFast?tr('cxFastTip'):tr('cxFastNa'))}"><input type="checkbox" id="cxf-${sl}"${a.fast&&canFast?' checked':''}${canFast?'':' disabled'} onchange="cxPref('${sl}')"><span>${tr('cxFast')}</span></label>
+   <select class="dlginp" id="cxm-${sl}" title="${tr('cxModelTip')}" aria-label="${tr('cxModelTip')}" onchange="cxPref('${sl}',this)">${mOpts}</select>
+   ${efs.length?`<select class="dlginp" id="cxe-${sl}" title="${tr('cxEffortTip')}" aria-label="${tr('cxEffortTip')}" onchange="cxPref('${sl}',this)">${eOpts}</select>`:''}
+   <label class="cxfast${canFast?'':' off'}" title="${acctEsc(canFast?tr('cxFastTip'):tr('cxFastNa'))}"><input type="checkbox" id="cxf-${sl}"${a.fast&&canFast?' checked':''}${canFast?'':' disabled'} onchange="cxPref('${sl}',this)"><span>${tr('cxFast')}</span></label>
   </div>`;
 }
 function cxNeedsRenew(a){return!!a.lapsed||(!!a.sub_until&&new Date(a.sub_until)-Date.now()<=0);}
@@ -6090,7 +6099,7 @@ function cxCard(a){
   <div class="top"><span class="email">${who} ${plan}${a.lapsed?'':cxSubChip(a)}</span><div class="hdrright">${rg}</div></div>
   ${notes}${bars}${cr?`<div class="cxsub" style="margin-top:8px">${cr}</div>`:''}
   ${a.login_required?'':cxSelects(a)}
-  <div class="acts">${cxAuthChip(a)}${cxNeedsRenew(a)&&!a.login_required?`<button class="btn-relogin" title="${acctEsc(tr('cxRenewTip'))}" onclick="cxRenew('${sl}',this)">✅ ${tr('cxRenewBtn')}</button>`:''}<button class="btn-relogin" onclick="cxAdd('${sl}')">${tr('cxRelogin')}</button>
+  <div class="acts">${cxAuthChip(a)}${cxNeedsRenew(a)&&!a.login_required?`<button class="btn-relogin" title="${acctEsc(tr('cxRenewTip'))}" onclick="cxRenew('${sl}',this)">✅ ${tr('cxRenewBtn')}</button>`:''}<button class="btn-relogin" onclick="cxReloginAsk('${sl}',this)">${tr('cxRelogin')}</button>
    <button class="btn-relogin" title="${acctEsc(tr('cxLaunchTip'))}" onclick="cxLaunch('${sl}',this)">${tr('cxLaunch')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="cxDel('${sl}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
  </div>`;
@@ -6202,8 +6211,6 @@ let cxpBusy=false;
 const CXP_SEC={acc:false,br:false};
 try{Object.assign(CXP_SEC,JSON.parse(localStorage.getItem('cxpSec')||'{}'));}catch(e){}
 function cxAvail(){return!!((cxData&&cxData.available)||(cxbData&&cxbData.available));}
-// вкладка консоли Codex: Codex установлен И есть вход ChatGPT (после «Удалить Codex целиком» бинарь остаётся, входов нет)
-function cxConsOn(){return cxAvail()&&!!(((cxData&&cxData.accounts)||[]).length);}
 function cxpName(p){return p.builtin?tr('cxpN_'+p.id):p.name;}
 const CXO_MK={mediator:'cxbModeMed',orchestrator:'cxbModeOrch',self:'cxbModeSelf'},CXO_AK={read:'cxbAccRead',write:'cxbAccWrite',full:'cxbAccFull'},CXO_RK={read:'cxbRRead',dev:'cxbRDev',full:'cxbRFull'};
 function cxoMode(m){return tr(CXO_MK[m]||'cxbModeMed').replace(/\s*\(.*$/,'');}
@@ -6218,7 +6225,7 @@ function cxpSub(p){
 const CXP_META={
  orchestrator:{caps:true,rc:['cx','cl'],fc:['g','b','o','r'],fi:['🧭','✋','🔨','⏹'],fl:['me','cx','ok','cl','cx']},
  codex:{caps:false,rc:['nat'],fc:['g','b','o'],fi:['⚡','✏️','👁'],fl:['me','cx','nat']},
- agent:{caps:false,rc:['cl','nat'],fc:['g','b','o'],fi:['📝','🤖','✔'],fl:['me','cl','nat','cl']}
+ codex_solo_full:{caps:false,rc:['nat','r'],fc:['g','r','o','b'],fi:['⚡','🔓','👤','✋'],fl:['me','cx','nat']}
 };
 const CXP_ARR='<svg class="cxarr" viewBox="0 0 26 10" aria-hidden="true"><path d="M1 5h21M17.5 1.2 22.5 5l-5 3.8" fill="none" stroke="url(#cxpg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 function cxpChip(c,t){return`<span class="cxw ${c}">${acctEsc(t)}</span>`;}
@@ -6267,7 +6274,7 @@ function cxHdr(){
  if(emg)cls='emg';
  btn.classList.toggle('emg',emg);
  $('#cxDot').className='cxdot '+cls;
- const name=emg?tr('cxeHdr'):cur?cxpName(cur):(b&&b.profile==='reserve'?tr('cxpN_reserve'):(b&&b.enabled?tr('cxpManualShort'):''));
+ const name=emg?tr('cxeHdr'):cur?cxpName(cur):(b&&b.enabled?tr('cxpManualShort'):'');
  $('#cxBtnName').textContent=name;
  const st=b?(b.last_error?'⚠ '+b.last_error:b.running?tr('cxbRunning'):tr('cxbOff')):'';
  const la=cxLimAcc(),lim=$('#cxLim');
@@ -6425,12 +6432,8 @@ function cxpRender(){
    <button type="button" class="cxpi${open?' on':''}" data-info="${acctEsc(p.id)}" aria-expanded="${open}" title="${acctEsc(tr('cxpInfo'))}" aria-label="${acctEsc(tr('cxpInfo'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
    ${p.builtin?'':`<button type="button" class="cxpx" title="${acctEsc(tr('cxpDel'))}" aria-label="${acctEsc(tr('cxpDel'))}" data-del="${acctEsc(p.id)}">×</button>`}</div>`;
  }).join('');
- // «Резерв» — служебный профиль: встаёт сам вместе с резервом Notion, вручную не выбирается (клик объяснит это)
- const rs=b.profile==='reserve';
- const rsv=`<div class="cxprof rsv${rs?' act':''}" role="radio" aria-checked="${rs}" aria-disabled="true" tabindex="0" data-id="reserve" data-auto="1"><span class="cxpr"></span>
-   <span class="cxpt"><span class="cxpn"><span class="cxpnm caps">${acctEsc(tr('cxpN_reserve'))}</span><span class="cxroute">${cxpSeq([cxpChip('cx','Codex'),cxpChip('nat','Notion')])}</span></span><span class="cxps">${acctEsc(tr(rs?'cxpS_reserveOn':'cxpS_reserve'))}</span></span></div>`;
  el.innerHTML=`<div class="cxhead"><h2>${tr('cxpTitle')}</h2><span class="cxsub">${tr('cxpHint')}</span><button type="button" class="cxmx" data-close="1" title="${acctEsc(tr('cxpClose'))}" aria-label="${acctEsc(tr('cxpClose'))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-  <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}${rsv}</div>
+  <div class="cxplist" role="radiogroup" aria-label="${acctEsc(tr('cxpTitle'))}">${items}</div>
   ${cxeHtml(cxbData.emergency)}
   ${!b.profile&&b.enabled?`<div class="cxpmanual">${tr('cxpManual')}</div>`:''}`;
 }
@@ -6458,7 +6461,7 @@ function cxPopPlace(){
 }
 function cxPopOpen(){
  if(!cxAvail())return;
- cxMenuClose();cxQClose();ntClose();
+ cxMenuClose();cxQClose();
  $('#cxPop').hidden=false;$('#cxGear').setAttribute('aria-expanded','true');
  cxAll();cxPopPlace();cxbLoad(true);cxLoad();
 }
@@ -6575,7 +6578,7 @@ function ciRender(){
 }
 function ciOpen(){
  if(!ciShow())return;
- cxPopClose();cxMenuClose();cxQClose();ntClose();
+ cxPopClose();cxMenuClose();cxQClose();
  $('#cxInstPop').hidden=false;$('#cxInst').setAttribute('aria-expanded','true');
  ciRender();
  if(ciStage()===1)ciLoad();  // ход установки нужен только на шаге 1
@@ -6659,152 +6662,6 @@ async function ciRecheck(){
 }
 $('#cxInst').addEventListener('click',()=>{$('#cxInstPop').hidden?ciOpen():ciClose();});
 $('#cxInstX').addEventListener('click',ciClose);
-// ---- блок Notion-агента в шапке: выключатель и ⚙ с настройками и пояснениями ----
-let ntData=null,ntPrevRes=null,ntActAt=0;  // ntPrevRes — резерв был включён на прошлом показе; ntActAt — когда человек последний раз нажал
-function ntAfter(){ntActAt=Date.now();}
-// после любой правки: баннер паузы и шапку Codex обновляем сразу (не ждём опросов) и ещё раз через пару секунд — догнать долгие шаги
-function ntSync(){ccpLoad();cxbLoad(true);setTimeout(()=>{ntRefresh();ccpLoad();cxbLoad(true);},2500);}  // cxbLoad — имя профиля в шапке Codex (резерв ↔ прежний)
-function ntApply(n){
- const g=$('#ntGrp');if(!g)return;
- ntData=n&&n.available?n:null;g.hidden=!ntData;
- if(!ntData){ntClose();return;}
- const b=$('#ntBtn'),rv=ntData.reserve||{},res=!!rv.active,man=!!rv.manual,ok=!!ntData.connected;
- // иконка N — только индикатор (подключён или нет); переключатель — ручной резерв: Claude на паузе, работают Codex + агент
- g.classList.toggle('bad',!ok);g.classList.toggle('res',res);  // рамка всей группы вместе с ⚙
- const it=tr('ntIndTip')+' — '+(ok?tr('ntLoginOk'):tr('ntLoginBad'));
- $('#ntInd').title=it;$('#ntInd').setAttribute('aria-label',it);$('#ntDot').className='cxdot '+(ok?'on':'err');
- b.setAttribute('aria-checked',man?'true':'false');b.classList.toggle('res',res);
- const dis=!rv.ready&&!man;b.classList.toggle('dis',dis);b.setAttribute('aria-disabled',dis?'true':'false');
- if(ntPrevRes!==null&&ntPrevRes!==res&&Date.now()-ntActAt<15000)toast(res?tr('ntResOnToast'):tr('ntResOffToast',rv.claude==='down'));  // человек видит, что переключилось
- ntPrevRes=res;
- const tip=dis?tr('ntResNotReady'):man?tr('ntSwTipOn'):res?tr('ntSwTipAuto'):tr('ntSwTipOff');
- b.title=tip;b.setAttribute('aria-label',tr('ntBtnRes')+' — '+tip);$('#ntBtnName').textContent=tr('ntBtnRes');
- const gb=$('#ntGear');gb.title=tr('ntGearTip');gb.setAttribute('aria-label',tr('ntGearTip'));
- if(!$('#ntPop').hidden){  // окно открыто: обновляем только строки состояния, поля ввода не трогаем
-  const l=$('#ntLoginV');
-  if(l){l.className=ok?'ok':'bad';l.textContent=ok?tr('ntLoginOk'):tr('ntLoginBad');}
-  ntResPaint();
- }
-}
-// строка «что с резервом сейчас» и состояние галочек (пока идёт сохранение, галочки не трогаем)
-function ntResText(rv){
- if(!rv.ready)return tr('ntResNotReady');
- let t;
- if(rv.active)t=rv.why==='manual'?tr('ntResOnManual'):tr('ntResOnAuto');
- else if(rv.claude==='down')t=tr('ntResWait');
- else if(rv.claude==='unknown')t=tr('ntResUnknown');
- else t=tr(rv.auto?'ntResIdleAuto':'ntResIdle');
- if(rv.active&&rv.why!=='manual'&&rv.reset)t+=tr('ntResReset')(rv.reset);
- if(rv.emergency&&rv.emergency.active&&rv.emergency.by_reserve)t+=tr('ntResEmgOn');
- return t;
-}
-let ntResBusy=false;
-function ntResPaint(){
- const rv=(ntData&&ntData.reserve)||{},st=$('#ntResSt');
- if(st)st.textContent=ntResText(rv);
- if(ntResBusy)return;
- const a=$('#ntResAuto'),e=$('#ntResEmg');
- if(a)a.checked=!!rv.auto;if(e){e.checked=!!rv.auto_emergency;e.disabled=!rv.auto;}
- const w=$('#ntResEmgW');if(w)w.classList.toggle('dis',!rv.auto);
-}
-async function ntResSave(){
- ntResBusy=true;ntAfter();
- const body={reserve:{auto:$('#ntResAuto').checked,auto_emergency:$('#ntResEmg').checked}};
- $('#ntResEmg').disabled=!body.reserve.auto;
- let msg='';
- try{
-  const r=await acctPost('notion/save',body);
-  if(r&&r.ok)ntApply(r.notion);else msg=(r&&r.message)||tr('ntResErr');
- }catch(e){msg=tr('ntResErr');}
- ntResBusy=false;ntResPaint();ntSync();
- if(msg)toast(msg);
-}
-let ntPollT=null;
-async function ntRefresh(){  // только блок Notion: дёшево, можно часто
- try{const r=await fetch(API+'notion?token='+TOKEN);if(r.ok)ntApply(await r.json());}catch(e){}
-}
-async function ntToggle(){
- if(!ntData)return;
- const prev=ntData,rv=prev.reserve||{},next=!rv.manual;
- if(next){
-  if(!rv.ready){toast(tr('ntResNotReady'));return;}
-  if(!confirm(tr('ntResConfirm')))return;  // переход в резерв ставит Claude на паузу — только после явного «да»
- }
- ntAfter();
- // сразу показываем, правду потом приносит сервер: рамка, шапка и переключатель меняются без ожидания
- const act=next||(!!rv.auto&&rv.claude==='down');
- ntApply(Object.assign({},prev,{reserve:Object.assign({},rv,{manual:next,active:act,why:next?'manual':(act?'claude_down':'')})}));
- try{
-  const r=await acctPost('notion/save',{reserve:{manual:next}});
-  if(r&&r.ok)ntApply(r.notion);else{ntActAt=0;ntApply(prev);toast((r&&r.message)||tr('ntErr'));}  // откат — без тоста о смене режима
- }catch(e){ntActAt=0;ntApply(prev);toast(tr('ntErr'));}
- ntSync();
-}
-function ntRender(){
- const n=ntData;if(!n)return;const ag=n.agent||{};
- $('#ntPopTitle').textContent=tr('ntTitle');$('#ntPopX').title=tr('cxpClose');$('#ntPopX').setAttribute('aria-label',tr('cxpClose'));
- $('#ntPopB').innerHTML=`
-  <div class="ntrow"><span>${tr('ntLogin')}</span><b id="ntLoginV" class="${n.connected?'ok':'bad'}">${n.connected?tr('ntLoginOk'):tr('ntLoginBad')}</b></div>
-  <label class="dlglbl" for="ntName" style="margin-top:10px">${tr('ntName')}</label>
-  <input id="ntName" class="dlginp" autocomplete="off" spellcheck="false" maxlength="80" placeholder="${acctEsc(tr('ntNamePh'))}" value="${acctEsc(ag.name||'')}">
-  <label class="dlglbl" for="ntUrl" style="margin-top:12px">${tr('ntUrl')}</label>
-  <input id="ntUrl" class="dlginp" autocomplete="off" spellcheck="false" placeholder="agent://…">
-  <div class="cxsub" style="margin-top:6px">${ag.set?tr('ntUrlSet'):tr('ntUrlNone')}</div>
-  <div class="cxbrow"><button id="ntSave" onclick="ntSave()">${tr('ntSave')}</button>${ag.set?`<button class="ghostbtn" onclick="ntClearUrl()">${tr('ntUrlClear')}</button>`:''}<span class="cxsub" id="ntStat" role="status"></span></div>
-  <div class="ntsec">${tr('ntRes')}</div>
-  <div class="ntnote">${tr('ntResTxt')}</div>
-  <div class="ntres">
-   <div class="ntnote">${tr('ntResSwNote')}</div>
-   <label class="updchk wkchk"><input type="checkbox" id="ntResAuto"><span>${tr('ntResAuto')}</span></label>
-   <label class="updchk wkchk" id="ntResEmgW"><input type="checkbox" id="ntResEmg"><span>${tr('ntResEmg')}</span></label>
-   ${(n.reserve&&n.reserve.emergency&&!n.reserve.emergency.configured)?`<div class="ntnote">${tr('ntResEmgNo')}</div>`:''}
-   <div class="cxsub" id="ntResSt" role="status"></div>
-  </div>
-  <div class="ntsec">${tr('ntWhat')}</div>
-  <div class="ntnote">${tr('ntWhatTxt')}</div>
-  <div class="ntsec">${tr('ntSetup')}</div>
-  <ol class="ntsteps">
-   <li>${tr('ntStep1')}<br><code>claude mcp add --transport http notion https://mcp.notion.com/mcp</code></li>
-   <li>${tr('ntStep2')}</li><li>${tr('ntStep3')}</li><li>${tr('ntStep4')}</li><li>${tr('ntStep5')}</li>
-  </ol>`;
- ['ntResAuto','ntResEmg'].forEach(id=>$('#'+id).addEventListener('change',ntResSave));
- ntResPaint();
-}
-async function ntSave(extra){
- ntAfter();
- const btn=$('#ntSave');if(btn)btn.disabled=true;
- let msg='';
- try{
-  const body=extra||{name:$('#ntName').value};
-  if(!extra){const u=$('#ntUrl').value.trim();if(u)body.url=u;}
-  const r=await acctPost('notion/save',body);
-  if(r&&r.ok){ntApply(r.notion);ntRender();msg=tr('ntSaved');ntSync();}else msg=(r&&r.message)||tr('ntErr');
- }catch(e){msg=tr('ntErr');}
- const st=$('#ntStat');if(st)st.textContent=msg;
- const b2=$('#ntSave');if(b2)b2.disabled=false;
-}
-function ntClearUrl(){if(confirm(tr('ntUrlClearQ')))ntSave({clear_url:true});}
-function ntPlace(){
- const pop=$('#ntPop'),r=$('#ntGear').getBoundingClientRect();
- const top=Math.round(r.bottom+8);
- pop.style.top=top+'px';pop.style.maxHeight='calc(100vh - '+(top+12)+'px)';
- if(innerWidth>640){pop.style.right='';pop.style.left=Math.max(10,Math.min(Math.round(r.right-pop.offsetWidth),innerWidth-pop.offsetWidth-10))+'px';}
- else{pop.style.right='';pop.style.left='';}
-}
-function ntOpen(){
- if(!ntData)return;
- cxPopClose();cxMenuClose();cxQClose();ciClose();
- $('#ntPop').hidden=false;$('#ntGear').setAttribute('aria-expanded','true');
- ntRender();ntPlace();
- clearInterval(ntPollT);ntPollT=setInterval(ntRefresh,4000);ntRefresh();  // пока окно открыто — состояние резерва живое
-}
-function ntClose(){
- const pop=$('#ntPop');if(!pop||pop.hidden)return;
- pop.hidden=true;$('#ntGear').setAttribute('aria-expanded','false');clearInterval(ntPollT);ntPollT=null;
-}
-$('#ntBtn').addEventListener('click',ntToggle);
-$('#ntGear').addEventListener('click',()=>{$('#ntPop').hidden?ntOpen():ntClose();});
-$('#ntPopX').addEventListener('click',ntClose);
 // выбор профиля: на ПК боковая шторка справа, на телефоне — под кнопкой «>_ Профиль ▾» (просьба владельца); выбрал строку — применилось и закрылось
 let cxmPushed=false,cxmBacking=false;  // шаг в истории браузера: кнопка «назад» закрывает шторку, а не страницу
 function cxMenuPlace(){
@@ -6815,7 +6672,7 @@ function cxMenuPlace(){
 }
 function cxMenuOpen(){
  if(!cxAvail())return;
- cxPopClose();cxQClose();ntClose();
+ cxPopClose();cxQClose();
  $('#cxMenu').hidden=false;$('#cxMenuScrim').hidden=false;$('#cxBtn').setAttribute('aria-expanded','true');
  if(!cxmPushed&&!cxmBacking){try{history.pushState({cxm:1},'');cxmPushed=true;}catch(e){}}
  cxpRender();cxMenuPlace();cxbLoad(true);
@@ -6856,7 +6713,8 @@ function cxQRender(){
  const mrow=(id,name,on)=>`<button type="button" class="cxqm${on?' on':''}" role="radio" aria-checked="${on}" data-m="${acctEsc(id)}"><i class="cxqr"></i><span>${acctEsc(name)}</span></button>`;
  let ml=mrow('',tr('cxDefault')+' · '+c.def.name,!a.model);
  if(a.model&&!c.known)ml+=mrow(a.model,a.model,true);
- ml+=c.ms.map(m=>mrow(m.id,m.name,c.known&&m.id===a.model)).join('');
+ const hid=(typeof lastSnap!=='undefined'&&lastSnap&&lastSnap.config&&lastSnap.config.codex_hidden)||[];  // [notion-ai] без галочки «в быстром меню» — не показываем (кроме выбранной)
+ ml+=c.ms.filter(m=>!hid.includes(m.id)||(c.known&&m.id===a.model)).map(m=>mrow(m.id,m.name,c.known&&m.id===a.model)).join('');
  const erow=(e,label,on)=>`<button type="button" class="cxqe${on?' on':''}" role="radio" aria-checked="${on}" data-e="${acctEsc(e)}">${acctEsc(label)}</button>`;
  const el=c.efs.length?erow('',tr('cxDefault')+(c.mod.default_effort?' · '+c.mod.default_effort:''),!c.ef)+c.efs.map(e=>erow(e,e,e===c.ef)).join(''):'';
  q.innerHTML=`<div class="cxqh"><span>${tr('cxModelTip')}</span>${multi?`<span class="cxqa">${acctEsc(a.label||a.email||a.slot)}</span>`:''}</div>
@@ -6871,7 +6729,7 @@ function cxQPlace(){
 }
 function cxQOpen(){
  if(!cxAvail()||$('#cxMod').hidden)return;
- cxPopClose();cxMenuClose();ntClose();
+ cxPopClose();cxMenuClose();
  cxQRender();
  $('#cxQ').hidden=false;$('#cxMod').setAttribute('aria-expanded','true');
  cxQPlace();cxLoad();
@@ -6891,6 +6749,7 @@ async function cxQSet(model,effort){
  let ef=effort===null?c.ef:effort;
  if(ef&&mod.efforts&&!mod.efforts.includes(ef))ef='';  // у другой модели может не быть такого усилия — сбрасываем, чтобы сервер не отказал
  if(mid===curM&&ef===c.ef){if(effort!==null)cxQClose();return;}
+ if(!await window.fleetAsk($('#cxMod'),tr('askCxSet',model!==null?mid+(ef&&ef!==c.ef?' · '+ef:''):ef),tr('askYes')))return;
  const fast=!!(a.fast&&mod.fast);
  cxQBusy=true;$('#cxQ').classList.add('busy');
  try{const r=await acctPost('chatgpt/prefs',{slot:a.slot,model:mid,effort:ef,fast});toast(r.ok===false?'⚠ '+r.message:r.message);}
@@ -6951,11 +6810,11 @@ $('#cxp').addEventListener('click',e=>{
  const em=e.target.closest('[data-emg]');
  if(em){e.stopPropagation();em.dataset.emg==='on'?cxeOn():cxeOff();return;}
  if(e.target.closest('.cxemg'))return;
-  const r=e.target.closest('.cxprof');if(r){if(r.dataset.auto){toast(tr('cxpS_reserve'));return;}cxMenuClose();cxpApply(r.dataset.id);}
+  const r=e.target.closest('.cxprof');if(r){cxMenuClose();cxpApply(r.dataset.id);}
 });
 $('#cxp').addEventListener('keydown',e=>{
  const r=e.target.closest&&e.target.closest('.cxprof');
- if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();if(r.dataset.auto){toast(tr('cxpS_reserve'));return;}cxMenuClose();cxpApply(r.dataset.id);}
+ if(r&&e.target===r&&(e.key==='Enter'||e.key===' ')){e.preventDefault();cxMenuClose();cxpApply(r.dataset.id);}
 });
 document.querySelectorAll('.cxacch').forEach(h=>h.addEventListener('click',()=>{
  const k=h.dataset.sec;CXP_SEC[k]=!CXP_SEC[k];
@@ -6965,15 +6824,14 @@ document.querySelectorAll('.cxacch').forEach(h=>h.addEventListener('click',()=>{
 document.addEventListener('pointerdown',e=>{
  if(e.target.closest('#acctScrim,#scrim'))return;
  if(!$('#cxPop').hidden&&!e.target.closest('#cxPop,#cxGear'))cxPopClose();
- if(!$('#ntPop').hidden&&!e.target.closest('#ntPop,#ntGear'))ntClose();
  if(!$('#cxInstPop').hidden&&!e.target.closest('#cxInstPop,#cxInst'))ciClose();
  if(!$('#cxMenu').hidden&&!e.target.closest('#cxMenu,#cxBtn'))cxMenuClose();
  if(!$('#cxQ').hidden&&!e.target.closest('#cxQ,#cxMod'))cxQClose();
 });
 document.addEventListener('keydown',e=>{
- if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();cxQClose();ntClose();ciClose();}
+ if(e.key==='Escape'&&$('#acctScrim').hidden&&$('#scrim').hidden){cxPopClose();cxMenuClose();cxQClose();ciClose();}
 });
-addEventListener('resize',()=>{if(!$('#ntPop').hidden)ntPlace();if(!$('#cxInstPop').hidden)ciPlace();if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();if(!$('#cxQ').hidden)cxQPlace();});
+addEventListener('resize',()=>{if(!$('#cxInstPop').hidden)ciPlace();if(!$('#cxPop').hidden)cxPopPlace();if(!$('#cxMenu').hidden)cxMenuPlace();if(!$('#cxQ').hidden)cxQPlace();});
 async function cxLoad(refresh){
  if(cxBusy){if(refresh)cxAgain=true;return;}
  cxBusy=true;
@@ -6984,6 +6842,7 @@ async function cxLoad(refresh){
  finally{cxBusy=false;if(cxAgain){cxAgain=false;cxLoad(true);}}
 }
 async function cxRenew(slot,btn){
+ if(!await window.fleetAsk(btn,tr('askRenew'),tr('askYes')))return;
  const orig=btn?btn.textContent:'';
  if(btn){btn.disabled=true;btn.textContent=tr('cxRenewing');}
  try{const r=await acctPost('chatgpt/renew',{slot});toast(r.message);}
@@ -6992,8 +6851,9 @@ async function cxRenew(slot,btn){
  cxLoad();
 }
 function cxLaunch(slot,btn){const a=cxAcc(slot);if(a&&a.launch)acctCopy(btn,a.launch);}
-async function cxPref(slot){
+async function cxPref(slot,src){
  const a=cxAcc(slot);if(!a)return;
+ if(!await window.fleetAsk(src&&(src.closest('label')||src),tr('askCxPref'),tr('askYes'))){cxRender();return;}
  const m=$('#cxm-'+slot),e=$('#cxe-'+slot),f=$('#cxf-'+slot);
  const ms=a.models||[];
  const mod=ms.find(x=>x.id===m.value)||ms.find(x=>x.is_default)||null;
@@ -7011,6 +6871,7 @@ function cxStop(slot,cancel){
  if(cancel)acctPost('chatgpt/login/cancel',{slot}).catch(()=>{});
 }
 // slot не задан — новая карточка, задан — перелогин существующей
+function cxReloginAsk(slot,btn){window.fleetAsk(btn,tr('askRelogin'),tr('askYes')).then(ok=>{if(ok)cxAdd(slot)})}
 function cxAdd(slot){
  if(slot){
   const a=cxAcc(slot)||{};
@@ -7173,10 +7034,17 @@ function ccpRender(){
  // приоритет: пауза отключена кнопкой > пауза (в ней уже есть будильник) >
  // переключаться некуда > активный забит
  const mode=pause.override?'off':pause.active?'pause':lvl;
+ // [remote] работа на Claude PROD: лимиты DEV не значат «переключаться некуда» — переключились туда
+ if(d.remote&&['hard','week','weekrisk','gate'].includes(mode)){el.hidden=true;return;}
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);
  let title,sub,timer=null,tlabel='',action=null;
- if(mode==='off'){
+ // автопередача вот-вот отдаст работу Claude PROD: «некуда» пока не правда — «ищу свободный аккаунт»; красный баннер и пауза — только если искать негде (владелец 62577)
+ const search=!!d.handoff&&['hard','week','weekrisk'].includes(mode);
+ if(search){
+  const a=(d.accounts||{})[d.active]||{};
+  title=tr('ccpSearchTitle');sub=tr('ccpSearchSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap));
+ }else if(mode==='off'){
   const na=d.nearest&&d.nearest.acc;
   const full=lvl==='hard'||lvl==='week';
   title=tr('ccpOffTitle');sub=tr('ccpOffSub',full&&na?ccpEsc(na):'',full&&near?ccpAt(near):'');
@@ -7232,17 +7100,20 @@ function ccpRender(){
   // без таймера: сброс окна активного тут ни при чём — балансер уходит на свободный сразу
   sub=tr('ccpGateSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),d.autoswitch!==false,ses);
  }
+ // [notion-ai] у активного исчерпан настоящий лимит (сессия или неделя 100%) — «Отключить паузу» ничего не даст: кнопку прячем
+ const aa=(d.accounts||{})[d.active]||{};
+ if(action&&action.act==='off'&&(aa.pct>=100||aa.wpct>=100))action={act:'',label:'',hint:tr('ccpHintLimitOut')};
  const chips=Object.entries(d.accounts||{}).map(([n,a])=>
   '<span class="ccp-chip'+(a.usable===false?' hot':'')+'">'+ccpEsc(n)
   +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b>'
   +(a.wpct!=null&&a.wpct>=90?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
- el.className='ccpause lvl-'+({week:'pause',weekrisk:'hard',manual:'gate'}[mode]||mode);el.hidden=false;
+ el.className='ccpause lvl-'+(search?'gate':({week:'pause',weekrisk:'hard',manual:'gate'}[mode]||mode));el.hidden=false;
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
   +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')
   +'</div>'
-  +(action?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+action.act+'\',this)">'
-    +action.label+'</button><span class="ccp-hint">'+ccpEsc(action.hint)+'</span></div>':'')
+  +(action?'<div class="ccp-actions">'+(action.act?'<button type="button" class="ccp-btn" onclick="ccpToggle(\''+action.act+'\',this)">'
+    +action.label+'</button>':'')+'<span class="ccp-hint">'+ccpEsc(action.hint)+'</span></div>':'')
   +'</div>'
   +(timer?'<div class="ccp-timer" data-until="'+timer+'"'+(mode==='pause'&&pause.kind==='reserve'?' data-grace="1"':'')+'><div class="t">'+ccpLeft(timer)+'</div>'
     +'<div class="l">'+tlabel+'</div></div>':'');
@@ -7273,6 +7144,40 @@ async function ccpLoad(){
  ccpLoadedAt=Date.now();
  try{const r=await fetch(API+'pause?token='+TOKEN);ccpData=await r.json();}catch(e){ccpData=null;}
  ccpRender();
+}
+
+// ---- [notion-ai] пауза Codex по лимитам: такая же плашка, как у Claude (данные — /api/chatgpt/rotation → limit_pause) ----
+let cxlpData=null,cxlpOpen=false,cxlpLoadedAt=0;
+function cxlpRender(){
+ const el=$('#cxPause');if(!el)return;
+ const p=cxlpData;
+ if(!p||!p.active){el.hidden=true;el.innerHTML='';return;}
+ const prev=el.querySelector(':scope > details');if(prev)cxlpOpen=prev.open;
+ const upMs=(p.resume_at||0)*1000,at=upMs?ccpAt(upMs):'';
+ const why=(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', ')||tr('cxlpWinAny');
+ const chips=(p.accounts||[]).map(a=>'<span class="ccp-chip hot">'+ccpEsc(a.label)+(a.active?tr('ccpActive'):'')
+  +' <b>'+(a.ses==null?'?':Math.round(a.ses)+'%')+'</b>'+(a.week!=null?tr('ccpWeek',Math.round(a.week)):'')+'</span>').join('');
+ const timer=upMs?'<div class="ccp-timer" data-until="'+upMs+'"><div class="t">'+ccpLeft(upMs)+'</div><div class="l">'+tr('cxlpTill')+'</div></div>':'';
+ el.className='ccpause lvl-pause';el.hidden=false;
+ el.innerHTML='<details class="fleet-pause-fold"'+(cxlpOpen?' open':'')+'><summary class="fleet-pause-summary"><span class="ccp-dot"></span>'
+  +'<span class="ccp-title">'+(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt'))+'</span>'+timer
+  +'<svg viewBox="0 0 24 24" class="fleet-pause-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>'
+  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr('cxlpTitle')+'</div>'
+  +'<div class="ccp-sub">'+tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):'')+'</div>'
+  +'<div class="ccp-meta">'+chips+'</div>'
+  +'<div class="ccp-actions"><span class="ccp-hint">'+ccpEsc(tr('cxlpHint'))+'</span></div></div></div></details>';
+ el.querySelector('details').addEventListener('toggle',e=>{cxlpOpen=e.target.open});
+}
+function cxlpTick(){
+ const t=$('#cxPause .ccp-timer');if(!t)return;
+ const until=+t.dataset.until;t.querySelector('.t').textContent=ccpLeft(until);
+ if(Date.now()>until+60000&&Date.now()-cxlpLoadedAt>30000)cxlpLoad();  // окно должно было отпустить — перечитаем
+}
+async function cxlpLoad(){
+ if(document.hidden&&cxlpData!==null)return;
+ cxlpLoadedAt=Date.now();
+ try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_pause||{active:false};}catch(e){return;}
+ cxlpRender();
 }
 
 // ---- автообновление: баннер «вышла версия», блок в настройках, ручной/авто режим ----
@@ -7529,11 +7434,25 @@ $('#bkBox').addEventListener('change',async e=>{
  bkLoad();
 });
 $('#gear').addEventListener('click',()=>{bkMsg='';updSettingsRender();updLoad();bkLoad();});
-applyI18n();load();setInterval(()=>load(),60000);setInterval(ntRefresh,15000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
+applyI18n();load();setInterval(()=>load(),60000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
 updLoad();
 ccpLoad();setInterval(ccpLoad,20000);setInterval(ccpTick,1000);
+cxlpLoad();setInterval(cxlpLoad,30000);setInterval(cxlpTick,1000);
 try{if(sessionStorage.getItem('cc_upd_reopen')){sessionStorage.removeItem('cc_upd_reopen');$('#gear').click();}}catch(e){}
 </script></body></html>"""
+
+
+import cc_fleet
+cc_fleet.install(globals())
+
+def _remote_loop():
+    # [remote] лимиты удалённых аккаунтов (прод друга) раз в минуту; кэш внутри держит 3 минуты
+    while True:
+        try:
+            cc_remote.refresh_all()
+        except Exception as e:
+            print("remote: ошибка опроса", e, flush=True)
+        time.sleep(60)
 
 
 if __name__ == "__main__":
@@ -7545,10 +7464,11 @@ if __name__ == "__main__":
         print("команды cl/cla/cln/clw/cxw: ошибка", e, flush=True)
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
+    threading.Thread(target=_remote_loop, daemon=True, name="cc-remote-loop").start()
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
     cc_codex_emergency.start()  # аварийный режим: после перезапуска довести до рабочего состояния или снять, запустить сторож срока
     cc_backup.start(lambda: PROFILES, BACKUP_DIR, lambda: cfg().get("profile_backup", True) is not False)  # копии профилей аккаунтов
-    cc_notion.start()  # резерв «Claude недоступен»: сторож лимитов, включает и выключает Codex + Notion-агент
+    cc_notion.start()  # такт профилей (cc_profiles подменяет start); [notion-ai] сторожа резерва больше нет
     cc_codex_bridge.BRIDGE.sync()  # мост Telegram ↔ Codex: поднимется, только если включён в карточке
     port = cfg().get("port", 8877)
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)

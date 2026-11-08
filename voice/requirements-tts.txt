@@ -1,0 +1,5 @@
+# Озвучка (venv-tts), без torch: он ставится отдельной строкой с адреса версии для процессора (download.pytorch.org/whl/cpu).
+numpy
+num2words
+omegaconf
+ruaccent==1.5.8.3

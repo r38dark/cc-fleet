@@ -216,6 +216,8 @@ gear, a "Delete" button on every card and the windows for both flows
 
 ## Installation
 
+> A complete step-by-step guide (Claude accounts, Telegram, Codex, Notion AI and agents, a second server, voice) with a check after every step is in [docs/INSTALL.md](docs/INSTALL.md) (Russian). The installer has 14 steps and checks each one; `sudo ./install.sh --check` shows what is done.
+
 ```bash
 git clone https://github.com/r38dark/cc-fleet.git
 cd cc-fleet
@@ -772,7 +774,7 @@ What they are for: get into the Claude or Codex console on a server with one sho
 Settings come from the panel's `config.json`:
 - `screen_session` — the name of the Claude screen session (default `claude`);
 - `claude_cmd` — how to start Claude, as a whole line (default just `claude`), for example `IS_SANDBOX=1 claude --dangerously-skip-permissions --channels plugin:telegram@claude-plugins-official`. Only needed if you start Claude with flags or channels;
-- `codex_user` — the OS user the Codex console lives under (default `codextrial`).
+- `codex_user` — the OS user the Codex console lives under (default `codex`).
 
 The commands need screen (`apt install screen`) and python3. To leave a console without stopping it: `Ctrl+A`, then `d`.
 
@@ -932,6 +934,15 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
+- **v2.0.0** — Turnkey install: the 14-step `install.sh` checks every step and follows `docs/INSTALL.md` (preparation, Claude
+  accounts, Telegram, Codex, Notion AI, second server, voice; every section has "Step N of M", a check and an "if it failed" table).
+  No personal data in the code: name, addresses, chat id and paths come from `config.json`. The "Second server" wizard in General
+  settings connects a second server without editing files; the server names "Claude A/B" can be renamed. Optional voice (local
+  text-to-speech and speech-to-text) with its own installer. Notion agents: a time progress bar on creation, a persistent SSH key and
+  an own Telegram chat per agent. The console splits into 2-3 parts and follows the worker, replacing the previous worker's part.
+  While work moves to the second server the banner says "Looking for a free account" and the "nowhere to switch" Telegram message
+  is not sent. Forced switch when the second server keeps answering. **Upgrading from versions before 1.28:** run `sudo ./install.sh`
+  from the release archive once (the manifest has `needs_install`).
 - **v1.25.28** — "Agent" profile: Claude and Codex hand tasks to the agent with the command from `notion_agent.delegate_cmd`
   instead of editing themselves; without the command the profile stays hidden. Emergency profile: a red frame around the whole
   block with a stripe on the left, the blinking button and dot are green, the Codex console tab hides after "Remove Codex
@@ -1535,3 +1546,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 ## License
 
 [MIT](LICENSE)
+
+### Overview and Codex accounts (1.26)
+
+The console comes first, followed by separate Claude and Codex account groups. Input targets the selected console: Enter sends, Shift+Enter inserts a newline, Esc goes to that console. Existing settings and controls are retained.
+
+Codex has independent optimization and session/weekly thresholds. Disable optimization for manual selection. Rotation requires fresh quota data and support for the current model, waits until idle, preserves model, effort, workspace and thread, and rolls back a failed start. One account does not rotate. Profiles are searchable; existing access confirmations remain. Model changes apply immediately while idle or after the current response.

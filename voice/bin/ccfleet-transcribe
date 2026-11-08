@@ -1,0 +1,21 @@
+#!/bin/bash
+# Голос -> текст через локальный faster-whisper (модель small, русский, процессор). Демона нет: модель грузится при каждом вызове (5–10 с).
+# Использование: ccfleet-transcribe /путь/к/аудио.oga   (печатает расшифровку в stdout)
+set -e
+AUDIO="${1:-}"
+if [ -z "$AUDIO" ] || [ ! -f "$AUDIO" ]; then
+  echo "Использование: ccfleet-transcribe /путь/к/аудио" >&2
+  exit 1
+fi
+VOICE_DIR="${CCFLEET_VOICE_DIR:-/opt/ccfleet-voice}"
+PY="$VOICE_DIR/venv-stt/bin/python3"
+[ -x "$PY" ] || { echo "ccfleet-transcribe: голос не установлен ($PY). Установка: sudo bash voice/install.sh" >&2; exit 1; }
+export HF_HOME="${HF_HOME:-$VOICE_DIR/hf}"
+"$PY" -c "
+from faster_whisper import WhisperModel
+import sys
+model = WhisperModel('small', device='cpu', compute_type='int8')
+segments, info = model.transcribe(sys.argv[1], language='ru')
+for seg in segments:
+    print(seg.text.strip())
+" "$AUDIO"

@@ -113,6 +113,16 @@ class Script(unittest.TestCase):
         os.makedirs(self.base)
         os.makedirs(self.fb)
         shutil.copy(SCRIPT, os.path.join(self.base, "cc-cmd"))
+        # No privileged helper or real terminal access in shell unit tests.
+        helper = os.path.join(self.fb, "helper")
+        put(helper, "#!/bin/sh\nexit 0\n", 0o755)
+        path = os.path.join(self.base, "cc-cmd")
+        with open(path) as stream:
+            code = stream.read().replace("/usr/local/sbin/cc-codex-console-localize", helper)
+        put(path, code)
+        put(os.path.join(self.fb, "sudo"), '#!/bin/sh\nshift\nexec "$@"\n', 0o755)
+        put(os.path.join(self.base, "cc_codex_terminal.py"),
+            "print("+repr(os.path.join(self.fb, "screen"))+")\nprint('')\n")
         os.chmod(os.path.join(self.base, "cc-cmd"), 0o755)
         for n in ("cl", "cla", "cln", "clw", "cxw"):
             os.symlink(os.path.join(self.base, "cc-cmd"), os.path.join(self.fb, n))
@@ -212,6 +222,36 @@ class Script(unittest.TestCase):
         with open(self.log, encoding="utf-8") as f:
             self.assertIn("-DR mysess", f.read())
 
+    # [notion-ai] 06.11: при профиле Notion AI бота Telegram слушает Notion AI — новую сессию Claude cl/cln/clw не создают
+    def nai(self, doc):
+        put(os.path.join(self.base, "notion_ai_mode.json"), doc if isinstance(doc, str) else json.dumps(doc))
+
+    def test_notion_ai_profile_blocks_new_claude(self):
+        self.cfg(screen_session="mysess", claude_cmd="claude --x")
+        self.nai({"active": True, "kind": "solo"})
+        for name in ("cl", "cln", "clw"):
+            r, calls = self.run_cmd(name)
+            self.assertEqual(r.returncode, 1, name)
+            self.assertIn("Notion AI", r.stdout)
+            self.assertIn("notion-ai-mode off", r.stdout)
+            self.assertFalse([c for c in calls if "-dm" in c or "quit" in c], (name, calls))
+
+    def test_notion_ai_profile_still_attaches_to_live_session(self):
+        self.cfg(screen_session="mysess")
+        self.nai({"active": True})
+        r, calls = self.run_cmd("cl", alive=["mysess"])
+        self.assertEqual(calls, ["-DR mysess"])
+        r, calls = self.run_cmd("cla", alive=["mysess"])
+        self.assertEqual(calls, ["-DR mysess"])
+
+    def test_notion_ai_profile_off_or_broken_file_launches_as_usual(self):
+        self.cfg(screen_session="mysess", claude_cmd="claude --x")
+        for doc in ({"active": False}, "{broken", "[]"):
+            self.nai(doc)
+            r, calls = self.run_cmd("clw")
+            self.assertEqual(r.returncode, 0, (doc, r.stdout, r.stderr))
+            self.assertEqual(calls[:2], ["-S mysess -X quit", "-S mysess -dm bash -lc CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude --x --resume"])
+
 
 class Release(unittest.TestCase):
     """Скрипт входит в релиз: в манифесте автообновления и в install.sh."""
@@ -228,7 +268,11 @@ class Release(unittest.TestCase):
     def test_install_script_copies_cc_cmd(self):
         with open(os.path.join(HERE, "install.sh"), encoding="utf-8") as f:
             t = f.read()
-        self.assertIn('"$SCRIPT_DIR/cc-cmd"', t)
+        # установщик копирует всё из update_manifest.json (module_list), поэтому cc-cmd ставится вместе с остальными файлами пакета
+        self.assertIn("module_list", t)
+        self.assertIn('"$SCRIPT_DIR/$src"', t)
+        with open(os.path.join(HERE, "update_manifest.json"), encoding="utf-8") as f:
+            self.assertIn("cc-cmd", [e["src"] for e in json.load(f)["files"]])
 
     def test_service_makes_links_on_start(self):
         with open(os.path.join(HERE, "cc_limits.py"), encoding="utf-8") as f:

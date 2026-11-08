@@ -1,0 +1,24 @@
+#!/bin/bash
+# Текст -> голосовой .ogg (opus) через локальный TTS-демон cc-fleet (127.0.0.1:8879, служба ccfleet-tts).
+# Использование: ccfleet-say "текст" /путь/выход.ogg [голос=kseniya]   (голоса: aidar baya kseniya xenia eugene)
+# Ошибка демона НЕ пишется в .ogg: при любом сбое файла нет, код возврата 1, причина — в stderr.
+set -e
+TEXT="${1:-}"
+OUT="${2:-}"
+VOICE="${3:-kseniya}"
+if [ -z "$TEXT" ] || [ -z "$OUT" ]; then
+  echo "Использование: ccfleet-say \"текст\" /путь/выход.ogg [голос]" >&2
+  exit 2
+fi
+URL="http://127.0.0.1:${CCFLEET_VOICE_PORT:-8879}/speak"
+PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"text": sys.argv[1], "voice": sys.argv[2]}))' "$TEXT" "$VOICE")
+TMP="$(mktemp "${OUT}.XXXXXX" 2>/dev/null || mktemp)"
+HTTP_CODE=$(curl -s -o "$TMP" -w "%{http_code}" -m "${CCFLEET_VOICE_TIMEOUT:-300}" -X POST "$URL" -H "Content-Type: application/json" -d "$PAYLOAD" || true)
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "ccfleet-say: голос не получился (HTTP ${HTTP_CODE:-нет ответа}): $(head -c 300 "$TMP" 2>/dev/null)" >&2
+  echo "ccfleet-say: служба запущена? systemctl status ccfleet-tts; journalctl -u ccfleet-tts -n 50" >&2
+  rm -f "$TMP"
+  rm -f "$OUT"
+  exit 1
+fi
+mv -f "$TMP" "$OUT"

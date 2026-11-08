@@ -347,7 +347,10 @@ class Page(unittest.TestCase):
         self.assertEqual(len(ent), 1)
         self.assertNotIn("dst", ent[0])
         with open(os.path.join(here, "install.sh"), encoding="utf-8") as f:
-            self.assertIn("cc_backup.py", f.read())
+            t = f.read()
+        # установщик ставит файлы из манифеста (module_list), отдельной строки про модуль в нём нет
+        self.assertIn("module_list", t)
+        self.assertIn('"$SCRIPT_DIR/$src"', t)
 
 
 if __name__ == "__main__":

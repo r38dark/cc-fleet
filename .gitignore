@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+*.bak_*
+remote_auto_hb.json
+PLAN_*.md
+REVIEW_*.md

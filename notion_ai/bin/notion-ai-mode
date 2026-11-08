@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""notion-ai-mode on [full|codex] | off | status — [notion-ai] профили Notion AI через API балансера (127.0.0.1:8877).
+on / on full — «Notion AI · только он»; on codex — «Notion AI → Codex»."""
+import json
+import sys
+import urllib.request
+
+argv = sys.argv[1:] or ["status"]
+cmd = argv[0]
+if cmd not in ("on", "off", "status"):
+    sys.exit(__doc__)
+body = {"by": "команда", "reason": "выключен командой"}
+if cmd == "on":
+    target = (argv[1:2] or ["full"])[0]
+    if target not in ("full", "codex"):
+        sys.exit(__doc__)
+    body.update(kind="full") if target == "full" else body.update(kind="orchestrator", follower=target)
+cfg = json.load(open("/opt/cc-limits/config.json"))
+url = "http://127.0.0.1:%s/api/notion-ai" % cfg.get("port", 8877) + ("" if cmd == "status" else "/" + cmd)
+data = None if cmd == "status" else json.dumps(body).encode()
+req = urllib.request.Request(url, data=data, headers={"X-CC-Token": cfg.get("hook_token", ""), "Content-Type": "application/json"})
+with urllib.request.urlopen(req, timeout=180) as r:
+    out = json.load(r)
+out.pop("state", None) if cmd != "status" else None
+print(json.dumps(out, ensure_ascii=False, indent=1))
