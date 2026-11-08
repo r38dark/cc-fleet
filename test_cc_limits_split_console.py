@@ -85,6 +85,26 @@ class Page(unittest.TestCase):
         # у кнопок блока масштаба display задан классом (на телефоне — правилом панели) и перебивает атрибут hidden
         self.assertIn("#splitBtn[hidden]{display:none!important}", L.PAGE)
 
+    def test_each_part_has_its_own_input_bound_to_its_model(self):
+        # окно ввода части отправляет тем же кодом, что общее окно (cc_overview.py), но в модель своей части
+        self.assertIn("window.fleetBindComposer=bindComposer;", L.PAGE)
+        self.assertIn("function bindComposer(form,input,send,stateNode,sessionOf){", L.PAGE)
+        self.assertIn("const session=sessionOf();", L.PAGE)
+        self.assertNotIn("let sending=false,rotationData=null,lastRequest=null;", L.PAGE)  # состояние отправки — у каждого окна своё
+        self.assertIn("window.fleetBindComposer(form,input,send,stat,()=>P.k);", L.PAGE)
+        self.assertIn("function renderComps(ks){", L.PAGE)
+        self.assertIn("renderHeads(ks);\n renderComps(ks);", L.PAGE)
+        # общее окно скрыто только пока окна частей на месте и открыт не чат Notion AI
+        self.assertIn(".termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}", L.PAGE)
+        self.assertIn(".termwrap.nai-on .tpcomps{display:none!important}", L.PAGE)
+
+    def test_draft_follows_the_model(self):
+        self.assertIn("const DRAFTS={};", L.PAGE)
+        self.assertIn("DRAFTS[P.k]=input.value", L.PAGE)
+
+    def test_prod_history_is_refetched_for_a_new_pane_width(self):
+        self.assertIn("P.k==='prod'&&Math.abs(P.box.clientWidth-(P.histW||0))>24", L.PAGE)
+
     def test_follow_waits_for_saved_layout(self):
         self.assertIn("||splitPending()){", L.PAGE)
 

@@ -3457,6 +3457,25 @@ html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px
 body.tpdraging .tpadd{display:flex;position:fixed;z-index:60;align-items:center;justify-content:center;text-align:center;padding:14px;font:600 13px system-ui,sans-serif;color:#cfe9e0;background:rgba(25,60,52,.78);border:2px dashed var(--fleet-accent,#73dbb7);box-sizing:border-box}
 body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .termwrap.nai-on .tpextra,.termwrap.nai-on .tpheads{display:none!important}
+/* --- у каждой части разделённой консоли своё окно ввода (форма — как общее окно, отправка — его же код) --- */
+.tpcomps{display:none}
+.termwrap.tsplit.tpcomps-on:not(.nai-on)>.tpcomps{display:flex;flex:none;min-width:0}
+.termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}
+.tpcw{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+.tpcw+.tpcw{border-left:1px solid #263140}
+.tpcomp{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-top:1px solid #263140;background:#101620;color:#dbe3ed}
+.tpcw.on .tpcomp{border-top-color:var(--fleet-accent,#73dbb7)}
+.tpcomp::before{content:"›";color:#73dbb7;font:20px ui-monospace,monospace}
+.tpcomp textarea{flex:1;min-width:0;resize:vertical;min-height:26px;max-height:140px;margin:0;padding:4px 0;background:none;color:#dbe3ed;border:0;outline:0;border-radius:0;font:12px/1.5 ui-monospace,Consolas,monospace}
+.tpcomp textarea::placeholder{color:#65768c}
+.tpcomp textarea:focus-visible{box-shadow:0 1px #45d6ab}
+.tpcomp button{margin:0;min-height:0;padding:0;flex:none}
+.tpcomp .tpsend{display:grid;place-items:center;width:28px;height:28px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;box-shadow:none}
+.tpcomp .tpsend svg{display:block;width:16px;height:16px;pointer-events:none}
+.tpcomp .tpkey{background:transparent;color:#73869d;border:1px solid #2a3644;padding:2px 5px;border-radius:4px;font:10px ui-monospace,monospace}
+.tpstat{display:flex;align-items:center;gap:8px;padding:0 12px;min-height:28px;background:#101620;border-top:1px solid #1d2733;font-size:10px;color:#8b9bb0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.tpstat::before{content:"";width:5px;height:5px;border-radius:50%;background:#4cdbb0;flex:none}
+.termwrap.nai-on .tpcomps{display:none!important}
 html:root:root .ctab.tshown:not(.on){text-decoration:underline;text-decoration-color:rgba(200,215,230,.45);text-decoration-thickness:1px;text-underline-offset:7px}
 /* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
 .ccpause{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid #232a36;border-left:4px solid var(--ccp-accent,var(--mut))}
@@ -5131,7 +5150,7 @@ async function ccConsoleHistory(P){
  try{
   const r=await fetch(API+'console?token='+TOKEN+'&history=1'+consQuery(s,P));const d=await r.json();
   if(s!==P.k)return;  // пока шёл запрос, переключили вкладку
-  if(d.ok&&d.history!=null){P.hist.innerHTML=fitSep(d.history,P.box);P.box.scrollTop=P.box.scrollHeight;fitPane(P);}
+  if(d.ok&&d.history!=null){P.histW=P.box.clientWidth;P.hist.innerHTML=fitSep(d.history,P.box);P.box.scrollTop=P.box.scrollHeight;fitPane(P);}
  }catch(e){}
 }
 function cxConsSb(sb){return tr(sb==='workspace-write'?'cxcSbWrite':sb==='danger-full-access'?'cxcSbFull':'cxcSbRead');}
@@ -5213,7 +5232,7 @@ applyTz(false);
 function stickBottom(){for(const P of PANES)P.box.scrollTop=P.box.scrollHeight;}
 function wirePane(P){
  P.box.addEventListener('scroll',()=>{P.stick=P.box.scrollTop+P.box.clientHeight>=P.box.scrollHeight-20;},{passive:true});
- if(window.ResizeObserver)new ResizeObserver(()=>{if(P.stick)P.box.scrollTop=P.box.scrollHeight;fitPane(P);}).observe(P.box);
+ if(window.ResizeObserver)new ResizeObserver(()=>{if(P.stick)P.box.scrollTop=P.box.scrollHeight;fitPane(P);if(P.k==='prod'&&Math.abs(P.box.clientWidth-(P.histW||0))>24)ccConsoleHistory(P);}).observe(P.box);  // PROD отдаёт историю под заданную ширину: панель стала другой — берём заново
  P.box.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
  dropTarget(P.box,()=>PANES.indexOf(P));
  P.idleGo.addEventListener('click',()=>paneGo(P));
@@ -5312,17 +5331,49 @@ function newPane(){
  const P={k:null,primary:false,seq:0,applied:0,idleKey:'',cxRun:null,prodRun:false,stick:true,dotCls:'',chipDot:null,box:box,hist:box.children[0],cur:box.children[1],idle:box.children[2],idleTxt:box.children[2].children[0],idleGo:box.children[2].children[1]};
  return P;
 }
+// ---- у каждой части своё окно ввода: форма как у общего окна (cc_overview.py), отправка — его же код (window.fleetBindComposer)
+const DRAFTS={};  // черновик по модели: переставили части местами — текст ушёл вместе с моделью
+function compMake(P){
+ const w=document.createElement('div');w.className='tpcw';
+ w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form><div class="tpstat"><span></span></div>';
+ const form=w.children[0],input=form.children[0],send=form.children[2],stat=w.children[1].children[0];
+ P.comp={w:w,form:form,input:input,send:send,stat:stat,model:null};
+ input.addEventListener('input',()=>{DRAFTS[P.k]=input.value;});
+ w.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
+ window.fleetBindComposer(form,input,send,stat,()=>P.k);
+ return w;
+}
+function compSync(P,on){
+ const c=P.comp;if(!c)return;
+ const n=tabName(P.k);
+ c.w.classList.toggle('on',on);
+ if(c.model!==P.k){
+  c.model=P.k;c.input.value=DRAFTS[P.k]||'';c.stat.textContent=(LANG==='en'?'Input to ':'Ввод в ')+n;
+  c.input.placeholder=(LANG==='en'?'Message to ':'Сообщение в ')+n+'…';c.input.setAttribute('aria-label',c.input.placeholder);
+  c.send.title=LANG==='en'?'Send':'Отправить';c.form.querySelector('.tpkey').title=LANG==='en'?'Esc to console':'Esc в консоль';
+ }
+}
+function renderComps(ks){
+ const wrap=document.querySelector('.termwrap'),shared=document.getElementById('fleetConsoleForm');
+ let row=document.getElementById('tpComps');
+ if(!ks||!shared||typeof window.fleetBindComposer!=='function'){if(row)row.remove();wrap.classList.remove('tpcomps-on');PANES.forEach(P=>{P.comp=null});return;}
+ if(!row){row=document.createElement('div');row.id='tpComps';row.className='tpcomps';shared.before(row);}
+ wrap.classList.add('tpcomps-on');
+ const act=splitActIdx(ks);
+ PANES.forEach((P,i)=>{if(!P.comp)row.appendChild(compMake(P));compSync(P,i===act);});
+}
 function syncPanes(){
  const ks=splitEff(),keys=ks||[baseCur()],vp=PANES[0].box.parentNode;
  $('.termwrap').classList.toggle('tsplit',!!ks);
  if(ks)CONS=ks[splitActIdx(ks)];
  while(PANES.length<keys.length){const P=newPane();vp.appendChild(P.box);PANES.push(P);wirePane(P);}
- while(PANES.length>keys.length){const P=PANES.pop();P.box.remove();}
+ while(PANES.length>keys.length){const P=PANES.pop();P.box.remove();if(P.comp){P.comp.w.remove();P.comp=null;}}
  PANES.forEach((P,i)=>{if(P.k!==keys[i])resetPane(P,keys[i]);});
  const act=ks?splitActIdx(ks):-1;
  PANES.forEach((P,i)=>P.box.classList.toggle('tpact',i===act));
  if(ks&&PANES[act]&&PANES[act].dotCls)$('#termDot').className=PANES[act].dotCls;
  renderHeads(ks);
+ renderComps(ks);
  if(ks)fitAll();
 }
 function renderHeads(ks){
