@@ -2,6 +2,22 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.4",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Консоль Codex не стартует сама, пока Codex не подключён",
+        "p": [
+          "Запомненная вкладка Codex не выбирается, пока Codex не подключён; его консоль не стартует без входа в ChatGPT"
+        ]
+      },
+      "en": {
+        "t": "The Codex console no longer auto-starts while unconnected",
+        "p": [
+          "A remembered Codex tab is not selected while Codex is unconnected; its console does not start without a ChatGPT login"
+        ]
+      }
+    },
+    {
       "v": "2.0.3",
       "date": "2026-11-08",
       "ru": {
