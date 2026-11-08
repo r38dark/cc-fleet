@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.3",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Разделение консоли не предлагает не подключённые Codex и Notion AI",
+        "p": [
+          "Кнопка разделения и меню частей не показывают Codex и Notion AI, пока те не подключены",
+          "У не подключённого Codex нет кнопки «Codex +» в шапке: мастер открывается с призрачной плитки"
+        ]
+      },
+      "en": {
+        "t": "Split console no longer offers unconnected Codex and Notion AI",
+        "p": [
+          "The split button and the part menus do not list Codex and Notion AI until they are connected",
+          "An unconnected Codex has no \"Codex +\" header button: the wizard opens from its ghost tile"
+        ]
+      }
+    },
+    {
       "v": "2.0.2",
       "date": "2026-11-08",
       "ru": {
