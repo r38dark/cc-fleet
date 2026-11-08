@@ -181,6 +181,11 @@ class Page(unittest.TestCase):
         self.assertIn("function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#naiAgents .nai-seg[data-ag=\"codex\"]')||b)}", L.PAGE)
         self.assertIn("r=ciAnchor().getBoundingClientRect();", L.PAGE)
 
+    def test_codex_tab_is_not_chosen_and_console_not_autostarted_without_login(self):
+        # запомненная вкладка Codex не выбирается, пока Codex не подключён; консоль Codex сама не стартует без входа в ChatGPT (владелец 62657)
+        self.assertIn("CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude'", L.PAGE)
+        self.assertIn("!d.profile_paused&&ciAcc()){cxAutoGo=false;cxConsAct('start',true,P);}", L.PAGE)
+
     def test_draft_follows_the_model(self):
         self.assertIn("const DRAFTS={};", L.PAGE)
         self.assertIn("DRAFTS[P.k]=input.value", L.PAGE)

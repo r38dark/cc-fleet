@@ -5188,7 +5188,8 @@ try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')C
 function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
 // второй сервер не подключён — прячем всё, что с ним связано (вкладка, плашка шапки, карточка, кнопки передачи); запоминаем, чтобы страница не мигала при загрузке
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
-function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
+// запомненная вкладка Codex не выбирается, пока Codex не подключён (призрачная плитка), и консоль Codex сама не стартует без входа в ChatGPT — иначе при каждой загрузке страницы «Нет входа в ChatGPT» (владелец 62657)
+function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}
 function naiList(){try{return window.naiKeys?window.naiKeys():[]}catch(e){return []}}
 // не подключённые Codex и Notion AI (призрачные плитки, html.ag-unlinked-*) в разделение консоли не предлагаются (правка владельца 62622)
 function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[],R.contains('ag-unlinked-notion')?[]:naiList().map(x=>x.key));}
@@ -5255,7 +5256,7 @@ async function ccConsole(P){
    if(s==='codex'){
     cxConsUi(d);
     if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
-    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true,P);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
+    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused&&ciAcc()){cxAutoGo=false;cxConsAct('start',true,P);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
     if(!d.ok){dot.className='termdot err';return;}
     dot.className='termdot';
     if(d.running){if(d.started!==P.cxRun){P.cxRun=d.started;ccConsoleHistory(P);}}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку

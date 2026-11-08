@@ -325,7 +325,7 @@ class Page(unittest.TestCase):
     def test_codex_console_tab_needs_an_account(self):
         # «Удалить Codex целиком» оставляет бинарь, но убирает входы: вкладка консоли Codex после этого не нужна
         self.assertIn("function cxAvail()", L.PAGE)
-        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}", L.PAGE)
         self.assertIn("function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}", L.PAGE)
         self.assertIn("const av=cxAvail(),pv=prodAvail(),cur=consCur()", L.PAGE)
 
