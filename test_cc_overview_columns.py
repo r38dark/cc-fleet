@@ -59,7 +59,7 @@ class ConsoleActionButtons(unittest.TestCase):
         self.assertIn("ctActsSync();", self.page[i:i + 260])      # пересчёт на каждом опросе, не только после ответа сервера
 
     def test_each_tab_runs_its_own_command(self):
-        self.assertIn("function consActCmd(cmd){const s=consCur();return s==='codex'?cxConsCmd(cmd):s==='prod'?prodSessionCmd(cmd):sessionCmd(cmd,", self.page)
+        self.assertIn("function consActCmd(cmd,anchor){const s=consCur();return s==='codex'?cxConsCmd(cmd,anchor):s==='prod'?prodSessionCmd(cmd,anchor):sessionCmd(cmd,anchor||", self.page)
         self.assertIn("text:cmd==='compact'?'/compact':'/clear'", self.page)       # PROD: команда уходит в консоль PROD
         self.assertIn("askProdCompact", self.page)                                 # подтверждение перед сжатием, как у DEV и Codex
         self.assertIn("addEventListener('click',()=>consActCmd('compact'))", self.page)

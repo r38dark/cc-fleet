@@ -111,10 +111,10 @@ class Page(unittest.TestCase):
         self.assertIn(".tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid transparent}", L.PAGE)
         self.assertIn(".tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}", L.PAGE)
         self.assertIn(".termwrap.tsplit:not(.nai-on) .tpfr{display:block}", L.PAGE)
-        self.assertIn("renderComps(ks);\n placeFrame(ks);", L.PAGE)
+        self.assertIn("renderComps(ks);\n applyMax(ks);\n placeFrame(ks);", L.PAGE)
         # размеры дробные (округление уводило правый край под рамку блока), нижние углы — как у блока, соседние рамки перекрываются на 1px
         self.assertIn("f.style.width=(b.width+lap).toFixed(2)+'px'", L.PAGE)
-        self.assertIn("f.style.borderBottomLeftRadius=i===0?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1?rad+'px':'0';", L.PAGE)
+        self.assertIn("f.style.borderBottomLeftRadius=i===0||mx?rad+'px':'0';f.style.borderBottomRightRadius=i===PANES.length-1||mx?rad+'px':'0';", L.PAGE)
         # разделительные линии между частями на месте
         self.assertIn(".tphd+.tphd{border-left:1px solid #263140}", L.PAGE)
         self.assertIn(".tpcw+.tpcw{border-left:1px solid #263140}", L.PAGE)
@@ -191,7 +191,7 @@ class Page(unittest.TestCase):
         self.assertIn("DRAFTS[P.k]=input.value", L.PAGE)
 
     def test_prod_history_is_refetched_for_a_new_pane_width(self):
-        self.assertIn("P.k==='prod'&&Math.abs(P.box.clientWidth-(P.histW||0))>24", L.PAGE)
+        self.assertIn("P.k==='prod'&&P.box.clientWidth>0&&Math.abs(P.box.clientWidth-(P.histW||0))>24", L.PAGE)
 
     def test_follow_waits_for_saved_layout(self):
         self.assertIn("||splitPending()){", L.PAGE)
@@ -206,6 +206,30 @@ class Page(unittest.TestCase):
 
     def test_layout_is_saved_in_browser_only(self):
         self.assertIn("localStorage.setItem('cc_split'", L.PAGE)
+
+    def test_part_can_be_expanded_to_the_whole_console(self):
+        # иконка «на весь экран» у каждой части (62676): выбранная часть занимает всю консоль, остальные спрятаны, но не закрыты
+        self.assertIn('data-fs="', L.PAGE)
+        self.assertIn("function splitMaxToggle(i){", L.PAGE)
+        self.assertIn("if(MAXED&&i===splitActIdx(ks))MAXED=false;else{splitActivate(i);MAXED=true;}", L.PAGE)
+        self.assertIn(".termwrap.tpmax .fleet-console-viewport>.tphide,.termwrap.tpmax .tpheads .tphide,.termwrap.tpmax .tpcomps .tphide{display:none!important}", L.PAGE)
+        self.assertIn("for(const P of PANES)if(!P.hid)ccConsole(P);", L.PAGE)  # спрятанные части не опрашиваем (у них нет ширины)
+        # закрыть часть / добавить часть — выход из развёрнутого вида
+        for fn in ("function splitClose(i){\n const ks=splitEff();if(!ks)return;\n MAXED=false;",
+                   "function splitToggle(){\n const av=splitKeysAvail();if(av.length<2||!splitMq.matches)return;\n MAXED=false;"):
+            self.assertIn(fn, L.PAGE)
+
+    def test_part_header_has_compact_and_new_session_buttons(self):
+        # «Сжать контекст» и «Новая сессия» — в шапке каждой части с консолью (62680); команда идёт модели этой части
+        self.assertIn("function partActs(k,i){", L.PAGE)
+        self.assertIn("if(!(k==='claude'||k==='prod'||k==='codex'))return '';", L.PAGE)  # у Notion AI кнопок нет
+        self.assertIn("function splitPartCmd(i,cmd,btn){const ks=splitEff();if(!ks||i<0||i>=ks.length)return;splitActivate(i);consActCmd(cmd,btn);}", L.PAGE)
+        self.assertIn("html:root:root .termwrap.tsplit:not(.nai-on) .fleet-console-toolbar .ctacts{display:none!important}", L.PAGE)
+
+    def test_zoom_scales_every_part_by_the_same_ratio(self):
+        # подгонка по ширине меряется при масштабе 100%: иначе она отменяла «+/−» у частей с длинными строками (62676)
+        self.assertIn("b.style.setProperty('--tz','1');b.style.setProperty('--pz','1');", L.PAGE)
+        self.assertIn("b.style.removeProperty('--tz');", L.PAGE)
 
 
 if __name__ == "__main__":

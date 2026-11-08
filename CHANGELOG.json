@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.5",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Разделённая консоль: «на весь экран», кнопки в шапках, единый масштаб",
+        "p": [
+          "В шапке каждой части — иконка «на весь экран»: часть занимает всю консоль, остальные прячутся (не закрываются), иконка меняется на «вернуть»",
+          "«Сжать контекст» и «Новая сессия» — в шапке каждой части справа от названия, действуют на модель этой части",
+          "«+» и «−» масштаба меняют шрифт во всех частях одинаково (раньше у частей с длинными строками увеличение пропадало)"
+        ]
+      },
+      "en": {
+        "t": "Split console: expand a part, header buttons, uniform zoom",
+        "p": [
+          "Each part header has an expand icon: the part takes the whole console, the others are hidden (not closed); the icon turns into a restore icon",
+          "Compact context and New session sit in each part header, right of the model name, and act on that part's model",
+          "The zoom + and - change the font in every part by the same ratio (long-line parts used to ignore zooming in)"
+        ]
+      }
+    },
+    {
       "v": "2.0.4",
       "date": "2026-11-08",
       "ru": {

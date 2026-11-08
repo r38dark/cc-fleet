@@ -883,7 +883,7 @@ class Page(unittest.TestCase):
         self.assertIn("acctPost('chatgpt/console/cmd',{cmd})", L.PAGE)
         self.assertIn("if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;", L.PAGE)
         # те же две кнопки стоят и на вкладках Claude DEV/PROD — вкладка Codex по-прежнему идёт в cxConsCmd
-        self.assertIn("return s==='codex'?cxConsCmd(cmd):", L.PAGE)
+        self.assertIn("return s==='codex'?cxConsCmd(cmd,anchor):", L.PAGE)
         self.assertIn("addEventListener('click',()=>consActCmd('compact'))", L.PAGE)
         self.assertIn("addEventListener('click',()=>consActCmd('new'))", L.PAGE)
 
