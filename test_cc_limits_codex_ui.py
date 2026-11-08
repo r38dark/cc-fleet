@@ -1035,8 +1035,10 @@ class NotionRoute(unittest.TestCase):
     def post(self, body, auth=True):
         import urllib.request
         import urllib.error
+        # токен, не X-Auth-User: с 09.11.26 движок на отдельный заголовок без internal_secret
+        # (которого тут нет) больше не отвечает — см. cc_limits.H._authed
         req = urllib.request.Request(self.url + "/api/notion/save", data=json.dumps(body).encode(), method="POST",
-                                     headers={"Content-Type": "application/json", **({"X-Auth-User": "t"} if auth else {})})
+                                     headers={"Content-Type": "application/json", **({"X-CC-Token": "t-secret"} if auth else {})})
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.status, json.loads(r.read())
@@ -1079,7 +1081,7 @@ class NotionRoute(unittest.TestCase):
     def get(self, auth=True):
         import urllib.request
         import urllib.error
-        req = urllib.request.Request(self.url + "/api/notion", headers={"X-Auth-User": "t"} if auth else {})
+        req = urllib.request.Request(self.url + "/api/notion", headers={"X-CC-Token": "t-secret"} if auth else {})
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.status, json.loads(r.read())

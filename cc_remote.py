@@ -94,7 +94,9 @@ def fetch_limits(mid, force=False):
         row.update(online=True, error="", email=data.get("email") or old.get("email") or "",
                    plan=data.get("plan") or old.get("plan") or "",
                    five_hour=data.get("five_hour"), seven_day=data.get("seven_day"),
-                   model=data.get("model") or old.get("model") or "", effort=data.get("effort") or old.get("effort") or "")
+                   model=data.get("model") or old.get("model") or "", effort=data.get("effort") or old.get("effort") or "",
+                   subscription_since=data.get("subscription_since") or old.get("subscription_since") or "",
+                   login_expires=data.get("login_expires") or old.get("login_expires") or "")
     else:
         row.update(online=True, error=str(data.get("error") or "error"))
     state[mid] = row
