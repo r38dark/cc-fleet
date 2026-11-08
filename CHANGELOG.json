@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "1.29.0",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Установка «под ключ», агенты Notion, второй сервер и голос",
+        "p": [
+          "Установщик из 14 шагов с проверкой каждого и пошаговая инструкция docs/INSTALL.md; мастер «Второй сервер» и необязательный голос",
+          "Агенты Notion: создание с полосой времени, постоянный SSH-ключ и свой Telegram-чат у каждого агента, блок Notion AI в меню консоли",
+          "Принудительное переключение, если второй сервер отвечает без пауз; подписи серверов «Claude A/B»; консоль делится на части"
+        ]
+      },
+      "en": {
+        "t": "Turnkey install, Notion agents, second-server wizard and voice",
+        "p": [
+          "A 14-step installer that checks every step and a step-by-step guide docs/INSTALL.md; a second-server wizard and optional voice",
+          "Notion agents: creation with a time progress bar, a persistent SSH key and own Telegram chat per agent, one Notion AI block in the console menu",
+          "Forced switch when the second server keeps answering; server names \"Claude A/B\"; the console can be split into parts"
+        ]
+      }
+    },
+    {
       "v": "1.28.26",
       "date": "2026-11-05",
       "ru": {

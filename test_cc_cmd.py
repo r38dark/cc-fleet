@@ -268,7 +268,11 @@ class Release(unittest.TestCase):
     def test_install_script_copies_cc_cmd(self):
         with open(os.path.join(HERE, "install.sh"), encoding="utf-8") as f:
             t = f.read()
-        self.assertIn('"$SCRIPT_DIR/cc-cmd"', t)
+        # установщик копирует всё из update_manifest.json (module_list), поэтому cc-cmd ставится вместе с остальными файлами пакета
+        self.assertIn("module_list", t)
+        self.assertIn('"$SCRIPT_DIR/$src"', t)
+        with open(os.path.join(HERE, "update_manifest.json"), encoding="utf-8") as f:
+            self.assertIn("cc-cmd", [e["src"] for e in json.load(f)["files"]])
 
     def test_service_makes_links_on_start(self):
         with open(os.path.join(HERE, "cc_limits.py"), encoding="utf-8") as f:
