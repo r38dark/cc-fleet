@@ -410,14 +410,14 @@ function render(){
   return}
  var cmd="echo '"+st.pub+"' >> /root/.ssh/authorized_keys";
  body.innerHTML='<div class="fleet-catalog-note">Второй сервер — машина, на которую панель передаёт работу Claude (когда лимит кончился здесь). Нужен доступ по ssh под root.</div>'
-  +'<div class="rs-step"><i>1</i>Ключ панели — добавь на втором сервере</div>'
+  +'<div class="rs-step"><i>1</i>Шаг 1 из 3 · Ключ панели — добавь на втором сервере</div>'
   +'<div class="fleet-catalog-note">Выполни на втором сервере эту команду (или вставь строку в /root/.ssh/authorized_keys):</div><pre id="rsKey">'+esc(cmd)+'</pre><div class="rs-acts"><button type="button" class="ghostbtn" id="rsCopy">Скопировать команду</button></div>'
-  +'<div class="rs-step"><i>2</i>Адрес второго сервера</div>'
+  +'<div class="rs-step"><i>2</i>Шаг 2 из 3 · Адрес второго сервера и проверка</div>'
   +'<div class="rs-row"><label>Адрес (IP или имя)<input id="rsHost" placeholder="203.0.113.10" autocomplete="off" spellcheck="false"></label><label>Порт ssh<input id="rsPort" value="22" size="5" autocomplete="off"></label>'
   +'<label>Адрес этого сервера для второго<input id="rsBack" autocomplete="off" spellcheck="false"></label><label>Сессия tmux<input id="rsTmux" size="10" autocomplete="off" spellcheck="false"></label></div>'
   +'<div class="rs-acts"><button type="button" class="ghostbtn" id="rsCheck">Проверить</button></div>'
   +'<div id="rsOut"></div>'
-  +'<div class="rs-step"><i>3</i>Подключить</div><div class="fleet-catalog-note">Мастер положит ctl.py и usage.py на второй сервер, создаст там ключ обратного входа (сюда, только с его адреса), проверит связь в обе стороны и запишет пару.</div>'
+  +'<div class="rs-step"><i>3</i>Шаг 3 из 3 · Подключить</div><div class="fleet-catalog-note">Мастер положит ctl.py и usage.py на второй сервер, создаст там ключ обратного входа (сюда, только с его адреса), проверит связь в обе стороны и запишет пару.</div>'
   +'<div class="rs-acts"><button type="button" class="ghostbtn" id="rsFix" hidden>Установить недостающее</button><button type="button" class="ghostbtn" id="rsGo" disabled>Подключить</button></div><div class="rs-msg" id="rsMsg"></div>';
  $i('rsBack').value=st.back_host||'';$i('rsTmux').value=st.default_tmux;
  $i('rsCopy').onclick=function(){copy(cmd,this)};

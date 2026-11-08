@@ -393,6 +393,9 @@ class Routes(Base):
         self.assertIn("fleetRemoteSetup", page)
         self.assertIn("Второй сервер", page)
         self.assertIn("remote/setup/check", page)
+        for n in (1, 2, 3):  # прогресс «шаг N из M»: следующий шаг недоступен, пока предыдущий не пройден (кнопка «Подключить» закрыта до успешной проверки)
+            self.assertIn("Шаг %d из 3" % n, page)
+        self.assertIn('id="rsGo" disabled', page)
         self.assertLess(page.index("fleetRemoteSetup"), page.index("</body>"))
 
 
