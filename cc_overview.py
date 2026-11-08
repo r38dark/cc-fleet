@@ -793,6 +793,8 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open{grid-col
 /* в одну строку идут только аккаунты Claude (Claude DEV и PROD); Codex и Notion AI — каждый на всю ширину */
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.codex),
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.notion){grid-column:1/-1}
+/* второй сервер не подключён (Claude PROD скрыт) — строка Claude одна и занимает всю ширину; появится второй — обе встанут рядом */
+html.no-prod:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{grid-column:1/-1}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:0}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc+.fleet-acc>.fleet-compact-account{border-top:1px solid var(--fleet-line)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{box-sizing:border-box;min-height:42px;padding:0 14px;border:1px solid var(--fleet-line);border-radius:8px;background:rgba(8,10,14,.35);box-shadow:none}

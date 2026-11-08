@@ -65,8 +65,16 @@ EXEC_PROMPT = {
 }
 
 
-AG_TEXT = dict(run='работает', lead='ведущий', exec='исполнитель', pause='пауза', limit='лимит', off='пауза')
+AG_TEXT = dict(run='работает', lead='ведущий', exec='исполнитель', pause='пауза', limit='лимит', off='пауза', unlinked='не подключён')
 ROLE_STATE = dict(solo='run', leader='lead', executor='exec', paused='pause')
+
+
+def notion_installed():
+    """Notion AI поставлен на этом сервере (служба и её токен лежат в /root/notion_web): иначе плитка «призрачная» с предложением установить."""
+    try:
+        return os.path.isfile(DTOKEN)
+    except Exception:
+        return True   # не смогли проверить — не прячем рабочее
 FOLLOWERS = ('codex',)   # исполнители Notion AI; «Notion AI → Claude» убран по просьбе владельца
 
 
@@ -197,6 +205,13 @@ class NotionAI:
                     email=load_cfg().get('notion_email') or '', model={k: model_cached().get(k) for k in ('model', 'effort', 'ts')},
                     step=self.step_public(), agents=self.agents(), billing=billing_info(load_cfg()))
 
+    def codex_linked(self):
+        """В Codex заведён хотя бы один аккаунт ChatGPT (есть профиль с auth.json). Сама программа Codex на сервере ещё не значит «подключён»."""
+        try:
+            return bool(self.ns['cc_codex'].profile_slots())
+        except Exception:
+            return True   # нет модуля или сбой чтения — не прячем рабочее
+
     def agents(self):
         """Состояние трёх агентов для блока в шапке панели: Claude · Codex · Notion AI."""
         p, out = self.profiles, {}
@@ -238,6 +253,11 @@ class NotionAI:
         nst = ('lead' if self.kind() == 'orchestrator' else 'run')   # агент Notion независим: на паузу не ставится никогда
         out['notion'] = dict(state=nst, text=AG_TEXT[nst],
                              label=(self.title() + ' · работает') if active else 'Notion AI · самостоятельно')
+        # не подключённые Codex и Notion AI — «призрачные» плитки с предложением установить, а не «работает»
+        if not active and not self.codex_linked():
+            out['codex'] = dict(state='unlinked', text=AG_TEXT['unlinked'], label='Codex · не подключён')
+        if not active and not notion_installed():
+            out['notion'] = dict(state='unlinked', text='не установлен', label='Notion AI · не установлен')
         return out
 
     # ── Telegram и чат Notion AI ───────────────────────────────────────────
@@ -1550,6 +1570,16 @@ html:root:root.ag-pause-notion .fleet-console-toolbar #ctNotion::before,html:roo
 .nai-seg:focus-visible{outline:2px solid rgba(var(--c),.85);outline-offset:-2px}
 .nai-seg[disabled]{opacity:.6;cursor:progress}
 .nai-ag.nost .nai-st{display:none}
+/* не подключённые Codex и Notion AI: «призрачные» плитки (бледные, пунктиром) с предложением установить; вкладки консоли у них прячутся */
+.nai-seg.s-unlinked{opacity:.55;outline:1px dashed rgba(139,147,167,.6);outline-offset:-3px}
+.nai-seg.s-unlinked .nai-dot{background:transparent!important;box-shadow:inset 0 0 0 1px rgba(139,147,167,.75)!important}
+html.ag-unlinked-codex #ctCodex,html.ag-unlinked-codex #cxGrp,html.ag-unlinked-codex .tpmi[data-k="codex"],html.ag-unlinked-notion #cTabs .ctab[data-s="notion"],html.ag-unlinked-notion .tpmi[data-k^="notion"]{display:none!important}
+html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"],html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]{opacity:.6;cursor:pointer}
+html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"]>*,html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]>*{display:none!important}
+html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"]::after,html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]::after{display:flex;align-items:center;min-height:42px;box-sizing:border-box;padding:0 14px;border:1px dashed rgba(139,147,167,.6);border-radius:8px;color:var(--fleet-muted,#8c9bad);font-size:12.5px}
+html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"]::after{content:'Codex не подключён — нажми, чтобы подключить'}
+html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]::after{content:'Notion AI не установлен — нажми, чтобы узнать как'}
+html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"][data-ghost]::after,html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"][data-ghost]::after{content:attr(data-ghost)}
 .nai-ag.short .nai-full{display:none}
 .nai-ag.short .nai-short{display:inline}
 .nai-ag.sm .nai-seg{padding:0 6px;gap:4px;font-size:10.5px}
@@ -1707,7 +1737,20 @@ function agState(k){var a=st&&st.agents&&st.agents[k];if(a)return a;if(k==='noti
 function wrapped(){var h1=document.getElementById('h1'),hdr=document.querySelector('.hdr');if(!h1||!h1.offsetParent||!bar.offsetParent)return false;var a=h1.getBoundingClientRect(),b=bar.getBoundingClientRect(),btns=bar.parentNode,l=btns&&btns.lastElementChild,r=hdr?hdr.getBoundingClientRect():null;
  return b.top>=a.bottom-2||(l&&r&&l.getBoundingClientRect().right>r.right+1)}
 function fit(){var cl=document.documentElement.classList;for(var i=0;i<LEVELS.length;i++){var lv=LEVELS[i];bar.className='nai-ag'+(lv?' '+lv:'');cl.toggle('nai-nosub',lv.indexOf('nosub')>=0);if(!wrapped())break}}
-function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;document.documentElement.classList.toggle('ag-pause-'+a[0],g.state==='pause');document.documentElement.classList.toggle('ag-live-'+a[0],on);s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});btn.disabled=busy;fit()}
+// Codex и Notion AI, пока не подключены, — «призрачные» плитки с предложением установить (состояние unlinked приходит с сервера, agents())
+function isEn(){try{return typeof LANG!=='undefined'&&LANG==='en'}catch(_){return false}}
+function ghostMark(){['codex','notion'].forEach(function(k){var row=document.querySelector('#fleetLiveRows .fleet-acc[data-engine="'+k+'"]');if(!row)return;
+ if(agState(k).state==='unlinked'){var t=isEn()?(k==='codex'?'Codex is not connected — click to set it up':'Notion AI is not installed — click to see how'):(k==='codex'?'Codex не подключён — нажми, чтобы подключить':'Notion AI не установлен — нажми, чтобы узнать как');if(row.dataset.ghost!==t)row.dataset.ghost=t}else if(row.dataset.ghost)delete row.dataset.ghost})}
+function linkPop(k,anchor){var en=isEn(),codex=k==='codex',
+ txt=codex?(en?'Codex is not connected: no ChatGPT account has been added yet. The wizard installs it and walks you through the sign-in step by step.':'Codex не подключён: ни один аккаунт ChatGPT ещё не добавлен. Мастер поставит его и проведёт по входу по шагам.')
+  :(en?'Notion AI is not installed on this server. To install: run sudo ./install.sh from the balancer folder and answer “y” to the Notion AI question, then open ⚙ → Notion AI and paste the token. Details: docs/INSTALL.md, section 6.':'Notion AI не установлен на этом сервере. Установка: запусти sudo ./install.sh из папки балансера и ответь «y» на вопрос про Notion AI, затем открой ⚙ → Notion AI и вставь токен. Подробно: docs/INSTALL.md, раздел 6.'),
+ go=codex?(en?'Connect Codex':'Подключить Codex'):(en?'Open the guide':'Открыть инструкцию'),
+ pp=openPop('<div class="nai-ph"><b>'+(codex?'Codex':'Notion AI')+' · '+(en?'not connected':'не подключён')+'</b></div><p>'+esc(txt)+'</p><div class="nai-row"><button type="button" class="nai-no">'+(en?'Close':'Закрыть')+'</button><button type="button" class="nai-yes">'+esc(go)+'</button></div>',false,anchor);
+ pp.classList.add('ag-'+k);pp.querySelector('.nai-no').onclick=closePop;
+ pp.querySelector('.nai-yes').onclick=function(){closePop();
+  if(codex){try{ciWizSet(true);ciHdr();setTimeout(function(){try{ciOpen()}catch(_){}},50)}catch(_){var c=document.getElementById('cxInst');if(c)c.click()}}
+  else window.open('https://github.com/r38dark/cc-fleet/blob/main/docs/INSTALL.md#6-notion-ai-и-агенты-notion','_blank','noopener')}}
+function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;document.documentElement.classList.toggle('ag-pause-'+a[0],g.state==='pause');document.documentElement.classList.toggle('ag-live-'+a[0],on);document.documentElement.classList.toggle('ag-unlinked-'+a[0],g.state==='unlinked');s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});ghostMark();btn.disabled=busy;fit()}
 // [notion-ai] Баннер только для шага: ждёт подтверждения или выполняется. Состояние агентов — в блоке шапки.
 function paint(){var f=orch()?names[st.follower]:'',s=orch()&&st.step,pend=pending(),run=!!(s&&(s.status==='approved'||s.status==='running'));paintAgents();banner.hidden=!(pend||run);
  var msg=pend?'🧩 <b>Шаг Notion AI → '+esc(f)+' ждёт подтверждения.</b> Подтверди здесь или кнопкой в Telegram.':run?'⏳ <b>'+esc(names[s.follower]||f)+' выполняет шаг Notion AI.</b> Результат придёт в Telegram.':'';
@@ -1771,7 +1814,10 @@ function load(){clearTimeout(timer);timer=setTimeout(load,10000);fetch(api,{head
 function send(path,body){busy=true;paint();toast(path==='on'?'Включаю профиль Notion AI…':path==='off'?'Выключаю профиль Notion AI…':'Отправляю решение…');
  fetch(api+'/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify(body||{})}).then(function(r){return r.json()}).then(function(j){if(j.state)st=j.state;toast(j.message||(j.ok?'Готово':'Не получилось'))}).catch(function(){toast('Панель не ответила. Обнови страницу.')}).then(function(){busy=false;load()})}
 window.naiReload=load;
-bar.addEventListener('click',function(e){var s=e.target.closest('.nai-seg');if(!s)return;e.preventDefault();e.stopPropagation();if(s.dataset.ag==='notion'){if(!busy)ask(s)}else agentPop(s.dataset.ag,s)});
+bar.addEventListener('click',function(e){var s=e.target.closest('.nai-seg');if(!s)return;e.preventDefault();e.stopPropagation();if(agState(s.dataset.ag).state==='unlinked'){linkPop(s.dataset.ag,s);return}if(s.dataset.ag==='notion'){if(!busy)ask(s)}else agentPop(s.dataset.ag,s)});
+// строка не подключённого Codex / Notion AI в «Активных аккаунтах» тоже ведёт к установке (до обычного раскрытия строки)
+document.addEventListener('click',function(e){var r=e.target.closest&&e.target.closest('#fleetLiveRows .fleet-acc'),k=r&&r.dataset.engine;if((k==='codex'||k==='notion')&&agState(k).state==='unlinked'){e.preventDefault();e.stopPropagation();linkPop(k,r)}},true);
+setInterval(ghostMark,1500);   // строки блока пересобираются самой панелью — подпись возвращаем
 var fitT=0;window.addEventListener('resize',function(){clearTimeout(fitT);fitT=setTimeout(fit,120)});try{document.fonts&&document.fonts.ready.then(fit)}catch(_){}
 banner.querySelector('.nai-stepbtn').addEventListener('click',function(e){e.stopPropagation();if(!busy)showStep()});
 document.addEventListener('click',function(e){if(pop&&!pop.contains(e.target)&&!bar.contains(e.target))closePop()});
