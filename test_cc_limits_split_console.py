@@ -157,7 +157,7 @@ class Page(unittest.TestCase):
             self.assertIn(part, L.PAGE, part)
         # ключи частей: claude / prod / codex и Notion ('notion', 'notion:<id агента>')
         self.assertIn("/^(claude|prod|codex|notion(:\\S+)?)$/.test(k)", L.PAGE)
-        self.assertIn("function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[],naiList().map(x=>x.key));}", L.PAGE)
+        self.assertIn("function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[],R.contains('ag-unlinked-notion')?[]:naiList().map(x=>x.key));}", L.PAGE)
         # чат в части: своя область, опрос и отправка у самого чата; сообщение идёт в чат, а не в консоль
         self.assertIn("P.box.classList.add('tpchat');P.nv=document.createElement('div');P.nv.className='nai-view tpnai';", L.PAGE)
         self.assertIn("if(isNai(P.k))return;", L.PAGE)
@@ -171,6 +171,15 @@ class Page(unittest.TestCase):
         self.assertIn("if(ks&&window.naiClose)window.naiClose();", L.PAGE)
         # вкладки агентов создаются позже страницы — перетаскивание делегировано на #cTabs
         self.assertIn("$('#cTabs').addEventListener('dragstart',", L.PAGE)
+
+    def test_unlinked_codex_and_notion_are_not_offered_for_the_split(self):
+        # призрачные Codex и Notion AI не попадают ни в части консоли, ни в меню моделей части (владелец 62622)
+        self.assertIn("cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]", L.PAGE)
+        self.assertIn("R.contains('ag-unlinked-notion')?[]:naiList()", L.PAGE)
+
+    def test_wizard_window_is_anchored_to_the_ghost_tile_when_there_is_no_header_button(self):
+        self.assertIn("function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#naiAgents .nai-seg[data-ag=\"codex\"]')||b)}", L.PAGE)
+        self.assertIn("r=ciAnchor().getBoundingClientRect();", L.PAGE)
 
     def test_draft_follows_the_model(self):
         self.assertIn("const DRAFTS={};", L.PAGE)

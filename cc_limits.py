@@ -5190,7 +5190,8 @@ function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSn
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
 function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
 function naiList(){try{return window.naiKeys?window.naiKeys():[]}catch(e){return []}}
-function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[],naiList().map(x=>x.key));}
+// не подключённые Codex и Notion AI (призрачные плитки, html.ag-unlinked-*) в разделение консоли не предлагаются (правка владельца 62622)
+function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[],R.contains('ag-unlinked-notion')?[]:naiList().map(x=>x.key));}
 // модели по панелям при разделении (только доступные); null — разделения нет (узкий экран, одна модель, не включено)
 function splitEff(){
  if(!splitMq.matches)return null;
@@ -6507,8 +6508,10 @@ function ciSync(st){
  if(st===ciLast&&f&&pop.contains(f)&&f.tagName==='INPUT')return;  // человек вводит токен — не перерисовываем под руками
  ciRender();
 }
+// у не подключённого Codex кнопки «Codex +» в шапке нет (её роль у призрачной плитки): окно мастера встаёт под плитку
+function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#naiAgents .nai-seg[data-ag="codex"]')||b)}
 function ciPlace(){
- const pop=$('#cxInstPop'),r=$('#cxInst').getBoundingClientRect();
+ const pop=$('#cxInstPop'),r=ciAnchor().getBoundingClientRect();
  const top=Math.round(r.bottom+8);
  pop.style.top=top+'px';pop.style.maxHeight='calc(100vh - '+(top+12)+'px)';
  if(innerWidth>640){pop.style.left='auto';pop.style.right=Math.max(10,Math.round(innerWidth-r.right-4))+'px';}

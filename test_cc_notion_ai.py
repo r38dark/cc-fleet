@@ -161,7 +161,8 @@ class T(unittest.TestCase):
         src = Path(N.__file__).read_text(encoding='utf-8')
         for part in ("function linkPop(k,anchor){", "function ghostMark(){", "'ag-unlinked-'+a[0]", ".nai-seg.s-unlinked{",
                      "html.ag-unlinked-codex #ctCodex", "html.ag-unlinked-notion #cTabs .ctab[data-s=\"notion\"]",
-                     "if(agState(s.dataset.ag).state==='unlinked'){linkPop(s.dataset.ag,s);return}"):
+                     "if(agState(s.dataset.ag).state==='unlinked'){linkPop(s.dataset.ag,s);return}",
+                     "if(un!==unSig){unSig=un;try{if(typeof consTabs==='function')consTabs()}catch(_){}}"):
             s.assertIn(part, src, part)
     def test_codex_with_single_account_is_not_paused_by_notion_profile(s):
         class St:
