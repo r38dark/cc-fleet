@@ -1799,7 +1799,14 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   var lk=pp.querySelector('.nai-lnk');if(lk)lk.onclick=function(e){e.preventDefault();closePop();var c=document.getElementById('cxBtn');if(c)c.click()};
   var ls=pp.querySelector('.nai-lnk2');if(ls)ls.onclick=function(e){e.preventDefault();closePop();var g=document.getElementById('gear');if(g)g.click()};
   var tg=pp.querySelector('.nai-tog');if(tg)tg.onclick=function(){closePop();send('off',{})};
-  var au=pp.querySelector('.nai-auto');if(au)au.onclick=function(){var on=!((rm.auto()||{}).enabled);window.fleetAsk(this,(on?'Включить':'Выключить')+' автопередачу работы на PROD при лимитах?',on?'Включить':'Выключить').then(function(ok){if(!ok)return;closePop();rm.setAuto(on).then(function(j){toast(j&&j.message||'Готово')}).catch(function(){toast('Панель не ответила')})})}}
+  // подтверждение «авто» — прямо в этом же окне (отдельное окно подтверждения рисовалось ПОД ним, владелец 62664)
+  var au=pp.querySelector('.nai-auto');if(au)au.onclick=function(){var on=!((rm.auto()||{}).enabled),row=pp.querySelector('.nai-row');if(pp.querySelector('.nai-cfm'))return;
+   var c=document.createElement('div');c.className='nai-cfm';var w=on?'Включить':'Выключить';
+   c.innerHTML='<p class="nai-cq">'+w+' автопередачу работы на PROD при лимитах?</p><div class="nai-row"><button type="button" class="nai-no nai-cn"><span class="nai-bl">Отмена</span></button><button type="button" class="nai-yes nai-cy"><span class="nai-bl">'+w+'</span></button></div>';
+   row.style.display='none';row.after(c);
+   c.querySelector('.nai-cn').onclick=function(){c.style.display='none';row.style.display='';placePop();setTimeout(function(){c.remove()},0)};   // убираем после клика: удалённая кнопка выглядела бы для «клика мимо» и закрыла бы окно
+   c.querySelector('.nai-cy').onclick=function(){closePop();rm.setAuto(on).then(function(j){toast(j&&j.message||'Готово')}).catch(function(){toast('Панель не ответила')})};
+   placePop()}}
 function agentPop(k,anchor){if(window.fleetRemote&&window.fleetRemote.handInfo&&(k==='prod'||k==='claude'||k==='codex'))return richPop(k,anchor,window.fleetRemote);
  var g=agState(k),nm=names[k];var p=openPop('<b>'+esc(nm)+(g.text?' · '+esc(g.text):'')+'</b><p>'+esc(g.label||nm)+'. Сменить профиль — в «Выборе профиля».</p><div class="nai-row"><button type="button" class="nai-no">Закрыть</button><button type="button" class="nai-yes">Выбор профиля</button></div>',false,anchor,'ag-'+k);p.classList.add('ag-'+k);
  p.querySelector('.nai-no').onclick=closePop;p.querySelector('.nai-yes').onclick=function(){closePop();var c=document.getElementById('cxBtn');if(c)c.click()}}

@@ -156,6 +156,14 @@ class T(unittest.TestCase):
         src = Path(M.__file__).read_text(encoding='utf-8')
         s.assertIn("[upd,cl,cx,nai,tg].forEach(function(x){if(x)c.append(x)});", src)
         s.assertNotIn("[cl,cx,nai,tg,upd]", src)
+    def test_auto_confirm_is_inside_the_tile_popup(s):
+        # подтверждение «Включить/Выключить авто» — в самом окне плитки, не отдельным окном под ним (владелец 62664)
+        src = Path(M.__file__).read_text(encoding='utf-8')
+        s.assertIn("c.className='nai-cfm'", src)
+        s.assertIn("c.querySelector('.nai-cn').onclick=function(){c.style.display='none';row.style.display='';placePop();setTimeout(function(){c.remove()},0)};", src)
+        s.assertNotIn("window.fleetAsk(this,(on?'Включить':'Выключить')+' автопередачу", src)
+        import cc_overview
+        s.assertIn(".fleet-ask{z-index:100000}", cc_overview.CSS)
     def test_ghost_tiles_ui_is_in_the_page(s):
         import cc_notion_ai as N
         src = Path(N.__file__).read_text(encoding='utf-8')

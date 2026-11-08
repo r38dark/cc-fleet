@@ -934,7 +934,7 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort{ov
 }
 
 /* единое окно «Точно? Отмена / Да» для кнопок быстрого доступа (window.fleetAsk) */
-.fleet-ask{z-index:60}.fleet-ask[hidden]{display:none}
+.fleet-ask{z-index:100000}.fleet-ask[hidden]{display:none}  /* выше окон плиток агентов (z-index 99999): раньше подтверждение пряталось под ними */
 .fleet-ask .cxpbody{padding:14px 16px 16px}
 .fleet-ask h3{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--txt)}
 .fleet-ask p{margin:0;font-size:12px;line-height:1.5;color:var(--fleet-muted)}
