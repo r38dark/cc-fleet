@@ -2998,7 +2998,7 @@ function build(c){
  var nai=$i('naiCfgGroup')||mk('naiCfgGroup','nai','Notion AI · третий агент','<button type="button" class="ghostbtn" id="naiGenNaiGear">⚙ Настройки Notion AI</button>',HOW_NAI);
  var tg=$i('naiGenTg')||mk('naiGenTg','tg','Telegram · общий чат','<button type="button" class="ghostbtn" id="naiGenTgNai">⚙ Настройки Notion AI</button><button type="button" class="ghostbtn" id="naiTgCx">Мост Codex →</button>',HOW_TG);
  var upd=$i('updHdr');upd=upd&&upd.closest('section');
- [cl,cx,nai,tg,upd].forEach(function(x){if(x)c.append(x)});  // «Копии аккаунтов» — в «⚙ Настройки Claude» (это копии входов Claude)
+ [upd,cl,cx,nai,tg].forEach(function(x){if(x)c.append(x)});  // «Обновления» — самым первым блоком общих настроек (владелец 62615); «Копии аккаунтов» — в «⚙ Настройки Claude» (это копии входов Claude)
  $i('naiGenClGear').onclick=function(){var g=$i('gear');if(g)g.click()};
  $i('naiGenClAdd').onclick=function(){later(function(){if(typeof acctAdd==='function')acctAdd()})};
  $i('naiGenCxGear').onclick=function(){later(function(){if(typeof cxPopOpen==='function')cxPopOpen()})};
