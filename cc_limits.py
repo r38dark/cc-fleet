@@ -2140,6 +2140,8 @@ def autoswitch_check(snap):
         if cc_avail.availability(row, thr, cap)[0]:
             cand.append((fh, n))
     if not cand:
+        if _handoff_coming():
+            return  # работа уходит на Claude PROD: «некуда» неправда, флаг эпизода не ставим — если передача не выйдет, сообщение уйдёт на следующем проходе
         text, lvl = _nowhere_text(accs, act, act_free)
         if not st.get("all_high_notified") or _week_news(st, lvl):
             tg_notify(text)
@@ -2352,6 +2354,16 @@ def _nowhere_text(accs, act, act_free=False):
     return head + tail, lvl
 
 
+def _handoff_coming():
+    """[remote] Работа вот-вот уйдёт на Claude PROD (автопередача готова) или уже идёт там: «переключаться некуда» в Telegram не пишем —
+    о переходе скажет сама передача; не вышла — встанет обычная пауза со своим сообщением (владелец 62582, как баннер 62577)."""
+    try:
+        d = pause_state()
+        return bool(d.get("handoff") or d.get("remote"))
+    except Exception:
+        return False
+
+
 def _week_news(st, lvl):
     """Эпизод «некуда» уже начался по сессии, а теперь упёрлись в недельный потолок —
     об этом сообщаем отдельно (иначе флаг эпизода проглотит предупреждение о 100%)."""
@@ -2552,6 +2564,8 @@ def optimize_check(snap):
         if forced:
             _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd,
                               nearest=_nearest_reset(accs))
+        if forced and _handoff_coming():
+            return  # работа уходит на Claude PROD (см. autoswitch_check): «некуда» не пишем
         text, lvl = _nowhere_text(accs, act, act_free) if forced else ("", "")
         if forced and (not st.get("all_high_notified") or _week_news(st, lvl)):
             # раньше уведомление отсюда убрали как спам, и «упёрлись ВСЕ аккаунты» стало
