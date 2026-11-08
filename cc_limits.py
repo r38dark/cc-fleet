@@ -3432,6 +3432,32 @@ html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:r
 .termbox::-webkit-scrollbar{width:9px}
 .termbox::-webkit-scrollbar-track{background:#14171c}
 .termbox::-webkit-scrollbar-thumb{background:#3a3f4b;border-radius:99px;border:2px solid #14171c;background-clip:padding-box}
+
+/* --- разделение консоли (ПК, ≥1100px): 2–3 панели рядом --- */
+.tpheads,.tpadd{display:none}
+html:root:root #splitBtn[hidden]{display:none!important}  /* у кнопок блока масштаба display задаётся классом и перебивает hidden */
+.termwrap.tsplit .fleet-console-viewport{position:relative;display:flex!important;flex-direction:row;min-width:0;background:var(--fleet-terminal,#0b0d10)}
+html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:clamp(360px,41dvh,510px)}
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:clamp(340px,calc(100dvh - 430px),640px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:clamp(320px,calc(100dvh - 470px),610px)}}
+html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
+html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
+html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
+.tpextra{background:var(--fleet-terminal,#0b0d10);color:#d2dce9;white-space:pre;font:calc(12px*var(--tz,1)*var(--pz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace}
+.termwrap.tsplit .termbox.tpact{box-shadow:inset 0 0 0 1px var(--fleet-accent,#73dbb7)}
+.termwrap.tsplit .termbox.tpdrop{box-shadow:inset 0 0 0 2px var(--fleet-accent,#73dbb7);background-image:linear-gradient(rgba(115,219,183,.08),rgba(115,219,183,.08))}
+.termwrap.tsplit .tpheads{display:flex;position:absolute;left:0;right:0;top:0;height:30px;z-index:5;pointer-events:none}
+.tphd{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;padding:0 10px;margin:0;font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#9fb0c3;cursor:grab;pointer-events:auto;background:#0e1219;border-bottom:1px solid #263140;user-select:none}
+.tphd+.tphd{border-left:1px solid #263140}
+.tphd.on{color:#eaf2fb;box-shadow:inset 0 -2px 0 var(--fleet-accent,#73dbb7)}
+.tphd.tpdrop{background:#173a33}
+.tphd b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tphd .tpdot{flex:none}
+.tphd .tpx{margin:0 0 0 auto;padding:0 4px;min-height:0;width:auto;background:none;border:0;color:#7d8ea3;font:16px/1 system-ui,sans-serif;cursor:pointer}
+.tphd .tpx:hover{color:#eaf2fb}
+body.tpdraging .tpadd{display:flex;position:fixed;z-index:60;align-items:center;justify-content:center;text-align:center;padding:14px;font:600 13px system-ui,sans-serif;color:#cfe9e0;background:rgba(25,60,52,.78);border:2px dashed var(--fleet-accent,#73dbb7);box-sizing:border-box}
+body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
+.termwrap.nai-on .tpextra,.termwrap.nai-on .tpheads{display:none!important}
+html:root:root .ctab.tshown:not(.on){text-decoration:underline;text-decoration-color:rgba(200,215,230,.45);text-decoration-thickness:1px;text-underline-offset:7px}
 /* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
 .ccpause{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;padding:12px 14px;border-radius:14px;background:var(--card);border:1px solid #232a36;border-left:4px solid var(--ccp-accent,var(--mut))}
 .ccpause[hidden]{display:none}
@@ -3982,7 +4008,7 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
  <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
- <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
+ <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="splitBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
 <span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden><span id="termIdleTxt"></span><button type="button" id="termIdleGo" hidden></button></div></pre>
 </div>
@@ -5038,41 +5064,74 @@ function applyI18n(){
  cxAll();
 }
 // линии из ─ шире консоли переносятся на несколько строк и рвутся: укорачиваем до числа колонок, которые помещаются (заметно на телефоне)
-function termCols(){
- const b=$('#termBox'),cs=getComputedStyle(b),p=document.createElement('span');
+function termCols(box){
+ const b=box||$('#termBox'),cs=getComputedStyle(b),p=document.createElement('span'),pz=b.style.getPropertyValue('--pz');
+ if(pz)b.style.setProperty('--pz','1');  // в разделённой панели мерим при обычном шрифте: уменьшенный дал бы больше колонок и ещё меньший шрифт
  p.textContent='0000000000';p.style.cssText='position:absolute;visibility:hidden;white-space:pre';b.appendChild(p);
  const w=p.getBoundingClientRect().width/10;b.removeChild(p);
  const avail=b.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+ if(pz)b.style.setProperty('--pz',pz);
  return w>0?Math.max(10,Math.floor(avail/w)-1):0;
 }
-function fitSep(h){const c=termCols();return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
+function fitSep(h,box){const c=termCols(box);return c?h.replace(/([─━═])\1{9,}/g,m=>m.length>c?m[0].repeat(c):m):h;}
 // вкладки консолей: первая (Claude) по умолчанию, вторая (Codex) — только когда Codex установлен
-let CONS='claude',consShown='claude',cxConsRun=null;
-let consoleRequestSeq=0,consoleAppliedSeq=0,consIdle='',consProdRun=false,prodStarting=false;
+let CONS='claude';
+let prodStarting=false;
+// ---- панели консоли: одна панель = один экран консоли модели. Панель 0 — прежний #termBox; в режиме «разделение» (ПК)
+// справа добавляются ещё панели (всего до 3), у каждой свой экран, история, плашка и опрос
+const SPLIT_MAX=3;
+const PANES=[{k:'claude',primary:true,seq:0,applied:0,idleKey:'',cxRun:null,prodRun:false,stick:true,dotCls:'',chipDot:null,
+ box:$('#termBox'),hist:$('#termHistory'),cur:$('#termCurrent'),idle:$('#termIdle'),idleTxt:$('#termIdleTxt'),idleGo:$('#termIdleGo')}];
+/*SPLIT-PURE-START*/
+function splitDrop(keys,act,i,k){keys=keys.slice();const j=keys.indexOf(k);if(j>=0&&j!==i)keys[j]=keys[i];keys[i]=k;return {keys:keys,act:i};}
+function splitSwap(keys,act,i,j){keys=keys.slice();if(i===j)return {keys:keys,act:act};const t=keys[i];keys[i]=keys[j];keys[j]=t;return {keys:keys,act:act===i?j:act===j?i:act};}
+function splitAdd(keys,avail,k){if(keys.length>=SPLIT_MAX)return null;const n=k&&avail.includes(k)&&!keys.includes(k)?k:avail.find(x=>!keys.includes(x));return n?keys.concat(n):null;}
+function splitCloseAt(keys,act,i){const ks=keys.filter((_,x)=>x!==i);let a=act>i?act-1:act;if(act===i)a=Math.min(i,ks.length-1);return {keys:ks,act:Math.max(0,Math.min(a,ks.length-1))};}
+function splitPick(keys,act,k){const j=keys.indexOf(k);if(j>=0)return {keys:keys,act:j};const ks=keys.slice();ks[act]=k;return {keys:ks,act:act};}
+/*SPLIT-PURE-END*/
+let SPLIT={keys:[],act:0};  // keys — модели по панелям при разделении; пусто — одна панель (вкладки как раньше)
+try{const _sp=JSON.parse(localStorage.getItem('cc_split')||'null');if(_sp&&Array.isArray(_sp.keys))SPLIT={keys:_sp.keys.filter((k,i,a)=>(k==='claude'||k==='prod'||k==='codex')&&a.indexOf(k)===i).slice(0,SPLIT_MAX),act:Math.max(0,+_sp.act||0)};}catch(e){}
+function splitSave(){try{localStorage.setItem('cc_split',JSON.stringify(SPLIT));}catch(e){}}
+const splitMq=matchMedia('(min-width:1100px) and (pointer:fine)');
 // серая плашка «консоль не запущена» под последним экраном — общая для Claude, Claude на PROD и Codex:
 // причина, время последнего экрана и (у PROD и Codex) кнопка запуска; пока консоль идёт, плашки нет
-function idleUi(d,dot,txt,who,go){
+function idleUi(P,d,dot,txt,who,go){
  const idle=d.running===false?String(d.stopped||0):d.paused?'paused':'';  // остановлена — по времени остановки; заморожена паузой профиля — своя метка
- if(idle!==consIdle){consIdle=idle;$('#termHistory').innerHTML='';ccConsoleHistory();}
- const note=$('#termIdle'),b=$('#termIdleGo');note.hidden=!idle;
+ if(idle!==P.idleKey){P.idleKey=idle;P.hist.innerHTML='';ccConsoleHistory(P);}
+ const note=P.idle,b=P.idleGo;note.hidden=!idle;
  if(!idle)return;
  dot.className='termdot idle';
  let t=txt;
  if(d.stopped){const at=new Date(d.stopped*1000).toLocaleTimeString('ru-RU',{timeZone:window.FLEET_TZ,hour:'2-digit',minute:'2-digit'});t+=' '+tr('cxcShown',who,at);}
- $('#termIdleTxt').textContent='⏸ '+t;
+ P.idleTxt.textContent='⏸ '+t;
  b.hidden=!go;
  if(go){b.textContent=go.label;b.disabled=!!go.disabled;b.dataset.go=go.id;}
 }
 try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
 function prodAvail(){try{return !!(lastSnap&&lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}
-function consCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
-function consQuery(s){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='+termCols():'';}
-async function ccConsoleHistory(){
- const s=consCur();
+function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}
+function splitKeysAvail(){return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()?['codex']:[]);}
+// модели по панелям при разделении (только доступные); null — разделения нет (узкий экран, одна модель, не включено)
+function splitEff(){
+ if(!splitMq.matches)return null;
+ const av=splitKeysAvail(),ks=[];
+ for(const k of SPLIT.keys)if(av.includes(k)&&!ks.includes(k))ks.push(k);
+ return ks.length>1?ks.slice(0,SPLIT_MAX):null;
+}
+function splitActIdx(ks){return Math.min(Math.max(0,SPLIT.act|0),ks.length-1);}
+// выбранная консоль: при разделении — модель подсвеченной панели; иначе прежняя вкладка
+function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}
+function activePane(){const ks=splitEff();return ks&&PANES[splitActIdx(ks)]||PANES[0];}
+function consQuery(s,P){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='+termCols(P&&P.box):'';}
+// значок состояния панели: у выбранной ещё и общий кружок в шапке
+function dotOf(P){return {set className(v){P.dotCls=v;if(P.chipDot)P.chipDot.className=v+' tpdot';if(P===activePane())$('#termDot').className=v;}};}
+async function ccConsoleHistory(P){
+ P=P||PANES[0];
+ const s=P.k;
  try{
-  const r=await fetch(API+'console?token='+TOKEN+'&history=1'+consQuery(s));const d=await r.json();
-  if(s!==consCur())return;  // пока шёл запрос, переключили вкладку
-  if(d.ok&&d.history!=null){const box=$('#termBox');$('#termHistory').innerHTML=fitSep(d.history);box.scrollTop=box.scrollHeight;}
+  const r=await fetch(API+'console?token='+TOKEN+'&history=1'+consQuery(s,P));const d=await r.json();
+  if(s!==P.k)return;  // пока шёл запрос, переключили вкладку
+  if(d.ok&&d.history!=null){P.hist.innerHTML=fitSep(d.history,P.box);P.box.scrollTop=P.box.scrollHeight;fitPane(P);}
  }catch(e){}
 }
 function cxConsSb(sb){return tr(sb==='workspace-write'?'cxcSbWrite':sb==='danger-full-access'?'cxcSbFull':'cxcSbRead');}
@@ -5089,46 +5148,47 @@ function cxConsUi(d){
  if(!d||d.ok!==true||typeof d.running!=='boolean')return;
  ctActsSync();
 }
-async function ccConsole(){
- const box=$('#termBox'),dot=$('#termDot'),s=consCur(),requestSeq=++consoleRequestSeq;
+async function ccConsole(P){
+ if(!P)return tickAll();
+ const box=P.box,dot=dotOf(P),s=P.k,requestSeq=++P.seq;
  ctActsSync();
  try{
-  const r=await fetch(API+'console?token='+TOKEN+consQuery(s));const d=await r.json();
-  if(s!==consCur()||requestSeq<consoleAppliedSeq)return;
+  const r=await fetch(API+'console?token='+TOKEN+consQuery(s,P));const d=await r.json();
+  if(s!==P.k||requestSeq<P.applied)return;
   if(s==='prod'){  // Claude на сервере PROD: живой экран; остановлен — последний сохранённый экран и плашка
-   consoleAppliedSeq=requestSeq;
+   P.applied=requestSeq;
    if(!d.ok){  // нет связи: экран не трогаем, плашка только объясняет
-    dot.className='termdot err';consIdle='x';
-    $('#termIdleTxt').textContent='⏸ '+(d.message||d.error||'Нет связи с сервером PROD.');$('#termIdleGo').hidden=true;$('#termIdle').hidden=false;
+    dot.className='termdot err';P.idleKey='x';
+    P.idleTxt.textContent='⏸ '+(d.message||d.error||'Нет связи с сервером PROD.');P.idleGo.hidden=true;P.idle.hidden=false;
     return;
    }
    dot.className='termdot';
    const go=d.starting||prodStarting;
-   if(d.running){if(!consProdRun){consProdRun=true;ccConsoleHistory();}}else consProdRun=false;
-   idleUi(d,dot,go?'Запускаю Claude на PROD…':(d.idle||'Claude на PROD не запущен.')+' Запускается без Telegram. Когда работу передают на PROD, он запускается сам.','Claude на PROD',d.running?null:{id:'prod',label:'Запустить',disabled:!!go});
+   if(d.running){if(!P.prodRun){P.prodRun=true;ccConsoleHistory(P);}}else P.prodRun=false;
+   idleUi(P,d,dot,go?'Запускаю Claude на PROD…':(d.idle||'Claude на PROD не запущен.')+' Запускается без Telegram. Когда работу передают на PROD, он запускается сам.','Claude на PROD',d.running?null:{id:'prod',label:'Запустить',disabled:!!go});
   }else{
    if(s==='codex'&&(d.ok!==true||typeof d.running!=='boolean')){dot.className='termdot err';return;}
-   consoleAppliedSeq=requestSeq;
+   P.applied=requestSeq;
    if(s==='codex'){
     cxConsUi(d);
     if(d.running)cxAutoGo=false;  // уже работала — любая остановка дальше осознанная
-    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
+    else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true,P);}  // один раз за загрузку страницы; пока профиль держит Codex на паузе — не запускаем сами
     if(!d.ok){dot.className='termdot err';return;}
     dot.className='termdot';
-    if(d.running){if(d.started!==cxConsRun){cxConsRun=d.started;ccConsoleHistory();}}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку
-    else cxConsRun=null;
-    idleUi(d,dot,d.running&&d.paused?tr('cxcPaused')+(d.frozen?' '+tr('cxcFrozen'):''):tr(cxStarting?'cxcStarting':'cxcOff')+'. '+tr('cxcSub',cxConsSb(d.plan_sandbox),d.plan_cwd||'')+(d.profile_paused&&!cxStarting?' '+tr('cxcPausedOff'):''),'Codex',d.running?null:{id:'codex',label:tr('cxcStart'),disabled:cxStarting});
+    if(d.running){if(d.started!==P.cxRun){P.cxRun=d.started;ccConsoleHistory(P);}}  // консоль запущена (в т.ч. заново) — подтянуть прокрутку
+    else P.cxRun=null;
+    idleUi(P,d,dot,d.running&&d.paused?tr('cxcPaused')+(d.frozen?' '+tr('cxcFrozen'):''):tr(cxStarting?'cxcStarting':'cxcOff')+'. '+tr('cxcSub',cxConsSb(d.plan_sandbox),d.plan_cwd||'')+(d.profile_paused&&!cxStarting?' '+tr('cxcPausedOff'):''),'Codex',d.running?null:{id:'codex',label:tr('cxcStart'),disabled:cxStarting});
    }else{
     if(!d.ok||d.current==null){dot.className='termdot err';return;}
     dot.className='termdot';
     // сессии Claude нет (напр. профиль «Notion AI · только он»): сервер отдаёт последний экран остановленной
     // сессии (не обновляется) — показываем его и плашку «почему»; при переходе туда/обратно подтягиваем прокрутку заново
-    idleUi(d,dot,d.idle||'Claude сейчас не запущен.','Claude',null);
+    idleUi(P,d,dot,d.idle||'Claude сейчас не запущен.','Claude',null);
    }
   }
   const atBottom=box.scrollTop+box.clientHeight>=box.scrollHeight-20;
-  $('#termCurrent').innerHTML=fitSep(d.current||'');
-  box.classList.toggle('termempty',!$('#termIdle').hidden&&!$('#termCurrent').textContent.trim()&&!$('#termHistory').textContent.trim());
+  P.cur.innerHTML=fitSep(d.current||'',box);fitPane(P);
+  box.classList.toggle('termempty',!P.idle.hidden&&!P.cur.textContent.trim()&&!P.hist.textContent.trim());
   if(atBottom)box.scrollTop=box.scrollHeight;
  }catch(e){dot.className='termdot err';}
 }
@@ -5142,7 +5202,7 @@ function applyTz(save){
  $('#tzVal').textContent=TZ+'%';
  $('#tzMinus').disabled=TZ<=TZ_STEPS[0];$('#tzPlus').disabled=TZ>=TZ_STEPS[TZ_STEPS.length-1];
  if(save){try{localStorage.setItem('cc_termzoom',TZ);}catch(e){}}
- const box=$('#termBox');box.scrollTop=box.scrollHeight;
+ stickBottom();fitAll();
 }
 function tzStep(d){const i=TZ_STEPS.indexOf(TZ)+d;if(i<0||i>=TZ_STEPS.length)return;TZ=TZ_STEPS[i];applyTz(true);}
 $('#tzMinus').addEventListener('click',()=>tzStep(-1));
@@ -5150,10 +5210,25 @@ $('#tzPlus').addEventListener('click',()=>tzStep(1));
 $('#tzVal').addEventListener('click',()=>{TZ=100;applyTz(true);});
 applyTz(false);
 // консоль «прилипает» ко дну: пока читатель внизу, любая смена размера блока (выход из полноэкранного режима, поворот экрана) оставляет на виду последние строки
-let STICK=true;
-function stickBottom(){const b=$('#termBox');b.scrollTop=b.scrollHeight;}
-$('#termBox').addEventListener('scroll',()=>{const b=$('#termBox');STICK=b.scrollTop+b.clientHeight>=b.scrollHeight-20;},{passive:true});
-if(window.ResizeObserver)new ResizeObserver(()=>{if(STICK)stickBottom();}).observe($('#termBox'));
+function stickBottom(){for(const P of PANES)P.box.scrollTop=P.box.scrollHeight;}
+function wirePane(P){
+ P.box.addEventListener('scroll',()=>{P.stick=P.box.scrollTop+P.box.clientHeight>=P.box.scrollHeight-20;},{passive:true});
+ if(window.ResizeObserver)new ResizeObserver(()=>{if(P.stick)P.box.scrollTop=P.box.scrollHeight;fitPane(P);}).observe(P.box);
+ P.box.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
+ dropTarget(P.box,()=>PANES.indexOf(P));
+ P.idleGo.addEventListener('click',()=>paneGo(P));
+}
+// в узкой панели экран не ломаем переносом строк, а уменьшаем шрифт (не мельче половины), дальше — прокрутка вправо
+function fitPane(P){
+ const b=P.box;
+ if(!b.closest('.termwrap.tsplit')){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
+ b.style.setProperty('--pz','1');
+ const cs=getComputedStyle(b),pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight),avail=b.clientWidth-pad,need=b.scrollWidth-pad;
+ const f=need>avail+1&&avail>0?Math.max(.5,avail/need):1;
+ b.style.setProperty('--pz',f.toFixed(3));
+}
+function fitAll(){for(const P of PANES)fitPane(P);}
+addEventListener('resize',fitAll);
 
 // ---- режим «только консоль»: виден лишь терминал; у нижнего края — панель аккаунтов по наведению ----
 function setConly(on,save){
@@ -5162,7 +5237,7 @@ function setConly(on,save){
  if(save){try{localStorage.setItem('cc_conly',on?'1':'0');}catch(e){}}
  $('#dockZone').classList.remove('pin');
  try{if(!on&&document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}
- STICK=true;stickBottom();
+ PANES.forEach(P=>{P.stick=true});stickBottom();
  requestAnimationFrame(stickBottom);
  setTimeout(stickBottom,350);
 }
@@ -5205,37 +5280,146 @@ document.addEventListener('keydown',e=>{
 });
 document.documentElement.removeAttribute('data-skin');{const box=$('#termBox');box.scrollTop=box.scrollHeight;}
 function consTabs(){
- const av=cxAvail(),pv=prodAvail(),cur=consCur();
+ const av=cxAvail(),pv=prodAvail(),cur=consCur(),ks=splitEff()||[];
  $('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;
  [['claude','#ctClaude'],['prod','#ctProd'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
-  b.classList.toggle('on',on);b.setAttribute('aria-selected',on);
+  b.classList.toggle('on',on);b.classList.toggle('tshown',!on&&ks.includes(k));b.setAttribute('aria-selected',on);
   b.title=on?'':tr('cxcSw')+b.textContent;
+  b.draggable=splitMq.matches&&(av||pv);
  });
+ splitBtnSync();
  ctActsSync();  // подсказки кнопок — по текущей вкладке (раньше здесь жёстко стояли подсказки Codex)
- const key=cur;
- if(key!==consShown){
-  consShown=key;cxConsRun=null;consProdRun=false;
-  $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
-  consIdle='';$('#termIdle').hidden=true;ctActsSync();
-  STICK=true;ccConsoleHistory();ccConsole();
- }
+ syncPanes();
 }
 function consPick(k){
+ const ks=splitEff();
+ if(ks){const r=splitPick(ks,splitActIdx(ks),k);SPLIT={keys:r.keys,act:r.act};splitSave();}
  CONS=k;try{localStorage.setItem('cc_contab',k);}catch(e){}
  consTabs();
 }
 $('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(b&&b.dataset.s!==consCur())consPick(b.dataset.s);});
+// ---- разделение: панели, заголовки, перетаскивание
+function tabName(k){const b=$({claude:'#ctClaude',prod:'#ctProd',codex:'#ctCodex'}[k]);return b?b.textContent.trim():k;}
+function resetPane(P,k){
+ P.k=k;P.cxRun=null;P.prodRun=false;P.idleKey='';P.stick=true;P.dotCls='';
+ P.hist.innerHTML='';P.cur.innerHTML='';P.idle.hidden=true;P.box.classList.remove('termempty');
+ ccConsoleHistory(P);ccConsole(P);
+}
+function newPane(){
+ const box=document.createElement('pre');box.className='termbox tpextra';
+ box.innerHTML='<span class="tph"></span>\n<span class="tpc"></span><div class="termidle" hidden><span></span><button type="button" hidden></button></div>';
+ const P={k:null,primary:false,seq:0,applied:0,idleKey:'',cxRun:null,prodRun:false,stick:true,dotCls:'',chipDot:null,box:box,hist:box.children[0],cur:box.children[1],idle:box.children[2],idleTxt:box.children[2].children[0],idleGo:box.children[2].children[1]};
+ return P;
+}
+function syncPanes(){
+ const ks=splitEff(),keys=ks||[baseCur()],vp=PANES[0].box.parentNode;
+ $('.termwrap').classList.toggle('tsplit',!!ks);
+ if(ks)CONS=ks[splitActIdx(ks)];
+ while(PANES.length<keys.length){const P=newPane();vp.appendChild(P.box);PANES.push(P);wirePane(P);}
+ while(PANES.length>keys.length){const P=PANES.pop();P.box.remove();}
+ PANES.forEach((P,i)=>{if(P.k!==keys[i])resetPane(P,keys[i]);});
+ const act=ks?splitActIdx(ks):-1;
+ PANES.forEach((P,i)=>P.box.classList.toggle('tpact',i===act));
+ if(ks&&PANES[act]&&PANES[act].dotCls)$('#termDot').className=PANES[act].dotCls;
+ renderHeads(ks);
+ if(ks)fitAll();
+}
+function renderHeads(ks){
+ const vp=PANES[0].box.parentNode;let h=document.getElementById('tpHeads');
+ if(!ks){if(h)h.remove();PANES.forEach(P=>{P.chipDot=null});return;}
+ if(!h){
+  h=document.createElement('div');h.id='tpHeads';h.className='tpheads';vp.appendChild(h);
+  h.addEventListener('click',e=>{const x=e.target.closest('[data-x]');if(x){splitClose(+x.dataset.x);return;}const c=e.target.closest('.tphd');if(c)splitActivate(+c.dataset.i);});
+  h.addEventListener('dragstart',e=>{const c=e.target.closest('.tphd');if(!c)return;DRAG={t:'pane',v:+c.dataset.i};try{e.dataTransfer.setData('text/plain','pane:'+c.dataset.i);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
+  h.addEventListener('dragend',dragEnd);
+  dropTarget(h,e=>{const c=e.target.closest('.tphd');return c?+c.dataset.i:-1;});
+ }
+ const act=splitActIdx(ks),sig=ks.join()+'|'+act+'|'+LANG+'|'+ks.map(tabName).join();
+ if(h.dataset.sig===sig)return;
+ h.dataset.sig=sig;
+ h.innerHTML=ks.map((k,i)=>'<div class="tphd'+(i===act?' on':'')+'" data-i="'+i+'" draggable="true" title="'+(LANG==='en'?'Drag onto another part to swap':'Перетащи на другую часть, чтобы поменять местами')+'"><span class="termdot tpdot" data-i="'+i+'"></span><b>'+tabName(k)+'</b><button type="button" class="tpx" data-x="'+i+'" title="'+(LANG==='en'?'Close this part':'Закрыть часть')+'" aria-label="'+(LANG==='en'?'Close this part':'Закрыть часть')+'">×</button></div>').join('');
+ PANES.forEach((P,i)=>{P.chipDot=h.querySelector('.tpdot[data-i="'+i+'"]');if(P.chipDot&&P.dotCls)P.chipDot.className=P.dotCls+' tpdot';});
+}
+let DRAG=null;
+function dragBegin(){
+ const ks=splitEff();
+ if(DRAG&&DRAG.t==='tab'&&splitMq.matches&&(!ks||(ks.length<SPLIT_MAX&&!ks.includes(DRAG.v)))){
+  const z=ensureAddZone(),a=PANES[0].box.getBoundingClientRect(),c=PANES[PANES.length-1].box.getBoundingClientRect();
+  let w=Math.round((c.right-a.left)*.34);if(ks)w=Math.min(w,170);  // при разделении — узкая полоса у правого края, остальное остаётся под замену частей
+  z.style.left=Math.round(c.right-w)+'px';z.style.top=Math.round(a.top+30)+'px';z.style.width=w+'px';z.style.height=Math.max(60,Math.round(a.height-30))+'px';
+  document.body.classList.add('tpdraging');
+ }
+}
+function dragEnd(){DRAG=null;document.body.classList.remove('tpdraging');document.querySelectorAll('.tpdrop').forEach(e=>e.classList.remove('tpdrop'));}
+function ensureAddZone(){
+ let z=document.getElementById('tpAdd');
+ if(z)return z;
+ z=document.createElement('div');z.id='tpAdd';z.className='tpadd';document.body.appendChild(z);
+ z.textContent=LANG==='en'?'Drop here to open on the right':'Отпусти, чтобы открыть справа';
+ z.addEventListener('dragover',e=>{if(DRAG&&DRAG.t==='tab'){e.preventDefault();z.classList.add('tpdrop');}});
+ z.addEventListener('dragleave',()=>z.classList.remove('tpdrop'));
+ z.addEventListener('drop',e=>{e.preventDefault();const d=DRAG;dragEnd();if(d&&d.t==='tab')splitAddDrop(d.v);});
+ return z;
+}
+function dropTarget(el,idxOf){
+ el.addEventListener('dragover',e=>{const i=idxOf(e);if(i<0||!DRAG||!splitEff())return;e.preventDefault();try{e.dataTransfer.dropEffect='move';}catch(x){}
+  document.querySelectorAll('.tpdrop').forEach(n=>n.classList.remove('tpdrop'));
+  if(PANES[i])PANES[i].box.classList.add('tpdrop');const c=document.querySelector('#tpHeads .tphd[data-i="'+i+'"]');if(c)c.classList.add('tpdrop');});
+ el.addEventListener('dragleave',e=>{if(e.relatedTarget&&el.contains(e.relatedTarget))return;document.querySelectorAll('.tpdrop').forEach(n=>n.classList.remove('tpdrop'));});
+ el.addEventListener('drop',e=>{const i=idxOf(e);if(i<0||!DRAG||!splitEff())return;e.preventDefault();const d=DRAG;dragEnd();splitDropOn(i,d);});
+}
+function splitCommit(r,cur){SPLIT={keys:r.keys,act:r.act};splitSave();CONS=cur||SPLIT.keys[SPLIT.act];try{localStorage.setItem('cc_contab',CONS);}catch(e){}consTabs();}
+function splitDropOn(i,d){
+ const ks=splitEff();if(!ks)return;
+ if(d.t==='tab'){const r=splitDrop(ks,splitActIdx(ks),i,d.v);splitCommit(r,d.v);}
+ else if(d.t==='pane'){const r=splitSwap(ks,splitActIdx(ks),d.v,i);splitCommit(r);}
+}
+function splitAddDrop(k){
+ const av=splitKeysAvail(),ks=splitEff()||[consCur()],nk=splitAdd(ks,av,k);
+ if(!nk)return;
+ splitCommit({keys:nk,act:nk.length-1},k);
+}
+function splitActivate(i){const ks=splitEff();if(!ks||i===splitActIdx(ks)||i<0||i>=ks.length)return;splitCommit({keys:ks,act:i});}
+function splitClose(i){
+ const ks=splitEff();if(!ks)return;
+ const r=splitCloseAt(ks,splitActIdx(ks),i);
+ if(r.keys.length<2){SPLIT={keys:[],act:0};splitSave();CONS=r.keys[0]||'claude';try{localStorage.setItem('cc_contab',CONS);}catch(e){}consTabs();return;}
+ splitCommit(r);
+}
+// кнопка в блоке масштаба: 1 → 2 → 3 части → обратно в одну (3-й нет, если моделей меньше)
+function splitToggle(){
+ const av=splitKeysAvail();if(av.length<2||!splitMq.matches)return;
+ const ks=splitEff();
+ if(!ks){const nk=splitAdd([consCur()],av,null);if(nk)splitCommit({keys:nk,act:0},consCur());return;}
+ const nk=splitAdd(ks,av,null);
+ if(nk){splitCommit({keys:nk,act:splitActIdx(ks)});return;}
+ const cur=ks[splitActIdx(ks)];SPLIT={keys:[],act:0};splitSave();CONS=cur;try{localStorage.setItem('cc_contab',CONS);}catch(e){}consTabs();
+}
+function splitBtnSync(){
+ const b=document.getElementById('splitBtn');if(!b)return;
+ const ok=splitMq.matches&&splitKeysAvail().length>1,ks=splitEff();
+ b.hidden=!ok;
+ const more=ks?(ks.length<Math.min(SPLIT_MAX,splitKeysAvail().length)):true;
+ const t=LANG==='en'?(ks?(more?'Add a part':'Back to one console'):'Split console'):(ks?(more?'Добавить часть':'Вернуть одну консоль'):'Разделить консоль');
+ b.title=t;b.setAttribute('aria-label',t);b.classList.toggle('on',!!ks);
+}
+document.getElementById('splitBtn').addEventListener('click',splitToggle);
+document.querySelectorAll('.ctab').forEach(b=>{b.addEventListener('dragstart',e=>{const k=b.dataset.s;if(!(k==='claude'||k==='prod'||k==='codex')||!splitMq.matches){e.preventDefault();return;}DRAG={t:'tab',v:k};try{e.dataTransfer.setData('text/plain','tab:'+k);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});b.addEventListener('dragend',dragEnd);});
+splitMq.addEventListener('change',()=>{consTabs();fitAll();});
+function tickAll(){syncPanes();for(const P of PANES)ccConsole(P);}
 // консоль идёт за исполнителем: панель знает, кто сейчас работает (remote_mode.worker: dev/prod/codex/notion).
 // Сменился — вкладка консоли переключается сама. Пока исполнитель тот же, ручной выбор вкладки не трогаем.
 let consFollowed='',consFollowWait=0;
+// сохранённая раскладка ещё не собралась: модели частей приходят в панель позже страницы — следом за исполнителем идём, когда она готова
+function splitPending(){const av=splitKeysAvail();return splitMq.matches&&SPLIT.keys.length>1&&SPLIT.keys.some(k=>!av.includes(k));}
 function consFollow(d){
  try{
   const w=d&&d.remote_mode&&d.remote_mode.worker;if(!w)return;
   let seen=consFollowed;if(!seen){try{seen=localStorage.getItem('cc_conworker')||'';}catch(e){}}
   if(seen===w)return;
   const b=document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[w]||'ctClaude');
-  if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())){
+  if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())||splitPending()){
    // страница только открылась: вкладка Notion и данные Codex приходят чуть позже — ждём до 30 с, потом отстаём до следующего опроса
    const t=Date.now();if(!consFollowWait||t-consFollowWait>30000)consFollowWait=t;
    if(t-consFollowWait<30000)setTimeout(()=>consFollow(lastSnap),700);
@@ -5245,26 +5429,29 @@ function consFollow(d){
   b.click();  // обычный клик: вкладка Notion открывает его чат, остальные закрывают чат Notion и зовут consPick
  }catch(e){}
 }
-async function cxConsAct(path,quiet){
- const g=$('#termIdleGo');g.disabled=true;
- cxStarting=path==='start';if(cxStarting&&!$('#termIdle').hidden)$('#termIdleTxt').textContent='⏸ '+tr('cxcStarting');
+async function cxConsAct(path,quiet,P){
+ P=P||PANES[0];
+ const g=P.idleGo;g.disabled=true;
+ cxStarting=path==='start';if(cxStarting&&!P.idle.hidden)P.idleTxt.textContent='⏸ '+tr('cxcStarting');
  try{
   const r=await acctPost('chatgpt/console/'+path,{});
   if(!(r.ok&&quiet))toast(r.ok?r.message:'⚠ '+r.message);
-  cxConsRun=null;cxConsUi(r);
-  $('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';
-  await ccConsole();ccConsoleHistory();
+  P.cxRun=null;cxConsUi(r);
+  P.hist.innerHTML='';P.cur.innerHTML='';
+  await ccConsole(P);ccConsoleHistory(P);
  }catch(e){toast('⚠ '+e);}
  cxStarting=false;g.disabled=false;
 }
-async function prodStart(){
- prodStarting=true;$('#termIdleTxt').textContent='⏸ Запускаю Claude на PROD…';$('#termIdleGo').disabled=true;
+async function prodStart(P){
+ P=P||PANES[0];
+ prodStarting=true;P.idleTxt.textContent='⏸ Запускаю Claude на PROD…';P.idleGo.disabled=true;
  try{const r=await fetch(API+'remote/console/start',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:'{}'});const j=await r.json();if(!j.ok)toast('⚠ '+(j.message||'Не запустилось'));}
  catch(e){toast('⚠ Панель не ответила');}
- prodStarting=false;ccConsole();
+ prodStarting=false;ccConsole(P);
 }
 // одна кнопка в плашке: что она запускает, решает вкладка (ставит idleUi)
-$('#termIdleGo').addEventListener('click',async()=>{const b=$('#termIdleGo'),w=b.dataset.go;if(w!=='codex'&&w!=='prod')return;if(!await window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start');else prodStart();});
+async function paneGo(P){const b=P.idleGo,w=b.dataset.go;if(w!=='codex'&&w!=='prod')return;if(!await window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start',false,P);else prodStart(P);}
+wirePane(PANES[0]);
 async function cxConsCmd(cmd){  // «Сжать контекст» / «Новая сессия» вкладки Codex
  if(cmd==='compact'&&!await window.fleetAsk($('#ctCompact'),tr('askCxCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('cxcNewQ')))return;
@@ -5272,7 +5459,7 @@ async function cxConsCmd(cmd){  // «Сжать контекст» / «Нова�
  try{
   const r=await acctPost('chatgpt/console/cmd',{cmd});
   toast(r.ok?'✅ '+r.message:'⚠ '+r.message);
-  if(cmd==='new'&&r.ok){cxConsRun=null;cxConsUi(r);$('#termHistory').innerHTML='';$('#termCurrent').innerHTML='';await ccConsole();ccConsoleHistory();}
+  if(cmd==='new'&&r.ok){const P=activePane();P.cxRun=null;cxConsUi(r);P.hist.innerHTML='';P.cur.innerHTML='';await ccConsole(P);ccConsoleHistory(P);}
  }catch(e){toast('⚠ '+e);}
  bs.forEach(b=>b.disabled=false);
 }
@@ -5288,7 +5475,7 @@ async function prodSessionCmd(cmd){  // «Сжать контекст» / «Но
 function consActCmd(cmd){const s=consCur();return s==='codex'?cxConsCmd(cmd):s==='prod'?prodSessionCmd(cmd):sessionCmd(cmd,$(cmd==='compact'?'#ctCompact':'#ctNew'));}
 $('#ctCompact').addEventListener('click',()=>consActCmd('compact'));
 $('#ctNew').addEventListener('click',()=>consActCmd('new'));
-setTimeout(()=>{ccConsoleHistory();ccConsole();},0);setInterval(ccConsole,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
+setTimeout(()=>{consTabs();ccConsoleHistory();tickAll();},0);setInterval(tickAll,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
 function tone(p){return p==null?'na':p<60?'ok':p<85?'warn':'bad'}
 function rst(iso){if(!iso)return'';const d=new Date(iso),m=Math.max(0,Math.round((d-Date.now())/60000));

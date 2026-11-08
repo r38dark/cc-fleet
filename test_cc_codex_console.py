@@ -876,7 +876,8 @@ class Page(unittest.TestCase):
         self.assertNotRegex(L.PAGE, r"classList\.(toggle|add|remove)\('(has)?acts'")
         self.assertIn("$('#cTabs').classList.toggle('cacts',show)", L.PAGE)
         # при смене вкладки состояние кнопок пересчитывается заново (Notion AI — кнопок нет)
-        self.assertIn("$('#termIdle').hidden=true;ctActsSync();", L.PAGE)
+        self.assertIn("P.idle.hidden=true;", L.PAGE)  # смена модели в панели сбрасывает плашку
+        self.assertIn("splitBtnSync();\n ctActsSync();", L.PAGE)  # consTabs пересчитывает кнопки на каждой смене
 
     def test_buttons_post_to_console_cmd_and_new_asks_first(self):
         self.assertIn("acctPost('chatgpt/console/cmd',{cmd})", L.PAGE)
@@ -889,7 +890,8 @@ class Page(unittest.TestCase):
     def test_tabs_are_hidden_until_codex_is_available(self):
         self.assertRegex(L.PAGE, r'<div class="ctabs" id="cTabs"[^>]*\bhidden\b')
         self.assertIn("$('#cTabs').hidden=!(av||pv)", L.PAGE)  # av = cxConsOn(): Codex установлен и есть вход ChatGPT; pv — подключён Аккаунт PROD
-        self.assertIn("function consCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}", L.PAGE)
 
     def test_tabs_sit_inside_console_block_before_it(self):
         wrap = L.PAGE.index('<div class="termwrap">')
@@ -901,14 +903,15 @@ class Page(unittest.TestCase):
         self.assertIn("html:root:root .iconbtn.ctab,html:root:root .iconbtn.ctstop{height:34px}", phone)
 
     def test_poll_asks_for_selected_session_only(self):
-        self.assertIn("function consQuery(s){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='+termCols():'';}", L.PAGE)
-        self.assertEqual(L.PAGE.count("'console?token='+TOKEN+consQuery(s)"), 1)  # опрос экрана
-        self.assertEqual(L.PAGE.count("'&history=1'+consQuery(s)"), 1)  # опрос прокрутки
-        self.assertIn("if(s!==consCur())return;", L.PAGE)  # ответ от прежней вкладки отбрасывается
+        self.assertIn("function consQuery(s,P){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='+termCols(P&&P.box):'';}", L.PAGE)
+        self.assertEqual(L.PAGE.count("'console?token='+TOKEN+consQuery(s,P)"), 1)  # опрос экрана
+        self.assertEqual(L.PAGE.count("'&history=1'+consQuery(s,P)"), 1)  # опрос прокрутки
+        self.assertIn("if(s!==P.k)return;", L.PAGE)  # ответ от прежней модели панели отбрасывается
+        self.assertIn("if(s!==P.k||requestSeq<P.applied)return;", L.PAGE)
 
     def test_first_poll_waits_for_script_load(self):
         # consCur() -> cxAvail() читает cxData/cxbData (let ниже по скрипту): вызов на старте даёт «before initialization»
-        self.assertIn("setTimeout(()=>{ccConsoleHistory();ccConsole();},0);setInterval(ccConsole,2000);", L.PAGE)
+        self.assertIn("setTimeout(()=>{consTabs();ccConsoleHistory();tickAll();},0);setInterval(tickAll,2000);", L.PAGE)
         self.assertNotRegex(L.PAGE, r"\nccConsoleHistory\(\);ccConsole\(\);")
 
     def test_selected_tab_is_remembered_in_browser(self):
@@ -932,15 +935,15 @@ class Page(unittest.TestCase):
         for who in ("'Claude',null", "'Claude на PROD'", "'Codex'"):
             self.assertIn(who, page)  # Claude, PROD и Codex рисуют плашку одной функцией
         self.assertEqual(page.count('function idleUi('), 1)
-        self.assertEqual(page.count("$('#termIdle').hidden=true"), 1)  # сброс только при смене вкладки
+        self.assertEqual(page.count("P.idle.hidden=true"), 1)  # сброс только при смене модели в панели
 
     def test_plate_goes_to_the_bottom_when_there_is_no_screen_to_show(self):
         page = L.PAGE
         self.assertIn(".termbox.termempty{display:flex;flex-direction:column}", page)
         self.assertIn(".termbox.termempty .termidle{margin-top:auto}", page)
-        self.assertIn("box.classList.toggle('termempty',!$('#termIdle').hidden&&!$('#termCurrent').textContent.trim()&&!$('#termHistory').textContent.trim());", page)
+        self.assertIn("box.classList.toggle('termempty',!P.idle.hidden&&!P.cur.textContent.trim()&&!P.hist.textContent.trim());", page)
         # признак ставится после того, как экран выведен, иначе он смотрел бы на прошлый опрос
-        self.assertLess(page.index("$('#termCurrent').innerHTML=fitSep(d.current||'');"), page.index("box.classList.toggle('termempty'"))
+        self.assertLess(page.index("P.cur.innerHTML=fitSep(d.current||'',box);"), page.index("box.classList.toggle('termempty'"))
 
     def test_console_input_is_explained_on_the_page(self):
         m = re.search(r"cxcSub:\(sb,cwd\)=>'([^']*)", L.PAGE)
@@ -1048,12 +1051,12 @@ class Paused(unittest.TestCase):
 
     def test_page_does_not_start_codex_by_itself_while_the_profile_holds_the_pause(self):
         page = L.PAGE
-        self.assertIn("else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true);}", page)
-        self.assertEqual(page.count("cxConsAct('start',true)"), 1)  # автозапуск один, и он за условием
+        self.assertIn("else if(cxAutoGo&&d.available!==false&&d.ok!==false&&!d.profile_paused){cxAutoGo=false;cxConsAct('start',true,P);}", page)
+        self.assertEqual(page.count("cxConsAct('start',true"), 1)  # автозапуск один, и он за условием
         self.assertIn("(d.profile_paused&&!cxStarting?' '+tr('cxcPausedOff'):'')", page)  # плашка объясняет, почему не запустилась
         self.assertEqual(len(re.findall(r"cxcPausedOff:'", page)), 2)
-        self.assertIn("$('#termIdleGo').addEventListener('click',async()=>{const b=$('#termIdleGo'),w=b.dataset.go;", page)
-        self.assertIn("window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start');else prodStart();", page)  # кнопкой — по-прежнему можно, но после окна «Точно?» (62045)
+        self.assertIn("async function paneGo(P){const b=P.idleGo,w=b.dataset.go;", page)
+        self.assertIn("window.fleetAsk(b,tr(w==='codex'?'askStartCx':'askStartProd'),tr('askYes')))return;if(w==='codex')cxConsAct('start',false,P);else prodStart(P);", page)  # кнопкой — по-прежнему можно, но после окна «Точно?» (62045)
 
     def test_profiles_hand_their_pause_role_to_the_console(self):
         src = open(os.path.join(os.path.dirname(os.path.abspath(C.__file__)), "cc_profiles.py"), encoding="utf-8").read()

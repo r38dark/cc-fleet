@@ -209,7 +209,7 @@ class Page(unittest.TestCase):
         self.assertIn("let consFollowed='',consFollowWait=0;", page)
         self.assertIn("localStorage.setItem('cc_conworker',w)", page)
         # пока нужной вкладки нет (PROD/Codex недоступны, вкладка Notion ещё не создана) — не запоминаем, ждём до 30 с и повторяем
-        self.assertIn("if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())){", page)
+        self.assertIn("if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())||splitPending()){", page)
         self.assertIn("setTimeout(()=>consFollow(lastSnap),700)", page)
         # запоминаем ДО клика: клик зовёт consPick -> consTabs, а запоминание после клика зациклило бы переключение
         self.assertLess(page.index("consFollowed=w;try{localStorage.setItem('cc_conworker',w)"), page.index("b.click();  // обычный клик"))
@@ -290,12 +290,12 @@ class Page(unittest.TestCase):
 
     def test_console_starts_itself_like_claude(self):
         # вкладка Codex сама поднимает консоль: жать «Запустить» не нужно (как и у консоли Claude)
-        poll = re.search(r"async function ccConsole\(\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
-        self.assertIn("cxConsAct('start',true)", poll)
+        poll = re.search(r"async function ccConsole\(P\)\{.*?\n\}\n", L.PAGE, re.S).group(0)
+        self.assertIn("cxConsAct('start',true,P)", poll)
         self.assertRegex(poll, r"d\.running\)cxAutoGo=false")  # уже работала — дальше остановка осознанная
         # кнопки остановки консоли нет: ручной остановки нет, флаг сбрасывается только при запуске
         self.assertNotIn("id=\"ctStop\"", L.PAGE)
-        self.assertIn("cxAutoGo=false;cxConsAct('start',true)", poll)  # флаг гаснет ДО запроса: опрос раз в 2 с не запустит дважды
+        self.assertIn("cxAutoGo=false;cxConsAct('start',true,P)", poll)  # флаг гаснет ДО запроса: опрос раз в 2 с не запустит дважды
         self.assertIn("cxcStarting", i18n_block("ru"))
 
     def test_no_feed_endpoint_left(self):
@@ -325,8 +325,9 @@ class Page(unittest.TestCase):
     def test_codex_console_tab_needs_an_account(self):
         # «Удалить Codex целиком» оставляет бинарь, но убирает входы: вкладка консоли Codex после этого не нужна
         self.assertIn("function cxAvail()", L.PAGE)
-        self.assertIn("function consCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
-        self.assertIn("const av=cxAvail(),pv=prodAvail(),cur=consCur();", L.PAGE)
+        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()?'codex':'claude';}", L.PAGE)
+        self.assertIn("function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}", L.PAGE)
+        self.assertIn("const av=cxAvail(),pv=prodAvail(),cur=consCur()", L.PAGE)
 
     def test_texts_in_both_languages(self):
         keys = {lang: set(re.findall(r"^\s{2}(cx\w*):", i18n_block(lang), re.M)) for lang in ("ru", "en")}

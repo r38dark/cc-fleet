@@ -55,7 +55,7 @@ class ConsoleActionButtons(unittest.TestCase):
         self.assertIn("function ctActsSync(){const k=consCur(),show=k==='claude'||k==='prod'||k==='codex';", self.page)
         self.assertNotIn("ctActsClaude", self.page)
         self.assertNotIn('id="ctStop"', self.page)
-        i = self.page.index("async function ccConsole(){")
+        i = self.page.index("async function ccConsole(P){")
         self.assertIn("ctActsSync();", self.page[i:i + 260])      # пересчёт на каждом опросе, не только после ответа сервера
 
     def test_each_tab_runs_its_own_command(self):
