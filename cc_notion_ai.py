@@ -1,7 +1,7 @@
 """Профили Notion AI в балансере ([notion-ai], 05.11.26).
 
 Колонка «Notion AI» в выборе профиля — два профиля (плитку «Notion AI → Claude» владелец попросил убрать 05.11 19:15):
-  * «Notion AI · только он» (kind=full): Claude Code остановлен, Claude и Codex на паузе.
+  * «Notion AI · только он» (kind=full): Claude Code остановлен, Claude на паузе (Codex с одним аккаунтом работает сам).
   * «Notion AI → Codex» (kind=orchestrator, follower=codex): Notion AI планирует и проверяет,
     Codex — исполнитель (консоль перезапущена с песочницей workspace-write и инструкцией
     исполнителя, права «дев»). Выполняет только шаги, подтверждённые владельцем. Claude остановлен.
@@ -129,6 +129,13 @@ class NotionAI:
         f = self.data.get('follower')
         return f if self.kind() == 'orchestrator' and f in NAMES else None
 
+    def codex_free(self):
+        """Codex с одним аккаунтом не участвует в ротации: профиль Notion AI его на паузу не ставит (как и Claude Full)."""
+        try:
+            return bool(self.profiles.state._codex_free())
+        except Exception:
+            return False
+
     def executor(self, e):
         return self.follower() == e
 
@@ -210,7 +217,9 @@ class NotionAI:
                 down = p.avail[e]['status'] == 'down'
             except Exception:
                 down = False
-            if active:
+            if active and e == 'codex' and f != e and self.codex_free():
+                st = ROLE_STATE.get(d.get('role'), 'run')   # Codex с одним аккаунтом работает сам, пока включён профиль Notion AI
+            elif active:
                 st = 'exec' if f == e else 'pause'
                 label = NAMES[e] + (' · исполнитель Notion AI' if f == e else ' · на паузе (работает Notion AI)')
             else:
@@ -226,9 +235,9 @@ class NotionAI:
         pst = 'run' if remote_on else 'pause'
         out['prod'] = dict(state=pst, text=AG_TEXT[pst],
                            label='Claude PROD · работает' if remote_on else 'Claude PROD · на паузе')
-        nst = ('lead' if self.kind() == 'orchestrator' else 'run') if active else 'pause'
+        nst = ('lead' if self.kind() == 'orchestrator' else 'run')   # агент Notion независим: на паузу не ставится никогда
         out['notion'] = dict(state=nst, text=AG_TEXT[nst],
-                             label=(self.title() + ' · работает') if active else 'Notion AI · на паузе')
+                             label=(self.title() + ' · работает') if active else 'Notion AI · самостоятельно')
         return out
 
     # ── Telegram и чат Notion AI ───────────────────────────────────────────
@@ -841,14 +850,15 @@ class NotionAI:
         elif follower == 'claude':
             desc = 'Notion AI планирует и проверяет, Claude перезапущен исполнителем без Telegram-канала, шаги — после твоего подтверждения. Codex на паузе.'
         else:
-            desc = '%s, Codex на паузе.' % ('Claude остановлен' if was_running else 'Claude не запущен' if not was_active else 'Claude не работает')
+            desc = '%s, Codex %s.' % ('Claude остановлен' if was_running else 'Claude не запущен' if not was_active else 'Claude не работает',
+                                      'работает сам' if self.codex_free() else 'на паузе')
         if was_active:
             self.tell_claude_chat('🔀 Профиль Notion AI: «%s». %s' % (t, desc))
         else:
             self.tell_claude_chat('🤖 Включён профиль «%s».\n%s Пиши сюда — отвечает Notion AI.' % (t, desc))
         if follower == 'codex':
             self.tell_codex_chat('🧩 Codex — исполнитель Notion AI (права «дев»): выполняет только шаги, подтверждённые владельцем. Профиль: «%s».' % t)
-        else:
+        elif not self.codex_free():
             self.tell_codex_chat('⏸ Codex на паузе: включён профиль «%s». Сообщения сюда подождут '
                                  'до выключения профиля. Notion AI отвечает в общем чате.' % t)
 
@@ -1056,14 +1066,16 @@ class NotionAI:
         self.orig_paused = orig_paused
 
         def paused(e):
-            return (not self.executor(e)) if self.active() else orig_paused(e)
+            if self.active():
+                return (not self.executor(e)) and not (e == 'codex' and self.codex_free())
+            return orig_paused(e)
 
         def public():
             out = self.original_public()
             out['notion_ai'] = self.public()
             if self.active():
                 for e, name in NAMES.items():
-                    if e in out.get('engines', {}):
+                    if e in out.get('engines', {}) and not (e == 'codex' and not self.executor(e) and self.codex_free()):
                         out['engines'][e]['label'] = name + (' · исполнитель Notion AI' if self.executor(e) else ' · на паузе (работает Notion AI)')
             return out
 
@@ -1257,7 +1269,7 @@ PICKER_JS = r'''
   const naiTitle=role=>role==='full'?'Notion AI Full · только он':'Notion AI → '+mirrorNames[role.slice(5)];
   const naiReload=()=>{try{window.naiReload&&window.naiReload()}catch(_){}};
   const NAI_DEF={
-   full:{can:'Планировать, выполнять и проверять задачу самостоятельно: сервер, Notion, ответы в Telegram текстом и голосом.',cannot:'Claude Code остановлен, Claude и Codex на паузе. Автоматические сценарии отложены.',when:'Claude и Codex на лимитах или заняты, либо задачу удобнее вести через Notion.'},
+   full:{can:'Планировать, выполнять и проверять задачу самостоятельно: сервер, Notion, ответы в Telegram текстом и голосом.',cannot:'Claude Code остановлен и на паузе. Codex с одним аккаунтом продолжает работать сам. Автоматические сценарии отложены.',when:'Claude и Codex на лимитах или заняты, либо задачу удобнее вести через Notion.'},
    orch_claude:{can:'Notion AI планирует и проверяет. Claude выполняет только подтверждённые тобой шаги: чтение и файлы рабочей папки (права «дев»).',cannot:'Claude не берёт шаги без твоего подтверждения и не делегирует дальше. Codex на паузе.',when:'Нужен Claude как исполнитель под контролем Notion AI.'},
    orch_codex:{can:'Notion AI планирует и проверяет. Codex выполняет только подтверждённые тобой шаги в песочнице workspace-write (права «дев»).',cannot:'Codex не берёт шаги без твоего подтверждения и не делегирует дальше. Claude остановлен.',when:'Нужен Codex как исполнитель под контролем Notion AI.'}
   };
@@ -1278,7 +1290,7 @@ PICKER_JS = r'''
   manualStatus=function(){
    if(mirrorState.updating)return naiStatusBefore();
    const n=manualDraft?.notion;
-   if(n==='full')return {valid:true,text:'Notion AI Full · только он; Claude и Codex на паузе'};
+   if(n==='full')return {valid:true,text:'Notion AI Full · только он; Claude на паузе, Codex с одним аккаунтом работает сам'};
    if(n){const f=mirrorNames[n.slice(5)];return {valid:true,text:'Notion AI → '+f+' · '+f+' выполняет подтверждённые шаги, права «дев»'}}
    return naiStatusBefore();
   };
@@ -1689,7 +1701,7 @@ function place(){var rf=document.getElementById('rfBtn');if(rf&&rf.parentNode){r
 function toast(t){var el=document.querySelector('.nai-toast');if(!el){el=document.createElement('div');el.className='nai-toast';document.body.appendChild(el)}el.textContent=t;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){el.hidden=true},5000)}
 function orch(){return !!(st&&st.active&&st.kind==='orchestrator'&&st.follower)}
 function pending(){return orch()&&st.step&&st.step.status==='pending'?st.step:null}
-function agState(k){var a=st&&st.agents&&st.agents[k];if(a)return a;if(k==='notion'){var on=!!(st&&st.active);return {state:on?(orch()?'lead':'run'):(st?'pause':'off'),text:on?(orch()?'ведущий':'работает'):(st?'пауза':''),label:on?(st.title||'Notion AI')+' · работает':'Notion AI · на паузе'}}return {state:'off',text:'',label:names[k]}}
+function agState(k){var a=st&&st.agents&&st.agents[k];if(a)return a;if(k==='notion'){var on=!!(st&&st.active);return {state:on?(orch()?'lead':'run'):(st?'run':'off'),text:on?(orch()?'ведущий':'работает'):(st?'работает':''),label:on?(st.title||'Notion AI')+' · работает':'Notion AI · самостоятельно'}}return {state:'off',text:'',label:names[k]}}
 function wrapped(){var h1=document.getElementById('h1'),hdr=document.querySelector('.hdr');if(!h1||!h1.offsetParent||!bar.offsetParent)return false;var a=h1.getBoundingClientRect(),b=bar.getBoundingClientRect(),btns=bar.parentNode,l=btns&&btns.lastElementChild,r=hdr?hdr.getBoundingClientRect():null;
  return b.top>=a.bottom-2||(l&&r&&l.getBoundingClientRect().right>r.right+1)}
 function fit(){var cl=document.documentElement.classList;for(var i=0;i<LEVELS.length;i++){var lv=LEVELS[i];bar.className='nai-ag'+(lv?' '+lv:'');cl.toggle('nai-nosub',lv.indexOf('nosub')>=0);if(!wrapped())break}}
@@ -1727,7 +1739,7 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   oi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"/><path d="M6 8h8M11 5l3 3-3 3"/></svg>',
   base=esc((gp.label||names[k]).replace(/ · /g,' - ')),
   txt=k==='prod'?base+'. Это Claude на сервере PROD (аккаунт друга). Автопередача при лимитах: '+(ao?'включена':'выключена')+'.'
-   :base+'.'+(pair?' Автопередача при лимитах: '+(ao?'включена':'выключена')+'.':'')+(k==='notion'&&!notionOn?' После передачи Claude остановится, Codex встанет на паузу, в Telegram ответит Notion AI.':'')+' Сменить профиль — в <a href="#" class="nai-lnk">Выборе профиля</a>.',
+   :base+'.'+(pair?' Автопередача при лимитах: '+(ao?'включена':'выключена')+'.':'')+(k==='notion'&&!notionOn?' После передачи Claude остановится, в Telegram ответит Notion AI.':'')+' Сменить профиль — в <a href="#" class="nai-lnk">Выборе профиля</a>.',
   rowh='<button type="button" class="nai-no">'+xi+'<span class="nai-bl">Закрыть</span></button>'
    +(pair?'<button type="button" class="nai-auto" role="switch" aria-checked="'+ao+'"><span class="nai-sw"></span><span class="nai-bl">'+(ao?'Выключить авто':'Включить авто')+'</span></button>':'')
    +(notionOn?'<button type="button" class="nai-tog"><span class="nai-bl">Выключить</span></button>':'')
@@ -1745,7 +1757,7 @@ function agentPop(k,anchor){if(window.fleetRemote&&window.fleetRemote.handInfo&&
 // [notion-ai] Клик по «Notion AI» в шапке — справка о состоянии, как у Claude/Codex: без вопроса «Да/Нет».
 function ask(anchor){if(window.fleetRemote&&window.fleetRemote.handInfo)return richPop('notion',anchor,window.fleetRemote);
  var on=!!(st&&st.active),g=agState('notion'),t=st&&st.title||'Notion AI';
- var info=on?esc(g.label||t)+'.':'Notion AI на паузе. «Включить» — Claude остановится, Codex встанет на паузу, в Telegram ответит Notion AI.';
+ var info=on?esc(g.label||t)+'.':'Notion AI работает самостоятельно: чат в Notion и вкладка в консоли. «Включить» — в Telegram будет отвечать Notion AI, Claude остановится.';
  var p=openPop('<b>Notion AI'+(g.text?' · '+esc(g.text):'')+'</b><p>'+info+' Сменить профиль — в «Выборе профиля».</p><div class="nai-row"><button type="button" class="nai-tog">'+(on?'Выключить':'Включить')+'</button><button type="button" class="nai-yes">Выбор профиля</button></div>',false,anchor,'ag-notion');p.classList.add('ag-notion');
  p.querySelector('.nai-tog').onclick=function(){closePop();send(on?'off':'on',{})};p.querySelector('.nai-yes').onclick=function(){closePop();var c=document.getElementById('cxBtn');if(c)c.click()}}
 function showStep(){var s=pending();if(!s)return;var p=openPop('<b>🧩 Шаг Notion AI → '+esc(names[s.follower])+' · права «'+(s.rights==='read'?'чтение':'дев')+'»</b><pre>'+esc(s.text)+'</pre><div class="nai-row"><button type="button" class="nai-no">Отклонить</button><button type="button" class="nai-yes">Выполнить шаг</button></div>',true,banner.querySelector('.nai-stepbtn'));
@@ -1772,7 +1784,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return
 function svg(id){var s=document.querySelector('#'+id+' svg');return s?s.outerHTML:''}
 function name(){var m=window.naiMainAgent;if(m)return m.model||'';return md&&md.model||st&&st.model&&st.model.model||''}  // главный агент: модель из его настроек (07.11.26)
 function effort(){var m=window.naiMainAgent;if(m)return m.effort||'';return md&&md.effort||st&&st.model&&st.model.effort||''}
-function agent(){var a=st&&st.agents&&st.agents.notion;if(a)return a;var on=!!(st&&st.active);return {state:on?'run':(st?'pause':'off'),text:on?'работает':(st?'пауза':''),label:on?(st.title||'Notion AI')+' · работает':'Notion AI · на паузе'}}
+function agent(){var a=st&&st.agents&&st.agents.notion;if(a)return a;var on=!!(st&&st.active);return {state:st?'run':'off',text:st?'работает':'',label:on?(st.title||'Notion AI')+' · работает':'Notion AI · самостоятельно'}}
 function build(){
  if(tile)return true;var rows=$i('fleetLiveRows'),sum=$i('fleetActiveSummary');if(!rows||!sum)return false;
  compact=document.createElement('span');compact.className='fleet-compact-account notion';compact.dataset.engine='notion';
@@ -2721,7 +2733,7 @@ function paintNai(){var c=(data&&data.cfg)||{},s=(data&&data.status)||{},p=naiP(
  chip('naiCfgGroup',on?'работает':'пауза');
  if(!data){put('naiCfgGroup','<div class="modalsub">Загрузка…</div>');return}
  put('naiCfgGroup',grid([
-  ['Профиль',dot(on,on?'«'+(p.title||'Notion AI · только он')+'» — работает':'на паузе')],
+  ['Профиль',dot(1,on?'«'+(p.title||'Notion AI · только он')+'» — отвечает в Telegram':'работает самостоятельно (в Telegram отвечает Claude)')],
   ['Чат',c.chat_url?'<a href="'+esc(c.chat_url)+'" target="_blank" rel="noopener">открыть постоянный чат</a>':bad('ссылка не задана')],
   ['Вход в Notion',dot(auth[0],auth[1])+(c.notion_email?' '+mut('· '+c.notion_email):'')],
   ['Модель',m.model?'<strong>'+esc(m.model)+'</strong>'+(m.effort?' · '+esc(m.effort):'')+' '+mut('· меняется в плитке Notion AI'):mut('ещё не прочитана — открой плитку Notion AI')],

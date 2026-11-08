@@ -113,8 +113,9 @@ class T(unittest.TestCase):
         class St:
             def public(_): return {'engines': {'claude': {'role': 'paused', 'label': 'Claude · не участвует'}, 'codex': {'role': 'solo', 'label': 'Codex Full'}}}
         s.p.state = St(); a = s.nai.agents()
-        s.assertEqual((a['claude']['state'], a['codex']['state'], a['notion']['state']), ('pause', 'run', 'pause'))
-        s.assertEqual((a['claude']['text'], a['notion']['text']), ('пауза', 'пауза'))
+        s.assertEqual((a['claude']['state'], a['codex']['state'], a['notion']['state']), ('pause', 'run', 'run'))   # агент Notion на паузу не ставится
+        s.assertEqual((a['claude']['text'], a['notion']['text']), ('пауза', 'работает'))
+        s.assertNotIn('на паузе', a['notion']['label'])
         s.assertIn('на паузе', a['claude']['label']); s.assertNotIn('не участвует', a['claude']['label'])
         s.assertNotIn('выкл', json.dumps(a, ensure_ascii=False))
         s.p.avail['claude']['status'] = 'down'; s.assertEqual(s.nai.agents()['claude']['state'], 'limit')
@@ -123,6 +124,26 @@ class T(unittest.TestCase):
         s.nai.on(kind='orchestrator', follower='codex'); a = s.nai.agents()
         s.assertEqual((a['codex']['state'], a['codex']['text'], a['notion']['state']), ('exec', 'исполнитель', 'lead'))
         s.assertIn('agents', s.nai.public())
+    def test_codex_with_single_account_is_not_paused_by_notion_profile(s):
+        class St:
+            def public(_): return {'engines': {'claude': {'role': 'paused', 'label': 'Claude · не участвует'}, 'codex': {'role': 'solo', 'label': 'Codex Full · самостоятельно'}}}
+            def _codex_free(_): return True
+        s.p.state = St(); s.nai.on(); a = s.nai.agents()
+        s.assertEqual((a['claude']['state'], a['codex']['state'], a['notion']['state']), ('pause', 'run', 'run'))
+        s.assertNotIn('на паузе', a['codex']['label'])
+        s.assertTrue(s.p.paused('claude')); s.assertFalse(s.p.paused('codex'))
+        s.assertNotIn('на паузе', s.p.public()['engines']['codex']['label']); s.assertIn('на паузе', s.p.public()['engines']['claude']['label'])
+        s.assertFalse(any('Codex на паузе' in t for who, t in s.sent if who == 'codex'), 'в чат Codex про паузу не пишем')
+        s.assertTrue(any('Codex работает сам' in t for who, t in s.sent if who == 'claude'))
+
+    def test_codex_with_several_accounts_is_still_paused_by_notion_profile(s):
+        class St:
+            def public(_): return {'engines': {'claude': {'role': 'paused', 'label': 'Claude'}, 'codex': {'role': 'solo', 'label': 'Codex Full'}}}
+            def _codex_free(_): return False
+        s.p.state = St(); s.nai.on(); a = s.nai.agents()
+        s.assertEqual(a['codex']['state'], 'pause'); s.assertTrue(s.p.paused('codex'))
+        s.assertTrue(any('Codex на паузе' in t for who, t in s.sent if who == 'codex'))
+
     def test_steps(s):
         s.nai.on(); r = s.nai.step_new('сделай X'); s.assertFalse(r['ok'])
         s.nai.on(kind='orchestrator', follower='codex'); r = s.nai.step_new('Шаг 1: проверь Y', 'dev'); s.assertTrue(r['ok'], r)
