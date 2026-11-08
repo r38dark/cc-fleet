@@ -419,7 +419,8 @@ CRON
   okm "будильник паузы: $cron (раз в минуту, живёт в системном cron)"
   if yes_ "$HOOK_QUEUE"; then add_hook UserPromptSubmit queue_on_limits.py - && okm "хук очереди входящих прописан в $CLAUDE_SETTINGS"; else info "хук очереди не подключён (вручную: hooks.UserPromptSubmit → $BASE/hooks/queue_on_limits.py)"; fi
   if yes_ "$HOOK_TOOLS"; then add_hook PreToolUse pause_tool_gate.py '*' && okm "стоп-кран инструментов прописан в $CLAUDE_SETTINGS"; info "аварийный выход, если мешает: python3 $BASE/pause_ctl.py off"; else info "стоп-кран не подключён (вручную: hooks.PreToolUse, matcher \"*\" → $BASE/hooks/pause_tool_gate.py)"; fi
-  if yes_ "$HOOK_QUEUE" || yes_ "$HOOK_TOOLS"; then warn "Claude Code читает settings.json при старте: перезапусти его сессию, чтобы хуки заработали."; fi
+  # перезапускать нечего, пока Claude Code не запущен: при первом старте он сам прочитает settings.json
+  if { yes_ "$HOOK_QUEUE" || yes_ "$HOOK_TOOLS"; } && { pgrep -x claude >/dev/null 2>&1 || pgrep -f 'claude-code' >/dev/null 2>&1; }; then warn "Claude Code читает settings.json при старте: перезапусти его сессию, чтобы хуки заработали."; fi
   c8 || fail "будильник или хуки не прописались" "проверь $cron и $CLAUDE_SETTINGS"
   okm "проверено: будильник и выбранные хуки на месте"
 }
@@ -576,14 +577,13 @@ s13() {
 # ---------- Шаг 14 ----------
 s14() {
   header 14
-  local tok; tok="$(json_get "$BASE/config.json" hook_token)"
   local url
   if yes_ "$WANT_NGINX"; then url="$(scheme)://$DOMAIN/cc/"; else url="http://127.0.0.1:$PORT/ (через SSH-туннель)"; fi
   echo
   echo -e "${CG}Установка завершена.${C0} cc-fleet $VERSION"
   echo -e "  Панель:      ${CB}$url${C0}"
   yes_ "$WANT_NGINX" && echo -e "  Вход:        $BASIC_USER / (пароль, который ты задал)"
-  echo -e "  hook_token:  $tok   ${CY}(секрет: нужен для API, никому не показывай)${C0}"
+  echo -e "  hook_token:  лежит в $BASE/config.json ${CY}(секрет, нужен для API: здесь не печатаю, чтобы он не попал в журнал установки)${C0}"
   echo
   echo -e "${CB}Что осталось сделать руками (по порядку):${C0}"
   command -v claude >/dev/null 2>&1 || echo "  ☐ Поставить Claude Code: npm install -g @anthropic-ai/claude-code (нужен Node.js 18+)"
