@@ -668,7 +668,7 @@ def console_input(text):
     if not _cin_lock.acquire(blocking=False):
         return False, "Предыдущий ввод ещё отправляется. Проверь консоль перед повтором."
     try:
-        d = R.ctl(mid, "sendin", inp=text, timeout=60)
+        d = R.ctl(mid, "sendin", "queue", inp=text, timeout=60)   # «queue»: обычное сообщение уходит и во время ответа Claude
     finally:
         _cin_lock.release()
     if d is None:
@@ -677,7 +677,7 @@ def console_input(text):
         return True, "Ввод передан в консоль PROD."
     err = d.get("error")
     return False, ("Claude на PROD не запущен." if err == "not_running"
-                   else "В консоли PROD идёт ответ. Дождись завершения или нажми Esc." if err == "busy"
+                   else "В консоли PROD идёт ответ: команду можно отправить после его завершения (или нажми Esc)." if err == "busy"
                    else "Не удалось передать ввод на PROD.")
 
 

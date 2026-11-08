@@ -96,8 +96,20 @@ class Console(unittest.TestCase):
             ok,_=console.send_input('/model chosen-model');self.assertTrue(ok);paste.assert_called_once_with('chosen-model')
             self.assertEqual(ctl.call_args.args[0][-1],'/model ')
 
-    def test_busy_console_is_not_written_to(self):
-        with mock.patch.object(console,'busy',return_value=True),mock.patch.object(console,'_paste') as paste:
+    def test_plain_message_is_sent_while_model_replies(self):
+        with mock.patch.object(console,'current_turn_open',return_value=True),mock.patch.object(console,'ensure',return_value=(True,'')), \
+             mock.patch.object(console,'_meta',return_value={'started':0}),mock.patch.object(console,'_paste',return_value=True) as paste:
+            self.assertTrue(console.send_input('message')[0]);paste.assert_called_once_with('message')
+
+    def test_command_is_held_while_model_replies(self):
+        with mock.patch.object(console,'current_turn_open',return_value=True),mock.patch.object(console,'_paste') as paste, \
+             mock.patch.object(console,'_ctl') as ctl:
+            ok,message=console.send_input('/model x');self.assertFalse(ok);self.assertIn('команду',message)
+            paste.assert_not_called();ctl.assert_not_called()
+            self.assertFalse(console._ask_lock.locked(),'замок освобождён после отказа')
+
+    def test_message_is_held_while_bridge_request_runs(self):
+        with console._ask_lock,mock.patch.object(console,'_paste') as paste:
             self.assertFalse(console.send_input('message')[0]);paste.assert_not_called()
 
     def test_invalid_console_input_is_rejected(self):
@@ -182,6 +194,15 @@ class Input(unittest.TestCase):
         con=types.SimpleNamespace(send_input=mock.Mock())
         obj=cc_fleet.ConsoleInput({'cc_codex_console':con})
         self.assertFalse(obj.send('other','test','nonce1234')[0]);self.assertFalse(obj.send('codex','test','bad')[0]);con.send_input.assert_not_called()
+
+    def test_claude_plain_message_goes_while_busy_but_command_waits(self):
+        with tempfile.TemporaryDirectory() as folder:
+            obj=cc_fleet.ConsoleInput({'BASE':folder,'cfg':lambda:{'screen_session':'fake'},'session_busy':lambda:True})
+            calls=[]
+            with mock.patch.object(cc_fleet.subprocess,'run',side_effect=lambda a,**k:calls.append(a) or types.SimpleNamespace(returncode=0)),mock.patch.object(cc_fleet.time,'sleep'):
+                self.assertTrue(obj.send('claude','ещё одно сообщение','nonce0001')[0]);self.assertTrue(calls)
+                calls.clear()
+                ok,message=obj.send('claude','/compact','nonce0002');self.assertFalse(ok);self.assertIn('команду',message);self.assertFalse(calls)
 
     def test_claude_bracketed_paste_preserves_unicode_without_shell_interpolation(self):
         with tempfile.TemporaryDirectory() as folder:

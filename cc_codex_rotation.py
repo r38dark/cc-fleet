@@ -56,6 +56,10 @@ def limit_pause_state(accounts, active, has_candidate, now=None, grace=120):
     а ротации переключиться не на кого. Входящие ждут в очереди моста и уходят сами, когда окно освободилось:
     по свежим цифрам или через grace секунд после времени сброса (если цифры не обновились)."""
     now = time.time() if now is None else now
+    if len(accounts) <= 1:
+        # один аккаунт Codex: ротации нет, ждать «пока освободится другой» нечего — паузы по лимитам не держим
+        # (сообщения уходят как есть, при исчерпанном лимите Codex сам ответит ошибкой)
+        return {'active': False, 'single': True}
     cur = next((a for a in accounts if a.get('slot') == active), None)
     if not cur or has_candidate or any(cur.get(k) for k in BAD):
         return {'active': False}

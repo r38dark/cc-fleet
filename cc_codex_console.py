@@ -232,8 +232,14 @@ def send_input(text, lang='ru'):
     text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text.replace('\r\n', '\n').replace('\r', '\n')).strip()
     if not INPUT_ALLOWED():
         return False, 'Codex на паузе: активен служебный режим другой стороны.'
-    if busy() or not _ask_lock.acquire(blocking=False):
-        return False, 'В консоли Codex идёт ответ. Дождись завершения или нажми Esc.'
+    is_command = bool(re.fullmatch(r'/[A-Za-z][A-Za-z0-9_-]{0,79}(?:[ \t]+.*)?', text, re.S))
+    # обычное сообщение можно отправлять, пока Codex отвечает: он поставит его в очередь. Не пускаем только пока консоль
+    # занята запросом моста (его ответ читается из файла сессии) и слэш-команды в ходе ответа.
+    if not _ask_lock.acquire(blocking=False):
+        return False, 'В консоли Codex идёт запрос моста Telegram. Повтори через несколько секунд.'
+    if is_command and current_turn_open():
+        _ask_lock.release()
+        return False, 'В консоли Codex идёт ответ: команду можно отправить после его завершения (или нажми Esc).'
     try:
         ok, message = ensure(lang)
         if not ok:

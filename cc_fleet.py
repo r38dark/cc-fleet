@@ -172,8 +172,10 @@ class ConsoleInput:
         return result
 
     def _claude(self, text):
-        if self.ns['session_busy']():
-            return False, 'В консоли Claude идёт ответ. Дождись завершения или нажми Esc.'
+        # обычное сообщение можно отправлять, пока Claude отвечает: Claude Code ставит его в очередь и разберёт после хода.
+        # Слэш-команды (/compact, /model…) в ходе ответа не принимаются — их по-прежнему держим до конца ответа.
+        if self.ns['session_busy']() and re.fullmatch(r'/[A-Za-z][A-Za-z0-9_-]{0,79}(?:[ \t]+.*)?', text, re.S):
+            return False, 'В консоли Claude идёт ответ: команду можно отправить после его завершения (или нажми Esc).'
         screen = self.ns['cfg']().get('screen_session', 'claude')
         base = ['screen', '-S', screen, '-p', '0', '-X']
         command = re.fullmatch(r'(/[A-Za-z][A-Za-z0-9_-]{0,79})(?:[ \t]+(.*))?', text)

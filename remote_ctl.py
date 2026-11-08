@@ -223,11 +223,12 @@ def main():
             except Exception:
                 pass
         out({"ok": True, "running": running, "applied": applied, "wait": wait})
-    if c == "sendin":  # текст из stdin: как ввод человека в консоль (занято — отказ)
+    if c == "sendin":  # текст из stdin: как ввод человека в консоль (занято — отказ; «sendin queue» — обычный текст ставим в очередь Claude)
         text = sys.stdin.read()
         if not alive():
             out({"ok": False, "error": "not_running"})
-        if busy(screen(40)):
+        queue_ok = len(a) > 1 and a[1] == "queue" and not text.lstrip().startswith("/")
+        if busy(screen(40)) and not queue_ok:
             out({"ok": False, "error": "busy"})
         dismiss_survey()
         m = re.fullmatch(r"(/[A-Za-z][A-Za-z0-9_-]{0,79})(?:[ \t]+(.*))?", text, re.S)

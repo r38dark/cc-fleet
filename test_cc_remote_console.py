@@ -157,7 +157,7 @@ class RemoteConsole(unittest.TestCase):
         ok, msg = M.console_input('  привет\x07 мир\r\n  ')
         self.assertTrue(ok)
         cmd, inp = self.calls[0]
-        self.assertTrue(cmd.endswith('ctl.py sendin'))
+        self.assertTrue(cmd.endswith('ctl.py sendin queue'))
         self.assertEqual(inp, 'привет мир')
 
     def test_input_refusals(self):

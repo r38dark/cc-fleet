@@ -39,5 +39,13 @@ class BusyTest(unittest.TestCase):
         self.assertFalse(busy(""))
 
 
+class SendinQueueTest(unittest.TestCase):
+    def test_queue_flag_lets_plain_text_in_while_busy_but_not_commands(self):
+        part = SRC[SRC.index('if c == "sendin"'):SRC.index('dismiss_survey()', SRC.index('if c == "sendin"'))]
+        self.assertIn('a[1] == "queue"', part)
+        self.assertIn('not text.lstrip().startswith("/")', part)   # слэш-команды в ходе ответа по-прежнему не принимаются
+        self.assertIn('busy(screen(40)) and not queue_ok', part)
+
+
 if __name__ == "__main__":
     unittest.main()
