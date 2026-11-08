@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+BEGIN, END = "-----BEGIN " + "OPENSSH PRIVATE KEY-----", "-----END " + "OPENSSH PRIVATE KEY-----"  # не буквальными строками: их ищет privacy_check
 
 
 def load(path, name):
@@ -43,6 +44,7 @@ class Base(unittest.TestCase):
         m.NAI_CFG = os.path.join(self.d, "notion_ai.json")
         m.AUTH_KEYS = os.path.join(self.d, "authorized_keys")
         m.HANDOFF = os.path.join(self.d, "handoff")
+        m.KEYS_DIR = os.path.join(self.d, "agent_keys")
         os.makedirs(m.HANDOFF)
         self.cfg(owner="Аня", ssh_host="srv.example.org")
 
@@ -54,10 +56,10 @@ class Base(unittest.TestCase):
 class Steps(Base):
     def test_defaults_come_from_the_first_measured_run(self):
         plan = self.m.step_plan(True)
-        self.assertEqual(plan[-2:], ["key", "login"])
+        self.assertEqual((plan[4], plan[-1]), ("key", "login"))  # ключ выдаётся до настройки (уходит в инструкцию одним сохранением), вход проверяется в конце
         est = self.m.step_estimates(plan)
         self.assertEqual(est["finish"], 51)
-        self.assertEqual(sum(est.values()), 218)  # 188 с замера + 30 с на проверку входа
+        self.assertEqual(sum(est.values()), 198)  # 188 с замера без прежнего шага «ключ» (22 с) + 2 с выдача + 30 с проверка входа
         self.assertNotIn("key", self.m.step_plan(False))
         self.assertNotIn("login", self.m.step_plan(False))
 
@@ -135,7 +137,7 @@ class Steps(Base):
 
 class Instructions(Base):
     def test_no_personal_data_and_placeholders_are_filled(self):
-        t = self.m.instructions_for("Торговля", "Торговля")
+        t = self.m.instructions_for("Торговля", "Торговля", BEGIN + "\nxx\n" + END)
         for bad in ("Ден" + "ис", "desk" + "pharm", "farm" + "garant", "dar" + "qai", "иркутск", "{", "}"):  # личное владельца не должно попасть в общую инструкцию
             self.assertNotIn(bad, t, bad)
         self.assertIn("ssh root@srv.example.org", t)
@@ -147,10 +149,30 @@ class Instructions(Base):
         t = self.m.instructions_for("Проект «Деск» О'Нил", "x")
         self.assertIn("notion-ai-reply --agent 'Проект «Деск» О'\"'\"'Нил' --voice", t)
 
-    def test_agent_is_told_the_panel_adds_the_key(self):
+    def test_issued_key_is_in_the_instructions_as_one_code_block(self):
+        key = BEGIN + "\nAAAA1\nBBBB2\n" + END + "\n"
+        t = self.m.instructions_for("А", "А", key)
+        self.assertIn("```\n" + key.strip() + "\n```", t)
+        self.assertIn("пересоздаётся между сообщениями", t)
+        self.assertIn("chmod 600", t)
+        self.assertIn("не выводи в чат, не отправляй в Telegram", t)
+        self.assertNotIn("создай командой", t)
+        blocks = self.m.md_blocks(t)
+        code = [b for b in blocks if b["type"] == "code"]
+        self.assertEqual(len(code), 1)
+        self.assertEqual("".join(x["text"]["content"] for x in code[0]["code"]["rich_text"]), key.strip())  # строки ключа не склеились и не потерялись
+        self.assertEqual(code[0]["code"]["language"], "plain text")
+
+    def test_without_a_key_the_agent_is_told_it_has_no_server_access(self):
         t = self.m.instructions_for("А", "А")
-        self.assertIn("Панель балансера сама добавит её на сервер", t)
-        self.assertNotIn("Владелец добавит её на сервер", t)
+        self.assertIn("Ключ доступа к серверу тебе не выдан", t)
+        self.assertNotIn("```", t)
+        self.assertNotIn("ssh root@", t)
+
+    def test_fenced_blocks_do_not_break_other_lines(self):
+        blocks = self.m.md_blocks("- до\n```\nа\n\nб\n```\n- после\n## Заголовок")
+        self.assertEqual([b["type"] for b in blocks], ["bulleted_list_item", "code", "bulleted_list_item", "heading_2"])
+        self.assertEqual(blocks[1]["code"]["rich_text"][0]["text"]["content"], "а\n\nб")  # пустая строка внутри блока сохранена
 
     def test_local_rules_are_appended_and_last_file_is_detected(self):
         open(self.m.INSTR_LOCAL, "w").write("- Личное правило сервера.\n")
@@ -203,67 +225,243 @@ class Keys(Base):
 
 @unittest.skipUnless(shutil.which("ssh-keygen"), "нужен ssh-keygen")
 class Create(Base):
-    """run_create целиком, с подставным Notion: порядок этапов, сообщение агенту о ключе, итог проверки входа."""
+    """run_create целиком, с подставным Notion: порядок этапов, ключ выдаёт панель и он уходит в инструкцию, проверка входа."""
+    AID = "a1b2c3d4-0000-0000-0000-000000000000"
 
-    def run_create(self, ssh=True, seen=True, tg="-100777"):
+    def stubs(self, seen=True, replies=None, fail_at=None):
         m = self.m
-        pub = keygen(self.d)
-        sent, ai = [], {"n": 0}
-        replies = ["готов", pub + " notion-agent", "доступ есть" if seen else "Permission denied (publickey)"]
+        self.sent, self.settings, self.ai = [], [], {"n": 0}
+        self.replies = list(replies if replies is not None else ["готов", "доступ есть" if seen else "Permission denied (publickey)"])
         m.list_agents = lambda *a, **k: []
         m.main_aid = lambda: "main-aid"
-        m.create_from_template = lambda pg, log: (log("Notion настраивает агента…"), log("агент создан, Notion дописывает настройку…"), ("a1b2c3d4-0000-0000-0000-000000000000", "https://setup"))[2]
+        m.create_from_template = lambda pg, log: (log("Notion настраивает агента…"), log("агент создан, Notion дописывает настройку…"), (self.AID, "https://setup"))[2]
         m.api = lambda *a, **k: {}
-        m.set_settings = lambda *a, **k: {"model": "Sonnet 5.5", "effort": "High", "web": True}
+        def set_settings(pg, aid, **kw):
+            self.settings.append(kw)
+            if fail_at == "settings": raise RuntimeError("Notion не сохранил настройки")
+            return {"model": "Sonnet 5.5", "effort": "High", "web": True}
+        m.set_settings = set_settings
         m.delete_chat = lambda *a, **k: None
         m.new_chat = lambda pg, aid, text: "11111111-1111-1111-1111-111111111111"
         m.rename_chat = lambda *a, **k: None
-        m.last_seq = lambda sid: ai["n"]
+        m.last_seq = lambda sid: self.ai["n"]
         m.goto = lambda *a, **k: None
         m.open_chat_input = lambda pg: None
-        m.type_send = lambda pg, box, text: sent.append(text)
-
+        m.type_send = lambda pg, box, text: self.sent.append(text)
         def wait_reply(sid, after, timeout=240):
-            ai["n"] += 1
-            return replies.pop(0) if replies else ""
+            self.ai["n"] += 1
+            return self.replies.pop(0) if self.replies else ""
         m.wait_reply = wait_reply
         m.ssh_login_seen = lambda p, since: seen
+
+    def run_create(self, ssh=True, tg="-100777", **kw):
+        m = self.m
+        self.stubs(**kw)
         j = {"kind": "create", "id": "t", "status": "running", "name": "Торговля", "model": "", "effort": "", "ssh": ssh, "tg_chat_id": tg}
         j["plan"] = m.step_plan(ssh); j["est"] = m.step_estimates(j["plan"])
-        log = m.make_log(j)
         stages = []
-        orig = log
-        log = lambda s: (stages.append(s), orig(s))
+        base = m.make_log(j)
+        log = lambda s: (stages.append(s), base(s))
         with mock.patch.object(m.time, "sleep", lambda s: None):
             m.run_create(None, j, log)
         m.step_close(j)
-        return j, sent, stages
+        return j, stages
 
-    def test_ssh_flow_tells_the_agent_and_verifies_login(self):
-        j, sent, stages = self.run_create()
+    def test_panel_issues_the_key_before_settings_and_puts_it_into_the_instructions(self):
+        j, stages = self.run_create()
         self.assertEqual(stages, [t for _, t, _ in self.m.CREATE_STEPS])  # этапы идут ровно в заданном порядке
         self.assertEqual(set(j["done"]), set(self.m.step_plan(True)))
-        self.assertTrue(any("уже добавлен на сервер автоматически" in s and "root@srv.example.org" in s and "доступ есть" in s for s in sent), sent)
+        priv = self.m.agent_key(self.AID)
+        self.assertTrue(priv.startswith(BEGIN))
+        ins = self.settings[0]["instructions"]
+        self.assertIn(priv.strip(), ins)  # приватный ключ в инструкции — одним сохранением настроек
+        self.assertIn("ssh root@srv.example.org", ins)
+        a = self.m.reg_load()["agents"][self.AID]
+        self.assertEqual((a["state"], a["ssh_ok"], a["name"], a["tg_chat_id"], a["ssh"]), ("ready", True, "Торговля", "-100777", True))
+        auth = open(self.m.AUTH_KEYS).read()
+        self.assertIn(a["ssh_pub"], auth)
+        self.assertIn("ccfleet-notion-ai", auth)
+
+    def test_agent_is_asked_to_write_the_key_and_log_in_and_nothing_else(self):
+        j, _ = self.run_create()
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("записан в твоей инструкции", self.sent[0])
+        self.assertIn("root@srv.example.org", self.sent[0])
+        self.assertIn("«доступ есть»", self.sent[0])
+        self.assertNotIn("PRIVATE KEY", self.sent[0])  # в чат ключ не пишется
         self.assertNotIn("warn", j)
         self.assertIs(j["result"]["ssh_ok"], True)
-        a = self.m.reg_load()["agents"]["a1b2c3d4-0000-0000-0000-000000000000"]
-        self.assertEqual((a["state"], a["ssh_ok"], a["name"], a["tg_chat_id"]), ("ready", True, "Торговля", "-100777"))
-        self.assertIn("ccfleet-notion-ai", open(self.m.AUTH_KEYS).read())  # ключ в authorized_keys с меткой панели
 
-    def test_agent_that_cannot_log_in_gives_a_visible_warning_not_ready_silence(self):
-        j, sent, _ = self.run_create(seen=False)
+    def test_private_key_stays_off_public_surfaces(self):
+        j, _ = self.run_create()
+        priv = self.m.agent_key(self.AID).strip()
+        body = priv.splitlines()[1]
+        for surface in (json.dumps(self.m.job_public(j), ensure_ascii=False), open(self.m.REG).read(), json.dumps(j.get("result") or {})):
+            self.assertNotIn(body, surface)
+            self.assertNotIn("PRIVATE KEY", surface)
+        self.assertEqual(oct(os.stat(self.m.key_path(self.AID)).st_mode & 0o777), "0o600")
+        self.assertEqual(oct(os.stat(self.m.KEYS_DIR).st_mode & 0o777), "0o700")
+
+    def test_agent_that_cannot_log_in_gives_a_visible_warning(self):
+        j, _ = self.run_create(seen=False)
         self.assertIn("не зашёл", j["warn"])
         self.assertIn("Permission denied", j["warn"])
         self.assertIs(j["result"]["ssh_ok"], False)
-        self.assertIs(self.m.reg_load()["agents"]["a1b2c3d4-0000-0000-0000-000000000000"]["ssh_ok"], False)
+        self.assertIs(self.m.reg_load()["agents"][self.AID]["ssh_ok"], False)
         self.assertEqual(self.m.job_public(j)["warn"], j["warn"])
 
+    def test_failed_creation_does_not_leave_the_key_behind(self):
+        with self.assertRaises(RuntimeError):
+            self.run_create(fail_at="settings")
+        self.assertFalse(os.path.exists(self.m.key_path(self.AID)))
+        self.assertEqual(open(self.m.AUTH_KEYS).read().strip(), "")  # публичный ключ убран из authorized_keys
+        self.assertFalse(self.m.reg_load()["agents"][self.AID]["ssh"])
+
     def test_without_ssh_there_is_no_key_step_and_no_message(self):
-        j, sent, stages = self.run_create(ssh=False, tg="")
+        j, stages = self.run_create(ssh=False, tg="", replies=["готов"])
         self.assertEqual(len(stages), len(self.m.CREATE_STEPS) - 2)
-        self.assertEqual(sent, [])
+        self.assertEqual(self.sent, [])
         self.assertIsNone(j["result"]["ssh_ok"])
-        self.assertEqual(self.m.reg_load()["agents"]["a1b2c3d4-0000-0000-0000-000000000000"]["tg_chat_id"], "")
+        self.assertIn("Ключ доступа к серверу тебе не выдан", self.settings[0]["instructions"])
+        self.assertFalse(os.path.exists(self.m.key_path(self.AID)))
+        self.assertEqual(self.m.reg_load()["agents"][self.AID]["tg_chat_id"], "")
+
+
+class Publish(Base):
+    """Save на странице настроек: изменения агента должны реально опубликоваться, иначе агент работает со старыми инструкциями."""
+    AID = "a1b2c3d4-0000-0000-0000-000000000000"
+
+    class Btn:
+        def __init__(self, enabled_after): self.enabled_after, self.calls, self.clicks = enabled_after, 0, 0
+        def count(self): return 1
+        def is_enabled(self): self.calls += 1; return self.calls > self.enabled_after
+        def click(self): self.clicks += 1
+
+    def page(self, btn):
+        class Loc:
+            first = btn
+        class Pg:
+            def get_by_role(s, *a, **k): return Loc()
+            def wait_for_timeout(s, ms): pass
+        return Pg()
+
+    def states(self, seq):
+        it = iter(seq)
+        self.m.agent_state = lambda aid: next(it, seq[-1])
+
+    def test_already_published_does_not_click(self):
+        b = self.Btn(0); self.states([(True, "t0"), (False, "t0")])
+        self.m.publish(self.page(b), self.AID)
+        self.assertEqual(b.clicks, 0)
+
+    def test_clicks_save_and_waits_until_notion_confirms(self):
+        b = self.Btn(2); self.states([(True, "t0")] * 3 + [(False, "t0")])
+        self.m.publish(self.page(b), self.AID)
+        self.assertEqual(b.clicks, 1)
+
+    def test_published_time_moving_counts_even_if_the_flag_stays(self):
+        # 08.11: Notion опубликовал версию, а has_unpublished_changes остался True — это не ошибка
+        b = self.Btn(0); self.states([(True, "t0"), (True, "t0"), (True, "t1")])
+        self.m.publish(self.page(b), self.AID)
+        self.assertEqual(b.clicks, 1)
+
+    def test_unpublished_after_all_tries_is_an_error_not_silence(self):
+        b = self.Btn(10 ** 6); self.states([(True, "t0")])  # кнопка так и не включилась
+        reloads = []
+        self.m.goto = lambda pg, url, wait=9000: reloads.append(url)
+        with self.assertRaises(RuntimeError) as cm:
+            self.m.publish(self.page(b), self.AID)
+        self.assertIn("не опубликовал", str(cm.exception))
+        self.assertEqual(len(reloads), 3)  # страница перечитана перед каждой новой попыткой
+        self.assertEqual(b.clicks, 0)
+
+    def test_second_attempt_after_a_click_that_did_not_publish(self):
+        b = self.Btn(0); self.states([(True, "t0")] * 9 + [(False, "t0")])  # первый клик не помог (6 опросов), второй — опубликовалось
+        self.m.publish(self.page(b), self.AID)
+        self.assertGreaterEqual(b.clicks, 2)
+
+    def test_unknown_state_does_not_block_the_save(self):
+        b = self.Btn(0); self.states([(None, None)])
+        self.m.publish(self.page(b), self.AID)
+        self.assertEqual(b.clicks, 1)
+
+
+@unittest.skipUnless(shutil.which("ssh-keygen"), "нужен ssh-keygen")
+class Keys2(Base):
+    AID = "a1b2c3d4-0000-0000-0000-000000000000"
+
+    def test_issue_replaces_the_old_key_and_revoke_removes_everything(self):
+        open(self.m.AUTH_KEYS, "w").write("ssh-ed25519 AAAAother mine\n")
+        pub1 = self.m.issue_key(self.AID, "А")
+        priv1 = self.m.agent_key(self.AID)
+        pub2 = self.m.issue_key(self.AID, "А")
+        self.assertNotEqual(pub1, pub2)
+        auth = open(self.m.AUTH_KEYS).read()
+        self.assertIn("mine", auth)  # чужие ключи не тронуты
+        self.assertNotIn(pub1.split()[1], auth)  # прежний ключ агента больше не пускает
+        self.assertIn(pub2.split()[1], auth)
+        self.assertNotEqual(self.m.agent_key(self.AID), priv1)
+        self.m.revoke_key(self.AID)
+        self.assertNotIn(pub2.split()[1], open(self.m.AUTH_KEYS).read())
+        self.assertIn("mine", open(self.m.AUTH_KEYS).read())
+        self.assertEqual(self.m.agent_key(self.AID), "")
+        a = self.m.reg_load()["agents"][self.AID]
+        self.assertEqual((a["ssh"], a["ssh_pub"]), (False, ""))
+
+    def settings_job(self, main=False, seen=True):
+        m = self.m
+        calls = []
+        m.agent_by = lambda aid, url="": {"aid": aid, "name": "Торговля", "main": main, "chat": "https://app.notion.com/chat?t=" + "1" * 32}
+        m.set_settings = lambda pg, aid, **kw: calls.append(kw) or {}
+        m.verify_login = lambda pg, sid, aid, pub: (calls.append(("verify", pub)), (seen, "" if seen else "Permission denied"))[1]
+        j = {"kind": "settings", "id": "s", "status": "running", "aid": self.AID, "newkey": True}
+        m.run_settings(None, j, lambda s: None)
+        return j, calls
+
+    def test_new_key_for_an_existing_agent_updates_instructions_and_checks_login(self):
+        old = self.m.issue_key(self.AID, "Торговля")
+        j, calls = self.settings_job()
+        a = self.m.reg_load()["agents"][self.AID]
+        self.assertNotEqual(a["ssh_pub"], old)
+        self.assertIn(self.m.agent_key(self.AID).strip(), calls[0]["instructions"])
+        self.assertEqual(calls[1], ("verify", a["ssh_pub"]))
+        self.assertNotIn("warn", j)
+
+    def test_new_key_failure_to_log_in_is_a_warning(self):
+        j, _ = self.settings_job(seen=False)
+        self.assertIn("не зашёл", j["warn"])
+
+    def test_main_agent_never_gets_a_key_from_a_job(self):
+        with self.assertRaises(RuntimeError):
+            self.settings_job(main=True)
+        self.assertEqual(self.m.agent_key(self.AID), "")
+
+    def test_rename_keeps_the_key_in_refreshed_instructions(self):
+        self.m.issue_key(self.AID, "Торговля")
+        m = self.m
+        calls = []
+        m.agent_by = lambda aid, url="": {"aid": aid, "name": "Торговля", "main": False, "chat": ""}
+        m.api = lambda *a, **k: {}
+        m.rename_chat = lambda *a, **k: None
+        m.set_settings = lambda pg, aid, **kw: calls.append(kw) or {}
+        m.run_settings(None, {"kind": "settings", "id": "s", "aid": self.AID, "name": "Торговля 2"}, lambda s: None)
+        self.assertIn(self.m.agent_key(self.AID).strip(), calls[0]["instructions"])
+        self.assertIn("--agent 'Торговля 2'", calls[0]["instructions"])
+
+    def test_deleting_the_agent_removes_its_key_file_and_authorization(self):
+        m = self.m
+        pub = m.issue_key(self.AID, "Торговля")
+        m.agent_by = lambda aid, url="": {"aid": aid, "name": "Торговля", "main": False}
+        m.api = lambda *a, **k: {"results": []}
+        m.delete_chat = lambda *a, **k: None
+        m.run_delete(None, {"kind": "delete", "id": "d", "aid": self.AID}, lambda s: None)
+        self.assertEqual(m.agent_key(self.AID), "")
+        self.assertNotIn(pub.split()[1], open(m.AUTH_KEYS).read())
+
+    def test_submit_newkey_needs_the_server_address(self):
+        with mock.patch.object(self.m, "server_host", return_value=""):
+            with self.assertRaises(ValueError):
+                self.m.submit("settings", aid=self.AID, newkey=True)
 
 
 class Telegram(Base):

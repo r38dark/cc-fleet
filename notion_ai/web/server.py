@@ -995,6 +995,7 @@ class H(BaseHTTPRequestHandler):
                 kw = {k: v for k, v in kw.items() if v}
                 if kind == "create": kw.pop("aid", None); kw["ssh"] = bool(d.get("ssh")); kw["tg_chat_id"] = str(d.get("tg_chat_id") or "").strip()
                 if kind == "settings" and d.get("instructions"): kw["instructions"] = True
+                if kind == "settings" and d.get("newkey"): kw["newkey"] = True
                 if kind in ("settings", "delete") and not kw.get("aid"): raise ValueError("нет агента")
                 return self._send(200, NA.job_public(NA.submit(kind, main_url=nai_url(), **kw)))
             except (ValueError, RuntimeError) as e: return self._send(400, {"error": str(e)})

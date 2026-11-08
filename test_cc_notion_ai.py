@@ -696,6 +696,8 @@ class TestAgents(unittest.TestCase):
             M.agents_action('create', {'name': 'Агент'}); self.assertEqual(calls[-1][1]['tg_chat_id'], '')  # пусто — основной канал
             M.agents_action('settings', {'aid': self.AID, 'instructions': True}); self.assertIs(calls[-1][1]['instructions'], True)
             M.agents_action('settings', {'aid': self.AID, 'instructions': 'yes'}); self.assertNotIn('instructions', calls[-1][1])
+            M.agents_action('settings', {'aid': self.AID, 'newkey': True}); self.assertIs(calls[-1][1]['newkey'], True)
+            M.agents_action('settings', {'aid': self.AID, 'newkey': 'yes'}); self.assertNotIn('newkey', calls[-1][1])
             self.assertFalse(M.agents_action('tg', {'aid': '../x'})['ok'])
         self._with(fake, run)
         def refuse(path, data=None, timeout=20): return {'error': 'Telegram: нужен id чата'}
@@ -717,6 +719,9 @@ class TestAgents(unittest.TestCase):
         self.assertNotIn("Создаю агента… (~3–4 мин)", ui.split("function onClick")[1].split("window.naiAgentPop")[0].replace("'Создаю агента… (около 3 мин)'", ''))
         # Telegram: поле в форме и в окне агента, проверка, сохранение, приём из Telegram
         for needle in ("tgBlock('naiNewTg','naiNewTgId'", "tgBlock('naiAgTg','naiAgTgId'", "data-do=\"tgtest\"", "data-do=\"agtgsave\"", "post('tgtest'", "post('tg'", 'naiAgRecv', 'tg_agent', 'Основной канал Claude', 'tg_chat_id:tv.id'):
+            self.assertIn(needle, ui)
+        # ключ SSH: состояние доступа и «Новый ключ SSH» в окне агента; форма честно говорит, где хранится ключ
+        for needle in ('data-do="newkey"', "newkey:true", 'Новый ключ SSH', 'Выдать ключ SSH', 'вход проверен', 'хранится в инструкции агента в Notion'):
             self.assertIn(needle, ui)
         # введённое в форму не пропадает, когда она перерисовывается
         for needle in ('function snap()', 'cur.name=n.value', "if(cur&&t.id==='naiNewName')cur.name=t.value"):

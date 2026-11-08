@@ -1931,7 +1931,7 @@ function paintQ(){if(!q||q.hidden||!cur)return;var b=q.querySelector('.cxpbody')
   h+='<div class="cxqh">Новый агент из шаблона «Morning brief»</div><div class="nai-aq-row"><input type="text" id="naiNewName" maxlength="80" placeholder="Имя агента" value="'+esc(cur.name||'')+'"></div>';
   h+='<div class="nai-aq-row"><select id="naiNewModel" aria-label="Модель">'+mm.map(function(m){return '<option'+(m.label===(cur.model||'Sonnet 5.5')?' selected':'')+'>'+esc(m.label)+'</option>'}).join('')+'</select>';
   h+='<select id="naiNewEffort" aria-label="Effort">'+(data&&data.efforts||[]).map(function(e){return '<option'+(e===(cur.effort||'High')?' selected':'')+'>'+esc(e)+'</option>'}).join('')+'</select></div>';
-  h+='<label class="nai-aq-chk"><input type="checkbox" id="naiNewSsh"'+(cur.ssh===false?'':' checked')+'><span>Доступ к серверу: свой SSH-ключ (root) и выход в интернет (Web Browser в Notion) — как у главного агента</span></label>';
+  h+='<label class="nai-aq-chk"><input type="checkbox" id="naiNewSsh"'+(cur.ssh===false?'':' checked')+'><span>Доступ к серверу: ключ root выдаёт панель (хранится в инструкции агента в Notion) и выход в интернет (Web Browser в Notion)</span></label>';
   h+=tgBlock('naiNewTg','naiNewTgId',cur.tgsel||'',cur.tgid||'','Куда отвечать в Telegram');
   h+='<div class="nai-aq-row"><button type="button" class="nai-aq-btn" data-do="tgtest"'+(busy?' disabled':'')+'>Проверить Telegram</button><button type="button" class="nai-aq-btn pri" data-do="create"'+(busy?' disabled':'')+'>Создать</button></div>';
   h+='<p class="nai-qnote'+(bad?' bad':'')+'">'+esc(msg||'Создаётся через сайт Notion, около 3 минут: ход виден в строке под проектом. У агента будет свой чат с тем же именем и своя вкладка в консоли.')+'</p>'}
@@ -1939,6 +1939,7 @@ function paintQ(){if(!q||q.hidden||!cur)return;var b=q.querySelector('.cxpbody')
   h+='<div class="cxqh">'+esc(a.name)+(a.main?' · главный':'')+'</div><div class="nai-aq-row"><input type="text" id="naiAgName" maxlength="80" value="'+esc(a.name)+'" aria-label="Имя агента"><button type="button" class="nai-aq-btn" data-do="rename"'+(busy?' disabled':'')+'>Переименовать</button></div>';
   h+='<div class="cxqh">Модель</div><div class="cxqlist" role="radiogroup" aria-label="Модель агента">'+(models().length?models():[{label:a.model}]).map(function(m){var on=m.label===a.model;return '<button type="button" class="cxqm'+(on?' on':'')+'" role="radio" aria-checked="'+on+'" data-model="'+esc(m.label)+'"'+(busy?' disabled':'')+'><i class="cxqr"></i><span>'+esc(m.label)+'</span>'+(m.beta?'<small>Beta</small>':'')+'</button>'}).join('')+'</div>';
   h+='<div class="cxqh">Уровень рассуждений (effort)</div><div class="cxqeff" role="radiogroup" aria-label="Effort агента">'+(auto?'<span class="cxsub">При модели Auto effort выбирает Notion</span>':(data&&data.efforts||[]).map(function(e){return '<button type="button" class="cxqe'+(e===a.effort?' on':'')+'" role="radio" aria-checked="'+(e===a.effort)+'" data-effort="'+esc(e)+'"'+(busy?' disabled':'')+'>'+esc(e)+'</button>'}).join(''))+'</div>';
+  if(!a.main)h+='<div class="cxqh">Доступ к серверу (SSH)</div><div class="nai-aq-row" style="align-items:center"><span class="nai-qnote" style="margin:0;flex:1">'+(a.ssh?(a.ssh_ok===true?'✓ ключ выдан, вход проверен':a.ssh_ok===false?'⚠ ключ выдан, вход не проходил':'ключ выдан, вход ещё не проверен'):'ключ не выдан — доступа к серверу нет')+'</span><button type="button" class="nai-aq-btn" data-do="newkey"'+(busy?' disabled':'')+'>'+(a.ssh?'Новый ключ SSH':'Выдать ключ SSH')+'</button></div>';
   var tsel=cur.tgsel!==undefined?cur.tgsel:(a.tg?'own':''),tid=cur.tgid!==undefined?cur.tgid:(a.tg||''),recv=a.main?!(data&&data.tg_agent):!!(data&&data.tg_agent===a.aid);
   h+=tgBlock('naiAgTg','naiAgTgId',tsel,tid,'Telegram: куда отвечает агент');
   h+='<div class="nai-aq-row"><button type="button" class="nai-aq-btn" data-do="agtgtest"'+(busy?' disabled':'')+'>Проверить</button><button type="button" class="nai-aq-btn" data-do="agtgsave"'+(busy?' disabled':'')+'>Сохранить</button></div>';
@@ -1961,6 +1962,7 @@ function onClick(e){snap();var t=e.target,a=cur&&cur.aid?byId(cur.aid):null,m=t.
  if(w==='rename'&&a){var n=($i('naiAgName').value||'').trim();if(!n||n===a.name){msg='Введите новое имя';bad=true;paintQ();return}act('settings',{aid:a.aid,name:n},{kind:'settings'},a.main?'Переименовываю агента…':'Переименовываю агента и его чат…');return}
  if(w==='delete'&&a)return ask(d,'Удалить агента «'+a.name+'»? Его чаты удалятся, агент уйдёт в Корзину Notion (30 дней можно вернуть), его SSH-ключ будет убран.','Удалить').then(function(ok){if(ok)act('delete',{aid:a.aid},{kind:'delete'},'Удаляю агента…')});
  if(w==='tgtest'){var nm0=($i('naiNewName').value||'').trim(),v0=tgVal('naiNewTg','naiNewTgId');cur.name=nm0;cur.tgsel=v0.sel;cur.tgid=v0.id;tgTest(nm0,v0);return}
+ if(w==='newkey'&&a)return ask(d,'Выдать агенту «'+a.name+'» '+(a.ssh?'новый ':'')+'SSH-ключ root? Приватная часть запишется в инструкцию агента в Notion (его компьютер пересоздаётся, иначе ключ не живёт), прежний ключ перестанет работать. Вход будет проверен.','Выдать').then(function(ok){if(ok)act('settings',{aid:a.aid,newkey:true},{kind:'settings'},'Выдаю ключ и записываю в инструкцию агента… (около минуты)')});
  if(w==='agtgtest'&&a){var v1=tgVal('naiAgTg','naiAgTgId');cur.tgsel=v1.sel;cur.tgid=v1.id;tgTest(a.name,v1);return}
  if(w==='agtgsave'&&a){var v2=tgVal('naiAgTg','naiAgTgId');if(!tgOk(v2)){msg='Telegram: нужен id чата (например -1001234567890) или @имя_канала';bad=true;paintQ();return}cur.tgsel=v2.sel;cur.tgid=v2.id;
   post('tg',{aid:a.aid,tg_chat_id:v2.id}).then(function(j){bad=!(j&&j.ok);msg=(j&&j.message)||'Не сохранилось';if(j&&j.ok){delete cur.tgsel;delete cur.tgid;load()}paintQ()}).catch(function(){bad=true;msg='Панель не ответила';paintQ()});return}
@@ -3040,6 +3042,8 @@ def agents_action(kind, body):
         data['tg_chat_id'] = str(body.get('tg_chat_id') or '').strip()[:40]
     if kind == 'settings' and body.get('instructions') is True:
         data['instructions'] = True
+    if kind == 'settings' and body.get('newkey') is True:
+        data['newkey'] = True
     if kind in ('tg', 'tgtest'):  # без задания: ответ сразу (сохранение в реестр / пробное сообщение от бота)
         try:
             j = _delegate('/agents/' + kind, data, timeout=50)

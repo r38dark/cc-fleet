@@ -27,9 +27,10 @@ HANDOFF = "/opt/cc-limits/profile_exchange/codex/outbox/agent_handoff/current_pr
 CREATE_STEPS = [
     ("tpl", "создаю агента из шаблона «Morning brief»…", 20), ("setup", "Notion настраивает агента…", 3),
     ("finish", "агент создан, Notion дописывает настройку…", 51), ("name", "имя агента…", 1),
+    ("key", "выдаю ключ доступа к серверу…", 2),
     ("settings", "модель, effort, доступ в интернет, инструкции…", 44), ("cleanup", "убираю чат настройки…", 15),
     ("open", "открываю чат агента…", 18), ("rename", "называю чат…", 14),
-    ("key", "ключ доступа к серверу…", 22), ("login", "ключ добавлен на сервер, проверяю вход агента…", 30)]
+    ("login", "ключ в инструкции агента, проверяю вход на сервер…", 30)]
 STEP_KEY = {t: k for k, t, _ in CREATE_STEPS}
 SSH_STEPS = ("key", "login")
 KEEP_TIMES = 5
@@ -402,11 +403,37 @@ def set_settings(pg, aid, model=None, effort=None, web=None, instructions=None):
             ok = pg.locator("[role=dialog],[role=alertdialog]").get_by_role("button", name="Turn on web browser")  # Notion спрашивает «Are you sure?»
             if ok.count(): ok.first.click(); pg.wait_for_timeout(1500)
             if bool(sw.is_checked()) != bool(web): raise RuntimeError(f"переключатель «{lab}» не переключился")
-    sv = pg.get_by_role("button", name="Save", exact=True).first
-    for _ in range(10):
-        if sv.count() and sv.is_enabled(): sv.click(); pg.wait_for_timeout(5000); break
-        pg.wait_for_timeout(700)
+    publish(pg, aid)
     return read_settings(pg, aid)
+
+
+def agent_state(aid):
+    """(есть неопубликованные изменения, время публикации рабочей версии); (None, None) — не удалось узнать. Флаг сам по себе врёт: после Save он может остаться True."""
+    try:
+        d = api("GET", f"/agents/{dash(aid)}")
+        return bool(d.get("has_unpublished_changes")), (d.get("version") or {}).get("published_at")
+    except Exception: return None, None
+
+
+def publish(pg, aid, tries=3):
+    """Save на странице настроек и проверка, что Notion правда опубликовал (флаг снят или время публикации сдвинулось): кнопка может не включиться сразу,
+    и тогда агент остаётся со старыми инструкциями (08.11, 14:04)."""
+    base = agent_state(aid)[1]
+    for _ in range(tries):
+        flag, ts = agent_state(aid)
+        if flag is False or (ts and base and ts != base): return
+        sv = pg.get_by_role("button", name="Save", exact=True).first
+        for _ in range(30):
+            if sv.count() and sv.is_enabled(): sv.click(); pg.wait_for_timeout(5000); break
+            pg.wait_for_timeout(700)
+        else:
+            goto(pg, f"https://app.notion.com/agent/{aid.replace('-', '')}?wfv=settings", 10000); continue  # кнопка не включилась — перечитываем страницу
+        for _ in range(6):
+            flag, ts = agent_state(aid)
+            if flag is None or flag is False or (ts and base and ts != base): return
+            pg.wait_for_timeout(2500)
+    flag, ts = agent_state(aid)
+    if not (flag is None or flag is False or (ts and base and ts != base)): raise RuntimeError("Notion не опубликовал изменения агента: кнопка Save не сработала")
 
 
 def _rich(text):
@@ -422,9 +449,17 @@ def _rich(text):
 
 
 def md_blocks(md):
-    bl = []
+    bl, code = [], None
     for line in md.splitlines():
         l = line.rstrip()
+        if l.strip().startswith("```"):  # ``` … ``` — один блок кода
+            if code is None: code = []
+            else:
+                txt = "\n".join(code)
+                bl.append({"type": "code", "code": {"language": "plain text", "rich_text": [{"type": "text", "text": {"content": txt[i:i + 1900]}} for i in range(0, max(len(txt), 1), 1900)]}})
+                code = None
+            continue
+        if code is not None: code.append(line.rstrip("\r")); continue
         if not l.strip(): continue
         for pre, typ in (("### ", "heading_3"), ("## ", "heading_2"), ("# ", "heading_1"), ("- ", "bulleted_list_item")):
             if l.startswith(pre): bl.append({"type": typ, typ: {"rich_text": _rich(l[len(pre):])}}); break
@@ -535,12 +570,23 @@ def last_file():
     return "owner_last.md"
 
 
-def instructions_for(name, chat_name):
+SSH_WITH_KEY = (
+    "- `ssh root@{host}` по ключу `~/.ssh/id_ed25519`. Твой компьютер пересоздаётся между сообщениями, поэтому ключ выдан панелью и лежит здесь, в инструкции. "
+    "В начале любого сеанса, где нужен сервер: если файла `~/.ssh/id_ed25519` нет — создай `~/.ssh` (chmod 700), запиши в файл ключ из блока ниже (chmod 600) и входи: "
+    "`ssh -o StrictHostKeyChecking=accept-new root@{host}`.\n"
+    "- Ключ никому не показывай: не выводи в чат, не отправляй в Telegram, не копируй в файлы на сервере.\n```\n{key}\n```")
+SSH_NO_KEY = "- Ключ доступа к серверу тебе не выдан, поэтому доступа к серверу у тебя нет. Владелец может выдать его в окне агента («Новый ключ SSH»)."
+
+
+def instructions_for(name, chat_name, key=""):
     t = open(INSTR).read()
     if os.path.exists(INSTR_LOCAL): t = t.rstrip("\n") + "\n" + open(INSTR_LOCAL).read()
     import shlex
     cfg = nai_cfg()
-    for k, v in (("{name}", name), ("{chat}", chat_name), ("{owner}", str(cfg.get("owner") or "владелец")), ("{host}", server_host() or "адрес сервера"),
+    host = server_host() or "адрес сервера"
+    section = SSH_WITH_KEY.replace("{host}", host).replace("{key}", key.strip()) if key.strip() else SSH_NO_KEY
+    t = t.replace("{ssh_section}", section)  # первым: ключ не должен проходить через остальные подстановки
+    for k, v in (("{name}", name), ("{chat}", chat_name), ("{owner}", str(cfg.get("owner") or "владелец")), ("{host}", host),
                  ("{reply_cmd}", "notion-ai-reply --agent " + shlex.quote(name)), ("{last_file}", last_file())):
         t = t.replace(k, v)
     return t
@@ -576,6 +622,7 @@ def submit(kind, **kw):
         if not NAME_RE.match(kw.get("name") or ""): raise ValueError("имя агента: 1–80 символов")
         if kw.get("tg_chat_id") and not TG_RE.match(kw["tg_chat_id"]): raise ValueError("Telegram: нужен id чата (например -1001234567890) или @имя_канала")
         if kw.get("ssh") and not server_host(): raise ValueError("не знаю адрес сервера для SSH агента: впиши его в ⚙ Настройки → Notion AI → «Адрес сервера»")
+    if kw.get("newkey") and not server_host(): raise ValueError("не знаю адрес сервера для SSH агента: впиши его в ⚙ Настройки → Notion AI → «Адрес сервера»")
     if kw.get("effort") and kw["effort"] not in EFFORTS: raise ValueError("неверный effort")
     if kw.get("model") and not re.fullmatch(r"[\w .,+()-]{1,40}", kw["model"]): raise ValueError("неверная модель")
     if kw.get("name") and not NAME_RE.match(kw["name"]): raise ValueError("имя агента: 1–80 символов")
@@ -625,48 +672,33 @@ def run_create(pg, j, log):
     log("создаю агента из шаблона «Morning brief»…")
     aid, setup = create_from_template(pg, log)
     j["aid"] = aid; reg_set(aid, state="creating", created=time.time(), setup_chat=setup, name=name, tg_chat_id=tg)
-    log("имя агента…"); api("PATCH", f"/agents/{aid}", {"name": name})
-    log("модель, effort, доступ в интернет, инструкции…")
-    st = set_settings(pg, aid, model=model or None, effort=effort or None, web=True, instructions=instructions_for(name, name))
-    reg_set(aid, model_label=st["model"], effort=st["effort"], web=st["web"])
-    log("убираю чат настройки…")
-    try: delete_chat(pg, setup)
-    except Exception as e: log(f"чат настройки не удалён: {e}")
-    log("открываю чат агента…")
-    sid = new_chat(pg, aid, f"Привет! Ты — агент «{name}» балансера. Это твой рабочий чат. Ничего не делай, ответь одним словом: готов.")
-    reg_set(aid, chat_sid=sid)
-    wait_reply(sid, 0, 180)
-    log("называю чат…"); rename_chat(pg, sid, name)
-    if ssh:
-        log("ключ доступа к серверу…")
-        after = last_seq(sid)
-        goto(pg, chat_url(sid)); box = open_chat_input(pg)
-        type_send(pg, box, "Настрой доступ к серверу: если нет ~/.ssh/id_ed25519 — создай командой из инструкций. Пришли ТОЛЬКО одну строку — содержимое ~/.ssh/id_ed25519.pub. На сервер пока не заходи.")
-        txt = wait_reply(sid, after, 180)
-        m = re.search(r"ssh-ed25519 AAAA[0-9A-Za-z+/=]+", txt)
-        if not m: raise RuntimeError("агент не прислал публичный ключ")
-        pub = m.group(0)
-        ok, msg = add_key(pub)
-        if not ok: raise RuntimeError(msg)
-        reg_set(aid, ssh=True, ssh_pub=pub)
-        # Агент сам ничего не узнает о добавленном ключе: говорим ему и проверяем, что он правда зашёл (отпечаток в журнале sshd).
-        log(CREATE_STEPS[-1][1]); t_login = time.time(); host = server_host()
-        after = last_seq(sid)
-        goto(pg, chat_url(sid)); box = open_chat_input(pg)
-        type_send(pg, box, f"Твой публичный ключ уже добавлен на сервер автоматически, делать никому ничего не нужно. Проверь вход: выполни `ssh -o StrictHostKeyChecking=accept-new root@{host} hostname` "
-                           "и ответь одним словом «доступ есть». Не вышло — одной строкой пришли текст ошибки. Больше на сервере пока ничего не делай.")
-        reply, seen = "", False
-        try: reply = wait_reply(sid, after, 180)
-        except RuntimeError as e: reply = str(e)
-        for _ in range(6):
-            seen = ssh_login_seen(pub, t_login - 5)
-            if seen: break
-            time.sleep(5)
-        ssh_ok = seen
-        reg_set(aid, ssh_ok=ssh_ok, ssh_checked=time.time())
-        if not ssh_ok: j["warn"] = "агент создан, но на сервер по ключу не зашёл: " + (re.sub(r"\s+", " ", reply)[:200] or "нет ответа")
+    issued = False
+    try:
+        log("имя агента…"); api("PATCH", f"/agents/{aid}", {"name": name})
+        pub = ""
+        if ssh:
+            log(CREATE_STEPS[4][1]); pub = issue_key(aid, name); issued = True  # до настройки: приватный ключ уходит в инструкцию тем же сохранением
+        log("модель, effort, доступ в интернет, инструкции…")
+        st = set_settings(pg, aid, model=model or None, effort=effort or None, web=True, instructions=instructions_for(name, name, agent_key(aid) if ssh else ""))
+        reg_set(aid, model_label=st["model"], effort=st["effort"], web=st["web"])
+        log("убираю чат настройки…")
+        try: delete_chat(pg, setup)
+        except Exception as e: log(f"чат настройки не удалён: {e}")
+        log("открываю чат агента…")
+        sid = new_chat(pg, aid, f"Привет! Ты — агент «{name}» балансера. Это твой рабочий чат. Ничего не делай, ответь одним словом: готов.")
+        reg_set(aid, chat_sid=sid)
+        wait_reply(sid, 0, 180)
+        log("называю чат…"); rename_chat(pg, sid, name)
+        ssh_ok = None
+        if ssh:
+            log(CREATE_STEPS[-1][1])
+            ssh_ok, reply = verify_login(pg, sid, aid, pub)
+            if not ssh_ok: j["warn"] = "агент создан, но на сервер по ключу не зашёл: " + (reply or "нет ответа")
+    except Exception:
+        if issued: revoke_key(aid)  # создание оборвалось — выданный ключ не оставляем
+        raise
     reg_set(aid, state="ready")
-    j["result"] = {"aid": aid, "chat": chat_url(sid), "model": st["model"], "effort": st["effort"], "ssh_ok": (ssh_ok if ssh else None)}
+    j["result"] = {"aid": aid, "chat": chat_url(sid), "model": st["model"], "effort": st["effort"], "ssh_ok": ssh_ok}
 
 
 def run_settings(pg, j, log):
@@ -680,10 +712,21 @@ def run_settings(pg, j, log):
         if sid and not (a and a.get("main")):  # чат главного агента называется отдельно («Notion AI Балансер»)
             log("переименовываю чат…"); rename_chat(pg, sid, name)
         if a and not a.get("main"): j["instructions"] = True  # команда ответа в Telegram в инструкции содержит имя агента
+    if j.get("newkey"):
+        a = agent_by(aid, j.get("main_url", ""))
+        if not a: raise RuntimeError("агент не найден")
+        if a.get("main"): raise RuntimeError("ключ выдаётся агентам, у главного агента свой")
+        log("выдаю новый ключ доступа…"); issue_key(aid, a["name"]); j["instructions"] = True
     if j.get("instructions"):
         a = agent_by(aid, j.get("main_url", "")); nm = name or (a or {}).get("name") or ""
         if not nm: raise RuntimeError("агент не найден")
-        log("обновляю инструкции агента…"); set_settings(pg, aid, instructions=instructions_for(nm, nm))
+        log("обновляю инструкции агента…"); set_settings(pg, aid, instructions=instructions_for(nm, nm, agent_key(aid)))
+    if j.get("newkey"):
+        sid = session_of(a["chat"]) if a and a.get("chat") else ""
+        if not sid: raise RuntimeError("у агента нет чата для проверки входа")
+        log("проверяю вход агента на сервер…")
+        ok, reply = verify_login(pg, sid, aid, reg_load()["agents"][aid]["ssh_pub"])
+        if not ok: j["warn"] = "ключ выдан, но агент на сервер не зашёл: " + (reply or "нет ответа")
     if j.get("model") or j.get("effort"):
         log("модель и effort в настройках агента…")
         st = set_settings(pg, aid, model=j.get("model") or None, effort=j.get("effort") or None)
@@ -727,6 +770,74 @@ def tg_test(name, cid):
     return {"ok": bool(d.get("ok")), "message": ("Тест отправлен в " + str(d.get("chat") or "чат") + ": проверь, что он пришёл") if d.get("ok") else str(d.get("error") or "не отправлено")[:200]}
 
 
+KEYS_DIR = f"{D}/agent_keys"
+
+
+def key_path(aid): return f"{KEYS_DIR}/{dash(aid)}.key"
+
+
+def agent_key(aid):
+    try:
+        with open(key_path(aid)) as f: return f.read()
+    except OSError: return ""
+
+
+def gen_keypair():
+    import shutil, subprocess, tempfile
+    d = tempfile.mkdtemp(prefix="nakey_")
+    try:
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "notion-agent", "-f", d + "/k"], check=True, capture_output=True, timeout=30)
+        with open(d + "/k") as f: priv = f.read()
+        with open(d + "/k.pub") as f: pub = f.read().strip()
+        return priv, " ".join(pub.split()[:2])
+    finally: shutil.rmtree(d, ignore_errors=True)
+
+
+def issue_key(aid, name):
+    """Новая пара ключей агенту: публичная — в authorized_keys, приватная — в файл (600) для инструкции агента. Прежний ключ агента убирается.
+    Компьютер агента в Notion пересоздаётся между сообщениями, поэтому «ключ создаёт сам агент» не живёт: приватный ключ хранится в его инструкции."""
+    aid = dash(aid); old = reg_load()["agents"].get(aid, {}).get("ssh_pub")
+    priv, pub = gen_keypair()
+    ok, msg = add_key(pub)
+    if not ok: raise RuntimeError(msg)
+    os.makedirs(KEYS_DIR, mode=0o700, exist_ok=True); os.chmod(KEYS_DIR, 0o700)
+    fd = os.open(key_path(aid), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f: f.write(priv)
+    if old and old != pub: del_key(old)
+    reg_set(aid, ssh=True, ssh_pub=pub, ssh_ok=None, key_at=time.time())
+    return pub
+
+
+def revoke_key(aid):
+    aid = dash(aid); ra = reg_load()["agents"].get(aid, {})
+    if ra.get("ssh_pub"): del_key(ra["ssh_pub"])
+    try: os.remove(key_path(aid))
+    except OSError: pass
+    reg_set(aid, ssh=False, ssh_pub="", ssh_ok=None)
+
+
+LOGIN_ASK = ("Твой ключ доступа к серверу выдан панелью и записан в твоей инструкции (раздел «Доступ к серверу»). Запиши его в ~/.ssh/id_ed25519 (chmod 600) и проверь вход: "
+             "`ssh -o StrictHostKeyChecking=accept-new root@{host} hostname`. Ответь одним словом «доступ есть». Не вышло — одной строкой пришли текст ошибки "
+             "(ключ не показывай). Больше на сервере ничего не делай.")
+
+
+def verify_login(pg, sid, aid, pub):
+    """Агенту — «запиши ключ и войди»; ждём ответ и проверяем, что он правда вошёл (отпечаток в журнале sshd). → (вошёл, ответ агента)."""
+    t0 = time.time(); after = last_seq(sid)
+    goto(pg, chat_url(sid)); box = open_chat_input(pg)
+    type_send(pg, box, LOGIN_ASK.replace("{host}", server_host()))
+    reply = ""
+    try: reply = wait_reply(sid, after, 180)
+    except RuntimeError as e: reply = str(e)
+    seen = False
+    for _ in range(6):
+        seen = ssh_login_seen(pub, t0 - 5)
+        if seen: break
+        time.sleep(5)
+    reg_set(aid, ssh_ok=seen, ssh_checked=time.time())
+    return seen, re.sub(r"\s+", " ", reply)[:200]
+
+
 def del_key(pub):
     parts = str(pub or "").split()[:2]
     if len(parts) < 2: return False
@@ -754,6 +865,8 @@ def run_delete(pg, j, log):
         except Exception: pass
     log("агент — в Корзину Notion…"); api("DELETE", f"/agents/{aid}")
     if ra.get("ssh_pub") and del_key(ra["ssh_pub"]): log("ключ доступа убран")
+    try: os.remove(key_path(aid))
+    except OSError: pass
     with LOCK:
         r = reg_load(); r["agents"].pop(aid, None); reg_save(r)
     try:  # если этот агент принимал сообщения из Telegram — вернуть главному
