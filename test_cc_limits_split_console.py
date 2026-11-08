@@ -98,6 +98,14 @@ class Page(unittest.TestCase):
         self.assertIn(".termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}", L.PAGE)
         self.assertIn(".termwrap.nai-on .tpcomps{display:none!important}", L.PAGE)
 
+    def test_selected_part_is_framed_as_a_whole_and_has_no_status_line(self):
+        # рамка охватывает шапку, экран и окно ввода выбранной части (Денис 62461); строки «Ввод в …» у части нет
+        self.assertIn("#tpFrame{display:none;position:absolute;", L.PAGE)
+        self.assertIn(".termwrap.tsplit:not(.nai-on) #tpFrame.on{display:block}", L.PAGE)
+        self.assertIn("renderComps(ks);\n placeFrame(ks);", L.PAGE)
+        self.assertNotIn("tpstat", L.PAGE)
+        self.assertNotIn(".termbox.tpact{box-shadow", L.PAGE)
+
     def test_draft_follows_the_model(self):
         self.assertIn("const DRAFTS={};", L.PAGE)
         self.assertIn("DRAFTS[P.k]=input.value", L.PAGE)

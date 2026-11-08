@@ -3443,12 +3443,11 @@ html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
 html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
 html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
 .tpextra{background:var(--fleet-terminal,#0b0d10);color:#d2dce9;white-space:pre;font:calc(12px*var(--tz,1)*var(--pz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace}
-.termwrap.tsplit .termbox.tpact{box-shadow:inset 0 0 0 1px var(--fleet-accent,#73dbb7)}
 .termwrap.tsplit .termbox.tpdrop{box-shadow:inset 0 0 0 2px var(--fleet-accent,#73dbb7);background-image:linear-gradient(rgba(115,219,183,.08),rgba(115,219,183,.08))}
 .termwrap.tsplit .tpheads{display:flex;position:absolute;left:0;right:0;top:0;height:30px;z-index:5;pointer-events:none}
 .tphd{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;padding:0 10px;margin:0;font:600 12px system-ui,-apple-system,Segoe UI,sans-serif;color:#9fb0c3;cursor:grab;pointer-events:auto;background:#0e1219;border-bottom:1px solid #263140;user-select:none}
 .tphd+.tphd{border-left:1px solid #263140}
-.tphd.on{color:#eaf2fb;box-shadow:inset 0 -2px 0 var(--fleet-accent,#73dbb7)}
+.tphd.on{color:#eaf2fb}
 .tphd.tpdrop{background:#173a33}
 .tphd b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tphd .tpdot{flex:none}
@@ -3464,7 +3463,6 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .tpcw{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
 .tpcw+.tpcw{border-left:1px solid #263140}
 .tpcomp{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-top:1px solid #263140;background:#101620;color:#dbe3ed}
-.tpcw.on .tpcomp{border-top-color:var(--fleet-accent,#73dbb7)}
 .tpcomp::before{content:"›";color:#73dbb7;font:20px ui-monospace,monospace}
 .tpcomp textarea{flex:1;min-width:0;resize:vertical;min-height:26px;max-height:140px;margin:0;padding:4px 0;background:none;color:#dbe3ed;border:0;outline:0;border-radius:0;font:12px/1.5 ui-monospace,Consolas,monospace}
 .tpcomp textarea::placeholder{color:#65768c}
@@ -3473,8 +3471,8 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .tpcomp .tpsend{display:grid;place-items:center;width:28px;height:28px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;box-shadow:none}
 .tpcomp .tpsend svg{display:block;width:16px;height:16px;pointer-events:none}
 .tpcomp .tpkey{background:transparent;color:#73869d;border:1px solid #2a3644;padding:2px 5px;border-radius:4px;font:10px ui-monospace,monospace}
-.tpstat{display:flex;align-items:center;gap:8px;padding:0 12px;min-height:28px;background:#101620;border-top:1px solid #1d2733;font-size:10px;color:#8b9bb0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.tpstat::before{content:"";width:5px;height:5px;border-radius:50%;background:#4cdbb0;flex:none}
+#tpFrame{display:none;position:absolute;z-index:7;pointer-events:none;box-sizing:border-box;border:1px solid var(--fleet-accent,#73dbb7);box-shadow:0 0 0 1px rgba(115,219,183,.22)}
+.termwrap.tsplit:not(.nai-on) #tpFrame.on{display:block}
 .termwrap.nai-on .tpcomps{display:none!important}
 html:root:root .ctab.tshown:not(.on){text-decoration:underline;text-decoration-color:rgba(200,215,230,.45);text-decoration-thickness:1px;text-underline-offset:7px}
 /* баннер лимитов/паузы — в норме скрыт целиком и места не занимает */
@@ -5335,8 +5333,8 @@ function newPane(){
 const DRAFTS={};  // черновик по модели: переставили части местами — текст ушёл вместе с моделью
 function compMake(P){
  const w=document.createElement('div');w.className='tpcw';
- w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form><div class="tpstat"><span></span></div>';
- const form=w.children[0],input=form.children[0],send=form.children[2],stat=w.children[1].children[0];
+ w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form>';
+ const form=w.children[0],input=form.children[0],send=form.children[2],stat=document.createElement('span');  // строки «Ввод в …» у части нет: статус отправки пишется в невидимый узел, ошибки показывает toast
  P.comp={w:w,form:form,input:input,send:send,stat:stat,model:null};
  input.addEventListener('input',()=>{DRAFTS[P.k]=input.value;});
  w.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
@@ -5348,11 +5346,22 @@ function compSync(P,on){
  const n=tabName(P.k);
  c.w.classList.toggle('on',on);
  if(c.model!==P.k){
-  c.model=P.k;c.input.value=DRAFTS[P.k]||'';c.stat.textContent=(LANG==='en'?'Input to ':'Ввод в ')+n;
+  c.model=P.k;c.input.value=DRAFTS[P.k]||'';
   c.input.placeholder=(LANG==='en'?'Message to ':'Сообщение в ')+n+'…';c.input.setAttribute('aria-label',c.input.placeholder);
   c.send.title=LANG==='en'?'Send':'Отправить';c.form.querySelector('.tpkey').title=LANG==='en'?'Esc to console':'Esc в консоль';
  }
 }
+function placeFrame(ks){
+ const wrap=document.querySelector('.termwrap');let f=document.getElementById('tpFrame');
+ if(!ks){if(f)f.classList.remove('on');return;}
+ if(!f){f=document.createElement('div');f.id='tpFrame';wrap.appendChild(f);if(window.ResizeObserver)new ResizeObserver(()=>placeFrame(splitEff())).observe(wrap);}
+ const P=PANES[splitActIdx(ks)];if(!P){f.classList.remove('on');return;}
+ // рамка охватывает всю часть: шапку (лежит у верхнего края консоли), экран и окно ввода
+ const w=wrap.getBoundingClientRect(),b=P.box.getBoundingClientRect(),bottom=P.comp?P.comp.w.getBoundingClientRect().bottom:b.bottom;
+ f.style.left=Math.round(b.left-w.left-wrap.clientLeft)+'px';f.style.top=Math.round(b.top-w.top-wrap.clientTop)+'px';f.style.width=Math.round(b.width)+'px';f.style.height=Math.round(bottom-b.top)+'px';
+ f.classList.add('on');
+}
+addEventListener('resize',()=>placeFrame(splitEff()));
 function renderComps(ks){
  const wrap=document.querySelector('.termwrap'),shared=document.getElementById('fleetConsoleForm');
  let row=document.getElementById('tpComps');
@@ -5374,6 +5383,7 @@ function syncPanes(){
  if(ks&&PANES[act]&&PANES[act].dotCls)$('#termDot').className=PANES[act].dotCls;
  renderHeads(ks);
  renderComps(ks);
+ placeFrame(ks);
  if(ks)fitAll();
 }
 function renderHeads(ks){
