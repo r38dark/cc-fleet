@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.6",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Телефон: вкладки моделей на всю ширину, агенты Notion — в меню",
+        "p": [
+          "Вкладки Claude DEV, PROD, Codex и Notion AI делят весь ряд и больше не уезжают за край экрана",
+          "Нажатие на «Notion AI ▾» открывает меню: сам Notion AI и его агенты, текущий отмечен; на вкладке — имя выбранного агента"
+        ]
+      },
+      "en": {
+        "t": "Phone: model tabs fill the row, Notion agents in a menu",
+        "p": [
+          "The Claude DEV, PROD, Codex and Notion AI tabs share the whole row and no longer run off the screen edge",
+          "Tapping \"Notion AI ▾\" opens a menu with Notion AI and its agents, the current one is marked; the tab shows the chosen agent's name"
+        ]
+      }
+    },
+    {
       "v": "2.0.5",
       "date": "2026-11-08",
       "ru": {

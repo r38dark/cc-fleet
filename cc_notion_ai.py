@@ -1680,6 +1680,25 @@ html.nai-nosub .fleet-brand-sub{display:none!important}
 .fleet-console-toolbar #ctNotion::before{background:#a78bfa}
 .nai-grp{display:inline-flex;align-items:center;gap:4px;align-self:center;border-radius:10px}.nai-grp:not(:has(.ctab:not([hidden]))){display:none}
 html:root:root .fleet-console-toolbar .nai-grp.nai-grp-on{border:1px solid rgba(167,139,250,.34);background:rgba(167,139,250,.07);padding:2px 3px;margin-left:2px}
+.nai-lbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nai-car{display:none}
+/* телефон: вкладка Notion AI — одна из четырёх равных вкладок моделей; агенты — в выпадающем меню (владелец 62686) */
+@media(max-width:640px),(max-width:1000px) and (pointer:coarse){
+ html:root:root .fleet-console-toolbar #cTabs .nai-atab{display:none!important}
+ html:root:root .fleet-console-toolbar #cTabs #naiGrp{flex:1 1 auto;min-width:0;gap:0;padding:0!important;margin:0!important;border:0!important;background:none!important;align-self:stretch}
+ html:root:root .fleet-console-toolbar #naiGrp #ctNotion{flex:1 1 auto;min-width:0;justify-content:center}
+ html:root:root .fleet-console-toolbar .nai-grp.nai-multi .nai-car{display:block;flex:none;width:0;height:0;border:4px solid transparent;border-top-color:currentColor;border-bottom:0;opacity:.7}
+ html:root:root .fleet-console-toolbar #ctNotion.nai-agon{color:#ecf1f6}
+ html:root:root .fleet-console-toolbar #ctNotion.nai-agon::after{content:"";height:2px;position:absolute;bottom:-1px;left:0;right:0;background:#4cdbb0}
+}
+.nai-menu{position:fixed;z-index:80;max-height:min(70vh,420px);overflow-y:auto;padding:6px;background:#141a23;border:1px solid #2a3644;border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,.5);font:500 14px system-ui,-apple-system,Segoe UI,sans-serif;color:#c9d4e0;-webkit-overflow-scrolling:touch}
+.nai-mt{padding:6px 10px 7px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#6d7f94}
+.nai-mi{display:flex;align-items:center;gap:10px;width:100%;margin:0;padding:11px 10px;border:0;border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.nai-mi:hover,.nai-mi:focus-visible,.nai-mi:active{background:rgba(255,255,255,.07);outline:0}
+.nai-mi.cur{color:#e7f3ee}
+.nai-md{width:8px;height:8px;border-radius:50%;flex:none;background:#a78bfa}
+.nai-mn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nai-mm{flex:none;font-size:11px;color:#6d7f94}
+.nai-mc{flex:none;color:#68ac92}
 .fleet-live-account.notion{--live-accent:#a78bfa;border-color:color-mix(in srgb,#a78bfa 38%,var(--fleet-line));background:linear-gradient(120deg,#2a2346,var(--card) 60%)}
 .fleet-live-account.notion .fleet-live-name::before{background:#a78bfa}
 .fleet-live-account.notion .mirror-profile-button{border-color:color-mix(in srgb,#a78bfa 40%,var(--fleet-line))}
@@ -2093,11 +2112,16 @@ function cfgApply(c){if(!c)return;if(c.owner)who=c.owner;tabOn=c.console_tab!==f
 function cfgSync(){fetch(base+'notion-ai',{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d)cfgApply(d)}).catch(function(){})}
 window.addEventListener('nai-cfg',function(e){cfgApply(e.detail)});
 var on=false,timer=0,sig='',stick=true,tab=null,view=null,saved=null,tries=0,pend=[],sending=false,lastReq=null;
-var agentAid='',agentName='Notion AI',atabs={},savedAid='',grp=null;  // [агенты Notion] вкладка на каждого агента; '' — главный (вкладка «Notion AI»)
+var agentAid='',agentName='Notion AI',atabs={},savedAid='',grp=null,phoneMq=matchMedia('(max-width:640px),(max-width:1000px) and (pointer:coarse)');  // [агенты Notion] вкладка на каждого агента; '' — главный (вкладка «Notion AI»)
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function $i(id){return document.getElementById(id)}
 function curTab(){return agentAid&&atabs[agentAid]?atabs[agentAid]:tab}
-function fixTabs(){if(!tab)return;var sp=window.fleetSplitOn&&window.fleetSplitOn(),tabs=$i('cTabs'),codex=$i('ctCodex'),ct=curTab(),all=[tab].concat(Object.keys(atabs).map(function(k){return atabs[k]}));
+// телефон: агенты спрятаны в меню вкладки Notion — на ней имя выбранного агента, стрелка ▾ и подсветка, пока открыт чат агента
+function labelSync(){if(!tab)return;var l=tab.querySelector('.nai-lbl'),ph=phoneMq.matches,ag=ph&&on&&!!agentAid&&!(window.fleetSplitOn&&window.fleetSplitOn()),want=ag?agentName:'Notion AI';
+ if(l&&l.textContent!==want)l.textContent=want;tab.title=ag?'Чат агента «'+agentName+'» · нажмите, чтобы выбрать другого':'Постоянный чат Notion AI';
+ if(tab.classList.contains('nai-agon')!==ag)tab.classList.toggle('nai-agon',ag);
+ var multi=Object.keys(atabs).length>0&&tabOn;if(grp&&grp.classList.contains('nai-multi')!==multi)grp.classList.toggle('nai-multi',multi)}
+function fixTabs(){if(!tab)return;labelSync();var sp=window.fleetSplitOn&&window.fleetSplitOn(),tabs=$i('cTabs'),codex=$i('ctCodex'),ct=curTab(),all=[tab].concat(Object.keys(atabs).map(function(k){return atabs[k]}));
  if(sp){}else if(on){['ctClaude','ctProd','ctCodex'].forEach(function(id){var b=$i(id);if(b&&b.classList.contains('on')){b.classList.remove('on');b.setAttribute('aria-selected','false')}});all.forEach(function(b){var o=b===ct;if(b.classList.contains('on')!==o){b.classList.toggle('on',o);b.setAttribute('aria-selected',String(o))}})}
  else all.forEach(function(b){if(b.classList.contains('on')){b.classList.remove('on');b.setAttribute('aria-selected','false')}});
  if(typeof cxAvail==='function'&&tabs&&codex){var av=!!cxAvail();if(tabs.hidden)tabs.hidden=false;if(codex.hidden!==!av)codex.hidden=!av}}
@@ -2158,6 +2182,30 @@ function chatHtml(d,rows,stale,aid,nm,pl){
 function render(d){var rows=d.rows||[],now=Date.now()/1000,stale=d.state==='ok'&&d.ts&&now-d.ts>30;checkPend(rows);
  var s=JSON.stringify([rows.length,rows.slice(-4),d.state,d.running,d.message,stale,pend]);if(s===sig)return;sig=s;
  view.innerHTML=chatHtml(d,rows,stale,agentAid,agentName,pend);if(stick)view.scrollTop=view.scrollHeight}
+// [телефон] выпадающее меню вкладки Notion: Notion AI и его агенты; кнопка «назад» закрывает меню, а не страницу
+var menuPushed=false,menuBacking=false;
+function menuEl(){return $i('naiMenu')}
+function menuOutside(e){var m=menuEl();if(m&&!m.contains(e.target)&&!(tab&&tab.contains(e.target)))menuClose()}
+function menuKey(e){if(e.key==='Escape'){e.stopPropagation();menuClose()}}
+function menuClose(fromPop){var m=menuEl();if(!m)return;m.remove();document.removeEventListener('pointerdown',menuOutside,true);document.removeEventListener('keydown',menuKey,true);removeEventListener('resize',menuClose);
+ if(tab)tab.setAttribute('aria-expanded','false');
+ if(menuPushed){menuPushed=false;if(fromPop!==true){menuBacking=true;try{history.back()}catch(_){menuBacking=false}}}}
+function menuToggle(){if(menuEl()){menuClose();return}menuOpen()}
+function menuOpen(){if(!tab||menuEl())return;
+ var ag=(window.naiAgentsData&&window.naiAgentsData.agents)||[],items=[{aid:'',name:'Notion AI',model:''}];
+ Object.keys(atabs).forEach(function(k){var a=ag.filter(function(x){return x.aid===k})[0];items.push({aid:k,name:a?a.name:atabs[k].textContent,model:a&&a.model?a.model:''})});
+ var m=document.createElement('div');m.id='naiMenu';m.className='nai-menu';m.setAttribute('role','menu');
+ m.innerHTML='<div class="nai-mt">Чат Notion</div>'+items.map(function(it){var cur=on&&it.aid===agentAid;
+  return '<button type="button" role="menuitem" class="nai-mi'+(cur?' cur':'')+'" data-aid="'+esc(it.aid)+'"><span class="nai-md"></span><span class="nai-mn">'+esc(it.name)+'</span>'+(it.model&&!cur?'<span class="nai-mm">'+esc(it.model)+'</span>':'')+(cur?'<span class="nai-mc">✓</span>':'')+'</button>'}).join('');
+ document.body.appendChild(m);
+ var r=tab.getBoundingClientRect(),w=Math.min(300,innerWidth-16);m.style.width=w+'px';m.style.top=Math.round(r.bottom+6)+'px';m.style.left=Math.round(Math.max(8,Math.min(r.right-w,innerWidth-w-8)))+'px';
+ m.addEventListener('click',function(e){var b=e.target.closest('.nai-mi');if(!b)return;var aid=b.dataset.aid;menuClose();if(!on||aid!==agentAid)switchTo(aid)});
+ tab.setAttribute('aria-expanded','true');
+ if(!menuPushed&&!menuBacking){try{history.pushState({naim:1},'');menuPushed=true}catch(_){}}
+ document.addEventListener('pointerdown',menuOutside,true);document.addEventListener('keydown',menuKey,true);addEventListener('resize',menuClose);
+ var f=m.querySelector('.nai-mi.cur')||m.querySelector('.nai-mi');if(f)f.focus({preventScroll:true})}
+addEventListener('popstate',function(){if(menuBacking){menuBacking=false;return}if(menuPushed){menuPushed=false;menuClose(true)}});
+phoneMq.addEventListener('change',function(){menuClose();fixTabs()});
 // [агенты Notion] переключение чата: '' — главный агент (вкладка «Notion AI»), иначе id агента
 function switchTo(aid){var a=aid&&window.naiAgentsData?(window.naiAgentsData.agents||[]).filter(function(x){return x.aid===aid})[0]:null;if(aid&&!a)aid='';
  agentAid=aid;agentName=a?a.name:'Notion AI';sig='';pend=[];lastReq=null;try{localStorage.setItem('nai_contab_aid',aid)}catch(_){}
@@ -2206,12 +2254,12 @@ window.naiClose=function(){if(on)close()};
 function setup(){var tabs=$i('cTabs'),codex=$i('ctCodex'),box=$i('termBox');
  if(!tabs||!codex||!box||!$i('fleetInput')){if(++tries<60)setTimeout(setup,250);return}
  if($i('ctNotion'))return;
- tab=document.createElement('button');tab.type='button';tab.className='iconbtn ctab';tab.id='ctNotion';tab.setAttribute('role','tab');tab.setAttribute('aria-selected','false');tab.dataset.s='notion';tab.textContent='Notion AI';tab.title='Постоянный чат Notion AI';
+ tab=document.createElement('button');tab.type='button';tab.className='iconbtn ctab';tab.id='ctNotion';tab.setAttribute('role','tab');tab.setAttribute('aria-selected','false');tab.dataset.s='notion';tab.innerHTML='<span class="nai-lbl">Notion AI</span><span class="nai-car" aria-hidden="true"></span>';tab.title='Постоянный чат Notion AI';
  codex.after(tab);
  grp=document.createElement('span');grp.id='naiGrp';grp.className='nai-grp';grp.title='Notion AI и его агенты';tab.before(grp);grp.appendChild(tab);  // один блок: вкладка Notion AI и вкладки его агентов (это не разные аккаунты Notion)
  view=document.createElement('div');view.id='naiView';view.className='termbox nai-view';view.setAttribute('role','log');view.setAttribute('aria-label','Чат Notion AI');view.tabIndex=0;box.after(view);
  view.addEventListener('scroll',function(){stick=view.scrollHeight-view.scrollTop-view.clientHeight<40});
- tabs.addEventListener('click',function(e){var b=e.target.closest('.ctab');if(!b)return;if(window.fleetSplitOn&&window.fleetSplitOn()){if(on)close();return}if(b===tab||b.classList.contains('nai-atab')){e.preventDefault();e.stopPropagation();var aid=b===tab?'':b.dataset.aid;if(!on||aid!==agentAid)switchTo(aid)}else if(on)close()},true);
+ tabs.addEventListener('click',function(e){var b=e.target.closest('.ctab');if(!b)return;if(window.fleetSplitOn&&window.fleetSplitOn()){if(on)close();return}if(b===tab&&phoneMq.matches&&tabOn&&Object.keys(atabs).length){e.preventDefault();e.stopPropagation();menuToggle();return}if(b===tab||b.classList.contains('nai-atab')){e.preventDefault();e.stopPropagation();var aid=b===tab?'':b.dataset.aid;if(!on||aid!==agentAid)switchTo(aid)}else if(on)close()},true);
  new MutationObserver(fixTabs).observe(tabs,{subtree:true,attributes:true,attributeFilter:['class','hidden']});
  var form=$i('fleetConsoleForm');if(form)form.addEventListener('submit',function(e){if(on){e.preventDefault();e.stopImmediatePropagation();sendMsg()}},true);
  var tw0=document.querySelector('.termwrap');if(tw0)tw0.addEventListener('scroll',function(){if(on&&tw0.scrollLeft)setTimeout(unshift,0)});

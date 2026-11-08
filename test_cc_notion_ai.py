@@ -778,6 +778,19 @@ class TestAgents(unittest.TestCase):
         for needle in ("grp.id='naiGrp'", "grp.classList.toggle('nai-grp-on',L.length>0&&tabOn)", '.nai-grp:not(:has(.ctab:not([hidden])))'):
             self.assertIn(needle, ui)
 
+    def test_phone_notion_tab_opens_a_dropdown_with_the_agents(self):
+        # телефон (62686): вкладки моделей делят ряд, агенты Notion — в выпадающем меню вкладки «Notion AI»
+        import cc_notion_ai as M
+        ui = M.UI
+        for needle in ('<span class="nai-lbl">Notion AI</span><span class="nai-car" aria-hidden="true"></span>',  # подпись вложена: textContent вкладки для частей не меняется
+                       "if(b===tab&&phoneMq.matches&&tabOn&&Object.keys(atabs).length){e.preventDefault();e.stopPropagation();menuToggle();return}",
+                       "function menuOpen(){", "history.pushState({naim:1},'')", "addEventListener('popstate',function(){if(menuBacking)",
+                       "html:root:root .fleet-console-toolbar #cTabs .nai-atab{display:none!important}",
+                       "html:root:root .fleet-console-toolbar .nai-grp.nai-multi .nai-car{display:block;"):
+            self.assertIn(needle, ui)
+        # меню берёт Notion AI и всех агентов; выбор идёт тем же switchTo, что и вкладка
+        self.assertIn("if(!on||aid!==agentAid)switchTo(aid)});", ui)
+
     def test_settings_form_has_the_token_field_as_a_password_input(self):
         import cc_notion_ai as M
         ui = M.CFG_UI
