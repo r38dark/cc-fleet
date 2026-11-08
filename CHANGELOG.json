@@ -2,6 +2,22 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.2",
+      "date": "2026-11-08",
+      "ru": {
+        "t": "Блок «Обновления» — первым в общих настройках",
+        "p": [
+          "Блок «Обновления» поднят на самый верх окна «Общие настройки», выше Claude, Codex, Notion AI и Telegram"
+        ]
+      },
+      "en": {
+        "t": "Updates block moved to the top of General settings",
+        "p": [
+          "The \"Updates\" block is now the first block of the General settings window, above Claude, Codex, Notion AI and Telegram"
+        ]
+      }
+    },
+    {
       "v": "2.0.1",
       "date": "2026-11-08",
       "ru": {
