@@ -305,6 +305,7 @@ import json, os, sys
 path, token, threshold, screen, port, service, tz, work, base, bot, chat, domain, scheme = sys.argv[1:14]
 cfg = {"hook_token": token, "autoswitch": True, "threshold": int(threshold), "poll_sec": 120, "switch_cooldown_sec": 300,
        "optimize": False, "screen_session": screen, "port": int(port)}
+fresh = not os.path.exists(path)
 if os.path.exists(path):
     try:
         old = json.load(open(path))
@@ -313,6 +314,7 @@ if os.path.exists(path):
             cfg = old
     except Exception:
         pass
+if fresh: cfg["labels"] = {"main": "A", "remote": "B"}   # названия серверов («Claude A», «Claude B»): поменять в «Общие настройки»
 cfg.setdefault("update_mode", "manual")      # автообновление по умолчанию ручное (кнопка в панели)
 cfg.setdefault("update_check", True)
 cfg["service_name"] = service                # по нему обновлятор перезапускает службу

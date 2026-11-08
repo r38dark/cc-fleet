@@ -36,6 +36,7 @@
     {"src": "cc_claude_profile.py", "mode": "644"},
     {"src": "cc_codex_models.py", "mode": "644"},
     {"src": "cc_tz.py", "mode": "644"},
+    {"src": "cc_labels.py", "mode": "644"},
     {"src": "cc_handoff_tail.py", "mode": "644"},
     {"src": "cc_notion_ai.py", "mode": "644"},
     {"src": "cc_remote.py", "mode": "644"},

@@ -362,6 +362,11 @@ def _tg(text, force=False):
     здесь в минимальном виде. Держать синхронно с tg_notify() в cc_limits.py.
     """
     c = _cfg()
+    try:  # названия серверов из config.json «labels» (по умолчанию DEV/PROD)
+        import cc_labels
+        text = cc_labels.text(text)
+    except Exception:
+        pass
     chat_id = c.get("chat_id")
     if not chat_id or (not force and not c.get("pause_notify", True)):
         return

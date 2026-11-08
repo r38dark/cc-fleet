@@ -393,6 +393,11 @@ def install(ns):
 
     ns['H'] = FleetHandler
     ns['PAGE'] = cc_overview.render(ns['PAGE'])
+    try:  # названия двух серверов (по умолчанию DEV/PROD, у новых установок A/B): подмена в страницах, ответах API и уведомлениях
+        import cc_labels
+        cc_labels.install(ns)
+    except Exception as exc:
+        print('labels: названия серверов не подключены: %r' % (exc,), flush=True)
     try:  # [notion-ai] профиль «Notion AI · только он» + уведомления о смене профилей в Telegram
         import cc_notion_ai
         cc_notion_ai.install(ns, profiles)

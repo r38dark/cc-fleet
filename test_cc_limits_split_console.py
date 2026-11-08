@@ -99,7 +99,7 @@ class Page(unittest.TestCase):
         self.assertIn(".termwrap.nai-on .tpcomps{display:none!important}", L.PAGE)
 
     def test_selected_part_has_a_muted_green_frame_only(self):
-        # у частей консоли — приглушённо-зелёная рамка только выбранной (серые рамки частей убраны, Денис 62486);
+        # у частей консоли — приглушённо-зелёная рамка только выбранной (серые рамки частей убраны, владелец 62486);
         # рамка охватывает шапку, экран и окно ввода, строки «Ввод в …» у части нет (62461)
         self.assertIn(".tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid transparent}", L.PAGE)
         self.assertIn(".tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}", L.PAGE)
@@ -116,7 +116,7 @@ class Page(unittest.TestCase):
         self.assertNotIn(".termbox.tpact{box-shadow", L.PAGE)
 
     def test_top_menu_tabs_have_a_gray_frame_when_open_and_a_muted_green_one_when_active(self):
-        # верхнее меню (ПК): открытая консоль — прозрачная серая рамка вокруг вкладки, активная — такая же приглушённо-зелёная (Денис 62474/62486)
+        # верхнее меню (ПК): открытая консоль — прозрачная серая рамка вокруг вкладки, активная — такая же приглушённо-зелёная
         self.assertIn("@media(min-width:1100px) and (pointer:fine){\n html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s]{align-self:center;height:30px!important;padding:0 12px!important;border-radius:8px}", L.PAGE)
         self.assertIn("html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].tshown:not(.on){box-shadow:inset 0 0 0 1px rgba(170,182,200,.28)!important}", L.PAGE)
         self.assertIn("html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s].on{box-shadow:inset 0 0 0 1px rgba(104,172,146,.62)!important}", L.PAGE)
@@ -124,7 +124,7 @@ class Page(unittest.TestCase):
         self.assertNotIn("text-decoration:underline;text-decoration-color:rgba(200,215,230,.45)", L.PAGE)
 
     def test_part_header_opens_a_model_menu(self):
-        # клик по шапке части — выпадающее меню моделей: выбрать модель для части сразу, без перетаскивания (Денис 62486)
+        # клик по шапке части — выпадающее меню моделей: выбрать модель для части сразу, без перетаскивания
         for part in ("function openModelMenu(i){", "function closeModelMenu(){", "function pickPartModel(i,k){",
                      "splitCommit(splitDrop(ks,splitActIdx(ks),i,k),k);", '<span class="tpcaret" aria-hidden="true">▾</span>',
                      "const i=+c.dataset.i,m=document.getElementById('tpMenu');if(m&&+m.dataset.i===i){closeModelMenu();return;}splitActivate(i);openModelMenu(i);"):
@@ -133,18 +133,18 @@ class Page(unittest.TestCase):
         self.assertIn(".tpmenu{position:fixed;z-index:70;", L.PAGE)
 
     def test_split_keeps_the_console_block_height(self):
-        # общее окно ввода со строкой статуса выше окон частей на 39px: добавлены к экрану, «Активные аккаунты» остаются на месте (Денис 62472)
+        # общее окно ввода со строкой статуса выше окон частей на 39px: добавлены к экрану, «Активные аккаунты» остаются на месте
         self.assertIn("height:calc(clamp(360px,41dvh,510px) + 39px)", L.PAGE)
         self.assertIn("height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)", L.PAGE)
         self.assertIn("height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)", L.PAGE)
 
     def test_claude_card_footer_has_a_visible_relogin_button(self):
-        # как у карточки PROD: «Войти заново» на виду в подвале, а не только в меню ⋯ (Денис 62472)
+        # как у карточки PROD: «Войти заново» на виду в подвале, а не только в меню ⋯
         self.assertIn("if(engine==='claude'&&footer&&!footer.querySelector('.fleet-footer-relogin'))", L.PAGE)
         self.assertIn("reloginAsk(slot,rb)", L.PAGE)
 
     def test_notion_chat_can_be_a_part_of_the_split_console(self):
-        # Notion AI (главный чат и агенты) — отдельная часть с тем же управлением: перетаскивание, свой чат и своё окно ввода (Денис 62474/62479)
+        # Notion AI (главный чат и агенты) — отдельная часть с тем же управлением: перетаскивание, свой чат и своё окно ввода
         for part in ("function chatHtml(d,rows,stale,aid,nm,pl){", "view.innerHTML=chatHtml(d,rows,stale,agentAid,agentName,pend);",
                      "window.naiChat=function(el,aid){", "window.naiKeys=function(){", "window.naiClose=function(){if(on)close()};"):
             self.assertIn(part, L.PAGE, part)

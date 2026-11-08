@@ -1738,7 +1738,7 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   xi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
   oi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"/><path d="M6 8h8M11 5l3 3-3 3"/></svg>',
   base=esc((gp.label||names[k]).replace(/ · /g,' - ')),
-  txt=k==='prod'?base+'. Это Claude на сервере PROD (аккаунт друга). Автопередача при лимитах: '+(ao?'включена':'выключена')+'.'
+  txt=k==='prod'?base+'. Это Claude на втором сервере (PROD). Автопередача при лимитах: '+(ao?'включена':'выключена')+'.'
    :base+'.'+(pair?' Автопередача при лимитах: '+(ao?'включена':'выключена')+'.':'')+(k==='notion'&&!notionOn?' После передачи Claude остановится, в Telegram ответит Notion AI.':'')+' Сменить профиль — в <a href="#" class="nai-lnk">Выборе профиля</a>.',
   rowh='<button type="button" class="nai-no">'+xi+'<span class="nai-bl">Закрыть</span></button>'
    +(pair?'<button type="button" class="nai-auto" role="switch" aria-checked="'+ao+'"><span class="nai-sw"></span><span class="nai-bl">'+(ao?'Выключить авто':'Включить авто')+'</span></button>':'')

@@ -75,7 +75,7 @@ class Decide(unittest.TestCase):
         self.assertIsNone(self.run_ticks(3, cfg(), native(stale=True), prod(), mode(), memo())[0])
 
     def test_no_switch_just_because_native_limit_is_back(self):
-        # Денис 62410/62421: понятия «вернуться» нет; работа остаётся там, куда её переключили, сколько бы она ни пробыла
+        # понятия «вернуться» нет; работа остаётся там, куда её переключили, сколько бы она ни пробыла
         for since in (NOW - 30, NOW - 700, NOW - 36000):
             self.assertIsNone(self.run_ticks(5, cfg(), native('none'), prod(), mode(True, since=since), memo())[0])
 
@@ -114,7 +114,7 @@ class ProdState(unittest.TestCase):
 
     def test_expired_token_is_not_the_same_as_no_limit(self):
         """Баг: Claude на PROD давно не работал, токен истёк (живёт ~8 ч и обновляется только в работе), и PROD считался непригодным.
-        Автопередача на него не шла, а Денису приходило ложное «лимиты закончились и там, и там»."""
+        Автопередача на него не шла, а владельцу приходило ложное «лимиты закончились и там, и там»."""
         past = '2026-11-07T01:00:00+00:00'
         future = '2099-01-01T00:00:00+00:00'
         base = {'online': True, 'error': 'token_expired'}

@@ -288,7 +288,7 @@ document.addEventListener('click',function(e){var b=e.target.closest&&e.target.c
 // Окно «Настройки PROD» (настроек у PROD должно быть столько же, сколько у Claude DEV).
 // Тот же вид и размещение, те же группы: 1) переключение и лимиты, 2) модели в быстром меню. Пороги и пул моделей общие с Claude DEV:
 // PROD берётся в работу по тем же порогам (cc_avail.availability), а быстрое меню PROD показывает те же отмеченные модели.
-// «Аккаунты и копии» не переносятся: аккаунт друга один, его вход здесь не копируется.
+// «Аккаунты и копии» не переносятся: аккаунт второго сервера один, его вход здесь не копируется.
 var sp=null,spBtn=null,spMoved=false;
 function thrNow(){var t=90,c=99;try{if(typeof THR!=='undefined')t=THR;if(typeof WCAP!=='undefined')c=WCAP}catch(e){}return {t:t,c:c}}
 function sBuild(){
