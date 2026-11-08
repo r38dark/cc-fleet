@@ -1069,7 +1069,7 @@ class TestHeaderPopups(unittest.TestCase):
         self.assertIn("document.getElementById('gear')", body)  # ссылка открывает «Настройки» с порогом
         self.assertIn("typeof THR==='number'", self.src)
         self.assertIn('class="nai-bl"', body)  # подписи с многоточием: на узком экране не обрезаются молча
-        self.assertIn("au.onclick=function(){var on=!((rm.auto()||{}).enabled);", body)  # по клику переключает то же, что раньше
+        self.assertIn("au.onclick=function(){var on=!((rm.auto()||{}).enabled)", body)  # по клику переключает то же, что раньше (подтверждение — внутри окна)
 
 
 class TestPopupTail(unittest.TestCase):
