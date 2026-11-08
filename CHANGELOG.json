@@ -9,7 +9,7 @@
         "p": [
           "Установщик из 14 шагов с проверкой каждого и пошаговая инструкция docs/INSTALL.md; мастер «Второй сервер» и необязательный голос",
           "Агенты Notion: создание с полосой времени, постоянный SSH-ключ и свой Telegram-чат у каждого агента, блок Notion AI в меню консоли",
-          "Принудительное переключение, если второй сервер отвечает без пауз; подписи серверов «Claude A/B»; консоль делится на части"
+          "Принудительное переключение, если второй сервер отвечает без пауз; подписи серверов «Claude A/B»; консоль делится на части и при смене исполнителя заменяет окно прежнего; баннер лимитов пишет «Ищу свободный аккаунт», пока работа уходит на второй сервер"
         ]
       },
       "en": {
@@ -17,7 +17,7 @@
         "p": [
           "A 14-step installer that checks every step and a step-by-step guide docs/INSTALL.md; a second-server wizard and optional voice",
           "Notion agents: creation with a time progress bar, a persistent SSH key and own Telegram chat per agent, one Notion AI block in the console menu",
-          "Forced switch when the second server keeps answering; server names \"Claude A/B\"; the console can be split into parts"
+          "Forced switch when the second server keeps answering; server names \"Claude A/B\"; the console can be split into parts and replaces the previous worker's part when the worker changes; the limits banner says \"Looking for a free account\" while work is moving to the second server"
         ]
       }
     },
