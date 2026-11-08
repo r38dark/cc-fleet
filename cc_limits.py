@@ -2784,6 +2784,16 @@ def pause_state():
         d = pause_ctl.level_state()
         # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем
         d["remote"] = pause_ctl._remote_active()
+        # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
+        d["handoff"] = ""
+        if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
+            try:
+                import cc_remote_auto
+                ok, why = cc_remote_auto.handoff_ready()
+                if ok:
+                    d["handoff"] = why
+            except Exception:
+                pass  # нет модуля или сбой — баннер как раньше
         d["ok"] = True
         return d
     except Exception as e:
@@ -4305,6 +4315,8 @@ const I18N={
   ccpErr:e=>'не получилось: '+e,
   ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
   ccpGateWeekTitle:'⏸ Неделя активного аккаунта <b>на потолке</b>',
+  ccpSearchTitle:'🔎 Ищу свободный аккаунт — <b>переключусь сам</b>',
+  ccpSearchSub:(n,why)=>`${n}: ${why}. Свободного аккаунта здесь нет — смотрю Claude PROD. Если там есть лимит, работа перейдёт туда сама в течение минуты; если нет — здесь встанет пауза.`,
   ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'Свободный аккаунт есть — балансер переключится на следующем тике'+(bg?', после него задачи пойдут сами.':'.'):'Свободный аккаунт есть, но авто-переключение выключено — переключись вручную.'),
   ccpManTitle:n=>`✋ ${n} <b>выбран вручную</b> — балансер не уводит с него`,
   ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Работа идёт до 100% или до сброса окна`+(at?` в <span class="num">${at}</span>`:'')+' — паузы не будет. Вернуть авто-выбор — переключиться на свободный аккаунт.'+(bg?' Фоновые задачи не стартуют, пока сессия выше порога.':''),
@@ -4791,6 +4803,8 @@ const I18N={
   ccpErr:e=>'failed: '+e,
   ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
   ccpGateWeekTitle:'⏸ Active account <b>at the weekly cap</b>',
+  ccpSearchTitle:'🔎 Looking for a free account — <b>will switch by itself</b>',
+  ccpSearchSub:(n,why)=>`${n}: ${why}. No free account here — checking Claude PROD. If it has room, work moves there by itself within a minute; if not, a pause starts here.`,
   ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'A free account exists — the balancer switches on the next tick'+(bg?', after that jobs resume by themselves.':'.'):'A free account exists, but auto-switching is off — switch manually.'),
   ccpManTitle:n=>`✋ ${n} <b>picked manually</b> — the balancer keeps it`,
   ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Work goes on up to 100% or until the window resets`+(at?` at <span class="num">${at}</span>`:'')+' — no pause. To bring back automatic choice, switch to a free account.'+(bg?' Background jobs stay down while the session is above the threshold.':''),
@@ -5132,6 +5146,8 @@ function splitSwap(keys,act,i,j){keys=keys.slice();if(i===j)return {keys:keys,ac
 function splitAdd(keys,avail,k){if(keys.length>=SPLIT_MAX)return null;const n=k&&avail.includes(k)&&!keys.includes(k)?k:avail.find(x=>!keys.includes(x));return n?keys.concat(n):null;}
 function splitCloseAt(keys,act,i){const ks=keys.filter((_,x)=>x!==i);let a=act>i?act-1:act;if(act===i)a=Math.min(i,ks.length-1);return {keys:ks,act:Math.max(0,Math.min(a,ks.length-1))};}
 function splitPick(keys,act,k){const j=keys.indexOf(k);if(j>=0)return {keys:keys,act:j};const ks=keys.slice();ks[act]=k;return {keys:ks,act:act};}
+// консоль идёт за исполнителем: новый занимает часть ПРЕЖНЕГО исполнителя (кончился аккаунт — его окно и меняется), а не ту, что выбрана рукой (владелец 62577); уже показан — выбираем его часть; прежнего нет на экране — как обычная вкладка
+function splitFollow(keys,act,oldK,newK){const j=keys.indexOf(newK);if(j>=0)return {keys:keys,act:j};const i=oldK?keys.indexOf(oldK):-1;if(i<0)return splitPick(keys,act,newK);const ks=keys.slice();ks[i]=newK;return {keys:ks,act:i};}
 /*SPLIT-PURE-END*/
 let SPLIT={keys:[],act:0};  // keys — модели по панелям при разделении; пусто — одна панель (вкладки как раньше)
 function isKey(k){return typeof k==='string'&&/^(claude|prod|codex|notion(:\S+)?)$/.test(k);}
@@ -5570,6 +5586,9 @@ function consFollow(d){
    return;
   }
   consFollowed=w;try{localStorage.setItem('cc_conworker',w);}catch(e){}  // запоминаем до клика: сам клик зовёт consTabs
+  // разделённая консоль: окно нового исполнителя встаёт на место окна прежнего, выбранная рукой часть (например, Notion) остаётся (владелец 62577)
+  const ks=splitEff();
+  if(ks&&splitKeysAvail().includes(tabKey(b))){const ob=seen?document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[seen]||'ctClaude'):null;splitCommit(splitFollow(ks,splitActIdx(ks),ob?tabKey(ob):'',tabKey(b)),tabKey(b));return;}
   b.click();  // обычный клик: вкладка Notion открывает его чат, остальные закрывают чат Notion и зовут consPick
  }catch(e){}
 }
@@ -7006,7 +7025,12 @@ function ccpRender(){
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);
  let title,sub,timer=null,tlabel='',action=null;
- if(mode==='off'){
+ // автопередача вот-вот отдаст работу Claude PROD: «некуда» пока не правда — «ищу свободный аккаунт»; красный баннер и пауза — только если искать негде (владелец 62577)
+ const search=!!d.handoff&&['hard','week','weekrisk'].includes(mode);
+ if(search){
+  const a=(d.accounts||{})[d.active]||{};
+  title=tr('ccpSearchTitle');sub=tr('ccpSearchSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap));
+ }else if(mode==='off'){
   const na=d.nearest&&d.nearest.acc;
   const full=lvl==='hard'||lvl==='week';
   title=tr('ccpOffTitle');sub=tr('ccpOffSub',full&&na?ccpEsc(na):'',full&&near?ccpAt(near):'');
@@ -7069,7 +7093,7 @@ function ccpRender(){
   '<span class="ccp-chip'+(a.usable===false?' hot':'')+'">'+ccpEsc(n)
   +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b>'
   +(a.wpct!=null&&a.wpct>=90?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
- el.className='ccpause lvl-'+({week:'pause',weekrisk:'hard',manual:'gate'}[mode]||mode);el.hidden=false;
+ el.className='ccpause lvl-'+(search?'gate':({week:'pause',weekrisk:'hard',manual:'gate'}[mode]||mode));el.hidden=false;
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
   +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')

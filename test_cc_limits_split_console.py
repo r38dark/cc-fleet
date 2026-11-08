@@ -46,6 +46,13 @@ eq(splitCloseAt(['a','b','c'],2,2),{keys:['a','b'],act:1},'закрыли пос
 // вкладка
 eq(splitPick(['claude','prod'],0,'prod'),{keys:['claude','prod'],act:1},'вкладка показанной — выбирает часть');
 eq(splitPick(['claude','prod'],1,'codex'),{keys:['claude','codex'],act:1},'не показанной — заменяет выбранную');
+// консоль идёт за исполнителем (владелец 62577): новый встаёт на часть прежнего, а не на выбранную рукой
+eq(splitFollow(['claude','codex','notion'],2,'claude','prod'),{keys:['prod','codex','notion'],act:0},'DEV→PROD: заменилась часть DEV, Notion на месте');
+eq(splitFollow(['prod','codex','notion'],1,'prod','claude'),{keys:['claude','codex','notion'],act:0},'PROD→DEV: заменилась часть PROD');
+eq(splitFollow(['claude','prod','notion'],2,'claude','prod'),{keys:['claude','prod','notion'],act:1},'новый уже показан — выбирается его часть');
+eq(splitFollow(['codex','notion'],1,'claude','prod'),{keys:['codex','prod'],act:1},'прежнего нет на экране — как обычная вкладка');
+eq(splitFollow(['claude','codex'],0,'','prod'),{keys:['prod','codex'],act:0},'прежнего исполнителя не знаем — как обычная вкладка');
+eq(splitFollow(['claude','notion:a1'],1,'claude','codex'),{keys:['codex','notion:a1'],act:0},'любой исполнитель, не только PROD');
 console.log('done');
 """
 
@@ -174,6 +181,11 @@ class Page(unittest.TestCase):
 
     def test_follow_waits_for_saved_layout(self):
         self.assertIn("||splitPending()){", L.PAGE)
+
+    def test_follow_replaces_the_previous_workers_part(self):
+        # при передаче работы заменяется часть прежнего исполнителя, а не выбранная рукой (владелец 62577); часть модели, которой нет среди доступных, — по-старому, кликом
+        self.assertIn("if(ks&&splitKeysAvail().includes(tabKey(b))){const ob=seen?document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[seen]||'ctClaude'):null;"
+                      "splitCommit(splitFollow(ks,splitActIdx(ks),ob?tabKey(ob):'',tabKey(b)),tabKey(b));return;}", L.PAGE)
 
     def test_notion_chat_hides_extra_parts(self):
         self.assertIn(".termwrap.nai-on .tpextra,.termwrap.nai-on .tpheads{display:none!important}", L.PAGE)
