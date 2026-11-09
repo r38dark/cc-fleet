@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.18",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Предупреждения о лимитах одиночного Codex",
+        "p": [
+          "Плашка показывается при исчерпании пятичасового и недельного лимитов, в том числе с одним аккаунтом.",
+          "Предупреждение отделено от очереди: профиль Full и права Codex не меняются.",
+          "Отображаются тип лимита и сброс; после освобождения лимита предупреждение исчезает."
+        ]
+      },
+      "en": {
+        "t": "Limit warnings for standalone Codex",
+        "p": [
+          "The banner shows five-hour and weekly exhaustion, including installations with just one account.",
+          "Warnings are separate from the message queue; the Full profile and Codex permissions stay unchanged.",
+          "The banner shows the exhausted window and reset time, and clears when the limit becomes available."
+        ]
+      }
+    },
+    {
       "v": "2.0.17",
       "date": "2026-11-10",
       "ru": {

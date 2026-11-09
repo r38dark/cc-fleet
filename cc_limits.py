@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.17"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.18"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4398,6 +4398,11 @@ const I18N={
   cxlpWinAny:'сервис сообщил о лимите',
   cxlpTill:'до сброса',
   cxlpHint:'настоящий лимит исчерпан — отключать паузу бесполезно, Codex продолжит сам после сброса',
+  cxlnBrief:(why,at)=>`Лимит Codex: ${why}`+(at?` · сброс в ${at}`:''),
+  cxlnTitle:'⚠ Лимит Codex <b>исчерпан</b>',
+  cxlnSub:(n,why,at,left)=>`Достигнут лимит Codex${n?` <b>${n}</b>`:''}: ${why}.`+(at?` Сброс в <span class="num">${at}</span>.`:left?` Сброс через <span class="num">${left}</span>.`:' Время сброса пока неизвестно.'),
+  cxlnHint:'После освобождения лимита повторите запрос. Профиль и права Codex сохранены.',
+  cxlnHintMulti:'Можно выбрать другой доступный аккаунт в настройках Codex или повторить запрос после сброса.',
   ccpHintOnHard:'окно забито — пауза встанет сразу',
   ccpHintOnFree:'окно уже свободно — пауза просто снова начнёт работать',
   ccpErr:e=>'не получилось: '+e,
@@ -4889,6 +4894,11 @@ const I18N={
   cxlpWinAny:'the service reported the limit',
   cxlpTill:'until reset',
   cxlpHint:'the real limit is used up — disabling the pause would not help; Codex resumes by itself after the reset',
+  cxlnBrief:(why,at)=>`Codex limit: ${why}`+(at?` · resets at ${at}`:''),
+  cxlnTitle:'⚠ Codex <b>limit reached</b>',
+  cxlnSub:(n,why,at,left)=>`Codex account${n?` <b>${n}</b>`:''} has reached the ${why}.`+(at?` Resets at <span class="num">${at}</span>.`:left?` Resets in <span class="num">${left}</span>.`:' The reset time is not known yet.'),
+  cxlnHint:'Retry after the limit resets. The Codex profile and permissions are retained.',
+  cxlnHintMulti:'Choose another available account in Codex settings or retry after the reset.',
   ccpHintOnHard:'window is full — the pause starts right away',
   ccpHintOnFree:'window is already free — the pause simply works again',
   ccpErr:e=>'failed: '+e,
@@ -7276,26 +7286,29 @@ async function ccpLoad(){
  ccpRender();
 }
 
-// ---- [notion-ai] пауза Codex по лимитам: такая же плашка, как у Claude (данные — /api/chatgpt/rotation → limit_pause) ----
+// ---- Codex: предупреждение о лимитах отдельно от паузы очереди (/api/chatgpt/rotation → limit_notice) ----
 let cxlpData=null,cxlpOpen=false,cxlpLoadedAt=0;
 function cxlpRender(){
  const el=$('#cxPause');if(!el)return;
  const p=cxlpData;
  if(!p||!p.active){el.hidden=true;el.innerHTML='';return;}
+ const paused=p.paused===undefined?true:!!p.paused;
  const prev=el.querySelector(':scope > details');if(prev)cxlpOpen=prev.open;
- const upMs=(p.resume_at||0)*1000,at=upMs?ccpAt(upMs):'';
+ const upMs=(p.resume_at||0)*1000;
+ const sessionOnly=(p.windows||[]).length===1&&p.windows[0]===300;
+ const at=upMs?(paused?ccpAt(upMs):sessionOnly?'':new Date(upMs).toLocaleString(LANG==='en'?'en-GB':'ru',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):'';
  const why=(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', ')||tr('cxlpWinAny');
  const chips=(p.accounts||[]).map(a=>'<span class="ccp-chip hot">'+ccpEsc(a.label)+(a.active?tr('ccpActive'):'')
   +' <b>'+(a.ses==null?'?':Math.round(a.ses)+'%')+'</b>'+(a.week!=null?tr('ccpWeek',Math.round(a.week)):'')+'</span>').join('');
  const timer=upMs?'<div class="ccp-timer" data-until="'+upMs+'"><div class="t">'+ccpLeft(upMs)+'</div><div class="l">'+tr('cxlpTill')+'</div></div>':'';
- el.className='ccpause lvl-pause';el.hidden=false;
+ el.className='ccpause '+(paused?'lvl-pause':'lvl-hard');el.hidden=false;
  el.innerHTML='<details class="fleet-pause-fold"'+(cxlpOpen?' open':'')+'><summary class="fleet-pause-summary"><span class="ccp-dot"></span>'
-  +'<span class="ccp-title">'+(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt'))+'</span>'+timer
+  +'<span class="ccp-title">'+(paused?(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt')):ccpEsc(tr('cxlnBrief',why,at)))+'</span>'+timer
   +'<svg viewBox="0 0 24 24" class="fleet-pause-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>'
-  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr('cxlpTitle')+'</div>'
-  +'<div class="ccp-sub">'+tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):'')+'</div>'
+  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr(paused?'cxlpTitle':'cxlnTitle')+'</div>'
+  +'<div class="ccp-sub">'+(paused?tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):''):tr('cxlnSub',p.multi?ccpEsc(p.label):'',why,at,upMs?ccpLeft(upMs):''))+'</div>'
   +'<div class="ccp-meta">'+chips+'</div>'
-  +'<div class="ccp-actions"><span class="ccp-hint">'+ccpEsc(tr('cxlpHint'))+'</span></div></div></div></details>';
+  +'<div class="ccp-actions"><span class="ccp-hint">'+ccpEsc(tr(paused?'cxlpHint':p.multi?'cxlnHintMulti':'cxlnHint'))+'</span></div></div></div></details>';
  el.querySelector('details').addEventListener('toggle',e=>{cxlpOpen=e.target.open});
 }
 function cxlpTick(){
@@ -7306,7 +7319,7 @@ function cxlpTick(){
 async function cxlpLoad(){
  if(document.hidden&&cxlpData!==null)return;
  cxlpLoadedAt=Date.now();
- try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_pause||{active:false};}catch(e){return;}
+ try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_notice||d.limit_pause||{active:false};}catch(e){return;}
  cxlpRender();
 }
 
