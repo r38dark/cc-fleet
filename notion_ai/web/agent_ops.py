@@ -13,6 +13,9 @@ TEST_TEXT = "Проверка связи. Ответь одним словом: 
 
 
 # ---------- реестр ----------
+# Поле ввода: личный чат Notion AI («Ask Notion AI…») или чат пользовательского агента («Chat with <агент>»)
+INPUT = '[contenteditable=true][placeholder^="Ask Notion AI"], [contenteditable=true][placeholder^="Chat with"]'
+
 def reg_load():
     try: return json.load(open(REG))
     except (FileNotFoundError, ValueError): return {"agents": [], "stop": None, "fails": 0, "next_try": 0}
@@ -101,7 +104,7 @@ def setup(pg, url, body, guard, text=None):
     """В чате url выставить Opus 5.5 + Effort xHigh; при заданном тексте — отправить его (guard() вызывается перед отправкой)
     и ждать ответа «готов». Возвращает (низ чата после выбора, итог: None | «ответ получен» | «нет ответа» | «ОШИБКА ОТПРАВКИ», хвост чата)."""
     pg.goto(url, wait_until="domcontentloaded", timeout=45000)
-    pg.get_by_placeholder("Ask Notion AI").first.wait_for(timeout=40000); pg.wait_for_timeout(3000)
+    pg.locator(INPUT).first.wait_for(timeout=40000); pg.wait_for_timeout(3000)
     if pg.get_by_text("Opus 5.5", exact=True).count() == 0:
         lab = pg.get_by_text("Auto", exact=True).last; lab.click(); pg.wait_for_timeout(1500)
         pg.get_by_text("Opus", exact=False).first.click(); pg.wait_for_timeout(2000)
@@ -113,7 +116,7 @@ def setup(pg, url, body, guard, text=None):
     if not text: return state, None, None
     guard()
     b0 = body(pg); n0 = b0.lower().count("готов"); e0 = b0.count("Error sending message")
-    box = pg.get_by_placeholder("Ask Notion AI").first; box.focus(); pg.keyboard.insert_text(text); pg.wait_for_timeout(500)
+    box = pg.locator(INPUT).first; box.focus(); pg.keyboard.insert_text(text); pg.wait_for_timeout(500)
     pg.keyboard.press("Enter")
     t0 = time.time(); cur = b0
     while time.time() - t0 < 240:
@@ -144,7 +147,7 @@ def delete_chat(pg, url, protect=()):
     Возвращает True, если после удаления Notion пишет «You don’t have access to this chat»."""
     if url in protect: raise RuntimeError("отказ: это рабочий чат")
     pg.goto(url, wait_until="domcontentloaded", timeout=45000)
-    pg.get_by_placeholder("Ask Notion AI").first.wait_for(timeout=40000); pg.wait_for_timeout(2500)
+    pg.locator(INPUT).first.wait_for(timeout=40000); pg.wait_for_timeout(2500)
     if find_chat_url(pg) != url: raise RuntimeError("открылся не тот чат: " + pg.url[:90])
     pg.mouse.click(1375, 22)                                  # «⋯» справа сверху
     _click_menu_item(pg, "Delete")

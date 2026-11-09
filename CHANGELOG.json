@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.16",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Вход и отправка в Notion: код из букв, новое поле чата",
+        "p": [
+          "Notion стал присылать код из 6 букв, а служба принимала только цифры — вход по коду не проходил; теперь буквы и цифры",
+          "Notion сменил подсказку поля ввода на «Chat with …»: вход, отправка в чат и создание агентов снова находят его",
+          "Подсказки в панели и мастере теперь «код из письма»"
+        ]
+      },
+      "en": {
+        "t": "Notion sign-in and sending: letter codes, new chat field",
+        "p": [
+          "Notion now emails a 6-letter code but the service accepted digits only, so the code sign-in failed; fixed",
+          "Notion changed the chat field hint to \"Chat with ...\": sign-in, sending to the chat and agent creation find it again",
+          "Hints in the panel and wizard now say \"code from the email\""
+        ]
+      }
+    },
+    {
       "v": "2.0.15",
       "date": "2026-11-09",
       "ru": {

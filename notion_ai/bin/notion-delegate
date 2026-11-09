@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""notion-delegate "задание" | -f файл | code 123456 | status | rotate | on | off
+"""notion-delegate "задание" | -f файл | code КОД | status | rotate | on | off
 Поручить работу агенту Notion (чат «2») и получить готовый результат. Для Codex (песочница без сети) задание уходит файлом
 в папку .notion-delegate в РАБОЧЕЙ папке; для Claude — HTTP 127.0.0.1:8893. Ждёт ответ до NOTION_DELEGATE_WAIT секунд (1500)."""
 import os, sys, json, time, uuid, urllib.request, urllib.error

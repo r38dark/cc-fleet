@@ -941,6 +941,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.16** — Notion sign-in and sending after a Notion change: the chat field hint is now "Chat with ..." (the service only knew "Ask Notion AI"). Notion login code is 6 letters or digits: Notion started emailing a letter code while the service accepted only 6 digits, so
+  the code sign-in failed. The service and the panel and wizard fields now accept letters and digits. On servers that are already
+  installed the service file (`/root/notion_web/server.py`) is refreshed by running `sudo bash /opt/cc-limits/notion_ai/install.sh` (safe: previous files are kept next to the new ones).
 - **v2.0.15** — A "Set up Notion AI" wizard in the panel: the grey tile (or ⚙ → Notion AI → "Step-by-step wizard") walks through 7 steps with a
   check after each — services (installed by the panel itself, no terminal), permanent chat link, email-code sign-in, Notion API token,
   access key with the instruction, connection check, your own agent. The service files (`notion_ai/`) now live on every server and update with the button.

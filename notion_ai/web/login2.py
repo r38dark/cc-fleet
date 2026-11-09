@@ -14,6 +14,8 @@ CHAT = str(CFG.get("chat_url") or "")
 if not re.fullmatch(r"https://(app\.notion\.com|www\.notion\.so|notion\.so)/chat\?t=[0-9a-f]{32}", CHAT):
     CHAT = "https://app.notion.com/chat"  # проверка входа на странице нового чата
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+# Поле ввода: личный чат Notion AI («Ask Notion AI…») или чат пользовательского агента («Chat with <агент>»)
+INPUT = '[contenteditable=true][placeholder^="Ask Notion AI"], [contenteditable=true][placeholder^="Chat with"]'
 def log(m): print(time.strftime("%H:%M:%S"), m, flush=True)
 if not EMAIL: log("почта входа не задана (⚙ Настройки → Notion AI)"); sys.exit(4)
 for f in (CODE, NEW):
@@ -43,7 +45,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(4000)
         if "login" in pg.url: log("код не принят"); sys.exit(3)
         pg.goto(CHAT, wait_until="domcontentloaded", timeout=45000)
-        pg.get_by_placeholder("Ask Notion AI").first.wait_for(timeout=40000)
+        pg.locator(INPUT).first.wait_for(timeout=40000)
         ctx.storage_state(path=NEW); os.chmod(NEW, 0o600); os.replace(NEW, CUR)
         log("сессия сохранена")
     finally:
