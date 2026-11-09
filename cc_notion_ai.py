@@ -16,6 +16,7 @@ import calendar
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -1763,13 +1764,13 @@ function ghostMark(){['codex','notion'].forEach(function(k){var row=document.que
  if(agState(k).state==='unlinked'){var t=isEn()?(k==='codex'?'Codex is not connected — click to set it up':'Notion AI is not installed — click to see how'):(k==='codex'?'Codex не подключён — нажми, чтобы подключить':'Notion AI не установлен — нажми, чтобы узнать как');if(row.dataset.ghost!==t)row.dataset.ghost=t}else if(row.dataset.ghost)delete row.dataset.ghost})}
 function linkPop(k,anchor){var en=isEn(),codex=k==='codex',
  txt=codex?(en?'Codex is not connected: no ChatGPT account has been added yet. The wizard installs it and walks you through the sign-in step by step.':'Codex не подключён: ни один аккаунт ChatGPT ещё не добавлен. Мастер поставит его и проведёт по входу по шагам.')
-  :(en?'Notion AI is not installed on this server. To install: run sudo ./install.sh from the balancer folder and answer “y” to the Notion AI question, then open ⚙ → Notion AI and paste the token. Details: docs/INSTALL.md, section 6.':'Notion AI не установлен на этом сервере. Установка: запусти sudo ./install.sh из папки балансера и ответь «y» на вопрос про Notion AI, затем открой ⚙ → Notion AI и вставь токен. Подробно: docs/INSTALL.md, раздел 6.'),
- go=codex?(en?'Connect Codex':'Подключить Codex'):(en?'Open the guide':'Открыть инструкцию'),
+  :(en?'Notion AI is not set up on this server. The wizard installs its services and walks you through the connection step by step.':'Notion AI не подключён на этом сервере. Мастер поставит его службы и проведёт по подключению по шагам.'),
+ go=codex?(en?'Connect Codex':'Подключить Codex'):(en?'Set up Notion AI':'Подключить Notion AI'),
  pp=openPop('<div class="nai-ph"><b>'+(codex?'Codex':'Notion AI')+' · '+(en?'not connected':'не подключён')+'</b></div><p>'+esc(txt)+'</p><div class="nai-row"><button type="button" class="nai-no">'+(en?'Close':'Закрыть')+'</button><button type="button" class="nai-yes">'+esc(go)+'</button></div>',false,anchor);
  pp.classList.add('ag-'+k);pp.querySelector('.nai-no').onclick=closePop;
  pp.querySelector('.nai-yes').onclick=function(){closePop();
   if(codex){try{ciWizSet(true);ciHdr();setTimeout(function(){try{ciOpen()}catch(_){}},50)}catch(_){var c=document.getElementById('cxInst');if(c)c.click()}}
-  else window.open('https://github.com/r38dark/cc-fleet/blob/main/docs/INSTALL.md#6-notion-ai-и-агенты-notion','_blank','noopener')}}
+  else if(window.naiWizOpen)window.naiWizOpen();else window.open('https://github.com/r38dark/cc-fleet/blob/main/docs/INSTALL.md#6-notion-ai-и-агенты-notion','_blank','noopener')}}
 function paintAgents(){AGS.forEach(function(a){var s=bar.querySelector('[data-ag="'+a[0]+'"]'),g=agState(a[0]),on=['run','lead','exec'].indexOf(g.state)>=0;document.documentElement.classList.toggle('ag-pause-'+a[0],g.state==='pause');document.documentElement.classList.toggle('ag-live-'+a[0],on);if(st&&st.agents)document.documentElement.classList.toggle('ag-unlinked-'+a[0],g.state==='unlinked');s.className='nai-seg s-'+g.state+(on?' on':'');s.querySelector('.nai-st').textContent=g.text||'';s.title=g.label||a[1];s.setAttribute('aria-label',(g.label||a[1]))});ghostMark();var un=AGS.filter(function(a){return agState(a[0]).state==='unlinked'}).map(function(a){return a[0]}).join();try{if(st&&st.agents)localStorage.setItem('cc_unl',un)}catch(_){}if(un!==unSig){unSig=un;try{if(typeof consTabs==='function')consTabs()}catch(_){}}btn.disabled=busy;fit()}
 // [notion-ai] Баннер только для шага: ждёт подтверждения или выполняется. Состояние агентов — в блоке шапки.
 function paint(){var f=orch()?names[st.follower]:'',s=orch()&&st.step,pend=pending(),run=!!(s&&(s.status==='approved'||s.status==='running'));paintAgents();banner.hidden=!(pend||run);
@@ -2795,6 +2796,67 @@ def login_code(code):
     return dict(ok=True, message='Код передан. Через минуту проверь «Вход в Notion».')
 
 
+NAI_BASE = os.path.dirname(os.path.abspath(__file__))   # каталог установки балансера: там же лежит notion_ai/ с файлами служб
+INSTALL_UNIT = 'cc-notion-install'
+_INST_LOCK = threading.Lock()
+
+
+def _install_paths():
+    return os.path.join(NAI_BASE, 'notion_ai', 'install.sh'), os.path.join(NAI_BASE, 'notion_install.log')
+
+
+def install_state():
+    """Мастер подключения, шаг 1: стоят ли службы Notion AI и как идёт установка. Только читает состояние."""
+    src, log = _install_paths()
+    delegate = _run(['systemctl', 'is-active', 'notion-delegate.service'], 10)[1].strip()
+    running = _run(['systemctl', 'is-active', INSTALL_UNIT + '.service'], 10)[1].strip() in ('active', 'activating')
+    lines, rc = [], None
+    try:
+        with open(log, encoding='utf-8', errors='replace') as f:
+            text = f.read()[-6000:]
+        lines = [re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', x).rstrip() for x in text.splitlines() if x.strip()]
+        for x in reversed(lines):
+            m = re.fullmatch(r'RC=(\d+)', x)
+            if m:
+                rc = int(m.group(1))
+                break
+    except OSError:
+        pass
+    installed = notion_installed() and delegate == 'active'
+    phase = 'running' if running else 'done' if installed else 'error' if rc not in (None, 0) else 'idle'
+    return dict(ok=True, installed=installed, running=running, phase=phase, rc=rc, delegate=delegate or 'unknown',
+                src=os.path.isfile(src), log=lines[-14:])
+
+
+def install_start():
+    """Поставить службы Notion AI (notion_ai/install.sh) отдельной службой systemd: перезапуск панели в конце установки её не прерывает."""
+    with _INST_LOCK:
+        st = install_state()
+        if st['installed']:
+            return dict(st, message='Службы Notion AI уже стоят.')
+        if st['running']:
+            return dict(st, message='Установка уже идёт.')
+        if not st['src']:
+            return dict(ok=False, message='Нет файлов установки (notion_ai/install.sh): обнови балансер в ⚙ → Обновления.')
+        if not shutil.which('systemd-run'):
+            return dict(ok=False, message='Нужен systemd: без него службы Notion AI не поставить.')
+        src, log = _install_paths()
+        try:
+            open(log, 'w').close()
+        except OSError as exc:
+            return dict(ok=False, message='Не открыть журнал установки: ' + type(exc).__name__)
+        cmd = ['systemd-run', '--unit=' + INSTALL_UNIT, '--collect', '--no-block', '--property=Type=exec',
+               '--setenv=CC_LIMITS_BASE=' + NAI_BASE, '--working-directory=' + NAI_BASE,
+               'sh', '-c', 'bash "$0" >> "$1" 2>&1; echo "RC=$?" >> "$1"', src, log]
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=20, env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin'})
+        except Exception as exc:
+            return dict(ok=False, message='Установка не запущена: ' + type(exc).__name__)
+        if p.returncode != 0:
+            return dict(ok=False, message='Установка не запущена: ' + (p.stderr or p.stdout or '?').strip()[-160:])
+        return dict(install_state(), ok=True, message='Установка запущена.')
+
+
 CFG_ANCHOR = '<div class="modalh" id="modelsHdr">'
 CFG_HTML = '<div class="modalh" id="naiCfgHdr">Notion AI · третий агент</div>\n  <div id="naiCfgBox" class="naicfg"><div class="modalsub">Загрузка…</div></div>\n  '
 CFG_UI = r'''
@@ -2875,6 +2937,7 @@ function render(){var box=$i('naiCfgBox');if(!box||!data)return;var c=data.cfg||
   ['Вход в Notion',dot(auth[0]&&!lw,lw&&auth[0]?'подключён · идёт новый вход':auth[1])+(c.notion_email?' '+mut('· '+c.notion_email):'')+(lw?'':'<button type="button" class="ghostbtn" id="naiLogin">'+(auth[0]?'Войти заново':'Войти')+'</button>')],
   ['Сервисы',units]])
   +'<div id="naiCode" class="nc-row"'+(lw?'':' hidden')+'><input class="dlginp" id="naiCodeIn" inputmode="numeric" maxlength="6" placeholder="6 цифр из письма" style="width:150px"><button type="button" id="naiCodeBtn">Ввести код</button></div>'
+  +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiWizOpen">Мастер подключения по шагам</button></div>'
   +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiCfgCheck">Проверить связь</button><span class="nc-msg" data-m id="naiCfgMsg"></span></div>'
   +'<div class="nc-chk" id="naiCfgOut" hidden></div>'
   +'<div class="nc-in">'
@@ -2897,6 +2960,7 @@ function save(fields,okMsg){if(busy)return;var c=(data&&data.cfg)||{},body={};fi
  call('config',body).then(function(d){busy=false;if(d&&d.ok){if(d.cfg)data=d;render();msg(d.message||okMsg||'Сохранено');try{window.dispatchEvent(new CustomEvent('nai-cfg',{detail:d.cfg}))}catch(_){}}else msg('⚠ '+(d&&d.message||'Не сохранилось'))}).catch(function(e){busy=false;msg('⚠ '+e.message)})}
 function bind(){
  var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['tg_chat_id','naiCfgTg'],['ssh_host','naiCfgHost'],['notion_token','naiCfgPat'],['voice','naiCfgVoice'],['console_tab','naiCfgTab']])};
+ var wz=$i('naiWizOpen');if(wz)wz.onclick=function(){if(window.naiWizOpen)window.naiWizOpen()};
  var ck=$i('naiCfgCheck');if(ck)ck.onclick=function(){msg('Проверяю…');call('check',{}).then(function(d){var o=$i('naiCfgOut');o.hidden=false;
   o.innerHTML=(d.items||[]).map(function(x){return '<div><span class="'+(x.ok?'nc-ok':'nc-bad')+'">'+(x.ok?'✓':'✗')+'</span><span><b>'+esc(x.name)+':</b> '+esc(x.text)+'</span></div>'}).join('');msg(d.ok?'Всё на месте':'Есть что поправить')}).catch(function(e){msg('⚠ '+e.message)})};
  var lg=$i('naiLogin');if(lg)lg.onclick=function(){if(data&&data.status&&data.status.auth==='ok'&&!confirm('Вход в Notion сейчас работает. Войти заново? На почту придёт код (не больше 3 входов в сутки).'))return;msg('Запрашиваю письмо…');call('login',{}).then(function(d){msg((d.ok?'':'⚠ ')+(d.message||''));if(d.ok){$i('naiCode').hidden=false;setTimeout(load,3000)}}).catch(function(e){msg('⚠ '+e.message)})};
@@ -3416,6 +3480,127 @@ ACCT_UI = r'''
 '''
 
 
+WIZ_UI = r'''
+<style id="naiWizStyle">
+#naiWiz{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(5,8,13,.66);padding:16px}
+#naiWiz .nw{width:min(640px,100%);max-height:calc(100vh - 32px);overflow:auto;background:var(--card,#101722);color:var(--txt,#e6edf5);border:1px solid var(--fleet-line,#25303f);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.5);padding:16px 18px;display:grid;gap:12px;box-sizing:border-box}
+#naiWiz .nw-h{display:flex;justify-content:space-between;align-items:center;gap:10px;font-weight:600;font-size:15px}
+#naiWiz .nw-x{background:none;border:0;color:inherit;font-size:22px;cursor:pointer;line-height:1;padding:0 4px}
+#naiWiz .nw-steps{display:flex;gap:6px;flex-wrap:wrap}
+#naiWiz .nw-s{font-size:12px;padding:3px 9px;border:1px solid var(--fleet-line,#25303f);border-radius:999px;background:none;color:var(--fleet-muted,#8c9bad);cursor:pointer}
+#naiWiz .nw-s.on{border-color:#a78bfa;color:var(--txt,#e6edf5);background:rgba(167,139,250,.14)}
+#naiWiz .nw-s.ok::before{content:'✓ ';color:#6ee7b7}
+#naiWiz .nw-b{display:grid;gap:10px;font-size:13.5px;line-height:1.5}
+#naiWiz .nw-b p{margin:0}
+#naiWiz .nw-note{font-size:12.5px;color:var(--fleet-muted,#8c9bad)}
+#naiWiz .nw-ok{color:#6ee7b7}#naiWiz .nw-bad{color:#ef8f8f}
+#naiWiz input,#naiWiz textarea{width:100%;box-sizing:border-box}
+#naiWiz textarea{min-height:150px;font:12px/1.5 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.25);color:inherit;border:1px solid var(--fleet-line,#25303f);border-radius:8px;padding:8px}
+#naiWiz pre{margin:0;max-height:170px;overflow:auto;font:11.5px/1.45 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.3);border:1px solid var(--fleet-line,#25303f);border-radius:8px;padding:8px;white-space:pre-wrap;overflow-wrap:anywhere}
+#naiWiz .nw-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#naiWiz .nw-f{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--fleet-line,#25303f)}
+#naiWiz code{font:11.5px/1.5 ui-monospace,Menlo,monospace;background:rgba(0,0,0,.3);border:1px solid var(--fleet-line,#25303f);padding:0 5px;border-radius:5px;overflow-wrap:anywhere}
+#naiWiz a{color:#a78bfa}
+</style>
+<script id="naiWizScript">
+// Мастер «Подключить Notion AI»: шаги с проверкой каждого (те же ручки API, что и в ⚙ → Notion AI), первый шаг ставит службы из панели
+(function(){try{
+var tok=typeof TOKEN!=='undefined'?TOKEN:'',base=(typeof API!=='undefined'?API:'/api/')+'notion-ai/',root=null,step=0,D=null,I=null,chk=null,tm=0,msg='',busy=false,agentDone=false,codeSent=false;
+function en(){try{return typeof LANG!=='undefined'&&LANG==='en'}catch(_){return false}}
+function T(ru,e){return en()?e:ru}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function call(path,body){return fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:body?JSON.stringify(body):undefined,cache:'no-store'}).then(function(r){return r.json()})}
+var STEPS=['install','chat','login','token','key','check','agent'];
+var NAMES={install:['Службы','Services'],chat:['Ссылка на чат','Chat link'],login:['Вход в Notion','Sign in'],token:['Токен API','API token'],key:['Ключ и инструкция','Key and instruction'],check:['Проверка','Check'],agent:['Свой агент','Your agent']};
+function st(){return (D&&D.status)||{}}
+function cf(){return (D&&D.cfg)||{}}
+function done(id){
+ if(id==='install')return !!(I&&I.installed);
+ if(id==='chat')return !!cf().chat_url;
+ if(id==='login')return st().auth==='ok';
+ if(id==='token')return !!st().pat;
+ if(id==='key')return (st().keys||0)>0;
+ if(id==='check')return !!(chk&&chk.ok);
+ return agentDone}
+function load(){return Promise.all([call('config').catch(function(){return null}),call('install').catch(function(){return null})]).then(function(r){if(r[0]&&r[0].ok)D=r[0];if(r[1]&&r[1].ok)I=r[1];paint()})}
+function poll(delay){clearTimeout(tm);tm=setTimeout(function(){if(!root)return;load().then(function(){var id=STEPS[step];
+ if(id==='install'&&I&&I.running)poll(3000);else if(id==='login'&&codeSent&&st().auth!=='ok')poll(5000)})},delay||3000)}
+function p(t){return '<p>'+t+'</p>'}
+function note(t){return '<p class="nw-note">'+t+'</p>'}
+function okline(t){return '<p class="nw-ok">✓ '+t+'</p>'}
+function body(id){
+ var c=cf(),s=st(),h='';
+ if(id==='install'){
+  if(I&&I.installed)h=okline(T('Службы Notion AI стоят и работают.','Notion AI services are installed and running.'));
+  else if(I&&I.running)h=p(T('Идёт установка… Обычно 3–10 минут: скачивается браузер Chromium (около 400 МБ). Окно можно не закрывать.','Installing… usually 3–10 minutes: the Chromium browser (about 400 MB) is downloaded. You can keep this window open.'))+'<pre>'+esc((I.log||[]).join('\n'))+'</pre>';
+  else if(I&&I.phase==='error')h='<p class="nw-bad">'+T('Установка не удалась (код '+I.rc+'). Последние строки:','Installation failed (code '+I.rc+'). Last lines:')+'</p><pre>'+esc((I.log||[]).join('\n'))+'</pre><div class="nw-row"><button type="button" data-do="inst">'+T('Повторить','Retry')+'</button></div>';
+  else if(I&&!I.src)h='<p class="nw-bad">'+T('На сервере нет файлов установки Notion AI. Обнови балансер: ⚙ → Обновления → «Проверить».','The Notion AI install files are missing on this server. Update the balancer: ⚙ → Updates → “Check”.')+'</p>';
+  else h=p(T('Notion AI работает через отдельные службы: отправка сообщений в чат Notion, окно «Notion AI» в консоли. Панель поставит их сама (нужен интернет и около 400 МБ места).','Notion AI runs as separate services: sending messages to the Notion chat and the “Notion AI” console window. The panel installs them for you (internet and about 400 MB of disk needed).'))+'<div class="nw-row"><button type="button" data-do="inst">'+T('Установить службы','Install services')+'</button></div>';
+ }else if(id==='chat'){
+  h=p(T('В Notion открой Notion AI, начни новый чат и скопируй адрес из строки браузера. Это будет постоянный чат: сюда приходят сообщения из Telegram и из консоли панели.','In Notion open Notion AI, start a new chat and copy its address from the browser. This is the permanent chat: messages from Telegram and from the panel console arrive here.'))
+   +'<input class="dlginp" id="nwUrl" spellcheck="false" autocomplete="off" placeholder="https://app.notion.com/chat?t=…" value="'+esc(c.chat_url)+'"><div class="nw-row"><button type="button" data-do="chat">'+T('Сохранить','Save')+'</button></div>'+(done(id)?okline(T('Ссылка на чат сохранена.','Chat link saved.')):'');
+ }else if(id==='login'){
+  if(s.auth==='ok')h=okline(T('Вход в Notion на сервере подключён.','Notion sign-in on the server is connected.'));
+  else h=p(T('Сервер входит в Notion по коду из письма (пароль не нужен). Впиши почту аккаунта Notion и нажми «Отправить код».','The server signs in to Notion with a code from an email (no password). Enter your Notion account email and press “Send code”.'))
+   +'<input class="dlginp" id="nwMail" type="email" autocomplete="off" placeholder="name@example.com" value="'+esc(c.notion_email)+'"><div class="nw-row"><button type="button" data-do="mail">'+T('Отправить код','Send code')+'</button></div>'
+   +(codeSent||s.auth==='login_wait'||s.login_busy?'<input class="dlginp" id="nwCode" inputmode="numeric" maxlength="6" placeholder="'+T('6 цифр из письма','6 digits from the email')+'" style="max-width:200px"><div class="nw-row"><button type="button" data-do="code">'+T('Ввести код','Enter code')+'</button></div>':'')
+   +note(T('Входов не больше 3 в сутки. Письмо может идти до минуты.','No more than 3 sign-ins per day. The email can take up to a minute.'));
+ }else if(id==='token'){
+  h=p(T('Токен нужен, чтобы видеть и создавать своих агентов Notion. Главный агент работает и без него — шаг можно пропустить.','The token is needed to see and create your own Notion agents. The main agent works without it — you can skip this step.'))
+   +note(T('Где взять: ','Where to get it: ')+'<a href="https://www.notion.so/profile/integrations" target="_blank" rel="noopener">notion.so/profile/integrations</a> → '+T('новая внутренняя интеграция → скопируй секрет (строка <code>ntn_…</code>).','new internal integration → copy the secret (a <code>ntn_…</code> string).'))
+   +'<input class="dlginp" id="nwTok" type="password" autocomplete="off" spellcheck="false" placeholder="'+(s.pat?T('токен уже сохранён — вставь новый, чтобы заменить','a token is saved — paste a new one to replace it'):'ntn_…')+'"><div class="nw-row"><button type="button" data-do="tok">'+T('Сохранить токен','Save token')+'</button></div>'+(s.pat?okline(T('Токен сохранён.','Token saved.')):'');
+ }else if(id==='key'){
+  h=p(T('1) Скопируй инструкцию и отправь её первым сообщением в постоянный чат Notion AI. 2) Попроси Notion AI создать SSH-ключ и прислать публичную часть (одна строка <code>ssh-ed25519 AAAA…</code>). 3) Вставь её ниже.','1) Copy the instruction and send it as the first message to the permanent Notion AI chat. 2) Ask Notion AI to create an SSH key and send the public part (one line <code>ssh-ed25519 AAAA…</code>). 3) Paste it below.'))
+   +'<textarea id="nwInstr" readonly>'+esc((D&&D.instruction)||'')+'</textarea><div class="nw-row"><button type="button" class="ghostbtn" data-do="copy">'+T('Скопировать инструкцию','Copy the instruction')+'</button></div>'
+   +'<input class="dlginp" id="nwKey" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA…"><div class="nw-row"><button type="button" data-do="key">'+T('Добавить ключ','Add the key')+'</button></div>'
+   +((s.keys||0)>0?okline(T('Ключей добавлено из панели: ','Keys added from the panel: ')+s.keys):'')+note(T('Агент с ключом получает доступ к серверу как root — выдавай, только если это нужно.','An agent with a key gets root access to the server — only grant it if you need it.'));
+ }else if(id==='check'){
+  h=p(T('Проверка ничего не отправляет ни в чат, ни в Telegram — только читает состояние.','The check sends nothing to the chat or Telegram — it only reads the state.'))+'<div class="nw-row"><button type="button" data-do="check">'+T('Проверить связь','Check the connection')+'</button></div>';
+  if(chk)h+='<div>'+(chk.items||[]).map(function(x){return '<div class="'+(x.ok?'nw-ok':'nw-bad')+'">'+(x.ok?'✓':'✗')+' <b>'+esc(x.name)+':</b> '+esc(x.text)+'</div>'}).join('')+'</div>';
+ }else{
+  h=p(T('Остался свой агент по проекту: плитка Notion AI → «＋ Новый агент» (имя, модель, effort). Нужен токен из шага 4. У каждого агента свой ключ и свой чат.','Last: your own project agent — the Notion AI tile → “＋ New agent” (name, model, effort). It needs the token from step 4. Every agent has its own key and chat.'))
+   +'<div class="nw-row"><button type="button" data-do="agent">'+T('Открыть «Новый агент»','Open “New agent”')+'</button></div>'+note(T('Готово: основная настройка закончена, агенты и чат работают.','Done: the main setup is finished.'));
+ }
+ return h}
+function paint(){
+ if(!root)return;var id=STEPS[step];
+ root.innerHTML='<div class="nw"><div class="nw-h"><span>'+T('Подключить Notion AI','Set up Notion AI')+' · '+T('шаг ','step ')+(step+1)+T(' из ',' of ')+STEPS.length+'</span><button type="button" class="nw-x" data-do="close" aria-label="'+T('Закрыть','Close')+'">×</button></div>'
+  +'<div class="nw-steps">'+STEPS.map(function(k,i){return '<button type="button" class="nw-s'+(i===step?' on':'')+(done(k)?' ok':'')+'" data-go="'+i+'">'+(i+1)+'. '+esc(T(NAMES[k][0],NAMES[k][1]))+'</button>'}).join('')+'</div>'
+  +'<div class="nw-b">'+body(id)+'<div class="nw-note" id="nwMsg">'+esc(msg)+'</div></div>'
+  +'<div class="nw-f"><button type="button" class="ghostbtn" data-do="prev"'+(step?'':' disabled')+'>← '+T('Назад','Back')+'</button><button type="button" data-do="next"'+(step<STEPS.length-1?'':' disabled')+'>'+T('Дальше','Next')+' →</button></div></div>'}
+function say(t){msg=t||'';var m=document.getElementById('nwMsg');if(m)m.textContent=msg}
+function val(id){var e=document.getElementById(id);return e?e.value.trim():''}
+function act(a){
+ if(busy)return;
+ if(a==='close')return close();
+ if(a==='prev'){step=Math.max(0,step-1);msg='';paint();return after()}
+ if(a==='next'){step=Math.min(STEPS.length-1,step+1);msg='';paint();return after()}
+ if(a==='copy'){var t=document.getElementById('nwInstr');t.select();try{navigator.clipboard.writeText(t.value).then(function(){say(T('Скопировано','Copied'))},function(){document.execCommand('copy');say(T('Скопировано','Copied'))})}catch(_){document.execCommand('copy');say(T('Скопировано','Copied'))}return}
+ if(a==='agent'){agentDone=true;close();var r=document.querySelector('#fleetActiveAccounts .fleet-compact-account.notion');if(r&&!document.querySelector('.nai-ag-new'))r.click();setTimeout(function(){var n=document.querySelector('.nai-ag-new');if(n)n.click()},400);return}
+ var req=null,after2=null;
+ if(a==='inst'){say(T('Запускаю установку…','Starting the installation…'));req=call('install/start',{})}
+ else if(a==='chat'){req=call('config',{chat_url:val('nwUrl')})}
+ else if(a==='mail'){var m=val('nwMail');say(T('Отправляю код…','Sending the code…'));req=(m?call('config',{notion_email:m}):Promise.resolve({ok:true})).then(function(d){if(d&&d.ok===false)return d;return call('login',{})}).then(function(d){if(d&&d.ok)codeSent=true;return d})}
+ else if(a==='code'){req=call('code',{code:val('nwCode')}).then(function(d){if(d&&d.ok)poll(5000);return d})}
+ else if(a==='tok'){req=call('config',{notion_token:val('nwTok')})}
+ else if(a==='key'){req=call('key',{action:'add',key:val('nwKey')})}
+ else if(a==='check'){say(T('Проверяю…','Checking…'));req=call('check',{}).then(function(d){chk=d;return {ok:d.ok,message:d.ok?T('Всё на месте','Everything is in place'):T('Есть что поправить — см. список','Something needs fixing — see the list')}})}
+ if(!req)return;
+ busy=true;
+ req.then(function(d){busy=false;msg=((d&&d.ok===false)?'⚠ ':'')+((d&&d.message)||'');return load()}).then(function(){if(a==='inst')poll(3000)}).catch(function(e){busy=false;say('⚠ '+(e&&e.message||e))})}
+function after(){var id=STEPS[step];if(id==='install'||id==='login'||id==='key'||id==='token')load();if(id==='install'||(id==='login'&&codeSent))poll(3000)}
+function close(){clearTimeout(tm);if(root){root.remove();root=null}document.removeEventListener('keydown',onKey);try{localStorage.setItem('naiWizStep',String(step))}catch(_){}}
+function onKey(e){if(e.key==='Escape')close()}
+window.naiWizOpen=function(){
+ if(root)return;root=document.createElement('div');root.id='naiWiz';root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');
+ root.addEventListener('click',function(e){var b=e.target.closest('[data-do],[data-go]');if(e.target===root){close();return}if(!b)return;if(b.dataset.go!==undefined){step=+b.dataset.go;msg='';paint();after()}else act(b.dataset.do)});
+ document.body.appendChild(root);document.addEventListener('keydown',onKey);step=0;msg='';paint();
+ load().then(function(){var first=STEPS.findIndex(function(k){return !done(k)});step=first<0?STEPS.length-1:first;paint();after()})};
+}catch(e){console.warn('nai-wizard',e)}})();
+</script>
+'''
+
+
 def inject(page):
     if 'id="naiCfgBox"' not in page and page.count(CFG_ANCHOR) == 1:
         page = page.replace(CFG_ANCHOR, CFG_HTML + CFG_ANCHOR, 1)
@@ -3427,6 +3612,9 @@ def inject(page):
     if 'id="naiAcctScript"' not in page:
         i = page.rfind('</body>')
         page = page[:i] + ACCT_UI + page[i:] if i >= 0 else page + ACCT_UI
+    if 'id="naiWizScript"' not in page:
+        i = page.rfind('</body>')
+        page = page[:i] + WIZ_UI + page[i:] if i >= 0 else page + WIZ_UI
     if 'id="naiPickerStyle"' not in page and page.count(PICKER_ANCHOR) == 1:
         page = page.replace(PICKER_ANCHOR, PICKER_JS + PICKER_ANCHOR, 1)
         i = page.find('</head>')
@@ -3441,16 +3629,18 @@ def install(ns, profiles):
     posts = ('/api/notion-ai/on', '/api/notion-ai/off', '/api/notion-ai/step', '/api/notion-ai/step/confirm', '/api/notion-ai/send',
              '/api/notion-ai/config', '/api/notion-ai/check', '/api/notion-ai/key', '/api/notion-ai/login', '/api/notion-ai/code',
              '/api/notion-ai/model', '/api/notion-ai/agents/create', '/api/notion-ai/agents/settings', '/api/notion-ai/agents/delete',
-             '/api/notion-ai/agents/sync', '/api/notion-ai/agents/tg', '/api/notion-ai/agents/tgtest')
+             '/api/notion-ai/agents/sync', '/api/notion-ai/agents/tg', '/api/notion-ai/agents/tgtest', '/api/notion-ai/install/start')
 
     class NotionAIHandler(base):
         def do_GET(self):
             path = urlparse(self.path).path
-            if path not in ('/api/notion-ai', '/api/notion-ai/view', '/api/notion-ai/config', '/api/notion-ai/model', '/api/notion-ai/agents') \
+            if path not in ('/api/notion-ai', '/api/notion-ai/view', '/api/notion-ai/config', '/api/notion-ai/model', '/api/notion-ai/agents', '/api/notion-ai/install') \
                     and not path.startswith(('/api/notion-ai/send/', '/api/notion-ai/agents/view/', '/api/notion-ai/agents/job/')):
                 return base.do_GET(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
+            if path == '/api/notion-ai/install':
+                return self._send(200, install_state())
             if path == '/api/notion-ai/agents':
                 return self._send(200, agents_public())
             if path.startswith('/api/notion-ai/agents/view/'):
@@ -3484,6 +3674,8 @@ def install(ns, profiles):
                 if path.endswith('/on'):
                     result = nai.on(kind=body.get('kind') or 'full', follower=body.get('follower'),
                                     by=str(body.get('by') or 'панель')[:40], force=body.get('force') is True)
+                elif path.endswith('/install/start'):
+                    result = install_start()
                 elif path.endswith('/off'):
                     result = nai.off(str(body.get('reason') or 'выключен на панели')[:80])
                 elif path.startswith('/api/notion-ai/agents/'):
