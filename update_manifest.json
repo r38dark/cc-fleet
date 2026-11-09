@@ -1,5 +1,5 @@
 {
-  "version": "2.0.7",
+  "version": "2.0.9",
   "needs_install": true,
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
