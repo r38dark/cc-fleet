@@ -315,7 +315,9 @@ class Api(Base):
         self.assertTrue(B.make(self.prof, self.dest, now=T0)["ok"])
         r = self.call("/api/account/delete", {"account": "acc2", "confirm": "подтверждаю"})
         self.assertTrue(r.get("ok"), r)
-        self.assertFalse(os.path.exists(self.prof + "/acc2"))
+        self.assertTrue(os.path.isdir(self.prof + "/acc2"))
+        self.assertNotIn("claudeAiOauth", json.load(open(self.prof + "/acc2/credentials.json")))
+        self.assertNotIn("acc2", L.profile_names())
         self.assertEqual(self.call("/api/backup")["missing"], [])
         self.assertEqual(self.call("/api/backup/restore", {})["restored"], [])
 

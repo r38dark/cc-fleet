@@ -25,6 +25,16 @@ def make_account(uid, email="a@b.c"):
 
 class DeleteLastAccount(unittest.TestCase):
     def setUp(self):
+        from unittest.mock import patch
+        live = tempfile.TemporaryDirectory(prefix="cc-disconnect-live-")
+        self.addCleanup(live.cleanup)
+        for key, fname in (("LIVE_CFG", "config.json"), ("LIVE_CREDS", "credentials.json")):
+            field = patch.object(L, key, os.path.join(live.name, fname))
+            field.start()
+            self.addCleanup(field.stop)
+        guard = patch.object(L, "_current_screen_pid", return_value=None)
+        guard.start()
+        self.addCleanup(guard.stop)
         os.makedirs(L.PROFILES, exist_ok=True)
         os.makedirs(L.BASE, exist_ok=True)
         for p in os.listdir(L.PROFILES):

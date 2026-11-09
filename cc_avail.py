@@ -7,7 +7,7 @@
 # Сравнивать аккаунты по одному сбросу сессии нельзя: сессия может освободиться через
 # 5 минут, а неделя держать ещё сутки, и наоборот.
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def _ts(iso):
@@ -66,6 +66,45 @@ def nearest(accs, ses_thr, week_cap, exclude=(), now=None):
         if t is not None and (best is None or t < best[0]):
             best = (t, n, why)
     return best
+
+
+def fleet_summary(local, remote, ses_thr, week_cap, now=None):
+    """Общая сводка для интерфейса; не меняет локальные гейты и будильники."""
+    now = time.time() if now is None else now
+    members, candidates, unknown = {}, {}, []
+    for source, accounts in (("local", local), ("remote", remote)):
+        for name, row in (accounts or {}).items():
+            if not isinstance(row, dict):
+                continue
+            key = source + ":" + name
+            pct = (row.get("five_hour") or {}).get("pct")
+            week = (row.get("seven_day") or {}).get("pct")
+            known = not row.get("error") and (row.get("plan") == "free" or
+                    (isinstance(pct, (int, float)) and isinstance(week, (int, float))))
+            if source == "remote":
+                try:
+                    known = known and bool(row.get("online")) and 0 <= now - float(row.get("ts") or 0) <= 900
+                except (ValueError, TypeError):
+                    known = False
+            usable, when, held = availability(row, ses_thr, week_cap, now) if known else (None, None, "unknown")
+            label = str(row.get("label") or name)
+            members[key] = dict(label=label, source=source, pct=pct, wpct=week,
+                                known=bool(known), usable=usable, held=held)
+            if known:
+                candidates[key] = row
+            else:
+                unknown.append(key)
+    nearest_account = nearest(candidates, ses_thr, week_cap, now=now)
+    next_free = {}
+    if nearest_account:
+        timestamp, key, held = nearest_account
+        next_free = dict(acc=key, label=members[key]["label"],
+                         resets_at=datetime.fromtimestamp(timestamp, timezone.utc).isoformat(), held=held)
+    all_blocked = bool(members) and not unknown and all(m["usable"] is False for m in members.values())
+    return dict(accounts=members, remote_count=sum(m["source"] == "remote" for m in members.values()),
+                all_blocked=all_blocked, unknown=unknown, nearest=next_free,
+                all_week_capped=all_blocked and all(m["held"] != "free" and m["wpct"] is not None
+                                                   and m["wpct"] >= week_cap for m in members.values()))
 
 
 def next_reset_ts(accs, now=None):

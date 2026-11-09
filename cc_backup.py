@@ -15,6 +15,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import cc_disconnect
 
 KEEP = 14  # сколько датированных копий хранить
 DAY = 86400
@@ -41,6 +42,8 @@ def _jload(path):
 def is_real(profiles, name):
     """Настоящий профиль: сохранён аккаунт (accountUuid) и есть токены, а не пустой слот установщика."""
     d = os.path.join(profiles, name)
+    if os.path.exists(os.path.join(d, cc_disconnect.MARKER)):
+        return False
     oa = _jload(os.path.join(d, "oauth_account.json"))
     cr = os.path.join(d, "credentials.json")
     return bool(isinstance(oa, dict) and oa.get("accountUuid")) and os.path.isfile(cr) and os.path.getsize(cr) > 2

@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 
 import cc_handoff_tail as HT
 import cc_tz
+import cc_disconnect
 from cc_claude_profile import atomic
 
 BRIDGE_UNIT = 'notion-ai-tg.service'
@@ -42,6 +43,7 @@ NAMES = {'claude': 'Claude', 'codex': 'Codex'}
 AUTO_MESSAGE = 'Автоматический сценарий обновлён.'
 DELEGATE = 'http://127.0.0.1:8893'
 DTOKEN = '/root/notion_web/api_token'
+DISCONNECTED = '/root/notion_web/DISCONNECTED'
 TG_ENV = '/root/.claude/channels/telegram/.env'
 TG_ACCESS = '/root/.claude/channels/telegram/access.json'
 INBOX = '/root/notion_ai_inbox'
@@ -200,6 +202,10 @@ class NotionAI:
 
     def public(self):
         d = self.data
+        if os.path.exists(DISCONNECTED):
+            return dict(ok=True, active=False, kind=None, follower=None, title=TITLE,
+                        chat_url='', email='', console_tab=False, bridge='inactive',
+                        model={}, step=None, agents=self.agents(), billing={})
         return dict(ok=True, active=self.active(), kind=self.kind(), follower=self.follower(), title=self.title(),
                     full_title=TITLE, since=d.get('since', 0), claude_was_running=bool(d.get('claude_was_running')),
                     bridge=self.bridge_state(), chat_url=chat_url(), owner=owner(), console_tab=load_cfg()['console_tab'], last_error=self.error, ready=self.readiness(),
@@ -257,8 +263,8 @@ class NotionAI:
         # не подключённые Codex и Notion AI — «призрачные» плитки с предложением установить, а не «работает»
         if not active and not self.codex_linked():
             out['codex'] = dict(state='unlinked', text=AG_TEXT['unlinked'], label='Codex · не подключён')
-        if not active and not notion_installed():
-            out['notion'] = dict(state='unlinked', text='не установлен', label='Notion AI · не установлен')
+        if not active and (not notion_installed() or os.path.exists(DISCONNECTED)):
+            out['notion'] = dict(state='unlinked', text='не подключён', label='Notion AI · не подключён')
         return out
 
     # ── Telegram и чат Notion AI ───────────────────────────────────────────
@@ -776,6 +782,8 @@ class NotionAI:
 
     # ── включение / переключение / выключение ─────────────────────────────
     def on(self, kind='full', follower=None, by='панель', force=False):
+        if os.path.exists(DISCONNECTED):
+            return dict(ok=False, message='Notion AI отключён — сначала войди в аккаунт заново.')
         kind = 'orchestrator' if kind == 'orchestrator' else 'full'
         follower = follower if kind == 'orchestrator' else None
         if kind == 'orchestrator' and follower not in FOLLOWERS:
@@ -913,6 +921,62 @@ class NotionAI:
                 self.tell_claude_chat('↩️ Профиль «%s» выключен (%s). %s. Профиль Claude: %s' % (t, reason, claude, now['claude']))
                 self.tell_codex_chat('▶️ Codex снова принимает сообщения. Профиль Codex: %s' % now['codex'])
             return dict(ok=True, message='Профиль Notion AI выключен.' + (' ' + self.error if self.error else ''), state=self.public())
+
+    def disconnect(self, confirm):
+        """Forget local authorization, retaining installed services, chats and data."""
+        if str(confirm or '').strip().lower() not in ('подтверждаю', 'confirm'):
+            return dict(ok=False, message='Слово подтверждения введено неверно — ничего не отключено.')
+        with self.lock:
+            if self.step_busy():
+                return dict(ok=False, message='Идёт подтверждённый шаг — дождись результата.')
+            web = Path(DTOKEN).parent
+            creds = [self.ns.get('LIVE_CREDS', '/root/.claude/.credentials.json')]
+            profiles = Path(self.ns.get('PROFILES', '/root/.claude-profiles'))
+            if profiles.exists():
+                creds += [str(p / 'credentials.json') for p in profiles.iterdir()
+                          if re.fullmatch(r'acc[0-9]{1,3}', p.name) and not p.is_symlink()]
+            auth = [web / f for f in ('state.json', 'state.new.json', 'code.txt', 'notion_pat')]
+            try:
+                if web.is_symlink():
+                    raise OSError('symbolic link')
+                for p in auth + [Path(AUTH_KEYS), Path(CFG_FILE), Path(DISCONNECTED), web / 'DISABLED']:
+                    cc_disconnect.plain(p)
+                for p in creds:
+                    cc_disconnect.read(p)
+            except (OSError, ValueError):
+                return dict(ok=False, message='Не удалось безопасно прочитать авторизацию — отключение отменено.')
+            if self.active():
+                result = self.off(reason='аккаунт отключён', notify=False)
+                if not result.get('ok'):
+                    return result
+            # Stop every browser that could write its cookies back, including a pending login.
+            units = [u for u, _ in UNITS]
+            code, _ = _run(['systemctl', 'disable', '--now'] + units, 45)
+            if code != 0:
+                return dict(ok=False, message='Не удалось остановить службы Notion AI — авторизация не удалена. Повтори отключение.')
+            for unit in units:
+                state = _run(['systemctl', 'is-active', unit], 10)[1].strip()
+                if state not in ('inactive', 'failed', 'unknown'):
+                    return dict(ok=False, message='Служба Notion AI ещё работает — повтори отключение.')
+            try:
+                cc_disconnect.write(web / 'DISABLED', {'disabled': True})
+                for p in auth:
+                    cc_disconnect.remove(p)
+                for p in creds:
+                    cc_disconnect.drop_notion_mcp(p)
+                ok, _ = key_remove()
+                if not ok:
+                    raise OSError('SSH cleanup failed')
+                # Keep the non-secret connection metadata on disk, outside the active config.
+                current = load_cfg()
+                if current != dict(CFG_DEFAULTS, console_tab=False):
+                    saved = Path(CFG_FILE).with_name('notion_ai.saved.%s.json' % time.time_ns())
+                    cc_disconnect.write(saved, current)
+                atomic(Path(CFG_FILE), dict(CFG_DEFAULTS, console_tab=False))
+                cc_disconnect.write(DISCONNECTED, {'disconnected': True})
+            except (OSError, ValueError):
+                return dict(ok=False, message='Отключение не завершено — повтори его. История и файлы сохранены.')
+            return dict(ok=True, message='Notion AI отключён. Программы, история и файлы сохранены.')
 
     # ── шаги оркестратора ──────────────────────────────────────────────────
     def step_public(self):
@@ -1128,7 +1192,10 @@ class NotionAI:
             with self.lock, p.lock:
                 if not self.active():
                     target_claude = bool((body.get('choices') or {}).get('claude'))
-                    if not target_claude or self.claude_running():return orig_scenario(body)
+                    # Активная удалённая сессия проверяется NativeProfiles; для неё
+                    # не нужен запуск локальной беседы из снимка передачи.
+                    if (not target_claude or self.claude_running()
+                            or getattr(n, '_remote', lambda: None)() is not None):return orig_scenario(body)
                     try:
                         cand = type(p.state).from_data(p.state.export(), p.clock)
                         dry = cand.apply_scenario(body.get('choices'), body.get('confirm', ''), body.get('revision'))
@@ -1579,7 +1646,7 @@ html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"],html.ag-un
 html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"]>*,html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]>*{display:none!important}
 html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"]::after,html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]::after{display:flex;align-items:center;min-height:42px;box-sizing:border-box;padding:0 14px;border:1px dashed rgba(139,147,167,.6);border-radius:8px;color:var(--fleet-muted,#8c9bad);font-size:12.5px}
 html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"]::after{content:'Codex не подключён — нажми, чтобы подключить'}
-html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]::after{content:'Notion AI не установлен — нажми, чтобы узнать как'}
+html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"]::after{content:'Notion AI не подключён — нажми, чтобы подключить'}
 html.ag-unlinked-codex #fleetLiveRows .fleet-acc[data-engine="codex"][data-ghost]::after,html.ag-unlinked-notion #fleetLiveRows .fleet-acc[data-engine="notion"][data-ghost]::after{content:attr(data-ghost)}
 .nai-ag.short .nai-full{display:none}
 .nai-ag.short .nai-short{display:inline}
@@ -1761,7 +1828,7 @@ function fit(){var cl=document.documentElement.classList;for(var i=0;i<LEVELS.le
 var unSig='';   // какие агенты сейчас «не подключены»: при смене пересчитываем вкладки и кнопку разделения консоли
 function isEn(){try{return typeof LANG!=='undefined'&&LANG==='en'}catch(_){return false}}
 function ghostMark(){['codex','notion'].forEach(function(k){var row=document.querySelector('#fleetLiveRows .fleet-acc[data-engine="'+k+'"]');if(!row)return;
- if(agState(k).state==='unlinked'){var t=isEn()?(k==='codex'?'Codex is not connected — click to set it up':'Notion AI is not installed — click to see how'):(k==='codex'?'Codex не подключён — нажми, чтобы подключить':'Notion AI не установлен — нажми, чтобы узнать как');if(row.dataset.ghost!==t)row.dataset.ghost=t}else if(row.dataset.ghost)delete row.dataset.ghost})}
+ if(agState(k).state==='unlinked'){var t=isEn()?(k==='codex'?'Codex is not connected — click to set it up':'Notion AI is not connected — click to set it up'):(k==='codex'?'Codex не подключён — нажми, чтобы подключить':'Notion AI не подключён — нажми, чтобы подключить');if(row.dataset.ghost!==t)row.dataset.ghost=t}else if(row.dataset.ghost)delete row.dataset.ghost})}
 function linkPop(k,anchor){var en=isEn(),codex=k==='codex',
  txt=codex?(en?'Codex is not connected: no ChatGPT account has been added yet. The wizard installs it and walks you through the sign-in step by step.':'Codex не подключён: ни один аккаунт ChatGPT ещё не добавлен. Мастер поставит его и проведёт по входу по шагам.')
   :(en?'Notion AI is not set up on this server. The wizard installs its services and walks you through the connection step by step.':'Notion AI не подключён на этом сервере. Мастер поставит его службы и проведёт по подключению по шагам.'),
@@ -2497,12 +2564,16 @@ def key_remove():
     p = Path(AUTH_KEYS)
     try:
         lines = p.read_text().splitlines()
-    except OSError:
+    except FileNotFoundError:
         return True, 'Ключей Notion AI нет.'
+    except OSError:
+        return False, 'Не удалось прочитать ключи Notion AI.'
     keep = [l for l in lines if not l.strip().endswith(KEY_MARK)]
     if len(keep) == len(lines):
         return True, 'Ключей, добавленных из панели, нет.'
-    p.write_text('\n'.join(keep) + ('\n' if keep else ''))
+    cc_disconnect.plain(p)
+    from cc_lock import atomic_write
+    atomic_write(str(p), '\n'.join(keep) + ('\n' if keep else ''), 0o600)
     return True, 'Ключи Notion AI, добавленные из панели, убраны (%d).' % (len(lines) - len(keep))
 
 
@@ -2783,6 +2854,23 @@ def cfg_check():
 
 
 def login_start():
+    if os.path.exists(DISCONNECTED):
+        if not load_cfg().get('notion_email'):
+            return dict(ok=False, message='Сначала укажи и сохрани почту нового входа.')
+        code, _ = _run(['systemctl', 'enable', '--now', 'notion-delegate.service', 'notion-ai-view.service'], 30)
+        if code != 0:
+            return dict(ok=False, message='Не удалось запустить службы для нового входа.')
+        # Explicit reconnect; no background login is allowed while disconnected.
+        for _ in range(20):
+            if delegate_health():
+                break
+            time.sleep(.25)
+        j = _delegate('/relogin', {})
+        if j.get('error'):
+            return dict(ok=False, message='Новый вход не начат.')
+        cc_disconnect.remove(DISCONNECTED)
+        cc_disconnect.remove(Path(DTOKEN).parent / 'DISABLED')
+        return dict(ok=True, message='Новый вход начат. Введи код из письма.')
     j = _delegate('/relogin', {})
     if j.get('error'):
         return dict(ok=False, message='Вход не начат: ' + str(j['error'])[:160])
@@ -2937,7 +3025,7 @@ function render(){var box=$i('naiCfgBox');if(!box||!data)return;var c=data.cfg||
   ['Вход в Notion',dot(auth[0]&&!lw,lw&&auth[0]?'подключён · идёт новый вход':auth[1])+(c.notion_email?' '+mut('· '+c.notion_email):'')+(lw?'':'<button type="button" class="ghostbtn" id="naiLogin">'+(auth[0]?'Войти заново':'Войти')+'</button>')],
   ['Сервисы',units]])
   +'<div id="naiCode" class="nc-row"'+(lw?'':' hidden')+'><input class="dlginp" id="naiCodeIn" maxlength="12" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="код из письма" style="width:150px"><button type="button" id="naiCodeBtn">Ввести код</button></div>'
-  +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiWizOpen">Мастер подключения по шагам</button></div>'
+  +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiWizOpen">Мастер подключения по шагам</button><button type="button" class="ghostbtn" id="naiDisconnect">Отключить аккаунт</button></div>'
   +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiCfgCheck">Проверить связь</button><span class="nc-msg" data-m id="naiCfgMsg"></span></div>'
   +'<div class="nc-chk" id="naiCfgOut" hidden></div>'
   +'<div class="nc-in">'
@@ -2958,7 +3046,20 @@ function save(fields,okMsg){if(busy)return;var c=(data&&data.cfg)||{},body={};fi
  if(!Object.keys(body).length){msg('Изменений нет — сохранять нечего');return}
  busy=true;msg('Сохраняю…');
  call('config',body).then(function(d){busy=false;if(d&&d.ok){if(d.cfg)data=d;render();msg(d.message||okMsg||'Сохранено');try{window.dispatchEvent(new CustomEvent('nai-cfg',{detail:d.cfg}))}catch(_){}}else msg('⚠ '+(d&&d.message||'Не сохранилось'))}).catch(function(e){busy=false;msg('⚠ '+e.message)})}
+function disconnectAsk(){
+ popClose();
+ var word=tr('delWord');
+ acctShow('<h3>Отключить Notion AI?</h3><div class="dlgwarn">Авторизация и добавленные панелью SSH-ключи будут удалены. Аккаунт исчезнет из балансера. Программы, чаты в Notion, история и файлы останутся. Для подключения потребуется новый вход.</div><label class="dlglbl" for="delInp">'+tr('delType',word)+'</label><input id="delInp" class="dlginp" autocomplete="off" spellcheck="false"><div class="dlgerr" id="acctErr" hidden></div><div class="modalfoot"><button class="ghostbtn" id="acctCancel">'+tr('cancel')+'</button><button class="btn-danger" id="delGo" disabled>'+tr('delGo')+'</button></div>');
+ $i('acctCancel').onclick=acctClose;
+ var inp=$i('delInp'),go=$i('delGo');
+ inp.oninput=function(){go.disabled=inp.value.trim().toLowerCase()!==word};
+ inp.onkeydown=function(e){if(e.key==='Enter'&&!go.disabled)go.click()};
+ go.onclick=function(){if(acctBusy||go.disabled)return;acctBusy=true;go.disabled=true;go.textContent=tr('delWorking');
+ call('disconnect',{confirm:inp.value}).then(function(d){acctBusy=false;if(d.ok){acctClose();toast(d.message);load();if(typeof cxbLoad==='function')cxbLoad(true);window.dispatchEvent(new CustomEvent('nai-state',{detail:{active:false}}));return}acctErr(d.message);go.textContent=tr('delGo');go.disabled=false}).catch(function(){acctBusy=false;acctErr('Не удалось завершить отключение. Проверь связь и повтори.');go.disabled=false;go.textContent=tr('delGo')})};
+ setTimeout(function(){inp.focus()},30);
+}
 function bind(){
+ var dc=$i('naiDisconnect');if(dc)dc.onclick=disconnectAsk;
  var sv=$i('naiCfgSave');if(sv)sv.onclick=function(){save([['chat_url','naiCfgUrl'],['owner','naiCfgOwner'],['notion_email','naiCfgMail'],['tg_chat_id','naiCfgTg'],['ssh_host','naiCfgHost'],['notion_token','naiCfgPat'],['voice','naiCfgVoice'],['console_tab','naiCfgTab']])};
  var wz=$i('naiWizOpen');if(wz)wz.onclick=function(){if(window.naiWizOpen)window.naiWizOpen()};
  var ck=$i('naiCfgCheck');if(ck)ck.onclick=function(){msg('Проверяю…');call('check',{}).then(function(d){var o=$i('naiCfgOut');o.hidden=false;
@@ -3204,6 +3305,8 @@ AGENT_ID = re.compile(r'^[0-9a-f-]{32,36}$')
 
 def agents_public():
     """Агенты Notion (список — официальный API, без запуска агентов) + модели из настроек агента + идущие задания."""
+    if os.path.exists(DISCONNECTED):
+        return dict(ok=True, agents=[], models=[], efforts=[], jobs=[], tg_agent='')
     try:
         j = _delegate('/agents', timeout=30)
     except Exception as exc:
@@ -3304,6 +3407,8 @@ def chat_send_status(pid):
 
 def view_public():
     """Окно «Notion AI» в консоли: отмечает, что окно открыто, и отдаёт последние сообщения чата."""
+    if os.path.exists(DISCONNECTED):
+        return dict(ok=True, state='unlinked', message='Notion AI не подключён.', running=False, rows=[], ts=0)
     try:
         Path(VIEW_WANT).touch()
     except OSError:
@@ -3627,6 +3732,7 @@ def install(ns, profiles):
     nai.wrap()
     base = ns['H']
     posts = ('/api/notion-ai/on', '/api/notion-ai/off', '/api/notion-ai/step', '/api/notion-ai/step/confirm', '/api/notion-ai/send',
+             '/api/notion-ai/disconnect',
              '/api/notion-ai/config', '/api/notion-ai/check', '/api/notion-ai/key', '/api/notion-ai/login', '/api/notion-ai/code',
              '/api/notion-ai/model', '/api/notion-ai/agents/create', '/api/notion-ai/agents/settings', '/api/notion-ai/agents/delete',
              '/api/notion-ai/agents/sync', '/api/notion-ai/agents/tg', '/api/notion-ai/agents/tgtest', '/api/notion-ai/install/start')
@@ -3678,6 +3784,8 @@ def install(ns, profiles):
                     result = install_start()
                 elif path.endswith('/off'):
                     result = nai.off(str(body.get('reason') or 'выключен на панели')[:80])
+                elif path.endswith('/disconnect'):
+                    result = nai.disconnect(body.get('confirm'))
                 elif path.startswith('/api/notion-ai/agents/'):
                     result = agents_action(path.rsplit('/', 1)[-1], body)
                 elif path.endswith('/send'):

@@ -1,72 +1,275 @@
 {
-  "version": "2.0.16",
+  "version": "2.0.17",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
-    {"src": "cc_limits.py", "mode": "644"},
-    {"src": "cc_avail.py", "mode": "644"},
-    {"src": "cc_poll.py", "mode": "644"},
-    {"src": "cc_lock.py", "mode": "644"},
-    {"src": "cc_update.py", "mode": "644"},
-    {"src": "cc_codex.py", "mode": "644"},
-    {"src": "cc_codex_bridge.py", "mode": "644"},
-    {"src": "cc_input_queue.py", "mode": "644"},
-    {"src": "cc_codex_console.py", "mode": "644"},
-    {"src": "cc_codex_terminal.py", "mode": "644"},
-    {"src": "cc-codex-console-localize", "mode": "755"},
-    {"src": "cc_codex_emergency.py", "mode": "644"},
-    {"src": "cc_notion.py", "mode": "644"},
-    {"src": "cc_backup.py", "mode": "644"},
-    {"src": "CHANGELOG.json", "mode": "644"},
-    {"src": "limits_gate.py", "mode": "755"},
-    {"src": "pause_ctl.py", "mode": "755"},
-    {"src": "tg_queue.py", "mode": "755"},
-    {"src": "hooks/queue_on_limits.py", "mode": "755"},
-    {"src": "hooks/pause_tool_gate.py", "mode": "755"},
-    {"src": "cc-cmd", "mode": "755"},
-    {"src": "cc-switch", "dst": "/usr/local/bin/cc-switch", "mode": "755"},
-    {"src": "cc_session.py", "mode": "644"},
-    {"src": "cc_codex_rotation.py", "mode": "644"},
-    {"src": "cc_overview.py", "mode": "644"},
-    {"src": "cc_fleet.py", "mode": "644"},
-    {"src": "cc_profiles.py", "mode": "644"},
-    {"src": "cc_profile_state.py", "mode": "644"},
-    {"src": "cc_manual_scenarios.py", "mode": "644"},
-    {"src": "cc_profile_tasks.py", "mode": "644"},
-    {"src": "cc_profile_gate.py", "mode": "644"},
-    {"src": "cc_claude_profile.py", "mode": "644"},
-    {"src": "cc_codex_models.py", "mode": "644"},
-    {"src": "cc_tz.py", "mode": "644"},
-    {"src": "cc_labels.py", "mode": "644"},
-    {"src": "cc_handoff_tail.py", "mode": "644"},
-    {"src": "cc_notion_ai.py", "mode": "644"},
-    {"src": "notion_ai/install.sh", "mode": "755"},
-    {"src": "notion_ai/bin/notion-ai-mode", "mode": "755"},
-    {"src": "notion_ai/bin/notion-ai-reply", "mode": "755"},
-    {"src": "notion_ai/bin/notion-ai-step", "mode": "755"},
-    {"src": "notion_ai/bin/notion-delegate", "mode": "755"},
-    {"src": "notion_ai/systemd/notion-ai-tg.service", "mode": "644"},
-    {"src": "notion_ai/systemd/notion-ai-view.service", "mode": "644"},
-    {"src": "notion_ai/systemd/notion-delegate.service", "mode": "644"},
-    {"src": "notion_ai/web/agent_instructions.md", "mode": "644"},
-    {"src": "notion_ai/web/agent_ops.py", "mode": "644"},
-    {"src": "notion_ai/web/login2.py", "mode": "644"},
-    {"src": "notion_ai/web/nagents.py", "mode": "644"},
-    {"src": "notion_ai/web/notion_ai_tg.py", "mode": "644"},
-    {"src": "notion_ai/web/notion_ai_view.py", "mode": "644"},
-    {"src": "notion_ai/web/server.py", "mode": "644"},
-    {"src": "cc_remote.py", "mode": "644"},
-    {"src": "cc_remote_auto.py", "mode": "644"},
-    {"src": "cc_remote_setup.py", "mode": "644"},
-    {"src": "cc_remote_mode.py", "mode": "644"},
-    {"src": "cc_remote_ui.py", "mode": "644"},
-    {"src": "remote_ctl.py", "mode": "644"},
-    {"src": "remote_usage.py", "mode": "644"},
-    {"src": "return_to_dev.py", "mode": "755"},
-    {"src": "cc-project", "mode": "755"},
-    {"src": "remote_friend_intro.md", "mode": "644"},
-    {"src": "scripts/start_claude.sh", "dst": "start_claude.sh", "mode": "755"},
-    {"src": "scripts/start_claude_side.sh", "dst": "start_claude_side.sh", "mode": "755"},
-    {"src": "scripts/claude_trust_fix.py", "dst": "claude_trust_fix.py", "mode": "755"}
+    {
+      "src": "cc_limits.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_avail.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_poll.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_lock.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_disconnect.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_update.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_codex.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_codex_bridge.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_input_queue.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_codex_console.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_codex_terminal.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc-codex-console-localize",
+      "mode": "755"
+    },
+    {
+      "src": "cc_codex_emergency.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_notion.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_backup.py",
+      "mode": "644"
+    },
+    {
+      "src": "CHANGELOG.json",
+      "mode": "644"
+    },
+    {
+      "src": "limits_gate.py",
+      "mode": "755"
+    },
+    {
+      "src": "pause_ctl.py",
+      "mode": "755"
+    },
+    {
+      "src": "tg_queue.py",
+      "mode": "755"
+    },
+    {
+      "src": "hooks/queue_on_limits.py",
+      "mode": "755"
+    },
+    {
+      "src": "hooks/pause_tool_gate.py",
+      "mode": "755"
+    },
+    {
+      "src": "cc-cmd",
+      "mode": "755"
+    },
+    {
+      "src": "cc-switch",
+      "dst": "/usr/local/bin/cc-switch",
+      "mode": "755"
+    },
+    {
+      "src": "cc_session.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_codex_rotation.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_overview.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_fleet.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_profiles.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_profile_state.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_manual_scenarios.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_profile_tasks.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_profile_gate.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_claude_profile.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_codex_models.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_tz.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_labels.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_handoff_tail.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_notion_ai.py",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/install.sh",
+      "mode": "755"
+    },
+    {
+      "src": "notion_ai/bin/notion-ai-mode",
+      "mode": "755"
+    },
+    {
+      "src": "notion_ai/bin/notion-ai-reply",
+      "mode": "755"
+    },
+    {
+      "src": "notion_ai/bin/notion-ai-step",
+      "mode": "755"
+    },
+    {
+      "src": "notion_ai/bin/notion-delegate",
+      "mode": "755"
+    },
+    {
+      "src": "notion_ai/systemd/notion-ai-tg.service",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/systemd/notion-ai-view.service",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/systemd/notion-delegate.service",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/web/agent_instructions.md",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/web/agent_ops.py",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/web/login2.py",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/web/nagents.py",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/web/notion_ai_tg.py",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/web/notion_ai_view.py",
+      "mode": "644"
+    },
+    {
+      "src": "notion_ai/web/server.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote_auto.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote_setup.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote_mode.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote_ui.py",
+      "mode": "644"
+    },
+    {
+      "src": "remote_ctl.py",
+      "mode": "644"
+    },
+    {
+      "src": "remote_usage.py",
+      "mode": "644"
+    },
+    {
+      "src": "return_to_dev.py",
+      "mode": "755"
+    },
+    {
+      "src": "cc-project",
+      "mode": "755"
+    },
+    {
+      "src": "remote_friend_intro.md",
+      "mode": "644"
+    },
+    {
+      "src": "scripts/start_claude.sh",
+      "dst": "start_claude.sh",
+      "mode": "755"
+    },
+    {
+      "src": "scripts/start_claude_side.sh",
+      "dst": "start_claude_side.sh",
+      "mode": "755"
+    },
+    {
+      "src": "scripts/claude_trust_fix.py",
+      "dst": "claude_trust_fix.py",
+      "mode": "755"
+    }
   ]
 }

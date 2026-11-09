@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.17",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Отключение аккаунтов без потери данных",
+        "p": [
+          "Claude, Codex и Notion AI: удаление входа без потери программ, истории и файлов.",
+          "Общая сводка лимитов всех серверов и исправленное восстановление удалённого Claude.",
+          "Необязательные голосовые ответы Codex в Telegram и точная пометка восстановленной доставки."
+        ]
+      },
+      "en": {
+        "t": "Account disconnect without losing data",
+        "p": [
+          "Disconnect Claude, Codex or Notion AI while keeping programs, history and files.",
+          "Combined limits across servers and correct restoration of a remote Claude session.",
+          "Optional Codex Telegram voice replies and clearer delivery recovery messages."
+        ]
+      }
+    },
+    {
       "v": "2.0.16",
       "date": "2026-11-09",
       "ru": {
@@ -907,293 +927,1745 @@
         ]
       }
     },
-    {"v": "1.25.28", "date": "2026-11-02",
-     "ru": {"t": "Профиль «Агент», аварийный блок и скриншоты Codex", "p": ["Профиль «Агент»: Claude и Codex ставят задачи агенту командой из delegate_cmd; без неё профиль скрыт", "Аварийный блок: красная рамка целиком, кнопка и точка зелёные; консоль Codex прячется после удаления", "Мост шлёт скриншоты PNG и JPEG из Codex в Telegram оригинальными файлами"]},
-     "en": {"t": "Agent profile, emergency block and Codex screenshots", "p": ["Agent profile: Claude and Codex hand tasks to the agent via delegate_cmd; hidden without it", "Emergency block: full red frame, green button and dot; the Codex console hides after removal", "The bridge sends PNG and JPEG screenshots from Codex to Telegram as original files"]}},
-    {"v": "1.25.27", "date": "2026-11-01",
-     "ru": {"t": "Копии профилей аккаунтов встроены в балансер", "p": ["Раз в сутки и при новом входе балансер сам копирует профили аккаунтов, хранится 14 копий", "В ⚙ блок «Копии аккаунтов»: «Копия сейчас» и «Восстановить недостающие», живые аккаунты не трогаются", "Удалённый кнопкой аккаунт из копий не возвращается; папка копий открыта только для root"]},
-     "en": {"t": "Account backups are built into the balancer", "p": ["Once a day and on a new sign-in the balancer copies the account profiles itself, 14 copies are kept", "New ⚙ block “Account backups”: “Back up now” and “Restore missing”, live accounts are never touched", "An account deleted with the button is not brought back; the backup folder is root-only"]}},
-    {"v": "1.25.26", "date": "2026-11-01",
-     "ru": {"t": "Тесты больше не трогают живые папки профилей", "p": ["Общий прогон тестов мог стереть папку профилей аккаунтов — теперь все пути тестов уходят во временную папку", "Тесты с очисткой папок сами проверяют, что стирают только временное, иначе падают"]},
-     "en": {"t": "Tests no longer touch the live profile folders", "p": ["A full test run could wipe the account profiles folder — now every test path points to a temporary folder", "Tests that clean folders check they only erase temporary ones and fail otherwise"]}},
-    {"v": "1.25.25", "date": "2026-11-01",
-     "ru": {"t": "«Удалить Codex целиком» и возврат «Codex +»", "p": ["Удалил последний аккаунт ChatGPT — в шапке снова «Codex +», мастер начинается со входа", "В ⚙ внизу «Удалить Codex целиком»: аккаунты, бот, профили, режим и память разговора стёрты (по слову)", "Сам Codex на сервере остаётся; выбранный профиль и свои профили моста сбрасываются"]},
-     "en": {"t": "\"Delete Codex completely\" and \"Codex +\" is back", "p": ["Deleted the last ChatGPT account — \"Codex +\" is back in the header and the wizard starts at sign-in", "At the bottom of ⚙: \"Delete Codex completely\" — accounts, bot, profiles, mode and chat memory wiped (by word)", "Codex itself stays on the server; the chosen profile and your own bridge profiles are reset"]}},
-    {"v": "1.25.24", "date": "2026-11-01",
-     "ru": {"t": "Мастер Codex до конца, удаление аккаунта, команды cl и cxw", "p": ["Мастер сам переходит от установки ко входу в ChatGPT и к боту Telegram; бот необязателен — кнопка «Пропустить»", "В карточке моста внизу «Сохранить» и «Удалить аккаунт» (с подтверждением); «Аккаунты и лимиты» — в самом низу ⚙", "Команды cl, cla, cln, clw и cxw входят в панель и ставятся сами на любом сервере; запуск Claude — ключ claude_cmd"]},
-     "en": {"t": "Codex wizard to the end, delete account, cl and cxw commands", "p": ["The wizard moves on by itself from install to ChatGPT sign-in to the Telegram bot; the bot is optional — \"Skip\" button", "Bridge card: \"Save\" and \"Delete account\" (confirmed) at the bottom; \"Accounts and limits\" moved to the bottom of ⚙", "Commands cl, cla, cln, clw, cxw come with the panel and install themselves on any server; launch line — claude_cmd"]}},
-    {"v": "1.25.23", "date": "2026-11-01",
-     "ru": {"t": "«Поручить Claude» при подключении Codex", "p": ["Нет Node.js — кнопка «Поручить Claude» вставляет в консоль Claude готовый промт: он сам ставит Node.js и Codex", "«Скопировать промт» — тот же текст для ручной вставки; окно само переходит ко входу в ChatGPT", "Шаг 1 больше не обещает «одной кнопкой», когда кнопки «Установить» нет"]},
-     "en": {"t": "\"Ask Claude\" when connecting Codex", "p": ["No Node.js: the \"Ask Claude\" button types a ready prompt into the Claude console — it installs Node.js and Codex itself", "\"Copy prompt\" gives the same text for pasting by hand; the window moves on to the ChatGPT sign-in by itself", "Step 1 no longer promises \"one button\" when there is no Install button"]}},
-    {"v": "1.25.22", "date": "2026-11-01",
-     "ru": {"t": "Подключение Codex кнопкой", "p": ["Пока Codex не установлен, в шапке кнопка «Codex +»: окно из трёх шагов и установка одной кнопкой", "Панель сама ставит Codex в свою папку, проверяет его и подключает; нужен Node.js 16 или новее", "Исправлена гонка в мосте Telegram→Codex: два быстрых сообщения не запускают два процесса Codex"]},
-     "en": {"t": "Connect Codex with a button", "p": ["While Codex is not installed, the header shows a \"Codex +\" button: a three-step window and a one-click install", "The panel installs Codex into its own folder, checks it and connects it; Node.js 16 or newer is required", "Fixed a race in the Telegram→Codex bridge: two quick messages no longer start two Codex processes"]}},
-    {"v": "1.25.21", "date": "2026-11-01",
-     "ru": {"t": "Серая рамка блока Notion", "p": ["Пока резерв выключен, у блока Notion обычная серая рамка, как у блока Codex", "Зелёная рамка при резерве и красная при потере связи остались без изменений"]},
-     "en": {"t": "Gray frame on the Notion block", "p": ["While the reserve is off, the Notion block has the regular gray frame, like the Codex block", "The green frame in reserve and the red one on lost connection are unchanged"]}},
-    {"v": "1.25.20", "date": "2026-11-01",
-     "ru": {"t": "Резерв — отдельный переключатель, Notion — индикатор", "p": ["Значок Notion теперь только индикатор: зелёная точка — подключён, красная — нужен вход", "Переключатель «Резерв» — ручной резерв; включается после вопроса с пояснением, что это значит", "Шапка на телефоне: кнопки Codex больше не налезают друг на друга"]},
-     "en": {"t": "Reserve is its own switch, Notion is an indicator", "p": ["The Notion icon is now just an indicator: green dot — connected, red — sign in again", "The \"Reserve\" switch is the manual reserve; it asks first and explains what that means", "Header on a phone: the Codex buttons no longer overlap each other"]}},
-    {"v": "1.25.19", "date": "2026-11-01",
-     "ru": {"t": "Рамка Notion, вкладки консоли, ручной резерв", "p": ["Рамка блока Notion зелёная только при включённом резерве, иначе без рамки (красная «нет связи» осталась)", "Вкладки Claude/Codex: неактивная — только окантовка, активная — полная заливка", "Выключил переключатель Notion — галочка «вручную» снимается сама, резерв выключается сразу"]},
-     "en": {"t": "Notion frame, console tabs, manual reserve", "p": ["Notion block frame is green only while the reserve is on, otherwise none (red \"no connection\" stays)", "Claude/Codex tabs: inactive is an outline only, active is filled completely", "Switch the Notion block off and the \"manual\" tick clears itself, the reserve turns off at once"]}},
-    {"v": "1.25.18", "date": "2026-11-01",
-     "ru": {"t": "Резерв «Codex + Notion» вместо Claude", "p": ["Три галочки в ⚙ Notion: вручную, само при кончившихся лимитах, плюс аварийный режим Codex", "Ручной резерв ставит Claude на паузу (две минуты доделать начатое), снятие мгновенное; профиль Codex «Резерв»", "Рамка блока: зелёная, жёлтая, красная; инструкция «с нуля» в README"]},
-     "en": {"t": "\"Codex + Notion\" reserve instead of Claude", "p": ["Three ticks in the Notion ⚙: manual, automatic when limits run out, plus Codex emergency mode", "Manual reserve pauses Claude (two minutes to finish), lifting is instant; Codex profile \"Reserve\"", "Block frame: green, yellow, red; a from-scratch guide in the README"]}},
-    {"v": "1.25.17", "date": "2026-11-01",
-     "ru": {"t": "Фото в Codex, цвета вкладок, шторка профилей, карточка Notion", "p": ["Codex принимает фото из Telegram, в том числе альбомом (до 10): все снимки уходят одним запросом", "Вкладки консолей: Claude оранжевая, Codex синяя; профили Codex на ПК — шторка справа без прокрутки", "Инструкция «Codex с нуля» в README и подсказка про вход по коду устройства; карточка Notion-агента"]},
-     "en": {"t": "Photos to Codex, tab colours, profile drawer, Notion card", "p": ["Codex accepts Telegram photos, albums too (up to 10): all pictures go in a single request", "Console tabs: Claude orange, Codex blue; Codex profiles on a PC open as a side drawer, no scrolling", "A from-scratch Codex guide in the README and a device-code hint in the sign-in window; Notion agent card"]}},
-    {"v": "1.25.16", "date": "2026-11-01",
-     "ru": {"t": "Шапка без RU·EN; вход в MCP не слетает при смене аккаунта", "p": ["Из шапки убран переключатель RU·EN (на телефоне занимал строку). Английский — ссылкой ?lang=en", "Смена аккаунта больше не стирает вход в MCP-серверы (Notion и др.): меняется только вход в Claude"]},
-     "en": {"t": "No header language switch; MCP sign-ins survive account switch", "p": ["RU·EN switch removed from the header (it took a row on phones). English via the ?lang=en link", "Switching accounts no longer wipes MCP sign-ins (Notion etc.): only the Claude sign-in is replaced"]}},
-    {"v": "1.25.15", "date": "2026-11-01",
-     "ru": {"t": "Codex: кнопки «Сжать контекст» и «Новая сессия»", "p": ["На вкладке Codex рядом с кнопкой «стоп» появились две кнопки: «Сжать контекст» (команда /compact) и «Новая сессия»", "«Новая сессия» работает как /new в Telegram: разговор забывается, консоль стартует заново, старый остаётся на диске; перед началом — вопрос", "На телефоне кнопки действий стоят второй строкой под вкладками и не заходят под масштаб"]},
-     "en": {"t": "Codex: Compact context and New session buttons", "p": ["The Codex tab now has two buttons next to Stop: Compact context (the /compact command) and New session", "New session works like /new in Telegram: the conversation is forgotten and the console starts afresh, the old one stays on disk; it asks first", "On a phone the action buttons sit in a second row under the tabs and no longer slide under the zoom controls"]}},
-    {"v": "1.25.14", "date": "2026-10-31",
-     "ru": {"t": "Оркестратор отвечает на вопросы по проекту", "p": ["В инструкцию «Оркестратора» добавлено правило: на вопросы по проекту он отвечает сам, читая проект", "Шаг для Claude он оформляет, только когда нужна правка или запуск; без «да» шаг по-прежнему не уходит", "Права, профили и остальные настройки не менялись"]},
-     "en": {"t": "Orchestrator answers questions about the project", "p": ["The Orchestrator instructions now say: answer questions about the project yourself by reading it", "A step for Claude is drafted only when a change or a run is needed; without a \"yes\" nothing is sent, as before", "Rights, profiles and other settings are unchanged"]}},
-    {"v": "1.25.13", "date": "2026-10-31",
-     "ru": {"t": "Шапка: кнопки слева, Codex и язык справа", "p": ["Кнопки «Обновить», «Настройки» и «+» стоят слева, рядом с «Оптимизацией переключений лимитов»", "Блок Codex сдвинут вправо, переключатель языка RU·EN — в самом правом краю", "Работа кнопок и блока Codex не менялась, только их расположение"]},
-     "en": {"t": "Header: buttons on the left, Codex and language on the right", "p": ["The Refresh, Settings and \"+\" buttons now sit on the left, next to \"Limit optimization\"", "The Codex block moved right and the RU·EN language switch is at the far right edge", "Buttons and the Codex block work as before — only their position changed"]}},
-    {"v": "1.25.12", "date": "2026-10-31",
-     "ru": {"t": "Codex: понятные подписи папок в форме моста", "p": ["В профиле «Codex» первой идёт «Рабочая папка Codex»: здесь он может всё — создавать файлы и папки, менять и запускать; вне неё писать не может", "«Проект» в этом профиле подписан «только чтение»: правки в нём вносит человек или Claude", "В «Оркестраторе» форма как была; права и логика не менялись, только тексты и порядок полей"]},
-     "en": {"t": "Codex: clearer folder labels in the bridge form", "p": ["In the \"Codex\" profile the \"Codex working folder\" comes first: Codex can do anything there — create files and folders, change and run things — and cannot write outside it", "\"Project\" in this profile is labelled \"read only\": a person or Claude makes the edits there", "The Orchestrator form is unchanged; rights and logic are untouched, only texts and field order"]}},
-    {"v": "1.25.11", "date": "2026-10-31",
-     "ru": {"t": "Codex: меньше ручных настроек, правило для другого сервера", "p": ["Убраны «Собрать свой профиль…» и списки режим/доступ/права: режим задаёт профиль, полный доступ — только аварийный режим", "В форме моста остались аккаунт, проект, рабочая папка, токен, чат и выключатель; свои профили прежних версий применяются и удаляются", "Аварийный режим: на другом сервере править точечно, от пользователя приложения (sudo -u), после root — chown"]},
-     "en": {"t": "Codex: fewer manual settings, a rule for another server", "p": ["\"Build your own profile…\" and the mode/access/rights lists are gone: the profile sets the mode, full access comes only from the emergency mode", "The bridge form keeps the account, project, working folder, token, chat and the switch; own profiles from earlier versions can still be applied and deleted", "Emergency mode: on another server edit surgically, as the application's user (sudo -u), chown after editing as root"]}},
-    {"v": "1.25.10", "date": "2026-10-31",
-     "ru": {"t": "Codex: аварийный режим можно включать без срока", "p": ["hours: 0 в codex_emergency — режим без срока: сам не выключается, пока его не снимет человек", "Карточка показывает «без срока · включён с …», окно подтверждения говорит об этом прямо", "Без ключа hours по-прежнему 24 ч; снять — кнопкой или /emergency_off"]},
-     "en": {"t": "Codex: emergency mode can run without a time limit", "p": ["hours: 0 in codex_emergency means no deadline: it stays on until a person turns it off", "The card shows \"no time limit · on since …\" and the confirmation window says so plainly", "Without the hours key it is still 24 h; turn off with the button or /emergency_off"]}},
-    {"v": "1.25.9", "date": "2026-10-31",
-     "ru": {"t": "Codex: аварийный режим — полный доступ к проекту на время", "p": ["Когда Claude недоступен, Codex на срок (по умолчанию 24 ч) получает проект на запись и перезапуск сервисов", "Включается только кнопкой вводом слова «аварийный»; выключение — кнопкой, /emergency_off или по сроку", "Красная карточка, пуши и журнал; без настройки codex_emergency режима нет"]},
-     "en": {"t": "Codex: emergency mode — full project access for a while", "p": ["When Claude is unavailable, Codex gets write access to the project and service restarts for a set time (24 h by default)", "Enabled only with the button by typing the word \"emergency\"; off by button, /emergency_off or the deadline", "A red card, pushes and a journal; without the codex_emergency setting there is no mode"]}},
-    {"v": "1.25.8", "date": "2026-10-31",
-     "ru": {"t": "Codex: два профиля со стрелками и бот одним переключателем", "p": ["«Второй ИИ» стал Codex; два профиля — «ОРКЕСТРАТОР (Codex ➜ Claude)» и «Codex (нативный ИИ)» со стрелками и цветом", "Профиль «Выключен» заменён переключателем «Бот в Telegram»; пуши лимитов идут и при выключенном боте", "В форме моста «Проект» (Codex его только читает) отдельно от рабочей папки Codex"]},
-     "en": {"t": "Codex: two profiles with arrows and a bot switch", "p": ["\"Second AI\" is now Codex; two profiles — \"ORCHESTRATOR (Codex ➜ Claude)\" and \"Codex (native AI)\" with arrows", "The \"Off\" profile is now a \"Telegram bot\" switch; limit pushes still arrive with the bot off", "In the bridge form \"Project\" (read-only for Codex) is separate from Codex's working folder"]}},
-    {"v": "1.25.7", "date": "2026-10-31",
-     "ru": {"t": "Codex: слёт на Free — красная метка, пуш и кнопка «Я продлил»", "p": ["Платный аккаунт стал Free: красная метка FREE в шапке и карточке, один пуш в Telegram; мост продолжает работать", "Кнопка «Я продлил» перечитывает план и срок подписки; платный план возвращён — предупреждения снимаются"]},
-     "en": {"t": "Codex: drop to Free — red tag, push and an \"I renewed\" button", "p": ["A paid account fell to Free: a red FREE tag in the header and card, one Telegram push; the bridge keeps running", "\"I renewed\" re-reads the plan and subscription end; once paid again, the warnings are cleared"]}},
-    {"v": "1.25.6", "date": "2026-10-31",
-     "ru": {"t": "Codex: без серых полос в консоли", "p": ["Серые полосы вокруг вашего сообщения в консоли Codex убраны — как в консоли Claude, текст читается", "Только зеркало консоли Codex; консоль Claude не менялась"]},
-     "en": {"t": "Codex: no grey bands in the console", "p": ["The grey bands around your message in the Codex console are gone, like in the Claude console", "Only the Codex console mirror changed; the Claude console is untouched"]}},
-    {"v": "1.25.5", "date": "2026-10-31",
-     "ru": {"t": "Codex: консоль и Telegram — один разговор", "p": ["Сообщения из Telegram мост вводит в живую консоль Codex, ответ читает из файла сессии: на вкладке виден диалог", "«/stop» нажимает Esc в консоли, «/new» перезапускает консоль с чистым разговором; консоль идёт с «-a never»", "Закрытую или запущенную с другими правами консоль мост поднимает сам и продолжает тот же разговор (resume)"]},
-     "en": {"t": "Codex: console and Telegram are one conversation", "p": ["The bridge types Telegram messages into the live Codex console and reads the reply from its session file", "/stop presses Esc in the console, /new restarts it with a clean conversation; the console runs with -a never", "A closed console, or one started with other rights, is restarted by the bridge and resumes the same conversation"]}},
-    {"v": "1.25.4", "date": "2026-10-31",
-     "ru": {"t": "Codex: консоль стартует сама, ленты нет, пуши лимитов при «Выключен»", "p": ["Консоль Codex запускается сама при открытии вкладки; кнопка «Запустить» осталась запасной, после «Стоп»", "Лента работы моста убрана совсем: на вкладке Codex только экран; в шапке чип модели и усилия", "Пуши лимитов и конца подписки приходят и при профиле «Выключен», пока подключён Telegram-бот"]},
-     "en": {"t": "Codex: console starts by itself, no feed, limit pushes while Off", "p": ["The Codex console starts by itself when you open its tab; Start remains a fallback after Stop", "The bridge activity feed is gone: the Codex tab shows only the screen; header chip for model and effort", "Limit and subscription pushes arrive even with the Off profile while the Telegram bot is connected"]}},
-    {"v": "1.25.3", "date": "2026-10-31",
-     "ru": {"t": "Codex: старая ошибка связи с Telegram больше не залипает", "p": ["Раньше красная точка и «Telegram недоступен: TimeoutError» висели, пока не придёт новый сбой или сообщение", "Теперь после первого удачного опроса Telegram сообщение об ошибке и красная точка гаснут сами"]},
-     "en": {"t": "Codex: a stale Telegram connection error no longer sticks", "p": ["The red dot and \"Telegram unavailable: TimeoutError\" used to stay until the next failure or message", "Now the error text and the red dot clear by themselves after the first successful Telegram poll"]}},
-    {"v": "1.25.2", "date": "2026-10-31",
-     "ru": {"t": "Codex: сборка профиля в ⚙, пояснения, счётчики лимитов и пуши", "p": ["Свой профиль собирается в окне ⚙: режим, доступ и права с описаниями; у каждого профиля значок ⓘ с пояснением", "В шапке — счётчики окон 5 ч и недели активного аккаунта: жёлтый с 80%, красный с 95%, при исчерпании «до HH:MM»", "Пуши в Telegram: аккаунт на 90%, исчерпан, снова доступен и подписка кончается (за 7, 3, 1 день и в день конца)"]},
-     "en": {"t": "Codex: profile builder in ⚙, hints, limit counters and pushes", "p": ["Build your own profile in the ⚙ window: mode, access and rights with descriptions; every profile has an ⓘ hint", "The header shows 5 h and weekly counters of the active account: yellow from 80%, red from 95%, \"until HH:MM\" if spent", "Telegram pushes: account at 90%, spent, available again, and the subscription ending (7, 3, 1 days and on the day)"]}},
-    {"v": "1.25.1", "date": "2026-10-31",
-     "ru": {"t": "Мост Codex включается сам после подключения бота", "p": ["Профиль выбран, токен вставлен — раньше мост молчал, теперь включается сам (кроме профиля «Выключен»)"]},
-     "en": {"t": "The Codex bridge turns on after the bot is connected", "p": ["Profile picked, token pasted: the bridge used to stay silent, now it turns on (except the Off profile)"]}},
-    {"v": "1.25.0", "date": "2026-10-31",
-     "ru": {"t": "Codex: окно из шапки, профили, оркестратор и консоль", "p": ["Значок Codex в шапке открывает окно: профили одним кликом (Секретарь, Оркестратор, Запасной, Второй ИИ, Выключен) и свои", "Режим «Оркестратор»: Codex ведёт задачу, Claude исполняет шаги, каждый — после «да»; «стоп» снимает всё", "Вкладка «Codex» рядом с консолью Claude: экран Codex, только просмотр; каталог профилей — ключ codex_profiles"]},
-     "en": {"t": "Codex: header window, profiles, orchestrator and console", "p": ["The header Codex icon opens a window: one-click profiles (Secretary, Orchestrator, Standby, Second AI, Off), or your own", "\"Orchestrator\" mode: Codex drives the goal, Claude executes the steps, each after your \"yes\"; \"stop\" cancels everything", "A \"Codex\" tab next to the Claude console: Codex's screen, view only; the profiles folder is the codex_profiles key"]}},
-    {"v": "1.24.0", "date": "2026-10-31",
-     "ru": {"t": "Аккаунты ChatGPT (Codex) и мост с Telegram", "p": ["Секция «ChatGPT (Codex)»: вход по коду устройства, лимиты «5ч» и «Неделя», срок подписки, модель, усилие, Fast", "Мост Telegram ↔ Codex: свой бот; «Посредник» оформляет задания Claude, «Самостоятельно» работает по выбранному доступу", "Отдельная программа, в авто-переключение Claude не входит. Нужен Codex (codex_bin); мост включается в карточке"]},
-     "en": {"t": "ChatGPT (Codex) accounts and a Telegram bridge", "p": ["\"ChatGPT (Codex)\" section: device-code sign-in, \"5h\" and \"Week\" limits, subscription end, model, effort, Fast", "Telegram ↔ Codex bridge: its own bot; \"Mediator\" drafts tasks for Claude, \"Autonomous\" works at the chosen access", "A separate program, not part of Claude's auto-switching. Needs Codex (codex_bin); the bridge is enabled on the card"]}},
-    {"v": "1.23.1", "date": "2026-10-27",
-     "ru": {"t": "У неактивного аккаунта нет кнопки «Переключиться»", "p": ["На карточке слетевшего на Free аккаунта остались «Я продлил», «Войти заново» и удаление"]},
-     "en": {"t": "An inactive account has no \"Switch to this\" button", "p": ["The card of an account that fell to Free keeps only \"I renewed\", \"Log in again\" and delete"]}},
-    {"v": "1.23.0", "date": "2026-10-27",
-     "ru": {"t": "Слетевший с Pro аккаунт помечается и не опрашивается", "p": ["Аккаунт, перешедший на Free, получает красную рамку и метку «НЕАКТИВНЫЙ» — его легко отличить от Pro", "Опрос такого аккаунта в Anthropic стоит, пока не нажмёшь «Я продлил»; после нажатия — обычная работа"]},
-     "en": {"t": "An account that dropped from Pro is marked and no longer polled", "p": ["An account that fell to Free gets a red frame and an \"INACTIVE\" tag, so it is easy to tell from Pro", "Polling it at Anthropic stops until you press \"I renewed\"; after the press, normal work resumes"]}},
-    {"v": "1.22.6", "date": "2026-10-24",
-     "ru": {"t": "Счётчик до Free не тикает у аккаунта, который уже Free", "p": ["Чип «⏳ до Free» теперь показывается только пока план реально Pro — после обвала он пропадает", "Найдено живьём: экран одновременно показывал «FREE» и «⏳ 29 дн», хотя обвал уже произошёл"]},
-     "en": {"t": "Countdown no longer ticks for an account already on Free", "p": ["The \"⏳ until Free\" chip now shows only while the plan is actually Pro — it disappears after the drop", "Found live: the screen showed \"FREE\" and \"⏳ 29d\" at the same time, even though the drop had already happened"]}},
-    {"v": "1.22.5", "date": "2026-10-23",
-     "ru": {"t": "План читается свежим даже при бэкоффе usage", "p": ["Pro/Free теперь перепроверяется каждый цикл опроса, даже когда usage-эндпойнт в паузе после 403/429", "Найдено живьём: при бэкоффе дебаунс «2 подряд» не видел свежих чтений плана, не мог подтвердить переход Pro→Free"]},
-     "en": {"t": "Plan keeps refreshing even during usage backoff", "p": ["Pro/Free is now re-checked every poll cycle, even while the usage endpoint is paused after a 403/429", "Found live: under backoff the \"2 in a row\" debounce never saw fresh reads, so a real Pro→Free switch went unconfirmed"]}},
-    {"v": "1.22.4", "date": "2026-10-23",
-     "ru": {"t": "Счётчик обвала в Free не зависает в прошлом", "p": ["Прогноз «⏳ до Free» теперь докручивается на месяцы вперёд, если подписка продлилась тихо, без видимого Free", "Раньше якорь даты не обновлялся без явного обвала — чип навечно висел на «ждём сегодня»"]},
-     "en": {"t": "Renewal countdown no longer freezes in the past", "p": ["The \"until Free\" estimate now rolls forward by months when the plan renewed quietly, with no visible Free dip", "Before, the anchor date never advanced without a real drop — the chip stuck on \"any day now\" forever"]}},
-    {"v": "1.22.3", "date": "2026-10-23",
-     "ru": {"t": "Бейдж Free/Pro не мигает от дребезга Anthropic", "p": ["Снимок и бейдж показывают план только после 2 одинаковых подряд чтений — та же защита, что уже была у уведомлений", "Найдено живьём: бейдж на карточке мигал free/pro каждые ~минуты, хотя подтверждённый статус был стабилен"]},
-     "en": {"t": "Free/Pro badge no longer flickers on Anthropic's flapping reads", "p": ["The snapshot now shows the plan only after 2 identical consecutive reads — the same protection notifications had", "Found live: the card badge flickered free/pro every ~minute even though the confirmed status was stable"]}},
-    {"v": "1.22.2", "date": "2026-10-23",
-     "ru": {"t": "Бэкофф и на 403, не только на 429", "p": ["Опрос usage/profile теперь ждёт после 403 (запрет доступа), а не долбит эндпойнт каждый цикл до своего 429", "Найдено живьём: аккаунт сутки отдавал 403 без паузы — цифры лимита всё это время были замороженным кэшем"]},
-     "en": {"t": "Back off on 403 too, not only 429", "p": ["Usage/profile polling now backs off after a 403 (forbidden) too, not just a 429, instead of hammering it every cycle", "Found live: an account returned 403 for a day straight with no pause, so its limit numbers were a frozen cache"]}},
-    {"v": "1.22.1", "date": "2026-10-21",
-     "ru": {"t": "Автообновление приходит быстрее, описание видно после установки", "p": ["Новая версия проверяется раз в 6 часов, а не раз в сутки: авто-режим ставит её в течение 6 часов после выхода", "В плашке «Обновлено до версии …» теперь есть «Что нового» — то же описание, что в истории изменений"]},
-     "en": {"t": "Auto-updates arrive sooner, release notes show after install", "p": ["New versions are checked every 6 hours, not once a day: automatic mode installs one within 6 hours of release", "The \"Updated to version …\" banner now has \"What's new\" — the same notes as in the change history"]}},
-    {"v": "1.22.0", "date": "2026-10-21",
-     "ru": {"t": "Адаптивный опрос лимитов и безопасная запись логина", "p": ["Опрос реже в покое, чаще у порога, не больше 20 запросов/ч на аккаунт; после 429 ждём Retry-After", "Журнал сбоев usage_fail.jsonl; adaptive_poll=false возвращает прежний темп", "cc-switch и обновление токена пишут логин атомарно, под замками Claude Code, с откатом"]},
-     "en": {"t": "Adaptive limit polling and safe login writes", "p": ["Polls slower when idle, faster near the threshold, max 20 requests/h per account; after a 429 it waits Retry-After", "Failure log usage_fail.jsonl; adaptive_poll=false restores the old pace", "cc-switch and token refresh write the login atomically, under Claude Code's locks, with rollback"]}},
-    {"v": "1.21.14", "date": "2026-10-19",
-     "ru": {"t": "Модель и effort видны без личной статус-строки", "p": ["Панель находит историю сессии по папке запуска Claude Code, а не только в /root", "Нет статус-строки и истории — модель берётся из settings.json, effort больше не «не задан»", "В список моделей добавлены Sonnet 5.5 и Haiku 5.5"]},
-     "en": {"t": "Model and effort show without a custom status line", "p": ["The panel finds the session transcript by the folder Claude Code was started in, not only /root", "With no status line and no transcript the model comes from settings.json, so effort is no longer \"not set\"", "Sonnet 5.5 and Haiku 5.5 added to the model list"]}},
-    {"v": "1.21.13", "date": "2026-10-19",
-     "ru": {"t": "Кнопки над консолью — с небольшим отступом справа", "p": ["Блок «− 100% + ⛶» отодвинут от правого края консоли на 8 px, больше не прижат вплотную"]},
-     "en": {"t": "Console buttons have a small right margin", "p": ["The “− 100% + ⛶” block is now inset 8 px from the right edge of the console instead of touching it"]}},
-    {"v": "1.21.12", "date": "2026-10-19",
-     "ru": {"t": "Кнопки над консолью — по правому краю", "p": ["Блок «− 100% + ⛶» прижат к правому краю консоли, вровень с кнопками шапки"]},
-     "en": {"t": "Console buttons are flush right", "p": ["The “− 100% + ⛶” block now sits against the right edge of the console, in line with the header buttons"]}},
-    {"v": "1.21.11", "date": "2026-10-14",
-     "ru": {"t": "Строка effort видна, даже если уровень не определён", "p": ["Уровня нет ни в транскрипте, ни в settings.json, ни в статус-строке — видно «не задан» и шкалу, уровень задаётся кликом"]},
-     "en": {"t": "The effort row stays visible when the level is unknown", "p": ["No level in the transcript, settings.json or status line — the row shows “not set” and a scale; click to set it"]}},
-    {"v": "1.21.10", "date": "2026-10-09",
-     "ru": {"t": "Кнопка «скрыть» рядом с названием модели", "p": ["Галочка «скрыть» стоит справа в одной строке с названием модели, а не отдельной строкой снизу"]},
-     "en": {"t": "The “hide” tick sits on the model name line", "p": ["The “hide” tick is now right-aligned on the same line as the model name, not on a separate line below"]}},
-    {"v": "1.21.9", "date": "2026-10-09",
-     "ru": {"t": "Скрытие моделей из списка", "p": ["Галочка «скрыть» убирает модель из списка настроек и из чипов", "После «Проверить новые модели» скрытые видны полупрозрачными, галочка возвращает их в строй", "Скрыть все модели нельзя: одна должна остаться"]},
-     "en": {"t": "Hide models from the list", "p": ["The “hide” tick removes a model from the settings list and from the chips", "After “Check for new models” hidden models show faded; untick one to bring it back", "All models cannot be hidden: at least one must stay"]}},
-    {"v": "1.21.8", "date": "2026-10-09",
-     "ru": {"t": "Новые модели сразу помечаются «новая»", "p": ["«Проверить новые модели» помечает найденные модели меткой «новая» сразу, не дожидаясь галочки"]},
-     "en": {"t": "New models are marked “new” as soon as they are found", "p": ["“Check for new models” marks every model it finds as new right away, without waiting for a tick"]}},
-    {"v": "1.21.7", "date": "2026-10-09",
-     "ru": {"t": "Дребезг Pro/Free не спамит, free-аккаунт не долбится как активный", "p": ["Смена плана Pro↔Free уведомляет только после 2 одинаковых чтений подряд — гасит дребезг на грани подписки", "Неактивный free-аккаунт опрашивается не чаще раза в inactive_poll_sec, даже если кэш «протух» по времени", "Кнопка «Я продлил» больше не обходит паузу после 429 — показывает понятное сообщение вместо повтора"]},
-     "en": {"t": "Pro/Free flapping no longer spams, free account polled less", "p": ["A Pro/Free change notifies only after 2 consecutive matching reads — kills flapping at subscription edges", "An inactive free account is polled no more than once per inactive_poll_sec, even if the cache looks stale", "The \"I renewed\" button no longer bypasses the post-429 pause — shows a clear message instead of retrying"]}},
-    {"v": "1.21.6", "date": "2026-10-07",
-     "ru": {"t": "«Переключаться некуда» с учётом недели, ручной выбор до 100%", "p": ["Некуда переключаться, если у остальных забита сессия или неделя, — встаёт пауза, а не добивание до 100%", "Баннер называет настоящую причину: «acc1: неделя 99% — на потолке 99%» и что держит каждый аккаунт", "Выбранный вручную держится до сброса окна или 100% («Выбран вручную»); без него с потолка недели — сразу"]},
-     "en": {"t": "“Nothing to switch to” counts the week, manual pick holds to 100%", "p": ["Nothing to switch to when the others have a full session or week — the pause goes up, no filling to 100%", "The banner names the real reason: “acc1: week 99% — at the 99% cap” and what holds each account", "A manual pick holds until its window resets or 100% (“Picked manually”); otherwise the week cap is left at once"]}},
-    {"v": "1.21.5", "date": "2026-10-07",
-     "ru": {"t": "Понятнее сообщение о недельном потолке", "p": ["Неделя аккаунта дошла до потолка и балансер ушёл на другой — Telegram пишет, что это обычная смена аккаунта", "«Пауза на недельном потолке» тут ни при чём: она срабатывает, только когда переключаться некуда"]},
-     "en": {"t": "Clearer weekly-cap message", "p": ["When an account hits the weekly cap and the balancer moves on, the Telegram message says this is a normal account switch", "It states that “Pause at the weekly cap” is not involved: it only acts when there is nowhere to switch"]}},
-    {"v": "1.21.4", "date": "2026-10-06",
-     "ru": {"t": "«Войти заново» — панель справа, тоньше шрифт консоли", "p": ["«Войти заново» больше не открывает вкладку и окно ввода: справа выезжает панель со ссылкой и полем для кода", "Ссылку можно открыть или скопировать; при неверном коде — кнопка «Начать заново»", "Консоль в Phosphor, Aurora, Slate и Blocks больше не выглядит жирной: убраны фильтры, утолщавшие буквы"]},
-     "en": {"t": "“Log in again” side panel, lighter console text", "p": ["“Log in again” no longer opens a tab and a prompt: a panel slides in on the right with the link and a code field", "Open or copy the link; a wrong code offers “Start over”", "The console in Phosphor, Aurora, Slate and Blocks no longer looks bold: the filters that thickened the text are gone"]}},
-    {"v": "1.21.3", "date": "2026-10-03",
-     "ru": {"t": "Подпись версии больше не занимает строку", "p": ["В 1.21.2 подпись стояла отдельной строкой и поднимала карточки и консоль на 15 px", "Теперь она в нижнем отступе под карточками: раскладка такая же, как до 1.21.2", "Шрифт мельче (9 px), подпись не кликается и не выделяется"]},
-     "en": {"t": "The version label no longer takes a line", "p": ["In 1.21.2 the label sat on its own line and pushed the cards and console up by 15 px", "It now sits in the bottom padding under the cards: the layout is the same as before 1.21.2", "Smaller font (9 px); the label is not clickable or selectable"]}},
-    {"v": "1.21.2", "date": "2026-10-03",
-     "ru": {"t": "Версия приложения в правом нижнем углу", "p": ["Мелкая подпись «cc-fleet vX.Y.Z» справа под карточками — видно, какая версия открыта", "Версия подставляется при отдаче страницы: после обновления вкладка покажет новую", "В режиме «только консоль» подписи нет"]},
-     "en": {"t": "App version in the bottom-right corner", "p": ["A small “cc-fleet vX.Y.Z” label under the cards on the right shows which version is open", "The version is filled in when the page is served: after an update the tab shows the new one", "Hidden in console-only mode"]}},
-    {"v": "1.21.1", "date": "2026-10-03",
-     "ru": {"t": "Вкладка сама перезагружается после обновления", "p": ["Служба обновилась — открытая панель перезагружается сама, открытые настройки откроются снова", "Ждёт, пока закроешь диалог аккаунта, допишешь ввод или выйдешь из полноэкранного режима", "Не помогло — повторов нет, на плашке кнопка «Обновить страницу»"]},
-     "en": {"t": "The tab reloads itself after an update", "p": ["Once the service updates, an open panel reloads itself; open Settings come back", "It waits until you close an account dialog, finish typing or leave full screen", "If that did not help, no retries: the banner shows a “Reload page” button"]}},
-    {"v": "1.21.0", "date": "2026-10-03",
-     "ru": {"t": "Недельный потолок 99%: пауза по выбору и предупреждения", "p": ["Опция «Пауза на недельном потолке»: на 99% недели и некуда переключиться Claude встаёт на паузу", "Без опции — баннер и сообщение «не остановит до 100% — на свой страх и риск» вместо «жду»", "Любой аккаунт дошёл до 99% недели — одно сообщение в Telegram за неделю"]},
-     "en": {"t": "Weekly 99% cap: optional pause and warnings", "p": ["“Pause at the weekly cap” option: at 99% of the week with nowhere to switch, Claude pauses", "Without it: a banner and a “won’t stop it at 100%, at your own risk” message instead of “waiting”", "Any account reaching 99% of its week gets one Telegram message per week"]}},
-    {"v": "1.20.1", "date": "2026-10-03",
-     "ru": {"t": "Читаемые неактивные кнопки на карточках", "p": ["«Используется сейчас» и «Рулит оптимизация» больше не полупрозрачные — контраст не ниже 4,5 во всех оформлениях", "Blocks: такие кнопки — белые с чёрной рамкой без тени; поле названия модели в настройках — белое с чёрным текстом"]},
-     "en": {"t": "Readable inactive buttons on cards", "p": ["“In use now” and “Optimizer active” are no longer translucent: contrast is 4.5 or higher in every look", "Blocks: these buttons are white with a black border and no shadow; the model name field in Settings is white"]}},
-    {"v": "1.20.0", "date": "2026-10-03",
-     "ru": {"t": "История изменений в настройках", "p": ["«⚙ Настройки → Обновления»: свёрнутая строка «История изменений» со всеми версиями с v1.0.0", "Журнал лежит в `CHANGELOG.json`, приезжает с обновлениями, язык — как в интерфейсе"]},
-     "en": {"t": "Changelog in Settings", "p": ["“⚙ Settings → Updates”: a collapsed “Changelog” row with every version since v1.0.0", "The log lives in `CHANGELOG.json`, arrives with updates and follows the interface language"]}},
-    {"v": "1.19.3", "date": "2026-10-03",
-     "ru": {"t": "Плановое переключение ждёт паузы между ходами", "p": ["Смена аккаунта посреди хода сбрасывала кэш промпта, а у Sonnet 5.5 и рассуждения хода", "Плановый свитч ждёт паузы до 15 мин (`opt_defer_max_sec`), аварийный — сразу", "В `switch_log.jsonl` — событие `deferred_busy` и поля `waited_sec`/`busy`"]},
-     "en": {"t": "Planned switch waits for a pause between turns", "p": ["Switching mid-turn dropped the prompt cache, and on Sonnet 5.5 the turn's reasoning too", "A planned switch waits up to 15 min (`opt_defer_max_sec`), an emergency one goes at once", "`switch_log.jsonl`: a `deferred_busy` event and `waited_sec`/`busy` fields"]}},
-    {"v": "1.19.2", "date": "2026-10-03",
-     "ru": {"t": "Страница по окну, «только консоль», смартфон", "p": ["Шапка, консоль и карточки помещаются в окно без прокрутки, «−/+» — шрифт консоли", "Кнопка ⛶ — только консоль, аккаунты в панели снизу; вид для телефона", "Подтверждение смены модели и effort, описание релиза на языке интерфейса"]},
-     "en": {"t": "Page fits the window, console-only mode, phone layout", "p": ["Header, console and cards fit the window without scrolling, “−/+” sets the console font", "The ⛶ button: console only, accounts in a bottom panel; a phone layout", "Confirmation before a model or effort change, release notes in the interface language"]}},
-    {"v": "1.19.1", "date": "2026-10-03",
-     "ru": {"t": "Кнопка «+» в шапке для добавления аккаунта", "p": ["Компактная кнопка рядом с шестерёнкой вместо постоянной плитки в конце списка"]},
-     "en": {"t": "“+” button in the header to add an account", "p": ["A compact button next to the gear instead of a permanent tile at the end of the list"]}},
-    {"v": "1.19.0", "date": "2026-10-03",
-     "ru": {"t": "Добавление и удаление аккаунтов из панели", "p": ["Добавление: ссылка входа → код со страницы → аккаунт сам в ротации", "Удаление стирает профиль навсегда, подтверждение словом «подтверждаю»", "Telegram сообщает о добавлении и удалении"]},
-     "en": {"t": "Add and remove accounts from the panel", "p": ["Add: sign-in link → code from the page → the account joins the rotation", "Remove wipes the profile for good and is confirmed by typing a word", "Telegram reports every add and removal"]}},
-    {"v": "1.18.0", "date": "2026-10-03",
-     "ru": {"t": "Обновления из панели", "p": ["Раз в сутки проверка GitHub Releases, баннер «Вышла новая версия»", "Режим «Вручную / Автоматически», проверка sha256, бэкап и откат, если новая версия не поднялась"]},
-     "en": {"t": "Updates from the panel", "p": ["A daily GitHub Releases check and a “New version released” banner", "Manual or automatic mode, sha256 check, backup and rollback if the new version fails to start"]}},
-    {"v": "1.17.0", "date": "2026-10-03",
-     "ru": {"t": "Срок логина на карточке аккаунта", "p": ["Чип «логин N дн» рядом с «Войти заново»: до 7 дней жёлтый, до 3 — красный"]},
-     "en": {"t": "Login expiry on the account card", "p": ["A “login N d” chip next to “Sign in again”: yellow under 7 days, red under 3"]}},
-    {"v": "1.16.0", "date": "2026-10-02",
-     "ru": {"t": "Пять оформлений и полный экран консоли", "p": ["Классика, Phosphor, Aurora, Slate, Blocks — выбор в «⚙ Настройки»", "Консоль на весь экран, аккаунты снизу", "Уровень effort, который модель не поддерживает, не ставится"]},
-     "en": {"t": "Five skins and a full-screen console", "p": ["Classic, Phosphor, Aurora, Slate, Blocks — pick one in “⚙ Settings”", "Full-screen console with the accounts below", "An effort level the model does not support is not applied"]}},
-    {"v": "1.15.1", "date": "2026-10-01",
-     "ru": {"t": "Гейт фоновых задач держит только по 5-часовому окну", "p": ["Неделя на 99–100% больше не останавливает фоновые прогоны на сутки и дольше"]},
-     "en": {"t": "Background job gate holds only on the 5-hour window", "p": ["A week at 99–100% no longer stops background runs for a day or more"]}},
-    {"v": "1.15.0", "date": "2026-10-01",
-     "ru": {"t": "Пауза только по 5-часовому окну", "p": ["Недельные лимиты паузу больше не ставят", "Кнопки «Отключить / Включить паузу» и `pause_ctl.py off|on`", "Хук `PreToolUse`: пауза останавливает и уже начатый ход"]},
-     "en": {"t": "Pause only on the 5-hour window", "p": ["Weekly limits no longer trigger the pause", "“Disable / Enable pause” buttons and `pause_ctl.py off|on`", "A `PreToolUse` hook: the pause also stops a turn already in progress"]}},
-    {"v": "1.14.2", "date": "2026-09-29",
-     "ru": {"t": "Effort живой сессии — из её транскрипта", "p": ["Виден и `max`, который Claude Code включает только на текущую сессию"]},
-     "en": {"t": "Live session effort read from its transcript", "p": ["Shows `max` too, which Claude Code enables for the current session only"]}},
-    {"v": "1.14.1", "date": "2026-09-29",
-     "ru": {"t": "Effort читается из настроек модели", "p": ["`/effort` хранит уровень в `modelSettings[<id>]`, а API отдавал старый"]},
-     "en": {"t": "Effort read from the model settings", "p": ["`/effort` stores the level in `modelSettings[<id>]`, while the API returned the old one"]}},
-    {"v": "1.14.0", "date": "2026-09-29",
-     "ru": {"t": "Effort сессии через API", "p": ["`/api/limits` отдаёт уровень и список уровней, `POST /api/effort` меняет уровень"]},
-     "en": {"t": "Session effort via the API", "p": ["`/api/limits` returns the level and the list of levels, `POST /api/effort` changes it"]}},
-    {"v": "1.13.0", "date": "2026-09-29",
-     "ru": {"t": "Уведомление об автоматической смене модели", "p": ["Рантайм сам отдал сессию другой модели — в Telegram «A → B» с причиной", "Модель вернулась — второе сообщение"]},
-     "en": {"t": "Notice when the model changes on its own", "p": ["The runtime handed the session to another model — Telegram gets “A → B” with the reason", "A second message when the model is back"]}},
-    {"v": "1.12.0", "date": "2026-09-28",
-     "ru": {"t": "Меню выбора в консоли приходит в Telegram", "p": ["Сессия встала на интерактивном меню — текст и кнопки вариантов приходят в чат", "Нажатие отправляет выбор в консоль"]},
-     "en": {"t": "Console choice menus forwarded to Telegram", "p": ["The session stopped at an interactive menu — its text and option buttons arrive in the chat", "A tap sends the choice to the console"]}},
-    {"v": "1.11.1", "date": "2026-09-28",
-     "ru": {"t": "«Проверить новые модели» работает на любой установке", "p": ["Сканирует установленный Claude Code и предлагает новые ID моделей"]},
-     "en": {"t": "“Check for new models” works on any install", "p": ["Scans the installed Claude Code and offers newer model IDs"]}},
-    {"v": "1.11.0", "date": "2026-09-27",
-     "ru": {"t": "Следующий аккаунт — по тому, когда он реально освободится", "p": ["Учитываются и сессия, и неделя; правило вынесено в `cc_avail.py`", "С аккаунта на 100% балансер уходит сразу, без кулдауна", "Опрос просыпается к ближайшему сбросу окна"]},
-     "en": {"t": "Next account picked by when it actually frees up", "p": ["Both session and week count; the rule lives in `cc_avail.py`", "The balancer leaves a 100% account at once, without cooldown", "Polling wakes up at the nearest window reset"]}},
-    {"v": "1.10.2", "date": "2026-09-23",
-     "ru": {"t": "Таймер «до PRO→FREE» не застревает на старой дате", "p": ["Дата продления пишется при любом Pro/Max и при фоновом переходе Free→Pro"]},
-     "en": {"t": "The “until PRO→FREE” timer no longer sticks to an old date", "p": ["The renewal date is saved on any Pro/Max and on a background Free→Pro"]}},
-    {"v": "1.10.1", "date": "2026-09-16",
-     "ru": {"t": "Время сброса в своём часовом поясе", "p": ["Ключ `tz` в `config.json`: время сброса в нём, а не в поясе сервера"]},
-     "en": {"t": "Reset times in your own time zone", "p": ["A `tz` key in `config.json`: reset times use it instead of the server's zone"]}},
-    {"v": "1.10.0", "date": "2026-09-14",
-     "ru": {"t": "Крайний фолбэк оптимизации учитывает неделю", "p": ["Балансер больше не уходит на аккаунт с забитой неделей и не застревает там"]},
-     "en": {"t": "Optimize mode's last-resort fallback respects the week", "p": ["The balancer no longer moves to an account with a full week and gets stuck there"]}},
-    {"v": "1.9.9", "date": "2026-09-13",
-     "ru": {"t": "Зеркало консоли без «залипшего» подчёркивания", "p": ["Подчёркивание не рисуется: из-за бага терминала оно полосило весь экран"]},
-     "en": {"t": "Console mirror without a stuck underline", "p": ["Underline is not drawn: a terminal bug striped the whole screen with it"]}},
-    {"v": "1.9.8", "date": "2026-09-10",
-     "ru": {"t": "Точная геометрия окна консоли", "p": ["Размер окна — через `ioctl(TIOCGWINSZ)`, без побочных эффектов для сессии"]},
-     "en": {"t": "Exact console window geometry", "p": ["The window size comes from `ioctl(TIOCGWINSZ)`, with no side effects on the session"]}},
-    {"v": "1.9.7", "date": "2026-09-09",
-     "ru": {"t": "Порог недели `weekly_cap` поднят с 95% до 99%", "p": ["Аккаунт с неделей 95–98% снова может стать целью переключения"]},
-     "en": {"t": "`weekly_cap` raised from 95% to 99%", "p": ["An account at 95–98% of the week can be a switch target again"]}},
-    {"v": "1.9.6", "date": "2026-09-08",
-     "ru": {"t": "Ссылка перелогина сама копируется в буфер", "p": ["Выручает, если вкладка открылась не в том профиле браузера или её заблокировали"]},
-     "en": {"t": "Re-login link copied to the clipboard", "p": ["Helps when the tab opens in the wrong browser profile or gets blocked"]}},
-    {"v": "1.9.5", "date": "2026-09-08",
-     "ru": {"t": "Таймер PRO→FREE — чип в шапке карточки", "p": ["Компактный «⏳ N дн» вместо отдельной строки, красный при < 3 дней"]},
-     "en": {"t": "PRO→FREE timer as a chip in the card header", "p": ["A compact “⏳ N d” instead of a separate line, red under 3 days"]}},
-    {"v": "1.9.4", "date": "2026-09-08",
-     "ru": {"t": "Таймер до конца подписки", "p": ["«✅ Я продлил» запоминает дату, карточка показывает, сколько осталось до PRO→FREE", "Перепроверка не пишет ложный «успех», пока usage отвечает ошибкой"]},
-     "en": {"t": "Subscription countdown", "p": ["“✅ I renewed” stores the date, the card shows the time left until PRO→FREE", "A recheck no longer reports false success while usage returns an error"]}},
-    {"v": "1.9.3", "date": "2026-09-08",
-     "ru": {"t": "Будильник паузы не застревает в поле ввода", "p": ["Текст и Enter уходят в консоль двумя отдельными командами"]},
-     "en": {"t": "Pause wake-up no longer sticks in the input box", "p": ["The text and Enter go to the console as two separate commands"]}},
-    {"v": "1.9.2", "date": "2026-09-07",
-     "ru": {"t": "Понятные ошибки на карточке аккаунта", "p": ["Вместо `HTTP Error 400` — что случилось и что делать: токен, 429, 403, 5xx, сеть"]},
-     "en": {"t": "Plain-language errors on the account card", "p": ["Instead of `HTTP Error 400` — what happened and what to do: token, 429, 403, 5xx, network"]}},
-    {"v": "1.9.1", "date": "2026-09-06",
-     "ru": {"t": "Фоновый опрос уважает паузу после 429", "p": ["Фон не стучится в Anthropic, пока не кончилась пауза", "Переключаться некуда — одно уведомление в Telegram со статусом аккаунтов"]},
-     "en": {"t": "Background polling respects the 429 backoff", "p": ["No requests to Anthropic until the backoff ends", "Nowhere to switch — one Telegram notice with every account's status"]}},
-    {"v": "1.9.0", "date": "2026-09-06",
-     "ru": {"t": "Один список моделей с сортировкой", "p": ["Известные и найденные модели вместе, один чекбокс на строку, Haiku в конце"]},
-     "en": {"t": "One sorted model list", "p": ["Known and found models together, one checkbox per row, Haiku last"]}},
-    {"v": "1.8.0", "date": "2026-09-06",
-     "ru": {"t": "После 429 панель не повторяет запрос сразу", "p": ["Обычные запросы ждут удвоенный `poll_sec` после пойманного 429"]},
-     "en": {"t": "After a 429 the panel does not retry at once", "p": ["Regular requests wait double `poll_sec` after a caught 429"]}},
-    {"v": "1.7.0", "date": "2026-09-06",
-     "ru": {"t": "Кольцо-таймер и кнопки на карточке", "p": ["Кольцо до сброса 5-часового окна", "У активного аккаунта — кнопки `/compact` и «новая сессия», бейдж «АКТИВНЫЙ»"]},
-     "en": {"t": "Countdown ring and buttons on the card", "p": ["A ring until the 5-hour window resets", "The active account gets `/compact` and new-session buttons and an “ACTIVE” badge"]}},
-    {"v": "1.6.0", "date": "2026-09-06",
-     "ru": {"t": "Неактивные аккаунты опрашиваются реже", "p": ["Кэш моложе 5 мин — запрос к Anthropic пропускается, меньше 429"]},
-     "en": {"t": "Inactive accounts are polled less often", "p": ["With a cache under 5 min old the Anthropic request is skipped, fewer 429s"]}},
-    {"v": "1.5.0", "date": "2026-09-06",
-     "ru": {"t": "Пул моделей с чекбоксами", "p": ["Шестерёнка: какие модели показывать кнопками; кнопка меняет модель сессии"]},
-     "en": {"t": "Model pool with checkboxes", "p": ["The gear: which models to show as buttons; a button changes the session model"]}},
-    {"v": "1.4.1", "date": "2026-09-06",
-     "ru": {"t": "Кнопки «−/+» для порога переключения", "p": ["Шаг 5%, от 50 до 99%, без правки `config.json`"]},
-     "en": {"t": "“−/+” buttons for the switch threshold", "p": ["Step 5%, from 50 to 99%, no `config.json` editing"]}},
-    {"v": "1.4.0", "date": "2026-09-06",
-     "ru": {"t": "Единый порог и журнал переключений", "p": ["Аварийный порог оптимизации — то же поле `threshold`", "Журнал `switch_log.jsonl`: почему переключилось или нет"]},
-     "en": {"t": "One threshold and a switch log", "p": ["The optimize-mode emergency ceiling uses the same `threshold`", "`switch_log.jsonl`: why a switch did or did not happen"]}},
-    {"v": "1.3.0", "date": "2026-09-04",
-     "ru": {"t": "Очередь входящих на время лимитов", "p": ["Сообщения из чата ждут в очереди, хук отвечает отправителю, разбор — после подъёма"]},
-     "en": {"t": "Incoming queue while limits are burnt", "p": ["Chat messages wait in a queue, the hook replies to the sender, the queue runs after wake-up"]}},
-    {"v": "1.2.1", "date": "2026-09-04",
-     "ru": {"t": "Уведомления о паузе в Telegram", "p": ["Сообщения о постановке паузы и подъёме, ключ `bot_token` в `config.json`"]},
-     "en": {"t": "Pause notices in Telegram", "p": ["Messages when the pause starts and ends, a `bot_token` key in `config.json`"]}},
-    {"v": "1.2.0", "date": "2026-09-04",
-     "ru": {"t": "Гейт фоновых задач и пауза с будильником", "p": ["`limits_gate.py` держит фоновые задачи, пока лимит выбран", "Пауза с будильником через cron и баннер состояния в панели"]},
-     "en": {"t": "Background job gate and a pause with an alarm", "p": ["`limits_gate.py` holds background jobs while the limit is used up", "A pause with a cron alarm and a state banner in the panel"]}},
-    {"v": "1.1.0", "date": "2026-08-27",
-     "ru": {"t": "Интерфейс на русском и английском", "p": ["Починена веб-кнопка «Войти заново»"]},
-     "en": {"t": "Russian and English interface", "p": ["The web “Sign in again” button fixed"]}},
-    {"v": "1.0.0", "date": "2026-08-27",
-     "ru": {"t": "Первый релиз", "p": ["Мониторинг лимитов, авто-переключение, зеркало консоли, `cc-switch`, установщик"]},
-     "en": {"t": "First release", "p": ["Limit monitoring, auto-switch, console mirror, `cc-switch`, installer"]}}
+    {
+      "v": "1.25.28",
+      "date": "2026-11-02",
+      "ru": {
+        "t": "Профиль «Агент», аварийный блок и скриншоты Codex",
+        "p": [
+          "Профиль «Агент»: Claude и Codex ставят задачи агенту командой из delegate_cmd; без неё профиль скрыт",
+          "Аварийный блок: красная рамка целиком, кнопка и точка зелёные; консоль Codex прячется после удаления",
+          "Мост шлёт скриншоты PNG и JPEG из Codex в Telegram оригинальными файлами"
+        ]
+      },
+      "en": {
+        "t": "Agent profile, emergency block and Codex screenshots",
+        "p": [
+          "Agent profile: Claude and Codex hand tasks to the agent via delegate_cmd; hidden without it",
+          "Emergency block: full red frame, green button and dot; the Codex console hides after removal",
+          "The bridge sends PNG and JPEG screenshots from Codex to Telegram as original files"
+        ]
+      }
+    },
+    {
+      "v": "1.25.27",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Копии профилей аккаунтов встроены в балансер",
+        "p": [
+          "Раз в сутки и при новом входе балансер сам копирует профили аккаунтов, хранится 14 копий",
+          "В ⚙ блок «Копии аккаунтов»: «Копия сейчас» и «Восстановить недостающие», живые аккаунты не трогаются",
+          "Удалённый кнопкой аккаунт из копий не возвращается; папка копий открыта только для root"
+        ]
+      },
+      "en": {
+        "t": "Account backups are built into the balancer",
+        "p": [
+          "Once a day and on a new sign-in the balancer copies the account profiles itself, 14 copies are kept",
+          "New ⚙ block “Account backups”: “Back up now” and “Restore missing”, live accounts are never touched",
+          "An account deleted with the button is not brought back; the backup folder is root-only"
+        ]
+      }
+    },
+    {
+      "v": "1.25.26",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Тесты больше не трогают живые папки профилей",
+        "p": [
+          "Общий прогон тестов мог стереть папку профилей аккаунтов — теперь все пути тестов уходят во временную папку",
+          "Тесты с очисткой папок сами проверяют, что стирают только временное, иначе падают"
+        ]
+      },
+      "en": {
+        "t": "Tests no longer touch the live profile folders",
+        "p": [
+          "A full test run could wipe the account profiles folder — now every test path points to a temporary folder",
+          "Tests that clean folders check they only erase temporary ones and fail otherwise"
+        ]
+      }
+    },
+    {
+      "v": "1.25.25",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "«Удалить Codex целиком» и возврат «Codex +»",
+        "p": [
+          "Удалил последний аккаунт ChatGPT — в шапке снова «Codex +», мастер начинается со входа",
+          "В ⚙ внизу «Удалить Codex целиком»: аккаунты, бот, профили, режим и память разговора стёрты (по слову)",
+          "Сам Codex на сервере остаётся; выбранный профиль и свои профили моста сбрасываются"
+        ]
+      },
+      "en": {
+        "t": "\"Delete Codex completely\" and \"Codex +\" is back",
+        "p": [
+          "Deleted the last ChatGPT account — \"Codex +\" is back in the header and the wizard starts at sign-in",
+          "At the bottom of ⚙: \"Delete Codex completely\" — accounts, bot, profiles, mode and chat memory wiped (by word)",
+          "Codex itself stays on the server; the chosen profile and your own bridge profiles are reset"
+        ]
+      }
+    },
+    {
+      "v": "1.25.24",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Мастер Codex до конца, удаление аккаунта, команды cl и cxw",
+        "p": [
+          "Мастер сам переходит от установки ко входу в ChatGPT и к боту Telegram; бот необязателен — кнопка «Пропустить»",
+          "В карточке моста внизу «Сохранить» и «Удалить аккаунт» (с подтверждением); «Аккаунты и лимиты» — в самом низу ⚙",
+          "Команды cl, cla, cln, clw и cxw входят в панель и ставятся сами на любом сервере; запуск Claude — ключ claude_cmd"
+        ]
+      },
+      "en": {
+        "t": "Codex wizard to the end, delete account, cl and cxw commands",
+        "p": [
+          "The wizard moves on by itself from install to ChatGPT sign-in to the Telegram bot; the bot is optional — \"Skip\" button",
+          "Bridge card: \"Save\" and \"Delete account\" (confirmed) at the bottom; \"Accounts and limits\" moved to the bottom of ⚙",
+          "Commands cl, cla, cln, clw, cxw come with the panel and install themselves on any server; launch line — claude_cmd"
+        ]
+      }
+    },
+    {
+      "v": "1.25.23",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "«Поручить Claude» при подключении Codex",
+        "p": [
+          "Нет Node.js — кнопка «Поручить Claude» вставляет в консоль Claude готовый промт: он сам ставит Node.js и Codex",
+          "«Скопировать промт» — тот же текст для ручной вставки; окно само переходит ко входу в ChatGPT",
+          "Шаг 1 больше не обещает «одной кнопкой», когда кнопки «Установить» нет"
+        ]
+      },
+      "en": {
+        "t": "\"Ask Claude\" when connecting Codex",
+        "p": [
+          "No Node.js: the \"Ask Claude\" button types a ready prompt into the Claude console — it installs Node.js and Codex itself",
+          "\"Copy prompt\" gives the same text for pasting by hand; the window moves on to the ChatGPT sign-in by itself",
+          "Step 1 no longer promises \"one button\" when there is no Install button"
+        ]
+      }
+    },
+    {
+      "v": "1.25.22",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Подключение Codex кнопкой",
+        "p": [
+          "Пока Codex не установлен, в шапке кнопка «Codex +»: окно из трёх шагов и установка одной кнопкой",
+          "Панель сама ставит Codex в свою папку, проверяет его и подключает; нужен Node.js 16 или новее",
+          "Исправлена гонка в мосте Telegram→Codex: два быстрых сообщения не запускают два процесса Codex"
+        ]
+      },
+      "en": {
+        "t": "Connect Codex with a button",
+        "p": [
+          "While Codex is not installed, the header shows a \"Codex +\" button: a three-step window and a one-click install",
+          "The panel installs Codex into its own folder, checks it and connects it; Node.js 16 or newer is required",
+          "Fixed a race in the Telegram→Codex bridge: two quick messages no longer start two Codex processes"
+        ]
+      }
+    },
+    {
+      "v": "1.25.21",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Серая рамка блока Notion",
+        "p": [
+          "Пока резерв выключен, у блока Notion обычная серая рамка, как у блока Codex",
+          "Зелёная рамка при резерве и красная при потере связи остались без изменений"
+        ]
+      },
+      "en": {
+        "t": "Gray frame on the Notion block",
+        "p": [
+          "While the reserve is off, the Notion block has the regular gray frame, like the Codex block",
+          "The green frame in reserve and the red one on lost connection are unchanged"
+        ]
+      }
+    },
+    {
+      "v": "1.25.20",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Резерв — отдельный переключатель, Notion — индикатор",
+        "p": [
+          "Значок Notion теперь только индикатор: зелёная точка — подключён, красная — нужен вход",
+          "Переключатель «Резерв» — ручной резерв; включается после вопроса с пояснением, что это значит",
+          "Шапка на телефоне: кнопки Codex больше не налезают друг на друга"
+        ]
+      },
+      "en": {
+        "t": "Reserve is its own switch, Notion is an indicator",
+        "p": [
+          "The Notion icon is now just an indicator: green dot — connected, red — sign in again",
+          "The \"Reserve\" switch is the manual reserve; it asks first and explains what that means",
+          "Header on a phone: the Codex buttons no longer overlap each other"
+        ]
+      }
+    },
+    {
+      "v": "1.25.19",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Рамка Notion, вкладки консоли, ручной резерв",
+        "p": [
+          "Рамка блока Notion зелёная только при включённом резерве, иначе без рамки (красная «нет связи» осталась)",
+          "Вкладки Claude/Codex: неактивная — только окантовка, активная — полная заливка",
+          "Выключил переключатель Notion — галочка «вручную» снимается сама, резерв выключается сразу"
+        ]
+      },
+      "en": {
+        "t": "Notion frame, console tabs, manual reserve",
+        "p": [
+          "Notion block frame is green only while the reserve is on, otherwise none (red \"no connection\" stays)",
+          "Claude/Codex tabs: inactive is an outline only, active is filled completely",
+          "Switch the Notion block off and the \"manual\" tick clears itself, the reserve turns off at once"
+        ]
+      }
+    },
+    {
+      "v": "1.25.18",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Резерв «Codex + Notion» вместо Claude",
+        "p": [
+          "Три галочки в ⚙ Notion: вручную, само при кончившихся лимитах, плюс аварийный режим Codex",
+          "Ручной резерв ставит Claude на паузу (две минуты доделать начатое), снятие мгновенное; профиль Codex «Резерв»",
+          "Рамка блока: зелёная, жёлтая, красная; инструкция «с нуля» в README"
+        ]
+      },
+      "en": {
+        "t": "\"Codex + Notion\" reserve instead of Claude",
+        "p": [
+          "Three ticks in the Notion ⚙: manual, automatic when limits run out, plus Codex emergency mode",
+          "Manual reserve pauses Claude (two minutes to finish), lifting is instant; Codex profile \"Reserve\"",
+          "Block frame: green, yellow, red; a from-scratch guide in the README"
+        ]
+      }
+    },
+    {
+      "v": "1.25.17",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Фото в Codex, цвета вкладок, шторка профилей, карточка Notion",
+        "p": [
+          "Codex принимает фото из Telegram, в том числе альбомом (до 10): все снимки уходят одним запросом",
+          "Вкладки консолей: Claude оранжевая, Codex синяя; профили Codex на ПК — шторка справа без прокрутки",
+          "Инструкция «Codex с нуля» в README и подсказка про вход по коду устройства; карточка Notion-агента"
+        ]
+      },
+      "en": {
+        "t": "Photos to Codex, tab colours, profile drawer, Notion card",
+        "p": [
+          "Codex accepts Telegram photos, albums too (up to 10): all pictures go in a single request",
+          "Console tabs: Claude orange, Codex blue; Codex profiles on a PC open as a side drawer, no scrolling",
+          "A from-scratch Codex guide in the README and a device-code hint in the sign-in window; Notion agent card"
+        ]
+      }
+    },
+    {
+      "v": "1.25.16",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Шапка без RU·EN; вход в MCP не слетает при смене аккаунта",
+        "p": [
+          "Из шапки убран переключатель RU·EN (на телефоне занимал строку). Английский — ссылкой ?lang=en",
+          "Смена аккаунта больше не стирает вход в MCP-серверы (Notion и др.): меняется только вход в Claude"
+        ]
+      },
+      "en": {
+        "t": "No header language switch; MCP sign-ins survive account switch",
+        "p": [
+          "RU·EN switch removed from the header (it took a row on phones). English via the ?lang=en link",
+          "Switching accounts no longer wipes MCP sign-ins (Notion etc.): only the Claude sign-in is replaced"
+        ]
+      }
+    },
+    {
+      "v": "1.25.15",
+      "date": "2026-11-01",
+      "ru": {
+        "t": "Codex: кнопки «Сжать контекст» и «Новая сессия»",
+        "p": [
+          "На вкладке Codex рядом с кнопкой «стоп» появились две кнопки: «Сжать контекст» (команда /compact) и «Новая сессия»",
+          "«Новая сессия» работает как /new в Telegram: разговор забывается, консоль стартует заново, старый остаётся на диске; перед началом — вопрос",
+          "На телефоне кнопки действий стоят второй строкой под вкладками и не заходят под масштаб"
+        ]
+      },
+      "en": {
+        "t": "Codex: Compact context and New session buttons",
+        "p": [
+          "The Codex tab now has two buttons next to Stop: Compact context (the /compact command) and New session",
+          "New session works like /new in Telegram: the conversation is forgotten and the console starts afresh, the old one stays on disk; it asks first",
+          "On a phone the action buttons sit in a second row under the tabs and no longer slide under the zoom controls"
+        ]
+      }
+    },
+    {
+      "v": "1.25.14",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Оркестратор отвечает на вопросы по проекту",
+        "p": [
+          "В инструкцию «Оркестратора» добавлено правило: на вопросы по проекту он отвечает сам, читая проект",
+          "Шаг для Claude он оформляет, только когда нужна правка или запуск; без «да» шаг по-прежнему не уходит",
+          "Права, профили и остальные настройки не менялись"
+        ]
+      },
+      "en": {
+        "t": "Orchestrator answers questions about the project",
+        "p": [
+          "The Orchestrator instructions now say: answer questions about the project yourself by reading it",
+          "A step for Claude is drafted only when a change or a run is needed; without a \"yes\" nothing is sent, as before",
+          "Rights, profiles and other settings are unchanged"
+        ]
+      }
+    },
+    {
+      "v": "1.25.13",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Шапка: кнопки слева, Codex и язык справа",
+        "p": [
+          "Кнопки «Обновить», «Настройки» и «+» стоят слева, рядом с «Оптимизацией переключений лимитов»",
+          "Блок Codex сдвинут вправо, переключатель языка RU·EN — в самом правом краю",
+          "Работа кнопок и блока Codex не менялась, только их расположение"
+        ]
+      },
+      "en": {
+        "t": "Header: buttons on the left, Codex and language on the right",
+        "p": [
+          "The Refresh, Settings and \"+\" buttons now sit on the left, next to \"Limit optimization\"",
+          "The Codex block moved right and the RU·EN language switch is at the far right edge",
+          "Buttons and the Codex block work as before — only their position changed"
+        ]
+      }
+    },
+    {
+      "v": "1.25.12",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: понятные подписи папок в форме моста",
+        "p": [
+          "В профиле «Codex» первой идёт «Рабочая папка Codex»: здесь он может всё — создавать файлы и папки, менять и запускать; вне неё писать не может",
+          "«Проект» в этом профиле подписан «только чтение»: правки в нём вносит человек или Claude",
+          "В «Оркестраторе» форма как была; права и логика не менялись, только тексты и порядок полей"
+        ]
+      },
+      "en": {
+        "t": "Codex: clearer folder labels in the bridge form",
+        "p": [
+          "In the \"Codex\" profile the \"Codex working folder\" comes first: Codex can do anything there — create files and folders, change and run things — and cannot write outside it",
+          "\"Project\" in this profile is labelled \"read only\": a person or Claude makes the edits there",
+          "The Orchestrator form is unchanged; rights and logic are untouched, only texts and field order"
+        ]
+      }
+    },
+    {
+      "v": "1.25.11",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: меньше ручных настроек, правило для другого сервера",
+        "p": [
+          "Убраны «Собрать свой профиль…» и списки режим/доступ/права: режим задаёт профиль, полный доступ — только аварийный режим",
+          "В форме моста остались аккаунт, проект, рабочая папка, токен, чат и выключатель; свои профили прежних версий применяются и удаляются",
+          "Аварийный режим: на другом сервере править точечно, от пользователя приложения (sudo -u), после root — chown"
+        ]
+      },
+      "en": {
+        "t": "Codex: fewer manual settings, a rule for another server",
+        "p": [
+          "\"Build your own profile…\" and the mode/access/rights lists are gone: the profile sets the mode, full access comes only from the emergency mode",
+          "The bridge form keeps the account, project, working folder, token, chat and the switch; own profiles from earlier versions can still be applied and deleted",
+          "Emergency mode: on another server edit surgically, as the application's user (sudo -u), chown after editing as root"
+        ]
+      }
+    },
+    {
+      "v": "1.25.10",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: аварийный режим можно включать без срока",
+        "p": [
+          "hours: 0 в codex_emergency — режим без срока: сам не выключается, пока его не снимет человек",
+          "Карточка показывает «без срока · включён с …», окно подтверждения говорит об этом прямо",
+          "Без ключа hours по-прежнему 24 ч; снять — кнопкой или /emergency_off"
+        ]
+      },
+      "en": {
+        "t": "Codex: emergency mode can run without a time limit",
+        "p": [
+          "hours: 0 in codex_emergency means no deadline: it stays on until a person turns it off",
+          "The card shows \"no time limit · on since …\" and the confirmation window says so plainly",
+          "Without the hours key it is still 24 h; turn off with the button or /emergency_off"
+        ]
+      }
+    },
+    {
+      "v": "1.25.9",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: аварийный режим — полный доступ к проекту на время",
+        "p": [
+          "Когда Claude недоступен, Codex на срок (по умолчанию 24 ч) получает проект на запись и перезапуск сервисов",
+          "Включается только кнопкой вводом слова «аварийный»; выключение — кнопкой, /emergency_off или по сроку",
+          "Красная карточка, пуши и журнал; без настройки codex_emergency режима нет"
+        ]
+      },
+      "en": {
+        "t": "Codex: emergency mode — full project access for a while",
+        "p": [
+          "When Claude is unavailable, Codex gets write access to the project and service restarts for a set time (24 h by default)",
+          "Enabled only with the button by typing the word \"emergency\"; off by button, /emergency_off or the deadline",
+          "A red card, pushes and a journal; without the codex_emergency setting there is no mode"
+        ]
+      }
+    },
+    {
+      "v": "1.25.8",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: два профиля со стрелками и бот одним переключателем",
+        "p": [
+          "«Второй ИИ» стал Codex; два профиля — «ОРКЕСТРАТОР (Codex ➜ Claude)» и «Codex (нативный ИИ)» со стрелками и цветом",
+          "Профиль «Выключен» заменён переключателем «Бот в Telegram»; пуши лимитов идут и при выключенном боте",
+          "В форме моста «Проект» (Codex его только читает) отдельно от рабочей папки Codex"
+        ]
+      },
+      "en": {
+        "t": "Codex: two profiles with arrows and a bot switch",
+        "p": [
+          "\"Second AI\" is now Codex; two profiles — \"ORCHESTRATOR (Codex ➜ Claude)\" and \"Codex (native AI)\" with arrows",
+          "The \"Off\" profile is now a \"Telegram bot\" switch; limit pushes still arrive with the bot off",
+          "In the bridge form \"Project\" (read-only for Codex) is separate from Codex's working folder"
+        ]
+      }
+    },
+    {
+      "v": "1.25.7",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: слёт на Free — красная метка, пуш и кнопка «Я продлил»",
+        "p": [
+          "Платный аккаунт стал Free: красная метка FREE в шапке и карточке, один пуш в Telegram; мост продолжает работать",
+          "Кнопка «Я продлил» перечитывает план и срок подписки; платный план возвращён — предупреждения снимаются"
+        ]
+      },
+      "en": {
+        "t": "Codex: drop to Free — red tag, push and an \"I renewed\" button",
+        "p": [
+          "A paid account fell to Free: a red FREE tag in the header and card, one Telegram push; the bridge keeps running",
+          "\"I renewed\" re-reads the plan and subscription end; once paid again, the warnings are cleared"
+        ]
+      }
+    },
+    {
+      "v": "1.25.6",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: без серых полос в консоли",
+        "p": [
+          "Серые полосы вокруг вашего сообщения в консоли Codex убраны — как в консоли Claude, текст читается",
+          "Только зеркало консоли Codex; консоль Claude не менялась"
+        ]
+      },
+      "en": {
+        "t": "Codex: no grey bands in the console",
+        "p": [
+          "The grey bands around your message in the Codex console are gone, like in the Claude console",
+          "Only the Codex console mirror changed; the Claude console is untouched"
+        ]
+      }
+    },
+    {
+      "v": "1.25.5",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: консоль и Telegram — один разговор",
+        "p": [
+          "Сообщения из Telegram мост вводит в живую консоль Codex, ответ читает из файла сессии: на вкладке виден диалог",
+          "«/stop» нажимает Esc в консоли, «/new» перезапускает консоль с чистым разговором; консоль идёт с «-a never»",
+          "Закрытую или запущенную с другими правами консоль мост поднимает сам и продолжает тот же разговор (resume)"
+        ]
+      },
+      "en": {
+        "t": "Codex: console and Telegram are one conversation",
+        "p": [
+          "The bridge types Telegram messages into the live Codex console and reads the reply from its session file",
+          "/stop presses Esc in the console, /new restarts it with a clean conversation; the console runs with -a never",
+          "A closed console, or one started with other rights, is restarted by the bridge and resumes the same conversation"
+        ]
+      }
+    },
+    {
+      "v": "1.25.4",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: консоль стартует сама, ленты нет, пуши лимитов при «Выключен»",
+        "p": [
+          "Консоль Codex запускается сама при открытии вкладки; кнопка «Запустить» осталась запасной, после «Стоп»",
+          "Лента работы моста убрана совсем: на вкладке Codex только экран; в шапке чип модели и усилия",
+          "Пуши лимитов и конца подписки приходят и при профиле «Выключен», пока подключён Telegram-бот"
+        ]
+      },
+      "en": {
+        "t": "Codex: console starts by itself, no feed, limit pushes while Off",
+        "p": [
+          "The Codex console starts by itself when you open its tab; Start remains a fallback after Stop",
+          "The bridge activity feed is gone: the Codex tab shows only the screen; header chip for model and effort",
+          "Limit and subscription pushes arrive even with the Off profile while the Telegram bot is connected"
+        ]
+      }
+    },
+    {
+      "v": "1.25.3",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: старая ошибка связи с Telegram больше не залипает",
+        "p": [
+          "Раньше красная точка и «Telegram недоступен: TimeoutError» висели, пока не придёт новый сбой или сообщение",
+          "Теперь после первого удачного опроса Telegram сообщение об ошибке и красная точка гаснут сами"
+        ]
+      },
+      "en": {
+        "t": "Codex: a stale Telegram connection error no longer sticks",
+        "p": [
+          "The red dot and \"Telegram unavailable: TimeoutError\" used to stay until the next failure or message",
+          "Now the error text and the red dot clear by themselves after the first successful Telegram poll"
+        ]
+      }
+    },
+    {
+      "v": "1.25.2",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: сборка профиля в ⚙, пояснения, счётчики лимитов и пуши",
+        "p": [
+          "Свой профиль собирается в окне ⚙: режим, доступ и права с описаниями; у каждого профиля значок ⓘ с пояснением",
+          "В шапке — счётчики окон 5 ч и недели активного аккаунта: жёлтый с 80%, красный с 95%, при исчерпании «до HH:MM»",
+          "Пуши в Telegram: аккаунт на 90%, исчерпан, снова доступен и подписка кончается (за 7, 3, 1 день и в день конца)"
+        ]
+      },
+      "en": {
+        "t": "Codex: profile builder in ⚙, hints, limit counters and pushes",
+        "p": [
+          "Build your own profile in the ⚙ window: mode, access and rights with descriptions; every profile has an ⓘ hint",
+          "The header shows 5 h and weekly counters of the active account: yellow from 80%, red from 95%, \"until HH:MM\" if spent",
+          "Telegram pushes: account at 90%, spent, available again, and the subscription ending (7, 3, 1 days and on the day)"
+        ]
+      }
+    },
+    {
+      "v": "1.25.1",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Мост Codex включается сам после подключения бота",
+        "p": [
+          "Профиль выбран, токен вставлен — раньше мост молчал, теперь включается сам (кроме профиля «Выключен»)"
+        ]
+      },
+      "en": {
+        "t": "The Codex bridge turns on after the bot is connected",
+        "p": [
+          "Profile picked, token pasted: the bridge used to stay silent, now it turns on (except the Off profile)"
+        ]
+      }
+    },
+    {
+      "v": "1.25.0",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Codex: окно из шапки, профили, оркестратор и консоль",
+        "p": [
+          "Значок Codex в шапке открывает окно: профили одним кликом (Секретарь, Оркестратор, Запасной, Второй ИИ, Выключен) и свои",
+          "Режим «Оркестратор»: Codex ведёт задачу, Claude исполняет шаги, каждый — после «да»; «стоп» снимает всё",
+          "Вкладка «Codex» рядом с консолью Claude: экран Codex, только просмотр; каталог профилей — ключ codex_profiles"
+        ]
+      },
+      "en": {
+        "t": "Codex: header window, profiles, orchestrator and console",
+        "p": [
+          "The header Codex icon opens a window: one-click profiles (Secretary, Orchestrator, Standby, Second AI, Off), or your own",
+          "\"Orchestrator\" mode: Codex drives the goal, Claude executes the steps, each after your \"yes\"; \"stop\" cancels everything",
+          "A \"Codex\" tab next to the Claude console: Codex's screen, view only; the profiles folder is the codex_profiles key"
+        ]
+      }
+    },
+    {
+      "v": "1.24.0",
+      "date": "2026-10-31",
+      "ru": {
+        "t": "Аккаунты ChatGPT (Codex) и мост с Telegram",
+        "p": [
+          "Секция «ChatGPT (Codex)»: вход по коду устройства, лимиты «5ч» и «Неделя», срок подписки, модель, усилие, Fast",
+          "Мост Telegram ↔ Codex: свой бот; «Посредник» оформляет задания Claude, «Самостоятельно» работает по выбранному доступу",
+          "Отдельная программа, в авто-переключение Claude не входит. Нужен Codex (codex_bin); мост включается в карточке"
+        ]
+      },
+      "en": {
+        "t": "ChatGPT (Codex) accounts and a Telegram bridge",
+        "p": [
+          "\"ChatGPT (Codex)\" section: device-code sign-in, \"5h\" and \"Week\" limits, subscription end, model, effort, Fast",
+          "Telegram ↔ Codex bridge: its own bot; \"Mediator\" drafts tasks for Claude, \"Autonomous\" works at the chosen access",
+          "A separate program, not part of Claude's auto-switching. Needs Codex (codex_bin); the bridge is enabled on the card"
+        ]
+      }
+    },
+    {
+      "v": "1.23.1",
+      "date": "2026-10-27",
+      "ru": {
+        "t": "У неактивного аккаунта нет кнопки «Переключиться»",
+        "p": [
+          "На карточке слетевшего на Free аккаунта остались «Я продлил», «Войти заново» и удаление"
+        ]
+      },
+      "en": {
+        "t": "An inactive account has no \"Switch to this\" button",
+        "p": [
+          "The card of an account that fell to Free keeps only \"I renewed\", \"Log in again\" and delete"
+        ]
+      }
+    },
+    {
+      "v": "1.23.0",
+      "date": "2026-10-27",
+      "ru": {
+        "t": "Слетевший с Pro аккаунт помечается и не опрашивается",
+        "p": [
+          "Аккаунт, перешедший на Free, получает красную рамку и метку «НЕАКТИВНЫЙ» — его легко отличить от Pro",
+          "Опрос такого аккаунта в Anthropic стоит, пока не нажмёшь «Я продлил»; после нажатия — обычная работа"
+        ]
+      },
+      "en": {
+        "t": "An account that dropped from Pro is marked and no longer polled",
+        "p": [
+          "An account that fell to Free gets a red frame and an \"INACTIVE\" tag, so it is easy to tell from Pro",
+          "Polling it at Anthropic stops until you press \"I renewed\"; after the press, normal work resumes"
+        ]
+      }
+    },
+    {
+      "v": "1.22.6",
+      "date": "2026-10-24",
+      "ru": {
+        "t": "Счётчик до Free не тикает у аккаунта, который уже Free",
+        "p": [
+          "Чип «⏳ до Free» теперь показывается только пока план реально Pro — после обвала он пропадает",
+          "Найдено живьём: экран одновременно показывал «FREE» и «⏳ 29 дн», хотя обвал уже произошёл"
+        ]
+      },
+      "en": {
+        "t": "Countdown no longer ticks for an account already on Free",
+        "p": [
+          "The \"⏳ until Free\" chip now shows only while the plan is actually Pro — it disappears after the drop",
+          "Found live: the screen showed \"FREE\" and \"⏳ 29d\" at the same time, even though the drop had already happened"
+        ]
+      }
+    },
+    {
+      "v": "1.22.5",
+      "date": "2026-10-23",
+      "ru": {
+        "t": "План читается свежим даже при бэкоффе usage",
+        "p": [
+          "Pro/Free теперь перепроверяется каждый цикл опроса, даже когда usage-эндпойнт в паузе после 403/429",
+          "Найдено живьём: при бэкоффе дебаунс «2 подряд» не видел свежих чтений плана, не мог подтвердить переход Pro→Free"
+        ]
+      },
+      "en": {
+        "t": "Plan keeps refreshing even during usage backoff",
+        "p": [
+          "Pro/Free is now re-checked every poll cycle, even while the usage endpoint is paused after a 403/429",
+          "Found live: under backoff the \"2 in a row\" debounce never saw fresh reads, so a real Pro→Free switch went unconfirmed"
+        ]
+      }
+    },
+    {
+      "v": "1.22.4",
+      "date": "2026-10-23",
+      "ru": {
+        "t": "Счётчик обвала в Free не зависает в прошлом",
+        "p": [
+          "Прогноз «⏳ до Free» теперь докручивается на месяцы вперёд, если подписка продлилась тихо, без видимого Free",
+          "Раньше якорь даты не обновлялся без явного обвала — чип навечно висел на «ждём сегодня»"
+        ]
+      },
+      "en": {
+        "t": "Renewal countdown no longer freezes in the past",
+        "p": [
+          "The \"until Free\" estimate now rolls forward by months when the plan renewed quietly, with no visible Free dip",
+          "Before, the anchor date never advanced without a real drop — the chip stuck on \"any day now\" forever"
+        ]
+      }
+    },
+    {
+      "v": "1.22.3",
+      "date": "2026-10-23",
+      "ru": {
+        "t": "Бейдж Free/Pro не мигает от дребезга Anthropic",
+        "p": [
+          "Снимок и бейдж показывают план только после 2 одинаковых подряд чтений — та же защита, что уже была у уведомлений",
+          "Найдено живьём: бейдж на карточке мигал free/pro каждые ~минуты, хотя подтверждённый статус был стабилен"
+        ]
+      },
+      "en": {
+        "t": "Free/Pro badge no longer flickers on Anthropic's flapping reads",
+        "p": [
+          "The snapshot now shows the plan only after 2 identical consecutive reads — the same protection notifications had",
+          "Found live: the card badge flickered free/pro every ~minute even though the confirmed status was stable"
+        ]
+      }
+    },
+    {
+      "v": "1.22.2",
+      "date": "2026-10-23",
+      "ru": {
+        "t": "Бэкофф и на 403, не только на 429",
+        "p": [
+          "Опрос usage/profile теперь ждёт после 403 (запрет доступа), а не долбит эндпойнт каждый цикл до своего 429",
+          "Найдено живьём: аккаунт сутки отдавал 403 без паузы — цифры лимита всё это время были замороженным кэшем"
+        ]
+      },
+      "en": {
+        "t": "Back off on 403 too, not only 429",
+        "p": [
+          "Usage/profile polling now backs off after a 403 (forbidden) too, not just a 429, instead of hammering it every cycle",
+          "Found live: an account returned 403 for a day straight with no pause, so its limit numbers were a frozen cache"
+        ]
+      }
+    },
+    {
+      "v": "1.22.1",
+      "date": "2026-10-21",
+      "ru": {
+        "t": "Автообновление приходит быстрее, описание видно после установки",
+        "p": [
+          "Новая версия проверяется раз в 6 часов, а не раз в сутки: авто-режим ставит её в течение 6 часов после выхода",
+          "В плашке «Обновлено до версии …» теперь есть «Что нового» — то же описание, что в истории изменений"
+        ]
+      },
+      "en": {
+        "t": "Auto-updates arrive sooner, release notes show after install",
+        "p": [
+          "New versions are checked every 6 hours, not once a day: automatic mode installs one within 6 hours of release",
+          "The \"Updated to version …\" banner now has \"What's new\" — the same notes as in the change history"
+        ]
+      }
+    },
+    {
+      "v": "1.22.0",
+      "date": "2026-10-21",
+      "ru": {
+        "t": "Адаптивный опрос лимитов и безопасная запись логина",
+        "p": [
+          "Опрос реже в покое, чаще у порога, не больше 20 запросов/ч на аккаунт; после 429 ждём Retry-After",
+          "Журнал сбоев usage_fail.jsonl; adaptive_poll=false возвращает прежний темп",
+          "cc-switch и обновление токена пишут логин атомарно, под замками Claude Code, с откатом"
+        ]
+      },
+      "en": {
+        "t": "Adaptive limit polling and safe login writes",
+        "p": [
+          "Polls slower when idle, faster near the threshold, max 20 requests/h per account; after a 429 it waits Retry-After",
+          "Failure log usage_fail.jsonl; adaptive_poll=false restores the old pace",
+          "cc-switch and token refresh write the login atomically, under Claude Code's locks, with rollback"
+        ]
+      }
+    },
+    {
+      "v": "1.21.14",
+      "date": "2026-10-19",
+      "ru": {
+        "t": "Модель и effort видны без личной статус-строки",
+        "p": [
+          "Панель находит историю сессии по папке запуска Claude Code, а не только в /root",
+          "Нет статус-строки и истории — модель берётся из settings.json, effort больше не «не задан»",
+          "В список моделей добавлены Sonnet 5.5 и Haiku 5.5"
+        ]
+      },
+      "en": {
+        "t": "Model and effort show without a custom status line",
+        "p": [
+          "The panel finds the session transcript by the folder Claude Code was started in, not only /root",
+          "With no status line and no transcript the model comes from settings.json, so effort is no longer \"not set\"",
+          "Sonnet 5.5 and Haiku 5.5 added to the model list"
+        ]
+      }
+    },
+    {
+      "v": "1.21.13",
+      "date": "2026-10-19",
+      "ru": {
+        "t": "Кнопки над консолью — с небольшим отступом справа",
+        "p": [
+          "Блок «− 100% + ⛶» отодвинут от правого края консоли на 8 px, больше не прижат вплотную"
+        ]
+      },
+      "en": {
+        "t": "Console buttons have a small right margin",
+        "p": [
+          "The “− 100% + ⛶” block is now inset 8 px from the right edge of the console instead of touching it"
+        ]
+      }
+    },
+    {
+      "v": "1.21.12",
+      "date": "2026-10-19",
+      "ru": {
+        "t": "Кнопки над консолью — по правому краю",
+        "p": [
+          "Блок «− 100% + ⛶» прижат к правому краю консоли, вровень с кнопками шапки"
+        ]
+      },
+      "en": {
+        "t": "Console buttons are flush right",
+        "p": [
+          "The “− 100% + ⛶” block now sits against the right edge of the console, in line with the header buttons"
+        ]
+      }
+    },
+    {
+      "v": "1.21.11",
+      "date": "2026-10-14",
+      "ru": {
+        "t": "Строка effort видна, даже если уровень не определён",
+        "p": [
+          "Уровня нет ни в транскрипте, ни в settings.json, ни в статус-строке — видно «не задан» и шкалу, уровень задаётся кликом"
+        ]
+      },
+      "en": {
+        "t": "The effort row stays visible when the level is unknown",
+        "p": [
+          "No level in the transcript, settings.json or status line — the row shows “not set” and a scale; click to set it"
+        ]
+      }
+    },
+    {
+      "v": "1.21.10",
+      "date": "2026-10-09",
+      "ru": {
+        "t": "Кнопка «скрыть» рядом с названием модели",
+        "p": [
+          "Галочка «скрыть» стоит справа в одной строке с названием модели, а не отдельной строкой снизу"
+        ]
+      },
+      "en": {
+        "t": "The “hide” tick sits on the model name line",
+        "p": [
+          "The “hide” tick is now right-aligned on the same line as the model name, not on a separate line below"
+        ]
+      }
+    },
+    {
+      "v": "1.21.9",
+      "date": "2026-10-09",
+      "ru": {
+        "t": "Скрытие моделей из списка",
+        "p": [
+          "Галочка «скрыть» убирает модель из списка настроек и из чипов",
+          "После «Проверить новые модели» скрытые видны полупрозрачными, галочка возвращает их в строй",
+          "Скрыть все модели нельзя: одна должна остаться"
+        ]
+      },
+      "en": {
+        "t": "Hide models from the list",
+        "p": [
+          "The “hide” tick removes a model from the settings list and from the chips",
+          "After “Check for new models” hidden models show faded; untick one to bring it back",
+          "All models cannot be hidden: at least one must stay"
+        ]
+      }
+    },
+    {
+      "v": "1.21.8",
+      "date": "2026-10-09",
+      "ru": {
+        "t": "Новые модели сразу помечаются «новая»",
+        "p": [
+          "«Проверить новые модели» помечает найденные модели меткой «новая» сразу, не дожидаясь галочки"
+        ]
+      },
+      "en": {
+        "t": "New models are marked “new” as soon as they are found",
+        "p": [
+          "“Check for new models” marks every model it finds as new right away, without waiting for a tick"
+        ]
+      }
+    },
+    {
+      "v": "1.21.7",
+      "date": "2026-10-09",
+      "ru": {
+        "t": "Дребезг Pro/Free не спамит, free-аккаунт не долбится как активный",
+        "p": [
+          "Смена плана Pro↔Free уведомляет только после 2 одинаковых чтений подряд — гасит дребезг на грани подписки",
+          "Неактивный free-аккаунт опрашивается не чаще раза в inactive_poll_sec, даже если кэш «протух» по времени",
+          "Кнопка «Я продлил» больше не обходит паузу после 429 — показывает понятное сообщение вместо повтора"
+        ]
+      },
+      "en": {
+        "t": "Pro/Free flapping no longer spams, free account polled less",
+        "p": [
+          "A Pro/Free change notifies only after 2 consecutive matching reads — kills flapping at subscription edges",
+          "An inactive free account is polled no more than once per inactive_poll_sec, even if the cache looks stale",
+          "The \"I renewed\" button no longer bypasses the post-429 pause — shows a clear message instead of retrying"
+        ]
+      }
+    },
+    {
+      "v": "1.21.6",
+      "date": "2026-10-07",
+      "ru": {
+        "t": "«Переключаться некуда» с учётом недели, ручной выбор до 100%",
+        "p": [
+          "Некуда переключаться, если у остальных забита сессия или неделя, — встаёт пауза, а не добивание до 100%",
+          "Баннер называет настоящую причину: «acc1: неделя 99% — на потолке 99%» и что держит каждый аккаунт",
+          "Выбранный вручную держится до сброса окна или 100% («Выбран вручную»); без него с потолка недели — сразу"
+        ]
+      },
+      "en": {
+        "t": "“Nothing to switch to” counts the week, manual pick holds to 100%",
+        "p": [
+          "Nothing to switch to when the others have a full session or week — the pause goes up, no filling to 100%",
+          "The banner names the real reason: “acc1: week 99% — at the 99% cap” and what holds each account",
+          "A manual pick holds until its window resets or 100% (“Picked manually”); otherwise the week cap is left at once"
+        ]
+      }
+    },
+    {
+      "v": "1.21.5",
+      "date": "2026-10-07",
+      "ru": {
+        "t": "Понятнее сообщение о недельном потолке",
+        "p": [
+          "Неделя аккаунта дошла до потолка и балансер ушёл на другой — Telegram пишет, что это обычная смена аккаунта",
+          "«Пауза на недельном потолке» тут ни при чём: она срабатывает, только когда переключаться некуда"
+        ]
+      },
+      "en": {
+        "t": "Clearer weekly-cap message",
+        "p": [
+          "When an account hits the weekly cap and the balancer moves on, the Telegram message says this is a normal account switch",
+          "It states that “Pause at the weekly cap” is not involved: it only acts when there is nowhere to switch"
+        ]
+      }
+    },
+    {
+      "v": "1.21.4",
+      "date": "2026-10-06",
+      "ru": {
+        "t": "«Войти заново» — панель справа, тоньше шрифт консоли",
+        "p": [
+          "«Войти заново» больше не открывает вкладку и окно ввода: справа выезжает панель со ссылкой и полем для кода",
+          "Ссылку можно открыть или скопировать; при неверном коде — кнопка «Начать заново»",
+          "Консоль в Phosphor, Aurora, Slate и Blocks больше не выглядит жирной: убраны фильтры, утолщавшие буквы"
+        ]
+      },
+      "en": {
+        "t": "“Log in again” side panel, lighter console text",
+        "p": [
+          "“Log in again” no longer opens a tab and a prompt: a panel slides in on the right with the link and a code field",
+          "Open or copy the link; a wrong code offers “Start over”",
+          "The console in Phosphor, Aurora, Slate and Blocks no longer looks bold: the filters that thickened the text are gone"
+        ]
+      }
+    },
+    {
+      "v": "1.21.3",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Подпись версии больше не занимает строку",
+        "p": [
+          "В 1.21.2 подпись стояла отдельной строкой и поднимала карточки и консоль на 15 px",
+          "Теперь она в нижнем отступе под карточками: раскладка такая же, как до 1.21.2",
+          "Шрифт мельче (9 px), подпись не кликается и не выделяется"
+        ]
+      },
+      "en": {
+        "t": "The version label no longer takes a line",
+        "p": [
+          "In 1.21.2 the label sat on its own line and pushed the cards and console up by 15 px",
+          "It now sits in the bottom padding under the cards: the layout is the same as before 1.21.2",
+          "Smaller font (9 px); the label is not clickable or selectable"
+        ]
+      }
+    },
+    {
+      "v": "1.21.2",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Версия приложения в правом нижнем углу",
+        "p": [
+          "Мелкая подпись «cc-fleet vX.Y.Z» справа под карточками — видно, какая версия открыта",
+          "Версия подставляется при отдаче страницы: после обновления вкладка покажет новую",
+          "В режиме «только консоль» подписи нет"
+        ]
+      },
+      "en": {
+        "t": "App version in the bottom-right corner",
+        "p": [
+          "A small “cc-fleet vX.Y.Z” label under the cards on the right shows which version is open",
+          "The version is filled in when the page is served: after an update the tab shows the new one",
+          "Hidden in console-only mode"
+        ]
+      }
+    },
+    {
+      "v": "1.21.1",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Вкладка сама перезагружается после обновления",
+        "p": [
+          "Служба обновилась — открытая панель перезагружается сама, открытые настройки откроются снова",
+          "Ждёт, пока закроешь диалог аккаунта, допишешь ввод или выйдешь из полноэкранного режима",
+          "Не помогло — повторов нет, на плашке кнопка «Обновить страницу»"
+        ]
+      },
+      "en": {
+        "t": "The tab reloads itself after an update",
+        "p": [
+          "Once the service updates, an open panel reloads itself; open Settings come back",
+          "It waits until you close an account dialog, finish typing or leave full screen",
+          "If that did not help, no retries: the banner shows a “Reload page” button"
+        ]
+      }
+    },
+    {
+      "v": "1.21.0",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Недельный потолок 99%: пауза по выбору и предупреждения",
+        "p": [
+          "Опция «Пауза на недельном потолке»: на 99% недели и некуда переключиться Claude встаёт на паузу",
+          "Без опции — баннер и сообщение «не остановит до 100% — на свой страх и риск» вместо «жду»",
+          "Любой аккаунт дошёл до 99% недели — одно сообщение в Telegram за неделю"
+        ]
+      },
+      "en": {
+        "t": "Weekly 99% cap: optional pause and warnings",
+        "p": [
+          "“Pause at the weekly cap” option: at 99% of the week with nowhere to switch, Claude pauses",
+          "Without it: a banner and a “won’t stop it at 100%, at your own risk” message instead of “waiting”",
+          "Any account reaching 99% of its week gets one Telegram message per week"
+        ]
+      }
+    },
+    {
+      "v": "1.20.1",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Читаемые неактивные кнопки на карточках",
+        "p": [
+          "«Используется сейчас» и «Рулит оптимизация» больше не полупрозрачные — контраст не ниже 4,5 во всех оформлениях",
+          "Blocks: такие кнопки — белые с чёрной рамкой без тени; поле названия модели в настройках — белое с чёрным текстом"
+        ]
+      },
+      "en": {
+        "t": "Readable inactive buttons on cards",
+        "p": [
+          "“In use now” and “Optimizer active” are no longer translucent: contrast is 4.5 or higher in every look",
+          "Blocks: these buttons are white with a black border and no shadow; the model name field in Settings is white"
+        ]
+      }
+    },
+    {
+      "v": "1.20.0",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "История изменений в настройках",
+        "p": [
+          "«⚙ Настройки → Обновления»: свёрнутая строка «История изменений» со всеми версиями с v1.0.0",
+          "Журнал лежит в `CHANGELOG.json`, приезжает с обновлениями, язык — как в интерфейсе"
+        ]
+      },
+      "en": {
+        "t": "Changelog in Settings",
+        "p": [
+          "“⚙ Settings → Updates”: a collapsed “Changelog” row with every version since v1.0.0",
+          "The log lives in `CHANGELOG.json`, arrives with updates and follows the interface language"
+        ]
+      }
+    },
+    {
+      "v": "1.19.3",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Плановое переключение ждёт паузы между ходами",
+        "p": [
+          "Смена аккаунта посреди хода сбрасывала кэш промпта, а у Sonnet 5.5 и рассуждения хода",
+          "Плановый свитч ждёт паузы до 15 мин (`opt_defer_max_sec`), аварийный — сразу",
+          "В `switch_log.jsonl` — событие `deferred_busy` и поля `waited_sec`/`busy`"
+        ]
+      },
+      "en": {
+        "t": "Planned switch waits for a pause between turns",
+        "p": [
+          "Switching mid-turn dropped the prompt cache, and on Sonnet 5.5 the turn's reasoning too",
+          "A planned switch waits up to 15 min (`opt_defer_max_sec`), an emergency one goes at once",
+          "`switch_log.jsonl`: a `deferred_busy` event and `waited_sec`/`busy` fields"
+        ]
+      }
+    },
+    {
+      "v": "1.19.2",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Страница по окну, «только консоль», смартфон",
+        "p": [
+          "Шапка, консоль и карточки помещаются в окно без прокрутки, «−/+» — шрифт консоли",
+          "Кнопка ⛶ — только консоль, аккаунты в панели снизу; вид для телефона",
+          "Подтверждение смены модели и effort, описание релиза на языке интерфейса"
+        ]
+      },
+      "en": {
+        "t": "Page fits the window, console-only mode, phone layout",
+        "p": [
+          "Header, console and cards fit the window without scrolling, “−/+” sets the console font",
+          "The ⛶ button: console only, accounts in a bottom panel; a phone layout",
+          "Confirmation before a model or effort change, release notes in the interface language"
+        ]
+      }
+    },
+    {
+      "v": "1.19.1",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Кнопка «+» в шапке для добавления аккаунта",
+        "p": [
+          "Компактная кнопка рядом с шестерёнкой вместо постоянной плитки в конце списка"
+        ]
+      },
+      "en": {
+        "t": "“+” button in the header to add an account",
+        "p": [
+          "A compact button next to the gear instead of a permanent tile at the end of the list"
+        ]
+      }
+    },
+    {
+      "v": "1.19.0",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Добавление и удаление аккаунтов из панели",
+        "p": [
+          "Добавление: ссылка входа → код со страницы → аккаунт сам в ротации",
+          "Удаление стирает профиль навсегда, подтверждение словом «подтверждаю»",
+          "Telegram сообщает о добавлении и удалении"
+        ]
+      },
+      "en": {
+        "t": "Add and remove accounts from the panel",
+        "p": [
+          "Add: sign-in link → code from the page → the account joins the rotation",
+          "Remove wipes the profile for good and is confirmed by typing a word",
+          "Telegram reports every add and removal"
+        ]
+      }
+    },
+    {
+      "v": "1.18.0",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Обновления из панели",
+        "p": [
+          "Раз в сутки проверка GitHub Releases, баннер «Вышла новая версия»",
+          "Режим «Вручную / Автоматически», проверка sha256, бэкап и откат, если новая версия не поднялась"
+        ]
+      },
+      "en": {
+        "t": "Updates from the panel",
+        "p": [
+          "A daily GitHub Releases check and a “New version released” banner",
+          "Manual or automatic mode, sha256 check, backup and rollback if the new version fails to start"
+        ]
+      }
+    },
+    {
+      "v": "1.17.0",
+      "date": "2026-10-03",
+      "ru": {
+        "t": "Срок логина на карточке аккаунта",
+        "p": [
+          "Чип «логин N дн» рядом с «Войти заново»: до 7 дней жёлтый, до 3 — красный"
+        ]
+      },
+      "en": {
+        "t": "Login expiry on the account card",
+        "p": [
+          "A “login N d” chip next to “Sign in again”: yellow under 7 days, red under 3"
+        ]
+      }
+    },
+    {
+      "v": "1.16.0",
+      "date": "2026-10-02",
+      "ru": {
+        "t": "Пять оформлений и полный экран консоли",
+        "p": [
+          "Классика, Phosphor, Aurora, Slate, Blocks — выбор в «⚙ Настройки»",
+          "Консоль на весь экран, аккаунты снизу",
+          "Уровень effort, который модель не поддерживает, не ставится"
+        ]
+      },
+      "en": {
+        "t": "Five skins and a full-screen console",
+        "p": [
+          "Classic, Phosphor, Aurora, Slate, Blocks — pick one in “⚙ Settings”",
+          "Full-screen console with the accounts below",
+          "An effort level the model does not support is not applied"
+        ]
+      }
+    },
+    {
+      "v": "1.15.1",
+      "date": "2026-10-01",
+      "ru": {
+        "t": "Гейт фоновых задач держит только по 5-часовому окну",
+        "p": [
+          "Неделя на 99–100% больше не останавливает фоновые прогоны на сутки и дольше"
+        ]
+      },
+      "en": {
+        "t": "Background job gate holds only on the 5-hour window",
+        "p": [
+          "A week at 99–100% no longer stops background runs for a day or more"
+        ]
+      }
+    },
+    {
+      "v": "1.15.0",
+      "date": "2026-10-01",
+      "ru": {
+        "t": "Пауза только по 5-часовому окну",
+        "p": [
+          "Недельные лимиты паузу больше не ставят",
+          "Кнопки «Отключить / Включить паузу» и `pause_ctl.py off|on`",
+          "Хук `PreToolUse`: пауза останавливает и уже начатый ход"
+        ]
+      },
+      "en": {
+        "t": "Pause only on the 5-hour window",
+        "p": [
+          "Weekly limits no longer trigger the pause",
+          "“Disable / Enable pause” buttons and `pause_ctl.py off|on`",
+          "A `PreToolUse` hook: the pause also stops a turn already in progress"
+        ]
+      }
+    },
+    {
+      "v": "1.14.2",
+      "date": "2026-09-29",
+      "ru": {
+        "t": "Effort живой сессии — из её транскрипта",
+        "p": [
+          "Виден и `max`, который Claude Code включает только на текущую сессию"
+        ]
+      },
+      "en": {
+        "t": "Live session effort read from its transcript",
+        "p": [
+          "Shows `max` too, which Claude Code enables for the current session only"
+        ]
+      }
+    },
+    {
+      "v": "1.14.1",
+      "date": "2026-09-29",
+      "ru": {
+        "t": "Effort читается из настроек модели",
+        "p": [
+          "`/effort` хранит уровень в `modelSettings[<id>]`, а API отдавал старый"
+        ]
+      },
+      "en": {
+        "t": "Effort read from the model settings",
+        "p": [
+          "`/effort` stores the level in `modelSettings[<id>]`, while the API returned the old one"
+        ]
+      }
+    },
+    {
+      "v": "1.14.0",
+      "date": "2026-09-29",
+      "ru": {
+        "t": "Effort сессии через API",
+        "p": [
+          "`/api/limits` отдаёт уровень и список уровней, `POST /api/effort` меняет уровень"
+        ]
+      },
+      "en": {
+        "t": "Session effort via the API",
+        "p": [
+          "`/api/limits` returns the level and the list of levels, `POST /api/effort` changes it"
+        ]
+      }
+    },
+    {
+      "v": "1.13.0",
+      "date": "2026-09-29",
+      "ru": {
+        "t": "Уведомление об автоматической смене модели",
+        "p": [
+          "Рантайм сам отдал сессию другой модели — в Telegram «A → B» с причиной",
+          "Модель вернулась — второе сообщение"
+        ]
+      },
+      "en": {
+        "t": "Notice when the model changes on its own",
+        "p": [
+          "The runtime handed the session to another model — Telegram gets “A → B” with the reason",
+          "A second message when the model is back"
+        ]
+      }
+    },
+    {
+      "v": "1.12.0",
+      "date": "2026-09-28",
+      "ru": {
+        "t": "Меню выбора в консоли приходит в Telegram",
+        "p": [
+          "Сессия встала на интерактивном меню — текст и кнопки вариантов приходят в чат",
+          "Нажатие отправляет выбор в консоль"
+        ]
+      },
+      "en": {
+        "t": "Console choice menus forwarded to Telegram",
+        "p": [
+          "The session stopped at an interactive menu — its text and option buttons arrive in the chat",
+          "A tap sends the choice to the console"
+        ]
+      }
+    },
+    {
+      "v": "1.11.1",
+      "date": "2026-09-28",
+      "ru": {
+        "t": "«Проверить новые модели» работает на любой установке",
+        "p": [
+          "Сканирует установленный Claude Code и предлагает новые ID моделей"
+        ]
+      },
+      "en": {
+        "t": "“Check for new models” works on any install",
+        "p": [
+          "Scans the installed Claude Code and offers newer model IDs"
+        ]
+      }
+    },
+    {
+      "v": "1.11.0",
+      "date": "2026-09-27",
+      "ru": {
+        "t": "Следующий аккаунт — по тому, когда он реально освободится",
+        "p": [
+          "Учитываются и сессия, и неделя; правило вынесено в `cc_avail.py`",
+          "С аккаунта на 100% балансер уходит сразу, без кулдауна",
+          "Опрос просыпается к ближайшему сбросу окна"
+        ]
+      },
+      "en": {
+        "t": "Next account picked by when it actually frees up",
+        "p": [
+          "Both session and week count; the rule lives in `cc_avail.py`",
+          "The balancer leaves a 100% account at once, without cooldown",
+          "Polling wakes up at the nearest window reset"
+        ]
+      }
+    },
+    {
+      "v": "1.10.2",
+      "date": "2026-09-23",
+      "ru": {
+        "t": "Таймер «до PRO→FREE» не застревает на старой дате",
+        "p": [
+          "Дата продления пишется при любом Pro/Max и при фоновом переходе Free→Pro"
+        ]
+      },
+      "en": {
+        "t": "The “until PRO→FREE” timer no longer sticks to an old date",
+        "p": [
+          "The renewal date is saved on any Pro/Max and on a background Free→Pro"
+        ]
+      }
+    },
+    {
+      "v": "1.10.1",
+      "date": "2026-09-16",
+      "ru": {
+        "t": "Время сброса в своём часовом поясе",
+        "p": [
+          "Ключ `tz` в `config.json`: время сброса в нём, а не в поясе сервера"
+        ]
+      },
+      "en": {
+        "t": "Reset times in your own time zone",
+        "p": [
+          "A `tz` key in `config.json`: reset times use it instead of the server's zone"
+        ]
+      }
+    },
+    {
+      "v": "1.10.0",
+      "date": "2026-09-14",
+      "ru": {
+        "t": "Крайний фолбэк оптимизации учитывает неделю",
+        "p": [
+          "Балансер больше не уходит на аккаунт с забитой неделей и не застревает там"
+        ]
+      },
+      "en": {
+        "t": "Optimize mode's last-resort fallback respects the week",
+        "p": [
+          "The balancer no longer moves to an account with a full week and gets stuck there"
+        ]
+      }
+    },
+    {
+      "v": "1.9.9",
+      "date": "2026-09-13",
+      "ru": {
+        "t": "Зеркало консоли без «залипшего» подчёркивания",
+        "p": [
+          "Подчёркивание не рисуется: из-за бага терминала оно полосило весь экран"
+        ]
+      },
+      "en": {
+        "t": "Console mirror without a stuck underline",
+        "p": [
+          "Underline is not drawn: a terminal bug striped the whole screen with it"
+        ]
+      }
+    },
+    {
+      "v": "1.9.8",
+      "date": "2026-09-10",
+      "ru": {
+        "t": "Точная геометрия окна консоли",
+        "p": [
+          "Размер окна — через `ioctl(TIOCGWINSZ)`, без побочных эффектов для сессии"
+        ]
+      },
+      "en": {
+        "t": "Exact console window geometry",
+        "p": [
+          "The window size comes from `ioctl(TIOCGWINSZ)`, with no side effects on the session"
+        ]
+      }
+    },
+    {
+      "v": "1.9.7",
+      "date": "2026-09-09",
+      "ru": {
+        "t": "Порог недели `weekly_cap` поднят с 95% до 99%",
+        "p": [
+          "Аккаунт с неделей 95–98% снова может стать целью переключения"
+        ]
+      },
+      "en": {
+        "t": "`weekly_cap` raised from 95% to 99%",
+        "p": [
+          "An account at 95–98% of the week can be a switch target again"
+        ]
+      }
+    },
+    {
+      "v": "1.9.6",
+      "date": "2026-09-08",
+      "ru": {
+        "t": "Ссылка перелогина сама копируется в буфер",
+        "p": [
+          "Выручает, если вкладка открылась не в том профиле браузера или её заблокировали"
+        ]
+      },
+      "en": {
+        "t": "Re-login link copied to the clipboard",
+        "p": [
+          "Helps when the tab opens in the wrong browser profile or gets blocked"
+        ]
+      }
+    },
+    {
+      "v": "1.9.5",
+      "date": "2026-09-08",
+      "ru": {
+        "t": "Таймер PRO→FREE — чип в шапке карточки",
+        "p": [
+          "Компактный «⏳ N дн» вместо отдельной строки, красный при < 3 дней"
+        ]
+      },
+      "en": {
+        "t": "PRO→FREE timer as a chip in the card header",
+        "p": [
+          "A compact “⏳ N d” instead of a separate line, red under 3 days"
+        ]
+      }
+    },
+    {
+      "v": "1.9.4",
+      "date": "2026-09-08",
+      "ru": {
+        "t": "Таймер до конца подписки",
+        "p": [
+          "«✅ Я продлил» запоминает дату, карточка показывает, сколько осталось до PRO→FREE",
+          "Перепроверка не пишет ложный «успех», пока usage отвечает ошибкой"
+        ]
+      },
+      "en": {
+        "t": "Subscription countdown",
+        "p": [
+          "“✅ I renewed” stores the date, the card shows the time left until PRO→FREE",
+          "A recheck no longer reports false success while usage returns an error"
+        ]
+      }
+    },
+    {
+      "v": "1.9.3",
+      "date": "2026-09-08",
+      "ru": {
+        "t": "Будильник паузы не застревает в поле ввода",
+        "p": [
+          "Текст и Enter уходят в консоль двумя отдельными командами"
+        ]
+      },
+      "en": {
+        "t": "Pause wake-up no longer sticks in the input box",
+        "p": [
+          "The text and Enter go to the console as two separate commands"
+        ]
+      }
+    },
+    {
+      "v": "1.9.2",
+      "date": "2026-09-07",
+      "ru": {
+        "t": "Понятные ошибки на карточке аккаунта",
+        "p": [
+          "Вместо `HTTP Error 400` — что случилось и что делать: токен, 429, 403, 5xx, сеть"
+        ]
+      },
+      "en": {
+        "t": "Plain-language errors on the account card",
+        "p": [
+          "Instead of `HTTP Error 400` — what happened and what to do: token, 429, 403, 5xx, network"
+        ]
+      }
+    },
+    {
+      "v": "1.9.1",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "Фоновый опрос уважает паузу после 429",
+        "p": [
+          "Фон не стучится в Anthropic, пока не кончилась пауза",
+          "Переключаться некуда — одно уведомление в Telegram со статусом аккаунтов"
+        ]
+      },
+      "en": {
+        "t": "Background polling respects the 429 backoff",
+        "p": [
+          "No requests to Anthropic until the backoff ends",
+          "Nowhere to switch — one Telegram notice with every account's status"
+        ]
+      }
+    },
+    {
+      "v": "1.9.0",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "Один список моделей с сортировкой",
+        "p": [
+          "Известные и найденные модели вместе, один чекбокс на строку, Haiku в конце"
+        ]
+      },
+      "en": {
+        "t": "One sorted model list",
+        "p": [
+          "Known and found models together, one checkbox per row, Haiku last"
+        ]
+      }
+    },
+    {
+      "v": "1.8.0",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "После 429 панель не повторяет запрос сразу",
+        "p": [
+          "Обычные запросы ждут удвоенный `poll_sec` после пойманного 429"
+        ]
+      },
+      "en": {
+        "t": "After a 429 the panel does not retry at once",
+        "p": [
+          "Regular requests wait double `poll_sec` after a caught 429"
+        ]
+      }
+    },
+    {
+      "v": "1.7.0",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "Кольцо-таймер и кнопки на карточке",
+        "p": [
+          "Кольцо до сброса 5-часового окна",
+          "У активного аккаунта — кнопки `/compact` и «новая сессия», бейдж «АКТИВНЫЙ»"
+        ]
+      },
+      "en": {
+        "t": "Countdown ring and buttons on the card",
+        "p": [
+          "A ring until the 5-hour window resets",
+          "The active account gets `/compact` and new-session buttons and an “ACTIVE” badge"
+        ]
+      }
+    },
+    {
+      "v": "1.6.0",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "Неактивные аккаунты опрашиваются реже",
+        "p": [
+          "Кэш моложе 5 мин — запрос к Anthropic пропускается, меньше 429"
+        ]
+      },
+      "en": {
+        "t": "Inactive accounts are polled less often",
+        "p": [
+          "With a cache under 5 min old the Anthropic request is skipped, fewer 429s"
+        ]
+      }
+    },
+    {
+      "v": "1.5.0",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "Пул моделей с чекбоксами",
+        "p": [
+          "Шестерёнка: какие модели показывать кнопками; кнопка меняет модель сессии"
+        ]
+      },
+      "en": {
+        "t": "Model pool with checkboxes",
+        "p": [
+          "The gear: which models to show as buttons; a button changes the session model"
+        ]
+      }
+    },
+    {
+      "v": "1.4.1",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "Кнопки «−/+» для порога переключения",
+        "p": [
+          "Шаг 5%, от 50 до 99%, без правки `config.json`"
+        ]
+      },
+      "en": {
+        "t": "“−/+” buttons for the switch threshold",
+        "p": [
+          "Step 5%, from 50 to 99%, no `config.json` editing"
+        ]
+      }
+    },
+    {
+      "v": "1.4.0",
+      "date": "2026-09-06",
+      "ru": {
+        "t": "Единый порог и журнал переключений",
+        "p": [
+          "Аварийный порог оптимизации — то же поле `threshold`",
+          "Журнал `switch_log.jsonl`: почему переключилось или нет"
+        ]
+      },
+      "en": {
+        "t": "One threshold and a switch log",
+        "p": [
+          "The optimize-mode emergency ceiling uses the same `threshold`",
+          "`switch_log.jsonl`: why a switch did or did not happen"
+        ]
+      }
+    },
+    {
+      "v": "1.3.0",
+      "date": "2026-09-04",
+      "ru": {
+        "t": "Очередь входящих на время лимитов",
+        "p": [
+          "Сообщения из чата ждут в очереди, хук отвечает отправителю, разбор — после подъёма"
+        ]
+      },
+      "en": {
+        "t": "Incoming queue while limits are burnt",
+        "p": [
+          "Chat messages wait in a queue, the hook replies to the sender, the queue runs after wake-up"
+        ]
+      }
+    },
+    {
+      "v": "1.2.1",
+      "date": "2026-09-04",
+      "ru": {
+        "t": "Уведомления о паузе в Telegram",
+        "p": [
+          "Сообщения о постановке паузы и подъёме, ключ `bot_token` в `config.json`"
+        ]
+      },
+      "en": {
+        "t": "Pause notices in Telegram",
+        "p": [
+          "Messages when the pause starts and ends, a `bot_token` key in `config.json`"
+        ]
+      }
+    },
+    {
+      "v": "1.2.0",
+      "date": "2026-09-04",
+      "ru": {
+        "t": "Гейт фоновых задач и пауза с будильником",
+        "p": [
+          "`limits_gate.py` держит фоновые задачи, пока лимит выбран",
+          "Пауза с будильником через cron и баннер состояния в панели"
+        ]
+      },
+      "en": {
+        "t": "Background job gate and a pause with an alarm",
+        "p": [
+          "`limits_gate.py` holds background jobs while the limit is used up",
+          "A pause with a cron alarm and a state banner in the panel"
+        ]
+      }
+    },
+    {
+      "v": "1.1.0",
+      "date": "2026-08-27",
+      "ru": {
+        "t": "Интерфейс на русском и английском",
+        "p": [
+          "Починена веб-кнопка «Войти заново»"
+        ]
+      },
+      "en": {
+        "t": "Russian and English interface",
+        "p": [
+          "The web “Sign in again” button fixed"
+        ]
+      }
+    },
+    {
+      "v": "1.0.0",
+      "date": "2026-08-27",
+      "ru": {
+        "t": "Первый релиз",
+        "p": [
+          "Мониторинг лимитов, авто-переключение, зеркало консоли, `cc-switch`, установщик"
+        ]
+      },
+      "en": {
+        "t": "First release",
+        "p": [
+          "Limit monitoring, auto-switch, console mirror, `cc-switch`, installer"
+        ]
+      }
+    }
   ]
 }

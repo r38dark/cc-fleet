@@ -14,11 +14,12 @@ import cc_codex_emergency
 import cc_notion
 import cc_remote
 import cc_lock
+import cc_disconnect
 import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.16"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.17"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -209,7 +210,8 @@ def profile_names():
     if not os.path.isdir(PROFILES):
         return []
     return sorted(n for n in os.listdir(PROFILES)
-                  if not n.startswith("_") and os.path.isfile(f"{PROFILES}/{n}/oauth_account.json"))
+                  if not n.startswith("_") and os.path.isfile(f"{PROFILES}/{n}/oauth_account.json")
+                  and not os.path.exists(f"{PROFILES}/{n}/{cc_disconnect.MARKER}"))
 
 
 def active_name():
@@ -425,8 +427,8 @@ def _t(lang, ru, en):
     return en if lang == "en" else ru
 
 
-# Удаление необратимо: стирается папка профиля с токенами. Слово подтверждения сервер
-# проверяет сам — запрос без него не пройдёт, даже если дёрнуть API напрямую.
+# Отключение удаляет только авторизацию; история и файлы сохраняются. Слово
+# подтверждения проверяет сервер, в том числе при прямом вызове API.
 DELETE_WORDS = ("подтверждаю", "confirm")  # русское слово — основное, английское — для EN-интерфейса
 _ACC_RE = re.compile(r"^acc[0-9]{1,3}$")
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}$")
@@ -457,7 +459,8 @@ def _free_slot():
     for n in sorted(nums):
         d = f"{PROFILES}/acc{n}"
         oa = jload(f"{d}/oauth_account.json", {}) or {}
-        if not oa.get("accountUuid") and not os.path.isfile(f"{d}/credentials.json"):
+        if (not oa.get("accountUuid") and not os.path.isfile(f"{d}/credentials.json")
+                and not os.path.exists(f"{d}/{cc_disconnect.MARKER}")):
             return f"acc{n}"
     return f"acc{max(nums, default=0) + 1}"
 
@@ -505,8 +508,7 @@ def backup_status():
 
 
 def delete_account(name, confirm, lang="ru"):
-    """→ (ok, message, snapshot|None). Убирает аккаунт из ротации навсегда: профиль с токенами,
-    строки в снимке, кэшах и state. Берёт lock сама — снаружи не оборачивать."""
+    """Disconnect a Claude login. Retain its directory and all non-authentication data."""
     if (confirm or "").strip().lower() not in DELETE_WORDS:
         return False, _t(lang, "Слово подтверждения введено неверно — ничего не удалено.",
                          "The confirmation word is wrong — nothing was deleted."), None
@@ -520,23 +522,60 @@ def delete_account(name, confirm, lang="ru"):
         oa = jload(f"{pdir}/oauth_account.json", {}) or {}
         email = oa.get("emailAddress") or ""
         moved = None
-        # перевод живой сессии нужен, только если есть КУДА — для последнего настоящего
-        # аккаунта (удаляемый сам себе единственная альтернатива) пробовать нечего,
-        # и это не повод отказывать: живая сессия останется на своих текущих токенах
-        if active_name() == name and len(_real_names()) > 1:
+        was_active = active_name() == name
+        # Some CLI versions leave the token file without oauthAccount metadata.
+        # Only compare non-empty tokens when no live identity is known.
+        if not (jload(LIVE_CFG, {}) or {}).get('oauthAccount', {}).get('accountUuid'):
+            saved_auth = (jload(f'{pdir}/credentials.json', {}) or {}).get('claudeAiOauth') or {}
+            live_auth = (jload(LIVE_CREDS, {}) or {}).get('claudeAiOauth') or {}
+            was_active = was_active or any(saved_auth.get(k) and saved_auth[k] == live_auth.get(k)
+                                           for k in ('accessToken', 'refreshToken'))
+        try:
+            cc_disconnect.read(f'{pdir}/credentials.json')
+            cc_disconnect.plain(f'{pdir}/{cc_disconnect.MARKER}')
+            if was_active:
+                cc_disconnect.read(LIVE_CREDS)
+                cc_disconnect.read(LIVE_CFG)
+        except (OSError, ValueError):
+            return False, _t(lang, 'Не удалось безопасно прочитать авторизацию — отключение отменено.',
+                             'Could not safely read authorization — disconnect cancelled.'), None
+        if was_active and len(_real_names()) > 1:
             moved, why = _move_off(name)
             if not moved:
                 return False, _t(lang, "Это активный аккаунт, а переключить сессию на другой не удалось — ничего не удалено. ",
                                  "This is the active account and the session could not be moved to another one — nothing was deleted. ") + why, None
+        elif was_active:
+            # The last login must not survive in a running process or in live credentials.
+            scr = cfg().get('screen_session', 'claude')
+            if _current_screen_pid(scr):
+                if session_busy():
+                    return False, _t(lang, 'Claude занят — дождись ответа перед отключением.',
+                                     'Claude is busy — wait for its response before disconnecting.'), None
+                try:
+                    subprocess.run(['screen', '-S', scr, '-X', 'quit'], capture_output=True, timeout=15)
+                except (OSError, subprocess.TimeoutExpired):
+                    return False, _t(lang, 'Не удалось остановить консоль Claude.', 'Could not stop the Claude console.'), None
+                if _current_screen_pid(scr):
+                    return False, _t(lang, 'Консоль Claude ещё работает — отключение отменено.',
+                                     'The Claude console is still running — disconnect cancelled.'), None
         _relogin_cleanup(name)
         try:
             cc_backup.note_deleted(BACKUP_DIR, oa.get("accountUuid"))  # копии хранят его токены, но «потерянным» он больше не считается
         except Exception:
-            pass
+            return False, _t(lang, 'Не удалось исключить вход из восстановления резервных копий.',
+                             'Could not exclude the login from backup restoration.'), None
         try:
-            shutil.rmtree(pdir)
-        except OSError as e:
-            return False, _t(lang, f"Не удалось стереть профиль: {e}", f"Could not wipe the profile: {e}"), None
+            if was_active and not moved:
+                with cc_lock.oauth_lock(os.path.dirname(LIVE_CREDS), os.path.dirname(LIVE_CFG)):
+                    cc_disconnect.drop_keys(LIVE_CREDS, ('claudeAiOauth',))
+                    with cc_lock.config_lock(LIVE_CFG):
+                        cc_disconnect.drop_keys(LIVE_CFG, ('oauthAccount',))
+            cc_disconnect.drop_keys(f'{pdir}/credentials.json', ('claudeAiOauth',))
+            cc_disconnect.write(f'{pdir}/{cc_disconnect.MARKER}', {'disconnected': True})
+        except (OSError, ValueError, cc_lock.LockTimeout) as exc:
+            print('disconnect Claude: ' + type(exc).__name__, flush=True)
+            return False, _t(lang, 'Не удалось удалить всю авторизацию. Повтори отключение.',
+                             'Could not remove all authorization. Retry disconnecting.'), None
         _plan_cache.pop(name, None)
         backoff_until.pop(name, None)
         good = jload(GOOD, {}) or {}
@@ -562,10 +601,10 @@ def delete_account(name, confirm, lang="ru"):
         snap = snap_set_active()
     cnt, names = _rotation_text()
     who = f"{name} ({email})" if email else f"{name} ({_t(lang, 'пустой слот', 'empty slot')})"
-    tg_notify(f"🗑 Claude: аккаунт {who} удалён из ротации навсегда — профиль и токены стёрты, вернуть нельзя."
+    tg_notify(f"Claude: аккаунт {who} отключён — вход удалён, история и файлы сохранены."
               + (f" Живая сессия переведена на {moved}." if moved else "")
               + f" В ротации осталось: {cnt} ({names}).")
-    return True, (_t(lang, f"🗑 {who} удалён навсегда.", f"🗑 {who} deleted for good.")
+    return True, (_t(lang, f'{who} отключён. История и файлы сохранены.', f'{who} disconnected. History and files retained.')
                   + (_t(lang, f" Сессия переведена на {moved}.", f" Session moved to {moved}.") if moved else "")), snap
 
 
@@ -2797,6 +2836,11 @@ def pause_state():
         d = pause_ctl.level_state()
         # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем
         d["remote"] = pause_ctl._remote_active()
+        # Общая сводка включает подключённые аккаунты. Сам локальный гейт,
+        # его уровень и время пробуждения остаются без изменений.
+        snapshot = jload(SNAPSHOT) or {}
+        d["fleet"] = cc_avail.fleet_summary(snapshot.get("accounts") or {}, cc_remote.cached(),
+                                             d.get("threshold", 90), d.get("weekly_cap", 99))
         # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
         d["handoff"] = ""
         if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
@@ -3050,7 +3094,8 @@ class H(BaseHTTPRequestHandler):
                 threading.Thread(target=cc_codex_bridge.BRIDGE.limits_tick, daemon=True).start()
             return self._send(200, {"ok": ok, "message": message})
         if action == "delete":
-            ok, message = cc_codex.delete_account(b, body.get("slot", ""), body.get("confirm", ""), lang=lang)
+            ok, message = cc_codex.delete_account(b, body.get("slot", ""), body.get("confirm", ""), lang=lang,
+                                                 before=cc_codex_bridge.prepare_disconnect)
             if ok:  # мост был привязан к этому аккаунту — возвращаем «первый подходящий», иначе он ждал бы стёртый вход
                 cc_codex_bridge.drop_slot(body.get("slot", ""))
             return self._send(200, {"ok": ok, "message": message})
@@ -4191,16 +4236,16 @@ const I18N={
   addChecking:'Проверяю вход…',
   addRestart:'Начать заново',
   addNeedCode:'Вставь код со страницы входа.',
-  delBtn:'Удалить',
-  delBtnTitle:'Удалить аккаунт из ротации навсегда',
-  delTitle:'Удалить аккаунт навсегда?',
-  delWarn:'<b>Это безвозвратно.</b> Профиль и токены аккаунта будут стёрты сразу — без корзины и без отката. Из ротации он пропадёт полностью; вернуть его можно только добавив заново, с новым входом через браузер.',
-  delActive:'Сейчас это активный аккаунт — перед удалением сессия будет переведена на другой.',
-  delLast:'Это единственный аккаунт в ротации — после удаления Claude останется без входа (Codex и Notion AI продолжат работать, если настроены).',
+  delBtn:"Отключить",
+  delBtnTitle:"Отключить аккаунт, сохранив историю и файлы",
+  delTitle:"Отключить аккаунт?",
+  delWarn:"Авторизация будет удалена, аккаунт исчезнет из балансера. Установленная программа, история, настройки и файлы останутся на сервере. Для повторного подключения понадобится новый вход.",
+  delActive:"Активная сессия сначала перейдёт на другой аккаунт.",
+  delLast:"Это единственный аккаунт Claude: его свободная консоль будет остановлена, вход удалён. История сохранится.",
   delWord:'подтверждаю',
   delType:w=>'Чтобы подтвердить, введи слово «'+w+'»',
-  delGo:'Удалить навсегда',
-  delWorking:'Удаляю…',
+  delGo:"Отключить",
+  delWorking:"Отключаю…",
   cancel:'Отмена',
   askYes:'Да',
   askCompact:'Сжать контекст Claude (/compact)?',
@@ -4227,6 +4272,9 @@ const I18N={
   wkLbl:cap=>`<b>Пауза на недельном потолке</b> — остановить Claude на ${cap}% недели, если переключаться некуда. Выключено — балансер не остановит заполнение до 100%.`,
   wkOn:'Пауза на недельном потолке включена',wkOff:'Пауза на недельном потолке выключена',
   ccpWeekTitle:'⏸ Неделя на потолке — <b>переключаться некуда</b>',
+  ccpFleetWeekTitle:'⏸ Неделя на потолке у <b>всех аккаунтов Claude</b>',
+  ccpFleetHardTitle:'⏸ Нет доступных аккаунтов Claude',
+  ccpFleetSub:'Учтены этот сервер и подключённые серверы. Таймер — до доступности ближайшего аккаунта.',
   ccpWeekSub:(n,w,cap,na)=>`${n}: неделя <span class="num">${w}</span> (потолок ${cap}%), остальные аккаунты недоступны. Включена «Пауза на недельном потолке» — Claude встанет на паузу на следующем шаге и продолжит сам, когда `+(na?`освободится <b>${na}</b>.`:'освободится другой аккаунт или сбросится неделя.'),
   ccpRiskTitle:'⚠ Неделя на потолке — <b>балансер не остановит заполнение до 100%</b>',
   ccpRiskSub:(n,w,cap)=>`${n}: неделя <span class="num">${w}</span>, переключаться некуда — работаешь на свой страх и риск. Остановку на ${cap}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».`,
@@ -4436,8 +4484,8 @@ const I18N={
   cxRelogin:'🔑 Войти заново',
   cxLaunch:'Команда запуска',
   cxLaunchTip:'Скопировать команду, которая запускает Codex под этим аккаунтом',
-  cxDelTitle:'Удалить аккаунт ChatGPT?',
-  cxDelWarn:'<b>Это безвозвратно.</b> Токен входа будет стёрт с сервера и отозван у OpenAI, выбранные модель и режимы пропадут. Вернуть можно только новым входом по коду.',
+  cxDelTitle:"Отключить аккаунт ChatGPT?",
+  cxDelWarn:"Вход в ChatGPT будет удалён, аккаунт исчезнет из балансера. Программа Codex, история разговоров, настройки и файлы останутся. Для подключения понадобится войти заново.",
   cxWin:h=>'Окно '+h+' ч',
   cxbTitle:'Мост Telegram ↔ Codex',
   cxbHint:'Пишешь Codex в своём боте. Как он работает, задаёт профиль в меню Codex в шапке: «Оркестратор» — Codex ведёт цель, а Claude исполняет шаги только после твоего «да»; «Codex» — работает сам, без Claude. Здесь — аккаунт, папки, токен и чат.',
@@ -4483,10 +4531,10 @@ const I18N={
   cxBtnTip:'Профиль Codex: выбрать',
   cxGearTip:'Настройки Codex: аккаунты, лимиты, мост Telegram',
   cxAccSec:'Аккаунты и лимиты ChatGPT',
-  cxWipe:'Удалить Codex целиком',
-  cxWipeTip:'Стереть все аккаунты ChatGPT и сбросить мост, бота и профили (с подтверждением)',
-  cxWipeTitle:'Удалить Codex целиком?',
-  cxWipeWarn:'<b>Это безвозвратно.</b> Будут стёрты все аккаунты ChatGPT (токены отозваны у OpenAI), отключён бот, сброшены чат, выбранный и свои профили, режим и доступ, память разговора. Сам Codex на сервере останется: в шапке снова появится «Codex +» и мастер начнётся со входа.',
+  cxWipe:"Отключить Codex",
+  cxWipeTip:"Удалить все входы ChatGPT и отключить бота, сохранив программу, историю и файлы",
+  cxWipeTitle:"Отключить Codex?",
+  cxWipeWarn:"Все входы ChatGPT будут удалены, Telegram-бот отключён. Аккаунты исчезнут из балансера. Программа Codex, история, профили настроек, папка обмена и файлы останутся. Для повторного подключения потребуется новый вход.",
   cxBrSec:'Мост Telegram и все настройки',
   cxS5:'5 ч',
   cxS7:'нед',
@@ -4617,8 +4665,8 @@ const I18N={
   cxbPending:' · ждёт твоё «да/нет» по заданию',
   cxbTasks:'Последние задания Claude: ',
   cxbSaved:'Сохранено',
-  cxbDelAcct:'Удалить аккаунт',
-  cxbDelTip:'Удалить выбранный аккаунт ChatGPT (с подтверждением)',
+  cxbDelAcct:"Отключить аккаунт",
+  cxbDelTip:"Отключить выбранный аккаунт ChatGPT, сохранив историю",
   cxbDelPick:'Сначала выбери аккаунт в поле «Аккаунт ChatGPT» выше',
   cxbNoSlot:'Нет аккаунта ChatGPT — сначала добавь его выше.',
   cxcOff:'Консоль Codex не запущена',
@@ -4679,16 +4727,16 @@ const I18N={
   addChecking:'Checking sign-in…',
   addRestart:'Start over',
   addNeedCode:'Paste the code from the sign-in page.',
-  delBtn:'Delete',
-  delBtnTitle:'Remove the account from the rotation for good',
-  delTitle:'Delete this account for good?',
-  delWarn:'<b>This cannot be undone.</b> The profile and its tokens are wiped immediately — no recycle bin, no rollback. The account disappears from the rotation entirely; the only way back is to add it again with a fresh browser sign-in.',
-  delActive:'This is the active account — the session will be moved to another one first.',
-  delLast:'This is the only account in the rotation — after deleting it, Claude will have no login (Codex and Notion AI keep working if configured).',
+  delBtn:"Disconnect",
+  delBtnTitle:"Disconnect the account, retaining history and files",
+  delTitle:"Disconnect this account?",
+  delWarn:"Authorization will be removed and the account will disappear from the balancer. The installed program, history, settings and files stay on the server. Reconnecting requires a fresh sign-in.",
+  delActive:"The active session will move to another account first.",
+  delLast:"This is the only Claude account: its idle console will stop and its login will be removed. History is retained.",
   delWord:'confirm',
   delType:w=>'To confirm, type the word “'+w+'”',
-  delGo:'Delete for good',
-  delWorking:'Deleting…',
+  delGo:"Disconnect",
+  delWorking:"Disconnecting…",
   cancel:'Cancel',
   askYes:'Yes',
   askCompact:'Compact the Claude context (/compact)?',
@@ -4816,6 +4864,9 @@ const I18N={
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
   ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
+  ccpFleetWeekTitle:'⏸ All Claude accounts reached the weekly cap',
+  ccpFleetHardTitle:'⏸ No Claude accounts available',
+  ccpFleetSub:'Includes this server and connected servers. The timer shows when the first account becomes available.',
   ccpHardAll:thr=>`Every account is out of its session window (threshold ${thr}%).`,
   ccpHardSome:(n,why,rest)=>`${n}: ${why}, and none of the others will do: ${rest}.`,
   ccpHardSub:(head,na,self)=>head+" Background jobs stay down so they don't burn the rest of the window. "+(na?`<b>${na}</b> frees up first`+(self?' — work continues on it once its session resets.':' — the balancer switches to it right after the reset.'):'The balancer switches as soon as the nearest one frees up.'),
@@ -4924,8 +4975,8 @@ const I18N={
   cxRelogin:'🔑 Sign in again',
   cxLaunch:'Launch command',
   cxLaunchTip:'Copy the command that starts Codex under this account',
-  cxDelTitle:'Delete the ChatGPT account?',
-  cxDelWarn:'<b>This cannot be undone.</b> The sign-in token is wiped from the server and revoked at OpenAI; the chosen model and modes are lost. The only way back is a new device-code sign-in.',
+  cxDelTitle:"Disconnect this ChatGPT account?",
+  cxDelWarn:"The ChatGPT login will be removed and the account will disappear from the balancer. Codex, conversation history, settings and files stay. Reconnecting requires a fresh sign-in.",
   cxWin:h=>h+' h window',
   cxbTitle:'Telegram ↔ Codex bridge',
   cxbHint:'You message Codex in your own bot. How it works is set by the profile in the Codex menu in the header: "Orchestrator" — Codex drives the goal and Claude does steps only after your "yes"; "Codex" — works on its own, without Claude. Here: account, folders, token and chat.',
@@ -4971,10 +5022,10 @@ const I18N={
   cxBtnTip:'Codex profile: pick one',
   cxGearTip:'Codex settings: accounts, limits, Telegram bridge',
   cxAccSec:'ChatGPT accounts and limits',
-  cxWipe:'Delete Codex completely',
-  cxWipeTip:'Wipe every ChatGPT account and reset the bridge, the bot and the profiles (asks to confirm)',
-  cxWipeTitle:'Delete Codex completely?',
-  cxWipeWarn:'<b>This cannot be undone.</b> Every ChatGPT account is wiped (tokens revoked at OpenAI), the bot is disconnected, the chat, the chosen and your own profiles, the mode and access and the conversation memory are reset. Codex itself stays on the server: “Codex +” returns to the header and the wizard starts at sign-in.',
+  cxWipe:"Disconnect Codex",
+  cxWipeTip:"Remove all ChatGPT logins and disconnect the bot, retaining the program, history and files",
+  cxWipeTitle:"Disconnect Codex?",
+  cxWipeWarn:"All ChatGPT logins will be removed and the Telegram bot disconnected. Accounts disappear from the balancer. Codex, history, profile settings, the exchange directory and files stay. Reconnecting requires a fresh sign-in.",
   cxBrSec:'Telegram bridge and all settings',
   cxS5:'5 h',
   cxS7:'wk',
@@ -5105,8 +5156,8 @@ const I18N={
   cxbPending:' · waiting for your yes/no on a task',
   cxbTasks:'Recent Claude tasks: ',
   cxbSaved:'Saved',
-  cxbDelAcct:'Delete account',
-  cxbDelTip:'Delete the selected ChatGPT account (asks to confirm)',
+  cxbDelAcct:"Disconnect account",
+  cxbDelTip:"Disconnect the selected ChatGPT account, retaining history",
   cxbDelPick:'First pick an account in the “ChatGPT account” field above',
   cxbNoSlot:'No ChatGPT account — add one above first.',
   cxcOff:'The Codex console is not running',
@@ -7094,6 +7145,21 @@ function ccpHeld(a){
 function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
+ // Локальная пауза и активный PROD не скрывают исчерпание всей пары.
+ const fleet=d&&d.fleet;
+ if(fleet&&fleet.remote_count&&fleet.all_blocked&&pause.kind!=='reserve'){
+  const next=fleet.nearest||{},until=next.resets_at?new Date(next.resets_at).getTime():0;
+  const chips=Object.values(fleet.accounts||{}).map(a=>'<span class="ccp-chip hot">'+ccpEsc(a.label)
+   +' <b>'+(a.pct==null?'?':Math.round(a.pct)+'%')+'</b>'
+   +(a.wpct!=null?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
+  el.className='ccpause lvl-pause';el.hidden=false;
+  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'
+   +tr(fleet.all_week_capped?'ccpFleetWeekTitle':'ccpFleetHardTitle')+'</div><div class="ccp-sub">'+tr('ccpFleetSub')
+   +'</div><div class="ccp-meta">'+chips+'</div></div>'
+   +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)
+     +'</div><div class="l">'+tr('ccpTillFree',ccpEsc(next.label||next.acc||''))+'</div></div>':'');
+  return;
+ }
  if(!d||d.stale||(lvl==='none'&&!pause.active&&!pause.override)){el.hidden=true;return;}
  // приоритет: пауза отключена кнопкой > пауза (в ней уже есть будильник) >
  // переключаться некуда > активный забит

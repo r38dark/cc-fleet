@@ -134,7 +134,7 @@ class T(unittest.TestCase):
         M.notion_installed = lambda: False
         a = s.nai.agents()
         s.assertEqual((a['codex']['state'], a['codex']['text']), ('unlinked', 'не подключён'))
-        s.assertEqual((a['notion']['state'], a['notion']['text']), ('unlinked', 'не установлен'))
+        s.assertEqual((a['notion']['state'], a['notion']['text']), ('unlinked', 'не подключён'))
         s.assertEqual(a['claude']['state'], 'run')   # Claude не затронут
         s.assertEqual(s.nai.public()['agents']['codex']['state'], 'unlinked')
         # подключили Codex (есть аккаунт) и поставили Notion AI — плитки обычные
@@ -240,6 +240,23 @@ class T(unittest.TestCase):
         r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
         s.assertTrue(r['ok']);s.assertEqual(calls,[snap]);s.assertIn('scenario',s.p.calls)
         s.assertIsNone(s.p.native._handoff_snapshot)
+    def test_remote_claude_scenario_does_not_require_local_history(s):
+        s.claude[0]=False;s.p.native._remote=lambda:object()
+        s.nai.handoff_snapshot_load=lambda:s.fail('local history queried for remote session')
+        s.nai.handoff_start_staging=lambda snapshot:s.fail('local session started for remote session')
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertTrue(r['ok']);s.assertIn('scenario',s.p.calls)
+        s.assertFalse(s.claude[0])
+    def test_remote_scenario_failure_is_not_replaced_with_local_staging(s):
+        s.claude[0]=False;s.p.native._remote=lambda:object()
+        s.p.scenario_result={'ok':False,'busy':True}
+        s.nai.handoff_start_staging=lambda snapshot:s.fail('local session started after remote failure')
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertTrue(r['busy']);s.assertFalse(s.claude[0])
+    def test_local_scenario_still_requires_verified_history(s):
+        s.claude[0]=False;s.p.native._remote=lambda:None;s.nai.handoff_snapshot_load=lambda:None
+        r=s.p.apply_scenario({'choices':{'claude':'full','codex':None},'confirm':'подтверждаю','revision':1})
+        s.assertFalse(r['ok']);s.assertNotIn('scenario',s.p.calls);s.assertFalse(s.claude[0])
     def test_codex_to_claude_refuses_active_bridge(s):
         s.claude[0]=False;s.nai.handoff_snapshot_load=lambda:{'thread_id':'known'}
         s.nai.bridge_state=lambda fresh=False:'active'

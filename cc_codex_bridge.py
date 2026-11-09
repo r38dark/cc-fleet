@@ -110,7 +110,11 @@ def state_path():
 
 
 DEFAULTS = {"enabled": False, "mode": "mediator", "access": "read", "workdir": "", "project": "", "task_rights": "dev",
-            "slot": "", "chat_id": "", "token": "", "exchange": "", "profile": "", "profiles": []}
+            "slot": "", "chat_id": "", "token": "", "exchange": "", "profile": "", "profiles": [],
+            "voice_enabled": False, "voice_speaker": "aidar"}
+TTS_API = "http://127.0.0.1:8879/speak"
+VOICE_SPEAKERS = ("aidar", "baya", "kseniya", "xenia", "eugene")
+VOICE_MAX_BYTES = 8 * 1024 * 1024
 
 
 def load():
@@ -210,7 +214,8 @@ def public(s=None):
     s = s or load()
     st = _state()
     tok = s.get("token") or ""
-    out = {k: s.get(k) for k in ("enabled", "mode", "access", "workdir", "task_rights", "slot")}
+    out = {k: s.get(k) for k in ("enabled", "mode", "access", "workdir", "task_rights", "slot",
+                                "voice_enabled", "voice_speaker")}
     out.update(project=project_dir(s), workspace=workspace_dir(), profile=active_profile(s),
                profiles=[dict(id=i, name=n, builtin=n is None, **d) for i, d, n in _profiles(s)])
     out.update(chat_id=chat_id(s), token_set=bool(tok), token_tail=tok[-4:] if tok else "",
@@ -233,6 +238,10 @@ def save(body, lang="ru"):
         rights = body.get("task_rights", s["task_rights"])
         if mode not in MODES or access not in ACCESS or rights not in RIGHTS:
             return False, _t(lang, "Недопустимое значение режима, доступа или прав.", "Invalid mode, access or rights value.")
+        voice_enabled = body.get("voice_enabled", s["voice_enabled"])
+        voice_speaker = body.get("voice_speaker", s["voice_speaker"])
+        if not isinstance(voice_enabled, bool) or voice_speaker not in VOICE_SPEAKERS:
+            return False, _t(lang, "Неверные настройки голоса.", "Invalid voice settings.")
         slot = (body.get("slot", s["slot"]) or "").strip()
         if slot and not _SLOT.match(slot):
             return False, _t(lang, "Неверный номер аккаунта.", "Invalid account slot.")
@@ -264,7 +273,8 @@ def save(body, lang="ru"):
         enabled = bool(body.get("enabled", s["enabled"]))
         if enabled and not s.get("token"):
             return False, _t(lang, "Сначала вставь токен бота.", "Paste the bot token first.")
-        s.update(mode=mode, access=access, task_rights=rights, slot=slot, chat_id=cid, workdir=wd, project=proj, enabled=enabled)
+        s.update(mode=mode, access=access, task_rights=rights, slot=slot, chat_id=cid, workdir=wd, project=proj, enabled=enabled,
+                 voice_enabled=voice_enabled, voice_speaker=voice_speaker)
         _save(s)
     ensure_exchange()
     BRIDGE.sync()
@@ -421,24 +431,37 @@ def drop_slot(slot):
     return True
 
 
+def prepare_disconnect(slot, lang='ru'):
+    """End an idle authenticated process without forgetting its conversation."""
+    if CONSOLE is None:
+        return True, ''
+    st = CONSOLE.status()
+    current = CONSOLE._meta().get('slot') if hasattr(CONSOLE, '_meta') else st.get('plan_slot')
+    if st.get('running') and current == slot:
+        if CONSOLE.busy() or BRIDGE.busy():
+            return False, _t(lang, 'Codex занят — дождись ответа перед отключением аккаунта.',
+                             'Codex is busy — wait for its response before disconnecting.')
+        return CONSOLE.stop(lang=lang)
+    return True, ''
+
+
 def wipe_all(bin_path, confirm, lang="ru"):
-    """«Удалить Codex целиком»: все входы ChatGPT, бот и чат, выбранный и свои профили, режим и доступ, память разговора,
-    консоль Codex. Сам Codex на сервере и папка обмена остаются. Аварийный режим включён — отказ: права заморожены.
-    → (ok, сообщение)."""
+    """Disconnect all local ChatGPT logins and the bot, retaining settings and history."""
     if EMERGENCY is not None and EMERGENCY.active():
         return False, _t(lang, "Включён аварийный режим — сначала выключи его.", "Emergency mode is on — turn it off first.")
-    ok, msg, n = cc_codex.delete_all(bin_path, confirm, lang)
+    ok, msg, n = cc_codex.delete_all(bin_path, confirm, lang, before=prepare_disconnect)
     if not ok:
         return False, msg  # на ошибке мост не трогаем: что стёрто, то стёрто, остальное можно повторить
     with _lock:
-        _save(dict(DEFAULTS, profiles=[]))
-        _state_save({})
+        s = load()
+        s.update(enabled=False, token='', chat_id='', slot='')
+        _save(s)
+        st = _state()
+        st.update(bot='', offset=0)
+        _state_save(st)
     BRIDGE.sync()
-    if CONSOLE is not None:
-        BRIDGE.cancel.set()  # идущий запрос снимается; консоль Codex останавливается и забывает разговоры
-        CONSOLE.forget()
-    return True, _t(lang, f"Codex удалён целиком: аккаунтов ChatGPT — {n}, настройки моста сброшены.",
-                    f"Codex removed: ChatGPT accounts — {n}, bridge settings reset.")
+    return True, _t(lang, f'Codex отключён: аккаунтов — {n}. Программа, настройки и история сохранены.',
+                    f'Codex disconnected: {n} accounts. Program, settings and history retained.')
 
 
 def clear_token():
@@ -500,6 +523,40 @@ def tg_photo(token, cid, filename, data, mime):
             or str((result.get("chat") or {}).get("id")) != str(cid)
             or str((result.get("from") or {}).get("id")) != token.split(":", 1)[0]):
         raise TgError(0, "Telegram не подтвердил фото в нужном чате от текущего бота")
+    return reply
+
+
+def synthesize_voice(text, speaker):
+    """Use the optional local speech service without changing its pronunciation settings."""
+    if speaker not in VOICE_SPEAKERS:
+        raise ValueError("Invalid voice speaker")
+    req = urllib.request.Request(TTS_API,
+                                 data=json.dumps({"text": text, "voice": speaker}).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    # Loopback speech never goes through an external HTTP proxy.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=90) as response:
+        data = response.read(VOICE_MAX_BYTES + 1)
+    if not data.startswith(b"OggS") or len(data) > VOICE_MAX_BYTES:
+        raise ValueError("Speech service returned invalid or oversized OGG")
+    return data
+
+
+def tg_voice(token, cid, data):
+    """Send OGG as a Telegram voice message and verify the delivery target."""
+    boundary = secrets.token_hex(24)
+    head = (f'--{boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{cid}\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="voice"; filename="reply.ogg"\r\n'
+            f'Content-Type: audio/ogg\r\n\r\n').encode("utf-8")
+    body = head + data + f"\r\n--{boundary}--\r\n".encode("ascii")
+    req = urllib.request.Request(f"{TG_API}/bot{token}/sendVoice", data=body,
+                                 headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    reply = _tg_open(req, 60)
+    result = reply.get("result") or {}
+    if (not isinstance(result, dict) or not result.get("voice") or "document" in result or "audio" in result
+            or str((result.get("chat") or {}).get("id")) != str(cid)
+            or str((result.get("from") or {}).get("id")) != token.split(":", 1)[0]):
+        raise TgError(0, "Telegram did not confirm voice delivery to the expected chat from the current bot")
     return reply
 
 
@@ -1371,6 +1428,22 @@ class Bridge:
             finally:
                 if act:
                     act.set("typing")
+        if clean.strip() and s.get("voice_enabled"):
+            try:
+                if act:
+                    act.set("record_voice")
+                voice = synthesize_voice(clean, s.get("voice_speaker", "aidar"))
+                if act:
+                    act.set("upload_voice")
+                tg_voice(s["token"], chat_id(s), voice)
+            except Exception as e:
+                # The text was delivered already: retrying the whole answer would duplicate it.
+                code = f" {e.code}" if isinstance(e, TgError) else ""
+                log(f"sendVoice: {type(e).__name__}{code}")
+                self.send("⚠️ Не удалось приложить голосовое. Текст ответа отправлен выше.", s)
+            finally:
+                if act:
+                    act.set("typing")
         return True
 
     # --- обработка сообщения человека
@@ -1673,7 +1746,7 @@ class Bridge:
             return
 
         def deliver(answer):
-            if self.send_answer("⏳ Запоздавший ответ Codex (связь прервалась, досылаю):\n\n" + answer, None, s) is not False:
+            if self.send_answer("⏳ Запоздавший ответ Codex (восстановлена доставка):\n\n" + answer, None, s) is not False:
                 self._inflight_end(token)
                 log("delivery stage=answer_recovered")
                 return True
