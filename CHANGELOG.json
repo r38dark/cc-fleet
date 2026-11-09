@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.11",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Кнопка «Проверить» на баннере неудачного обновления",
+        "p": [
+          "Раньше у баннера сбоя было только «Повторить» — оно просто повторяло ту же устаревшую попытку, не заходя на GitHub заново",
+          "Теперь рядом есть «Проверить»: сразу смотрит, не вышла ли более новая версия, прежде чем пробовать ещё раз"
+        ]
+      },
+      "en": {
+        "t": "A \"Check now\" button on the failed-update banner",
+        "p": [
+          "The failure banner used to offer only \"Retry\", which just repeated the same stale attempt without re-checking GitHub",
+          "A \"Check now\" button sits next to it now, looking for a newer release before trying again"
+        ]
+      }
+    },
+    {
       "v": "2.0.10",
       "date": "2026-11-09",
       "ru": {
