@@ -1,6 +1,7 @@
 """Ротация аккаунтов Codex: быстрый снимок, отдельное обновление, смена только в паузе."""
 import datetime
 import json
+import math
 import os
 import threading
 import time
@@ -83,6 +84,49 @@ def limit_pause_state(accounts, active, has_candidate, now=None, grace=120):
             'resume_at': t, 'resume_slot': who.get('slot'), 'resume_label': lab(who), 'multi': len(accounts) > 1,
             'accounts': [{'label': lab(a), 'active': a.get('slot') == active, 'ses': pct(a, 300), 'week': pct(a, 10080)}
                          for a in accounts]}
+
+
+def limit_notice_state(accounts, active, pause=None, now=None, grace=120):
+    """Read-only limit warning, including a standalone account; never gates input."""
+    now = time.time() if now is None else now
+    cur = next((a for a in accounts if a.get('slot') == active), None)
+    if (not cur or any(cur.get(k) for k in BAD) or not cur.get('ts')
+            or now - cur['ts'] > 180):
+        return {'active': False}
+    full = []
+    expired = False
+    for w in cur.get('windows') or []:
+        try:
+            pct = float(w.get('pct'))
+        except (ValueError, TypeError):
+            continue
+        if not math.isfinite(pct) or pct < 100:
+            continue
+        until = _iso_ts(w.get('resets_at'))
+        if until is not None and now > until + grace:
+            expired = True
+            continue
+        full.append((w, until))
+    reported = bool(cur.get('reached') or cur.get('usage_allowed') is False)
+    if not full and not reported:
+        return {'active': False, 'expired': expired}
+    mins = sorted({w['mins'] for w, _ in full if isinstance(w.get('mins'), int) and w['mins'] > 0})
+    # An unspecified service limit has no known window/reset; do not guess 5 h.
+    until = max(t for _, t in full) if full and all(t is not None for _, t in full) else None
+    lab = lambda a: a.get('label') or a.get('email') or a.get('slot') or ''
+    pct = lambda m: next((w.get('pct') for w in cur.get('windows') or [] if w.get('mins') == m), None)
+    notice = dict(active=True, paused=bool((pause or {}).get('active')), single=len(accounts) == 1,
+                  slot=active, label=lab(cur), windows=mins, multi=len(accounts) > 1,
+                  window_names=[WIN_NAMES.get(m, f'{round(m / 60)} ч') for m in mins],
+                  resume_at=until, resume_slot=active, resume_label=lab(cur),
+                  accounts=[dict(label=lab(cur), active=True, ses=pct(300), week=pct(10080))])
+    if notice['paused']:
+        for key in ('resume_slot', 'resume_label', 'accounts'):
+            if key in pause:
+                notice[key] = pause[key]
+        if until is not None and pause.get('resume_at') is not None:
+            notice['resume_at'] = pause['resume_at']
+    return notice
 
 
 def score(account, now=None):
@@ -203,16 +247,27 @@ class Rotation:
                     'message': message, 'last_error': self.last_error, 'updated': self.updated,
                     'model': settings.get('model'), 'effort': settings.get('effort'),
                     'pending_model': pending.get('model'), 'history': self.state.get('history', [])[-15:],
-                    'limit_pause': self.limit_pause()}
+                    'limit_pause': self.limit_pause(), 'limit_notice': self.limit_notice()}
 
     def limit_pause(self, now=None):
-        """[notion-ai] Пауза по лимитам для моста (держать очередь) и плашки панели. Без выбора модели — дёшево."""
+        """Пауза очереди моста. Визуальное предупреждение вычисляется отдельно."""
         active = self.active()
         with self.lock:
             rows = [dict(a) for a in self.accounts]
             th, cap = self.state['threshold'], self.state['weekly_cap']
         cands = [a for a in rows if a.get('slot') != active and eligible(a, max_session=min(85, th), cap=cap, now=now)]
         return limit_pause_state(rows, active, bool(cands), now)
+
+    def limit_notice(self, now=None):
+        """UI-only warning; the bridge continues to use limit_pause unchanged."""
+        active = self.active()
+        slots = set(self.codex.profile_slots())
+        with self.lock:
+            rows = [dict(a) for a in self.accounts if a.get('slot') in slots]
+        pause = self.limit_pause(now)
+        notice = limit_notice_state(rows, active, pause, now)
+        # A real queue hold must remain visible even if its last usage sample aged out.
+        return notice if notice['active'] or not pause.get('active') else dict(pause, paused=True)
 
     def _store_slot(self, slot):
         with self.bridge._lock:
