@@ -209,6 +209,7 @@ class Settings(Base):
         st.update(bot="cx_bot", offset=77, threads={"100200300": "T-1"}, next_task=5)
         br._state_save(st)
         con = FakeConsole()
+        con.status = lambda: {"running": False}
         old_con = br.CONSOLE
         br.CONSOLE = con
         self.addCleanup(setattr, br, "CONSOLE", old_con)
@@ -221,14 +222,17 @@ class Settings(Base):
         self.assertTrue(ok, msg)
         self.assertEqual(cc_codex.profile_slots(), [])
         now = br.load()
-        for k, v in br.DEFAULTS.items():
-            self.assertEqual(now[k], v, k)
-        self.assertNotIn("reserve_prev", now)
-        self.assertEqual(br._state()["threads"], {})
-        self.assertEqual((br._state()["bot"] if "bot" in br._state() else ""), "")
-        self.assertEqual(br._state()["offset"], 0)
+        self.assertFalse(now['enabled'])
+        self.assertEqual(now['token'], '')
+        self.assertEqual(now['chat_id'], '')
+        self.assertEqual(now['slot'], '')
+        self.assertEqual(now['profile'], 'orchestrator')
+        self.assertEqual(now['profiles'], s['profiles'])
+        self.assertEqual(br._state()['threads'], {'100200300': 'T-1'})
+        self.assertEqual(br._state()['bot'], '')
+        self.assertEqual(br._state()['offset'], 0)
         self.assertFalse(br.running())
-        self.assertEqual(con.forgotten, 1)
+        self.assertEqual(con.forgotten, 0)
         self.assertTrue(os.path.isdir(self.ex))  # папка обмена остаётся
         self.assertTrue(br.wipe_all(self.fake, "confirm", "en")[0])  # повторно — тоже без ошибки
 

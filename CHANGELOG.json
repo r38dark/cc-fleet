@@ -5,18 +5,18 @@
       "v": "2.0.17",
       "date": "2026-11-09",
       "ru": {
-        "t": "Общие лимиты серверов и восстановление Claude на PROD",
+        "t": "Общие лимиты серверов и отключение аккаунтов без потери данных",
         "p": [
           "Сводка учитывает локальные и подключённые аккаунты Claude: ближайший сброс считается по всей паре, предупреждение не скрывается при работе на PROD.",
-          "Сценарий с Claude на удалённом сервере больше не требует локальную беседу и не запускает её вместо действующей гостевой.",
+          "Отключение Claude, Codex и Notion AI удаляет вход и убирает аккаунт из балансера, сохраняя программы, настройки, историю и файлы. Для удалённого Claude исправлена проверка сохранённой беседы.",
           "Необязательные голосовые ответы Codex в Telegram через локальный TTS; понятная пометка восстановленной доставки без ложного сообщения об обрыве связи."
         ]
       },
       "en": {
-        "t": "Combined server limits and remote Claude profile restoration",
+        "t": "Combined server limits and account disconnect without data loss",
         "p": [
           "The summary includes local and connected Claude accounts, shows the earliest usable account, and remains visible when the active remote account is also exhausted.",
-          "Restoring a remote Claude profile no longer requires or starts an unrelated local conversation.",
+          "Disconnect Claude, Codex or Notion AI without removing programs, settings, history or files. Remote Claude profile restoration no longer requires a local conversation.",
           "Optional Codex Telegram voice replies via local TTS, plus a clearer recovered-delivery notice that does not imply a network failure."
         ]
       }

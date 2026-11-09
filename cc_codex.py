@@ -7,6 +7,7 @@
 # выбранные модель, усилие рассуждения и режим Fast. Запускает `codex` под нужным профилем
 # человек: у каждого аккаунта свой CODEX_HOME = <PROFILES>/gptN (команда есть на карточке).
 import base64, copy, datetime, json, os, pwd, queue, re, shlex, shutil, signal, subprocess, tempfile, threading, time
+import cc_disconnect
 
 PROFILES = os.environ.get("CC_CODEX_PROFILES", "/root/.codex-profiles")
 LOGIN_TTL = 16 * 60  # код устройства живёт 15 минут; ещё минута на то, чтобы CLI дописал auth.json
@@ -687,6 +688,11 @@ def _catalog(client, slot, force=False):
 
 
 def refresh_models(bin_path, slot):
+    with _slot_lock(slot):
+        return _refresh_models(bin_path, slot)
+
+
+def _refresh_models(bin_path, slot):
     """Обновляет только каталог: без запросов к модели и изменения настроек консоли."""
     if not isinstance(slot, str) or not _SLOT_RE.fullmatch(slot) or slot not in profile_slots():
         raise CodexError('Unknown account')
@@ -721,6 +727,14 @@ def _remember_paid(slot, plan):
 
 
 def fetch_account(bin_path, slot):
+    # A probe can refresh auth.json. Disconnect waits for it, then removes the login.
+    with _slot_lock(slot):
+        if slot not in profile_slots():
+            return {'slot': slot, 'login_required': True, 'models': [], 'windows': []}
+        return _fetch_account(bin_path, slot)
+
+
+def _fetch_account(bin_path, slot):
     """Карточка аккаунта + признак «слетел на Free» (был платным, а план теперь free)."""
     out = _read_account(bin_path, slot)
     plan = out.get("plan")
@@ -802,13 +816,14 @@ def get_accounts(bin_path, force=False):
         t.start()
     for t in ths:
         t.join(40)
-    return [res[s] for s in slots if s in res]
+    linked = set(profile_slots())
+    return [res[s] for s in slots if s in res and s in linked]
 
 
 # ---------------------------------------------------------------- настройки модели
 def _slot_lock(slot):
     with _lock:
-        return _slot_locks.setdefault(slot, threading.Lock())
+        return _slot_locks.setdefault(slot, threading.RLock())
 
 
 def set_prefs(bin_path, slot, model, effort, fast, lang="ru"):
@@ -888,8 +903,15 @@ def renew(bin_path, slot, lang="ru"):
 
 
 # ---------------------------------------------------------------- удаление
-def delete_account(bin_path, slot, confirm, lang="ru"):
-    """Стирает профиль с токеном. Слово подтверждения проверяет сервер сам, как при удалении Claude."""
+def delete_account(bin_path, slot, confirm, lang="ru", before=None):
+    """Disconnect a local login; retain CODEX_HOME, settings and session history."""
+    if not isinstance(slot, str) or not _SLOT_RE.fullmatch(slot):
+        return False, _t(lang, 'Неизвестный аккаунт.', 'Unknown account.')
+    with _slot_lock(slot):
+        return _disconnect_account(bin_path, slot, confirm, lang, before)
+
+
+def _disconnect_account(bin_path, slot, confirm, lang, before):
     if (confirm or "").strip().lower() not in DELETE_WORDS:
         return False, _t(lang, "Слово подтверждения введено неверно — ничего не удалено.",
                          "The confirmation word is wrong — nothing was deleted.")
@@ -899,6 +921,15 @@ def delete_account(bin_path, slot, confirm, lang="ru"):
     if os.path.islink(pdir):
         return False, _t(lang, "Профиль — символическая ссылка, удалять не буду.",
                          "The profile is a symbolic link — refusing to delete it.")
+    try:
+        cc_disconnect.plain(os.path.join(pdir, 'auth.json'))
+    except OSError:
+        return False, _t(lang, 'Небезопасный файл авторизации — отключение отменено.',
+                         'Unsafe authorization file — disconnect cancelled.')
+    if before is not None:
+        ok, message = before(slot, lang)
+        if not ok:
+            return False, message
     with _lock:
         _login_drop(slot)
     if bin_path:  # отозвать токен на стороне OpenAI; не вышло — не мешает удалению
@@ -909,23 +940,25 @@ def delete_account(bin_path, slot, confirm, lang="ru"):
         except Exception:
             pass
     try:
-        shutil.rmtree(pdir)
-    except OSError as e:
-        return False, _t(lang, f"Не удалось стереть профиль: {e}", f"Could not wipe the profile: {e}")
+        cc_disconnect.remove(os.path.join(pdir, 'auth.json'))
+    except OSError:
+        return False, _t(lang, 'Не удалось удалить авторизацию.', 'Could not remove authorization.')
     with _lock:
         _cache.pop(slot, None)
-    return True, _t(lang, "Аккаунт ChatGPT удалён.", "ChatGPT account deleted.")
+        _models_cache.pop(slot, None)
+    return True, _t(lang, 'Аккаунт ChatGPT отключён. История и файлы сохранены.',
+                    'ChatGPT account disconnected. History and files retained.')
 
 
-def delete_all(bin_path, confirm, lang="ru"):
-    """Стирает ВСЕ входы ChatGPT разом (для «Удалить Codex целиком»). Слово подтверждения проверяется один раз.
+def delete_all(bin_path, confirm, lang="ru", before=None):
+    """Отключает ВСЕ входы ChatGPT, сохраняя профили и их историю. Подтверждение проверяется один раз.
     → (ok, сообщение, сколько удалено)."""
     if (confirm or "").strip().lower() not in DELETE_WORDS:
         return False, _t(lang, "Слово подтверждения введено неверно — ничего не удалено.",
                          "The confirmation word is wrong — nothing was deleted."), 0
     done = 0
     for slot in profile_slots():
-        ok, msg = delete_account(bin_path, slot, confirm, lang)
+        ok, msg = delete_account(bin_path, slot, confirm, lang, before=before)
         if not ok:
             return False, msg, done
         done += 1

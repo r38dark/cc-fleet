@@ -134,7 +134,7 @@ class T(unittest.TestCase):
         M.notion_installed = lambda: False
         a = s.nai.agents()
         s.assertEqual((a['codex']['state'], a['codex']['text']), ('unlinked', 'не подключён'))
-        s.assertEqual((a['notion']['state'], a['notion']['text']), ('unlinked', 'не установлен'))
+        s.assertEqual((a['notion']['state'], a['notion']['text']), ('unlinked', 'не подключён'))
         s.assertEqual(a['claude']['state'], 'run')   # Claude не затронут
         s.assertEqual(s.nai.public()['agents']['codex']['state'], 'unlinked')
         # подключили Codex (есть аккаунт) и поставили Notion AI — плитки обычные

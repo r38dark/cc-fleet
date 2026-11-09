@@ -20,6 +20,10 @@
       "mode": "644"
     },
     {
+      "src": "cc_disconnect.py",
+      "mode": "644"
+    },
+    {
       "src": "cc_update.py",
       "mode": "644"
     },

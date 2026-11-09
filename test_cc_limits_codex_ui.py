@@ -789,7 +789,7 @@ class Routes(unittest.TestCase):
         with mock.patch.object(L.cc_codex, "delete_account", return_value=(True, "удалён")) as de, \
                 mock.patch.object(L.cc_codex_bridge, "drop_slot") as dr:
             self.assertEqual(self.post("delete", {"slot": "gpt2", "confirm": "удалить"}), (200, {"ok": True, "message": "удалён"}))
-            de.assert_called_once_with("/x/codex", "gpt2", "удалить", lang=None)
+            de.assert_called_once_with("/x/codex", "gpt2", "удалить", lang=None, before=L.cc_codex_bridge.prepare_disconnect)
             dr.assert_called_once_with("gpt2")
         with mock.patch.object(L.cc_codex, "delete_account", return_value=(False, "нет")), \
                 mock.patch.object(L.cc_codex_bridge, "drop_slot") as dr:

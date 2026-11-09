@@ -431,24 +431,37 @@ def drop_slot(slot):
     return True
 
 
+def prepare_disconnect(slot, lang='ru'):
+    """End an idle authenticated process without forgetting its conversation."""
+    if CONSOLE is None:
+        return True, ''
+    st = CONSOLE.status()
+    current = CONSOLE._meta().get('slot') if hasattr(CONSOLE, '_meta') else st.get('plan_slot')
+    if st.get('running') and current == slot:
+        if CONSOLE.busy() or BRIDGE.busy():
+            return False, _t(lang, 'Codex занят — дождись ответа перед отключением аккаунта.',
+                             'Codex is busy — wait for its response before disconnecting.')
+        return CONSOLE.stop(lang=lang)
+    return True, ''
+
+
 def wipe_all(bin_path, confirm, lang="ru"):
-    """«Удалить Codex целиком»: все входы ChatGPT, бот и чат, выбранный и свои профили, режим и доступ, память разговора,
-    консоль Codex. Сам Codex на сервере и папка обмена остаются. Аварийный режим включён — отказ: права заморожены.
-    → (ok, сообщение)."""
+    """Disconnect all local ChatGPT logins and the bot, retaining settings and history."""
     if EMERGENCY is not None and EMERGENCY.active():
         return False, _t(lang, "Включён аварийный режим — сначала выключи его.", "Emergency mode is on — turn it off first.")
-    ok, msg, n = cc_codex.delete_all(bin_path, confirm, lang)
+    ok, msg, n = cc_codex.delete_all(bin_path, confirm, lang, before=prepare_disconnect)
     if not ok:
         return False, msg  # на ошибке мост не трогаем: что стёрто, то стёрто, остальное можно повторить
     with _lock:
-        _save(dict(DEFAULTS, profiles=[]))
-        _state_save({})
+        s = load()
+        s.update(enabled=False, token='', chat_id='', slot='')
+        _save(s)
+        st = _state()
+        st.update(bot='', offset=0)
+        _state_save(st)
     BRIDGE.sync()
-    if CONSOLE is not None:
-        BRIDGE.cancel.set()  # идущий запрос снимается; консоль Codex останавливается и забывает разговоры
-        CONSOLE.forget()
-    return True, _t(lang, f"Codex удалён целиком: аккаунтов ChatGPT — {n}, настройки моста сброшены.",
-                    f"Codex removed: ChatGPT accounts — {n}, bridge settings reset.")
+    return True, _t(lang, f'Codex отключён: аккаунтов — {n}. Программа, настройки и история сохранены.',
+                    f'Codex disconnected: {n} accounts. Program, settings and history retained.')
 
 
 def clear_token():

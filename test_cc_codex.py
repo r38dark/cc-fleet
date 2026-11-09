@@ -437,7 +437,8 @@ class CodexTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(p))
         ok, msg = cc_codex.delete_account(self.bin, slot, " Подтверждаю ")
         self.assertTrue(ok, msg)
-        self.assertFalse(os.path.exists(p))
+        self.assertTrue(os.path.isdir(p))
+        self.assertFalse(os.path.exists(os.path.join(p, "auth.json")))
         self.assertEqual(cc_codex.profile_slots(), [])
 
     def test_delete_all_needs_word_and_wipes_every_slot(self):
@@ -467,14 +468,14 @@ class CodexTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(real))
         os.remove(p)
 
-    def test_free_slot_reuses_gap(self):
+    def test_free_slot_preserves_disconnected_home(self):
         self._add("a@example.com")
         os.remove(self.gate)
         s2 = self._add("b@example.com")
         self.assertEqual(s2, "gpt2")
         cc_codex.delete_account(self.bin, "gpt1", "confirm")
         os.remove(self.gate)
-        self.assertEqual(self._add("c@example.com"), "gpt1")
+        self.assertEqual(self._add("c@example.com"), "gpt3")
 
     def test_find_bin(self):
         self.assertEqual(cc_codex.find_bin(self.bin), self.bin)
