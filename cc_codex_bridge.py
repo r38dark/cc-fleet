@@ -1745,15 +1745,18 @@ class Bridge:
         if not (s.get("enabled") and s.get("token") and chat_id(s)):
             return
 
-        def deliver(answer):
-            if self.send_answer("⏳ Запоздавший ответ Codex (восстановлена доставка):\n\n" + answer, None, s) is not False:
+        def deliver(answer, retry=False):
+            # Resuming a running turn after a panel restart is normal delivery.
+            # Only a ready answer left for another delivery attempt needs a retry label.
+            text = ("⏳ Запоздавший ответ Codex (восстановлена доставка):\n\n" if retry else "") + answer
+            if self.send_answer(text, None, s) is not False:
                 self._inflight_end(token)
-                log("delivery stage=answer_recovered")
+                log("delivery stage=answer_recovered reason=" + ("delivery_retry" if retry else "panel_restart"))
                 return True
             return False
 
         if cur.get("answer"):
-            deliver(cur["answer"])
+            deliver(cur["answer"], retry=True)
             return
 
         class Superseded:  # новый запрос или /stop заменили запись: старая больше не ждёт

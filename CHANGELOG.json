@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.19",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Обычная доставка ответа после обновления панели",
+        "p": [
+          "Подхват продолжающегося ответа Codex после перезапуска панели больше не помечается как запоздавшая доставка.",
+          "Метка восстановления сохранена для повторной отправки уже готового ответа.",
+          "Консоли, беседы, права Full и настройки при обновлении сохраняются."
+        ]
+      },
+      "en": {
+        "t": "Normal reply delivery after a panel restart",
+        "p": [
+          "A running Codex reply resumed after a panel restart is no longer labeled as a delayed delivery.",
+          "The recovery label remains for another delivery attempt of a ready answer.",
+          "Console sessions, conversations, Full access and settings are retained during the upgrade."
+        ]
+      }
+    },
+    {
       "v": "2.0.18",
       "date": "2026-11-10",
       "ru": {
