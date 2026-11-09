@@ -2786,7 +2786,7 @@ def login_start():
     j = _delegate('/relogin', {})
     if j.get('error'):
         return dict(ok=False, message='Вход не начат: ' + str(j['error'])[:160])
-    return dict(ok=True, message='Письмо с кодом уходит на %s. Введи 6 цифр ниже.' % (load_cfg().get('notion_email') or 'почту входа'))
+    return dict(ok=True, message='Письмо с кодом уходит на %s. Введи код из письма ниже.' % (load_cfg().get('notion_email') or 'почту входа'))
 
 
 def login_code(code):
@@ -2936,7 +2936,7 @@ function render(){var box=$i('naiCfgBox');if(!box||!data)return;var c=data.cfg||
   ['Чат',c.chat_url?'<a href="'+esc(c.chat_url)+'" target="_blank" rel="noopener">открыть постоянный чат</a>':bad('ссылка не задана')],
   ['Вход в Notion',dot(auth[0]&&!lw,lw&&auth[0]?'подключён · идёт новый вход':auth[1])+(c.notion_email?' '+mut('· '+c.notion_email):'')+(lw?'':'<button type="button" class="ghostbtn" id="naiLogin">'+(auth[0]?'Войти заново':'Войти')+'</button>')],
   ['Сервисы',units]])
-  +'<div id="naiCode" class="nc-row"'+(lw?'':' hidden')+'><input class="dlginp" id="naiCodeIn" inputmode="numeric" maxlength="6" placeholder="6 цифр из письма" style="width:150px"><button type="button" id="naiCodeBtn">Ввести код</button></div>'
+  +'<div id="naiCode" class="nc-row"'+(lw?'':' hidden')+'><input class="dlginp" id="naiCodeIn" maxlength="12" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="код из письма" style="width:150px"><button type="button" id="naiCodeBtn">Ввести код</button></div>'
   +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiWizOpen">Мастер подключения по шагам</button></div>'
   +'<div class="nc-row"><button type="button" class="ghostbtn" id="naiCfgCheck">Проверить связь</button><span class="nc-msg" data-m id="naiCfgMsg"></span></div>'
   +'<div class="nc-chk" id="naiCfgOut" hidden></div>'
@@ -3543,7 +3543,7 @@ function body(id){
   if(s.auth==='ok')h=okline(T('Вход в Notion на сервере подключён.','Notion sign-in on the server is connected.'));
   else h=p(T('Сервер входит в Notion по коду из письма (пароль не нужен). Впиши почту аккаунта Notion и нажми «Отправить код».','The server signs in to Notion with a code from an email (no password). Enter your Notion account email and press “Send code”.'))
    +'<input class="dlginp" id="nwMail" type="email" autocomplete="off" placeholder="name@example.com" value="'+esc(c.notion_email)+'"><div class="nw-row"><button type="button" data-do="mail">'+T('Отправить код','Send code')+'</button></div>'
-   +(codeSent||s.auth==='login_wait'||s.login_busy?'<input class="dlginp" id="nwCode" inputmode="numeric" maxlength="6" placeholder="'+T('6 цифр из письма','6 digits from the email')+'" style="max-width:200px"><div class="nw-row"><button type="button" data-do="code">'+T('Ввести код','Enter code')+'</button></div>':'')
+   +(codeSent||s.auth==='login_wait'||s.login_busy?'<input class="dlginp" id="nwCode" maxlength="12" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="'+T('код из письма (6 символов)','code from the email (6 characters)')+'" style="max-width:200px"><div class="nw-row"><button type="button" data-do="code">'+T('Ввести код','Enter code')+'</button></div>':'')
    +note(T('Входов не больше 3 в сутки. Письмо может идти до минуты.','No more than 3 sign-ins per day. The email can take up to a minute.'));
  }else if(id==='token'){
   h=p(T('Токен нужен, чтобы видеть и создавать своих агентов Notion. Главный агент работает и без него — шаг можно пропустить.','The token is needed to see and create your own Notion agents. The main agent works without it — you can skip this step.'))

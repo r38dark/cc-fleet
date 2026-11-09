@@ -167,5 +167,63 @@ class PageWiring(unittest.TestCase):
         self.assertGreaterEqual(js.count("T('"), 30)   # ru/en пары
 
 
+class LoginCode(unittest.TestCase):
+    """Notion присылает код из 6 букв («kvpugs»): служба и поля ввода обязаны принимать буквы."""
+
+    def put_code(self, code, state="login_wait", busy=False):
+        src = open(os.path.join(HERE, "notion_ai", "web", "server.py"), encoding="utf-8").read()
+        m = re.search(r"def put_code\(code\):.*?(?=\n\ndef )", src, re.S)
+        self.assertIsNotNone(m)
+        tmp = tempfile.mkdtemp(prefix="naicode_")
+        ns = {"re": re, "os": os, "D": tmp, "AUTH": {"state": state}, "LOGIN": {"busy": busy}}
+        exec(m.group(0), ns)
+        ns["put_code"](code)
+        return open(os.path.join(tmp, "code.txt"), encoding="utf-8").read()
+
+    def test_letters_and_digits_are_accepted(self):
+        for c in ("kvpugs", "KVPUGS", "123456", "ab12cd", " kvpugs "):
+            self.assertEqual(self.put_code(c), c.strip())
+
+    def test_wrong_length_or_symbols_are_rejected(self):
+        for c in ("kvpug", "kvpugsx", "kvp ugs", "kvpug-", "", None):
+            with self.assertRaises(ValueError, msg=repr(c)):
+                self.put_code(c)
+
+    def test_code_is_not_taken_when_no_login_is_waiting(self):
+        with self.assertRaises(RuntimeError):
+            self.put_code("kvpugs", state="ok", busy=False)
+
+    def test_panel_and_wizard_fields_are_not_digit_only(self):
+        for html in (N.CFG_UI, N.WIZ_UI):
+            for field in ("naiCodeIn", "nwCode"):
+                if 'id="%s"' % field in html:
+                    tag = html[html.index('id="%s"' % field):][:300]
+                    tag = tag[:tag.index(">")]
+                    self.assertNotIn("numeric", tag, field)
+                    self.assertNotIn('maxlength="6"', tag, field)
+        self.assertNotIn("6 цифр", N.CFG_UI + N.WIZ_UI)
+        self.assertNotIn("6 digits", N.WIZ_UI)
+
+    def test_login_start_message_does_not_promise_digits(self):
+        with mock.patch.object(N, "_delegate", return_value={}):
+            self.assertNotIn("цифр", N.login_start()["message"])
+
+
+class ChatField(unittest.TestCase):
+    """Notion сменил подсказку поля ввода в чате агента на «Chat with <имя>»: служба обязана находить и её."""
+
+    def test_no_wait_for_the_old_hint_only(self):
+        for name in ("server.py", "agent_ops.py", "login2.py"):
+            src = open(os.path.join(HERE, "notion_ai", "web", name), encoding="utf-8").read()
+            self.assertNotIn('get_by_placeholder("Ask Notion AI")', src, name)
+            self.assertIn('placeholder^="Chat with"', src, name)
+            self.assertIn('placeholder^="Ask Notion AI"', src, name)
+
+    def test_service_files_compile(self):
+        import py_compile
+        for name in ("server.py", "agent_ops.py", "login2.py", "nagents.py", "notion_ai_view.py", "notion_ai_tg.py"):
+            py_compile.compile(os.path.join(HERE, "notion_ai", "web", name), cfile=os.path.join(tempfile.mkdtemp(), "x.pyc"), doraise=True)
+
+
 if __name__ == "__main__":
     unittest.main()

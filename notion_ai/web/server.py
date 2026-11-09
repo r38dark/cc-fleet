@@ -82,7 +82,7 @@ def open_chat(p, url=None):
     pg = ctx.new_page()
     try:
         pg.goto(url or cur_url(), wait_until="domcontentloaded", timeout=45000)
-        pg.get_by_placeholder("Ask Notion AI").first.wait_for(timeout=40000); pg.wait_for_timeout(2500)
+        pg.locator(NAI_INPUT).first.wait_for(timeout=40000); pg.wait_for_timeout(2500)
     except Exception as e:
         lost = "/login" in pg.url or "login" in pg.url.split("?")[0]
         b.close()
@@ -113,9 +113,9 @@ def run_job(j):
         try:
             guard(mark=True)
             b0 = body(pg); before = b0.count(f"КОНЕЦ-{jid}"); err0 = b0.count("Error sending message")
-            pg.keyboard.press("Escape"); pg.get_by_placeholder("Ask Notion AI").first.focus(); pg.keyboard.insert_text(msg); pg.wait_for_timeout(600)
+            pg.keyboard.press("Escape"); pg.locator(NAI_INPUT).first.focus(); pg.keyboard.insert_text(msg); pg.wait_for_timeout(600)
             pg.keyboard.press("Enter"); pg.wait_for_timeout(2500)
-            if msg[:30] in (pg.get_by_placeholder("Ask Notion AI").first.inner_text() or ""):
+            if msg[:30] in (pg.locator(NAI_INPUT).first.inner_text() or ""):
                 pg.locator("div[role=button]:has(svg)").last.click(timeout=3000)
             j["sent"] = time.time(); t0 = time.time(); last, stable, partial = "", 0, False
             max_wait = limits()["max_wait"]
@@ -187,7 +187,7 @@ alock = threading.Lock()
 
 
 def AUTH_MSG():
-    return {"login_wait": "вход в Notion слетел, идёт повторный вход: нужен код из письма (notion-delegate code 123456)",
+    return {"login_wait": "вход в Notion слетел, идёт повторный вход: нужен код из письма (notion-delegate code КОД)",
             "lost": "вход в Notion слетел и не восстановился, нужен новый вход"}.get(AUTH["state"], "")
 
 
@@ -275,8 +275,8 @@ def relogin(manual=False):
     if not mail:
         with alock: LOGIN["busy"] = False; AUTH.update(state="lost", since=time.time())
         tg("⚠️ Notion: вход слетел, а почта входа не задана. Укажи её в панели: ⚙ Общие настройки → Notion AI, потом нажми «Войти в Notion»."); return
-    tg(("🔑 Notion: вход запущен из панели. Письмо с кодом идёт на %s. Введи 6 цифр в панели (⚙ Общие настройки → Notion AI) или пришли сообщением. Ждём 12 минут." if manual else
-        "⚠️ Notion: вход слетел. Письмо с кодом идёт на %s. Пришли 6 цифр сообщением (я или Codex введём командой notion-delegate code ...). Ждём 12 минут.") % mail)
+    tg(("🔑 Notion: вход запущен из панели. Письмо с кодом идёт на %s. Введи код из письма (6 символов) в панели (⚙ Общие настройки → Notion AI) или пришли сообщением. Ждём 12 минут." if manual else
+        "⚠️ Notion: вход слетел. Письмо с кодом идёт на %s. Пришли код из письма (6 символов) сообщением (я или Codex введём командой notion-delegate code ...). Ждём 12 минут.") % mail)
     try:
         r = subprocess.run([sys.executable, D + "/login2.py"], capture_output=True, text=True, timeout=900, env={k: v for k, v in os.environ.items() if "proxy" not in k.lower()})
         ok = r.returncode == 0
@@ -294,7 +294,7 @@ def relogin(manual=False):
 
 def put_code(code):
     code = (code or "").strip()
-    if not re.fullmatch(r"\d{6}", code): raise ValueError("нужны ровно 6 цифр")
+    if not re.fullmatch(r"[A-Za-z0-9]{6}", code): raise ValueError("нужны ровно 6 символов (буквы или цифры) из письма")
     if AUTH["state"] != "login_wait" and not LOGIN["busy"]: raise RuntimeError("сейчас код входа не ждём")
     fd = os.open(D + "/code.txt", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600); os.write(fd, code.encode()); os.close(fd)
 
