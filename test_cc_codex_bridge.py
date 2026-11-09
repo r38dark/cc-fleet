@@ -1148,7 +1148,7 @@ class Inflight(Base):
         self.assertEqual(self.con.recovered[0][0]["path"], "/x/r.jsonl")
         self.assertEqual(self.con.recovered[0][1], 900.0)
         self.assertIn("ответ после перезапуска", self.sent[-1])
-        self.assertTrue(self.sent[-1].startswith("⏳ Запоздавший ответ"))
+        self.assertEqual(self.sent[-1], "ответ после перезапуска")
         self.assertIsNone(br._state()["inflight"])
 
     def test_after_restart_answer_survives_telegram_failure(self):
@@ -1159,7 +1159,21 @@ class Inflight(Base):
         self.assertEqual(br._state()["inflight"]["answer"], "ответ после перезапуска")
         self.recover()
         self.assertIn("ответ после перезапуска", self.sent[-1])
+        self.assertTrue(self.sent[-1].startswith("⏳ Запоздавший ответ"))
         self.assertEqual(len(self.con.recovered), 1, "консоль второй раз не читаем")
+
+    def test_panel_restart_waiting_on_long_turn_does_not_mark_it_late(self):
+        self.orphan()
+        br.NOW = lambda: 900.0 + 3600
+        self.recover()
+        self.assertEqual(self.sent, ["ответ после перезапуска"])
+        self.assertIsNone(br._state()['inflight'])
+
+    def test_ready_answer_from_old_process_retains_delivery_retry_label(self):
+        self.orphan(answer='готовый ответ')
+        self.recover()
+        self.assertEqual(self.sent, ['⏳ Запоздавший ответ Codex (восстановлена доставка):\n\nготовый ответ'])
+        self.assertEqual(self.con.recovered, [])
 
     def test_after_restart_turn_lost_is_reported_once(self):
         self.orphan()
