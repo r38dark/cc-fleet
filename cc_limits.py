@@ -18,7 +18,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.9"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.10"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -517,14 +517,13 @@ def delete_account(name, confirm, lang="ru"):
         return False, _t(lang, "Профиль — символическая ссылка, удалять не буду.",
                          "The profile is a symbolic link — refusing to delete it."), None
     with lock:
-        real = _real_names()
-        if name in real and len(real) <= 1:
-            return False, _t(lang, "Это последний аккаунт в ротации — удалить его нельзя.",
-                             "This is the last account in the rotation — it cannot be deleted."), None
         oa = jload(f"{pdir}/oauth_account.json", {}) or {}
         email = oa.get("emailAddress") or ""
         moved = None
-        if active_name() == name:
+        # перевод живой сессии нужен, только если есть КУДА — для последнего настоящего
+        # аккаунта (удаляемый сам себе единственная альтернатива) пробовать нечего,
+        # и это не повод отказывать: живая сессия останется на своих текущих токенах
+        if active_name() == name and len(_real_names()) > 1:
             moved, why = _move_off(name)
             if not moved:
                 return False, _t(lang, "Это активный аккаунт, а переключить сессию на другой не удалось — ничего не удалено. ",
@@ -4197,7 +4196,7 @@ const I18N={
   delTitle:'Удалить аккаунт навсегда?',
   delWarn:'<b>Это безвозвратно.</b> Профиль и токены аккаунта будут стёрты сразу — без корзины и без отката. Из ротации он пропадёт полностью; вернуть его можно только добавив заново, с новым входом через браузер.',
   delActive:'Сейчас это активный аккаунт — перед удалением сессия будет переведена на другой.',
-  delLast:'Это единственный аккаунт в ротации — удалить его нельзя.',
+  delLast:'Это единственный аккаунт в ротации — после удаления Claude останется без входа (Codex и Notion AI продолжат работать, если настроены).',
   delWord:'подтверждаю',
   delType:w=>'Чтобы подтвердить, введи слово «'+w+'»',
   delGo:'Удалить навсегда',
@@ -4685,7 +4684,7 @@ const I18N={
   delTitle:'Delete this account for good?',
   delWarn:'<b>This cannot be undone.</b> The profile and its tokens are wiped immediately — no recycle bin, no rollback. The account disappears from the rotation entirely; the only way back is to add it again with a fresh browser sign-in.',
   delActive:'This is the active account — the session will be moved to another one first.',
-  delLast:'This is the only account in the rotation — it cannot be deleted.',
+  delLast:'This is the only account in the rotation — after deleting it, Claude will have no login (Codex and Notion AI keep working if configured).',
   delWord:'confirm',
   delType:w=>'To confirm, type the word “'+w+'”',
   delGo:'Delete for good',
@@ -6027,13 +6026,12 @@ function acctDel(n){
  const word=tr('delWord');
  acctShow(`<h3>${tr('delTitle')}</h3>
   <div class="modalsub"><b>${acctEsc(isReal?a.email:n)}</b> · ${acctEsc(n)}</div>
-  <div class="dlgwarn">${tr('delWarn')}${a.active?'<br><br>'+tr('delActive'):''}</div>
-  ${last?`<div class="dlgerr">${tr('delLast')}</div>`:`<label class="dlglbl" for="delInp">${tr('delType',word)}</label>
+  <div class="dlgwarn">${tr('delWarn')}${a.active?'<br><br>'+tr('delActive'):''}${last?'<br><br>'+tr('delLast'):''}</div>
+  <label class="dlglbl" for="delInp">${tr('delType',word)}</label>
   <input id="delInp" class="dlginp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${word}">
-  <div class="dlgerr" id="acctErr" hidden></div>`}
-  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button>${last?'':`<button class="btn-danger" id="delGo" disabled>${tr('delGo')}</button>`}</div>`);
+  <div class="dlgerr" id="acctErr" hidden></div>
+  <div class="modalfoot"><button class="ghostbtn" id="acctCancel" style="margin-top:0">${tr('cancel')}</button><button class="btn-danger" id="delGo" disabled>${tr('delGo')}</button></div>`);
  $('#acctCancel').onclick=acctClose;
- if(last)return;
  const inp=$('#delInp'),go=$('#delGo');
  inp.addEventListener('input',()=>{go.disabled=inp.value.trim().toLowerCase()!==word;});
  inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!go.disabled)go.click();});
