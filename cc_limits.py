@@ -18,7 +18,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.10"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.11"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -7318,7 +7318,8 @@ function updRender(){
    cls='lvl-upderr';title=tr('updErrTitle',ccpEsc(res.to));
    sub=updErrText(res.code,res.error)+(res.rolled_back?'<br>'+tr('updRolled'):'');
    acts='<button type="button" class="ccp-btn" onclick="updAck()">'+tr('updBtnOk')+'</button>'
-    +((d.available&&!res.needs_install&&d.supported)?'<button type="button" class="ccp-btn sec" onclick="updApply(this)">'+tr('updBtnRetry')+'</button>':'');
+    +((d.available&&!res.needs_install&&d.supported)?'<button type="button" class="ccp-btn sec" onclick="updApply(this)">'+tr('updBtnRetry')+'</button>':'')
+    +(d.supported?'<button type="button" class="ccp-btn sec" onclick="updCheckNow(this)">'+tr('updCheckBtn')+'</button>':'');
   }
  }else if(updStale()){
   cls='lvl-updok';title=tr('updStaleTitle',ccpEsc(d.version));sub=tr(updHeld?'updStaleHeld':'updStaleSub');
@@ -7338,6 +7339,11 @@ function updRender(){
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div>'+(bar?'<div class="upd-bar"><i></i></div>':'')+more
   +(acts?'<div class="ccp-actions">'+acts+'</div>':'')+'</div>';
+}
+async function updCheckNow(btn){
+ if(btn)btn.disabled=true;
+ try{updData=await updPost('check');}catch(e){}
+ updRender();updSettingsRender();
 }
 async function updApply(btn){
  if(btn)btn.disabled=true;
@@ -7438,11 +7444,7 @@ $('#updBox').addEventListener('click',async e=>{
   await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({update_mode:mode})});
   return updLoad();
  }
- if(e.target.id==='updCheckBtn'){
-  e.target.disabled=true;
-  try{updData=await updPost('check');}catch(x){}
-  updRender();updSettingsRender();return;
- }
+ if(e.target.id==='updCheckBtn'){return updCheckNow(e.target);}
  if(e.target.id==='updApplyBtn')return updApply(e.target);
 });
 $('#updBox').addEventListener('change',async e=>{
