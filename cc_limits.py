@@ -2797,6 +2797,11 @@ def pause_state():
         d = pause_ctl.level_state()
         # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем
         d["remote"] = pause_ctl._remote_active()
+        # Общая сводка включает подключённые аккаунты. Сам локальный гейт,
+        # его уровень и время пробуждения остаются без изменений.
+        snapshot = jload(SNAPSHOT) or {}
+        d["fleet"] = cc_avail.fleet_summary(snapshot.get("accounts") or {}, cc_remote.cached(),
+                                             d.get("threshold", 90), d.get("weekly_cap", 99))
         # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
         d["handoff"] = ""
         if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
@@ -4227,6 +4232,9 @@ const I18N={
   wkLbl:cap=>`<b>Пауза на недельном потолке</b> — остановить Claude на ${cap}% недели, если переключаться некуда. Выключено — балансер не остановит заполнение до 100%.`,
   wkOn:'Пауза на недельном потолке включена',wkOff:'Пауза на недельном потолке выключена',
   ccpWeekTitle:'⏸ Неделя на потолке — <b>переключаться некуда</b>',
+  ccpFleetWeekTitle:'⏸ Неделя на потолке у <b>всех аккаунтов Claude</b>',
+  ccpFleetHardTitle:'⏸ Нет доступных аккаунтов Claude',
+  ccpFleetSub:'Учтены этот сервер и подключённые серверы. Таймер — до доступности ближайшего аккаунта.',
   ccpWeekSub:(n,w,cap,na)=>`${n}: неделя <span class="num">${w}</span> (потолок ${cap}%), остальные аккаунты недоступны. Включена «Пауза на недельном потолке» — Claude встанет на паузу на следующем шаге и продолжит сам, когда `+(na?`освободится <b>${na}</b>.`:'освободится другой аккаунт или сбросится неделя.'),
   ccpRiskTitle:'⚠ Неделя на потолке — <b>балансер не остановит заполнение до 100%</b>',
   ccpRiskSub:(n,w,cap)=>`${n}: неделя <span class="num">${w}</span>, переключаться некуда — работаешь на свой страх и риск. Остановку на ${cap}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».`,
@@ -4816,6 +4824,9 @@ const I18N={
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
   ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
+  ccpFleetWeekTitle:'⏸ All Claude accounts reached the weekly cap',
+  ccpFleetHardTitle:'⏸ No Claude accounts available',
+  ccpFleetSub:'Includes this server and connected servers. The timer shows when the first account becomes available.',
   ccpHardAll:thr=>`Every account is out of its session window (threshold ${thr}%).`,
   ccpHardSome:(n,why,rest)=>`${n}: ${why}, and none of the others will do: ${rest}.`,
   ccpHardSub:(head,na,self)=>head+" Background jobs stay down so they don't burn the rest of the window. "+(na?`<b>${na}</b> frees up first`+(self?' — work continues on it once its session resets.':' — the balancer switches to it right after the reset.'):'The balancer switches as soon as the nearest one frees up.'),
@@ -7094,6 +7105,21 @@ function ccpHeld(a){
 function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
+ // Локальная пауза и активный PROD не скрывают исчерпание всей пары.
+ const fleet=d&&d.fleet;
+ if(fleet&&fleet.remote_count&&fleet.all_blocked&&pause.kind!=='reserve'){
+  const next=fleet.nearest||{},until=next.resets_at?new Date(next.resets_at).getTime():0;
+  const chips=Object.values(fleet.accounts||{}).map(a=>'<span class="ccp-chip hot">'+ccpEsc(a.label)
+   +' <b>'+(a.pct==null?'?':Math.round(a.pct)+'%')+'</b>'
+   +(a.wpct!=null?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
+  el.className='ccpause lvl-pause';el.hidden=false;
+  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'
+   +tr(fleet.all_week_capped?'ccpFleetWeekTitle':'ccpFleetHardTitle')+'</div><div class="ccp-sub">'+tr('ccpFleetSub')
+   +'</div><div class="ccp-meta">'+chips+'</div></div>'
+   +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)
+     +'</div><div class="l">'+tr('ccpTillFree',ccpEsc(next.label||next.acc||''))+'</div></div>':'');
+  return;
+ }
  if(!d||d.stale||(lvl==='none'&&!pause.active&&!pause.override)){el.hidden=true;return;}
  // приоритет: пауза отключена кнопкой > пауза (в ней уже есть будильник) >
  // переключаться некуда > активный забит

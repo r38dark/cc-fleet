@@ -1733,7 +1733,7 @@ class Bridge:
             return
 
         def deliver(answer):
-            if self.send_answer("⏳ Запоздавший ответ Codex (связь прервалась, досылаю):\n\n" + answer, None, s) is not False:
+            if self.send_answer("⏳ Запоздавший ответ Codex (восстановлена доставка):\n\n" + answer, None, s) is not False:
                 self._inflight_end(token)
                 log("delivery stage=answer_recovered")
                 return True
