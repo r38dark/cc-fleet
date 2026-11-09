@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.10",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Можно удалить последний Claude-аккаунт",
+        "p": [
+          "Раньше панель отказывалась удалять единственный аккаунт в ротации — теперь можно, если он больше не нужен",
+          "После удаления Codex и Notion AI продолжают работать как настроены; добавить новый аккаунт Claude можно в любой момент"
+        ]
+      },
+      "en": {
+        "t": "The last Claude account can now be deleted",
+        "p": [
+          "The panel used to refuse to delete the only account in the rotation — now it is allowed, if it is no longer needed",
+          "Codex and Notion AI keep working as configured afterward; a new Claude account can be added back any time"
+        ]
+      }
+    },
+    {
       "v": "2.0.9",
       "date": "2026-11-09",
       "ru": {
