@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.13",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Срок входа второго сервера: настоящий срок логина",
+        "p": [
+          "«Вход до» у плитки второго сервера показывал время жизни токена доступа (часы), теперь срок логина, как у локальных",
+          "Скрипт на втором сервере обновится при следующей передаче работы или повторном подключении"
+        ]
+      },
+      "en": {
+        "t": "Second server sign-in date: the real login lifetime",
+        "p": [
+          "\"Sign-in until\" on the second-server tile showed the access token lifetime (hours); it now shows the login lifetime",
+          "The script on the second server is refreshed on the next work transfer or reconnect"
+        ]
+      }
+    },
+    {
       "v": "2.0.12",
       "date": "2026-11-09",
       "ru": {
