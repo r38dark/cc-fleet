@@ -34,20 +34,44 @@ def members():
     return {k: v for k, v in d.items() if isinstance(v, dict) and v.get("host")} if isinstance(d, dict) else {}
 
 
+MUX_DIR = os.path.join(BASE, "ssh-mux")   # сокеты общего ssh-соединения (каталог 0700)
+# Опросы только на чтение: их гоним через одно постоянное ssh-соединение (новое TCP+ssh-рукопожатие на каждый опрос
+# раз в ~0,8% зависало на 5 с и давало «нет связи») и безопасно повторяем при обрыве. Остальное (ввод, запись, настройка) — как раньше.
+_POLL_CMD = re.compile(r"ctl\.py (?:ansi|status|hist|histtail)\b|/usage\.py\b|^tmux has-session ")
+
+
+def _mux_opts():
+    """Ключи ssh для общего соединения; пустой список, если сокет-каталог не заводится или путь слишком длинный."""
+    if len(MUX_DIR) + 1 + 40 > 100:   # предел пути unix-сокета ~108 байт; %C — 40 символов
+        return []
+    try:
+        os.makedirs(MUX_DIR, mode=0o700, exist_ok=True)
+    except OSError:
+        return []
+    return ["-o", "ControlMaster=auto", "-o", "ControlPath=" + MUX_DIR + "/%C", "-o", "ControlPersist=120",
+            "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
+
+
 def ssh_run(m, remote_cmd, timeout=25, inp=None):
+    poll = bool(_POLL_CMD.search(remote_cmd))
     cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new"]
+    if poll:
+        cmd += _mux_opts()
     if m.get("key"):
         cmd += ["-i", m["key"]]
     if m.get("port"):
         cmd += ["-p", str(m["port"])]
     cmd += [m.get("user", "root") + "@" + m["host"], remote_cmd]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
-        return r.returncode, r.stdout
-    except subprocess.TimeoutExpired:
-        return 124, "timeout"
-    except Exception as e:
-        return 255, str(e)[:200]
+    for attempt in (1, 2):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        except subprocess.TimeoutExpired:
+            return 124, "timeout"
+        except Exception as e:
+            return 255, str(e)[:200]
+        if r.returncode != 255 or not poll or attempt == 2:
+            return r.returncode, r.stdout
+        time.sleep(0.5)   # обрыв (канал моргнул или умер общий сеанс): ещё одна попытка, чтение безопасно повторять
 
 
 def expired_view(row, now=None):

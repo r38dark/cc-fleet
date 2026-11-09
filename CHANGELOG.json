@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.14",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Постоянное ssh-соединение ко второму серверу",
+        "p": [
+          "Экран, лимиты и статус второго сервера опрашиваются по одному постоянному соединению, без нового рукопожатия каждые 2 с",
+          "При обрыве чтение повторяется один раз; ввод и запись не повторяются и работают как раньше"
+        ]
+      },
+      "en": {
+        "t": "A persistent ssh connection to the second server",
+        "p": [
+          "The second server's screen, limits and status are polled over one persistent connection, no new handshake every 2 s",
+          "A read is retried once after a drop; input and writes are never repeated and work as before"
+        ]
+      }
+    },
+    {
       "v": "2.0.13",
       "date": "2026-11-09",
       "ru": {
