@@ -24,6 +24,13 @@ NAME = "cc-codex"  # имя screen-сессии
 UNIT = 'cc-codex-console.service'
 COLS, ROWS = 100, 32  # размер окна: детачнутая сессия иначе 80x24
 CLI_CWD = "/opt/codex-trial"  # каталог запуска команды из `cxw`
+
+
+def cli_cwd():
+    """Каталог запуска юнита консоли: у нас на деве это /opt/codex-trial, на чистой установке его нет —
+    тогда корень (рабочая папка самого codex задаётся отдельно, ключом --cd)."""
+    return CLI_CWD if os.path.isdir(CLI_CWD) else "/"
+
 HISTORY_LINES = 2000  # скроллбэк сверх экрана
 LOG_MAX = 16 * 1024 * 1024  # лог растёт, пока Codex что-то рисует; сверх лимита обнуляем
 _SANDBOXES = ("read-only", "workspace-write", "danger-full-access")
@@ -347,13 +354,22 @@ def start(lang="ru"):
         if terminal["screen_dir"]:
             extra["SCREENDIR"] = terminal["screen_dir"]
         argv, env = cc_codex.wrap(argv, cc_codex.profile_dir(slot), extra)
+        # systemd-run стартует юнит с чистым окружением (env панели ему не передаётся): без codex_user
+        # CODEX_HOME терялся и codex брал ~/.codex — просил вход заново. Задаём переменные юниту явно.
+        # У runuser переменные уже внутри команды (env -i K=V) — там ничего не добавляем.
+        setenv = []
+        if argv and os.path.basename(argv[0]) != 'runuser':
+            _e = dict(cc_codex.EXTRA_ENV() or {}, **extra)
+            _e['CODEX_HOME'] = cc_codex.profile_dir(slot)
+            setenv = ['--setenv=%s=%s' % (k, v) for k, v in _e.items()]
         # systemd запускает ExecStart с ограниченным PATH; runuser должен быть абсолютным путём.
         if argv and argv[0] == "runuser":
             argv[0] = shutil.which("runuser") or "/usr/sbin/runuser"
+        unit_cwd = cli_cwd()
         unit_argv = ["/usr/bin/systemd-run", "--unit="+UNIT, "--collect", "--no-block",
                      "--property=Type=exec", "--property=KillMode=control-group",
-                     "--working-directory=" + CLI_CWD, "--", *argv]
-        p = subprocess.run(unit_argv, env={"PATH": "/usr/bin:/bin"}, cwd=CLI_CWD,
+                     *setenv, "--working-directory=" + unit_cwd, "--", *argv]
+        p = subprocess.run(unit_argv, env={"PATH": "/usr/bin:/bin"}, cwd=unit_cwd,
                            capture_output=True, text=True, timeout=20)
         if p.returncode != 0:
             return False, t("Не удалось запустить консоль: ", "Could not start the console: ") + (cc_codex._strip(p.stderr or p.stdout)[-200:] or "?")

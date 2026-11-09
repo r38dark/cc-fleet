@@ -263,6 +263,17 @@ def resolve_dst(dst, base):
     return full
 
 
+def install_required(mf, installed):
+    """Нужен ли ручной install.sh перед этим обновлением.
+    install_since в манифесте — версия, начиная с которой установщик в актуальном виде: тем, у кого стоит версия
+    ниже, нужен один запуск sudo ./install.sh, остальных панель обновляет сама. Без install_since (или если
+    установленная версия не читается) — как раньше, по флагу needs_install."""
+    since, cur = parse_ver(mf.get("install_since")), parse_ver(installed)
+    if since and cur:
+        return cur < since
+    return bool(mf.get("needs_install"))
+
+
 def load_manifest(root, base):
     """→ (manifest, [(src_abs, dst_abs, mode_int, rel_dst)]). Всё проверяется ДО замены."""
     mf = jload(os.path.join(root, "update_manifest.json"))
@@ -595,7 +606,7 @@ class Updater:
             if fmt_ver(parse_ver(mf["version"])) != latest["version"]:
                 raise UpdateError("версия в манифесте (%s) не равна версии релиза (%s)"
                                   % (mf["version"], latest["version"]), "manifest")
-            if mf.get("needs_install"):
+            if install_required(mf, self.version):
                 raise NeedsInstall("в этой версии изменилась установка (служба/nginx/хуки): "
                                    "один раз запусти sudo ./install.sh из архива релиза")
             check_sources(entries, latest["version"])

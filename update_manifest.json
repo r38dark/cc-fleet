@@ -1,6 +1,7 @@
 {
-  "version": "2.0.11",
+  "version": "2.0.12",
   "needs_install": true,
+  "install_since": "2.0.8",
   "files": [
     {"src": "cc_limits.py", "mode": "644"},
     {"src": "cc_avail.py", "mode": "644"},

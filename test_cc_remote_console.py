@@ -26,7 +26,7 @@ class RemoteConsole(unittest.TestCase):
         M._frozen.update(mid=None, current='', history='', ts=0, saved=0.0)
         _w(cc_remote.MEMBERS_FILE, {'prod': {'label': 'Аккаунт PROD', 'host': '192.0.2.1', 'tmux': 'friend'}})
         M._NS.update(pyte=L.pyte, _row_html=L._row_html)
-        M._cview.update(key=None, ts=0.0, resp=None, fail_until=0.0)
+        M._cview.update(key=None, ts=0.0, resp=None, fail_until=0.0, good=None)
         self.calls = []
         self.answer = {'ok': True, 'running': True, 'cols': 80, 'rows': 5, 'text': '\x1b[31mкрасный\x1b[0m текст\nвторая строка\n\n'}
         self.code = 0
@@ -72,7 +72,7 @@ class RemoteConsole(unittest.TestCase):
 
     def _stop_prod(self):
         self.answer = {'ok': True, 'running': False, 'text': '', 'cols': 0, 'rows': 0}
-        M._cview.update(key=None, ts=0.0, resp=None, fail_until=0.0)
+        M._cview.update(key=None, ts=0.0, resp=None, fail_until=0.0, good=None)
 
     def test_view_stopped_shows_last_seen_screen_like_native_claude(self):
         M.console_view(self.q('s=prod&cols=100'))  # пока Claude работает, экран запоминается
@@ -115,6 +115,39 @@ class RemoteConsole(unittest.TestCase):
         self.code = 0
         self.assertFalse(M.freeze_screen('prod'))  # Claude уже не идёт: нечего снимать, старый кадр не затирается
         self.assertEqual(M._frozen_get('prod')[0], '')
+
+    def test_short_drop_keeps_the_last_screen_instead_of_the_plate(self):
+        # дом/VPN моргнул: пока последний удачный ответ свежее CONSOLE_GRACE, окно держит экран, а не пишет «Нет связи»
+        good = M.console_view(self.q('s=prod&cols=100'))
+        self.assertTrue(good['ok'])
+        self.code = 255
+        M._cview['ts'] -= 5  # кэш в 1 с истёк: идём в ssh, он падает
+        d = M.console_view(self.q('s=prod&cols=100'))
+        self.assertTrue(d['ok'])
+        self.assertTrue(d.get('stale'))
+        self.assertEqual(d['current'], good['current'])
+        # пока идёт пауза после сбоя (FAIL_PAUSE), в ssh не ходим и тоже держим экран
+        calls = len(self.calls)
+        M._cview['ts'] -= 5
+        d = M.console_view(self.q('s=prod&cols=100'))
+        self.assertTrue(d.get('stale'))
+        self.assertEqual(len(self.calls), calls)
+
+    def test_long_drop_shows_the_plate(self):
+        M.console_view(self.q('s=prod&cols=100'))
+        self.code = 255
+        M._cview['ts'] -= 5
+        M._cview['good'] = (M._cview['good'][0], M._cview['good'][1] - M.CONSOLE_GRACE - 1, M._cview['good'][2])
+        d = M.console_view(self.q('s=prod&cols=100'))
+        self.assertFalse(d['ok'])
+        self.assertIn('связи', d['message'])
+
+    def test_drop_of_a_different_request_does_not_borrow_the_screen(self):
+        # экран другого размера/режима не подсовываем
+        M.console_view(self.q('s=prod&cols=100'))
+        self.code = 255
+        d = M.console_view(self.q('s=prod&cols=60'))
+        self.assertFalse(d['ok'])
 
     def test_view_without_connection(self):
         self.code = 255

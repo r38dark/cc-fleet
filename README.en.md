@@ -941,6 +941,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.12** — Codex console on a clean install: the launch folder is no longer hard-coded (`/opt/codex-trial`) and the sign-in
+  folder `CODEX_HOME` now reaches the console service — without it the console did not start or asked to sign in again. Updating
+  from the panel: the manifest has an `install_since` field — a manual `sudo ./install.sh` is needed once for 2.0.12 (older
+  versions see `needs_install`), later only if the installer changed since your version. Claude DEV and PROD tiles match: "Subscription
+  until" and "Sign-in until", the sign-in button in one place, and the account count includes the second-server tile. A brief drop of the
+  link to PROD (seconds) is no longer shown as "no connection": the window keeps the last screen for 20 s, the tile for 90 s.
 - **v2.0.1** — Unconnected Codex and Notion AI no longer say "working": while Codex has no accounts and Notion AI is not installed,
   their header tiles and rows in "Active accounts" are ghosts (faded, dashed) with an offer to connect or install, and their console
   tabs are hidden. A lone Claude row (no second server) spans the full width of "Active accounts"; once a second server appears the

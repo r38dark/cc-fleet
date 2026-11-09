@@ -560,6 +560,15 @@ _cview = {"key": None, "ts": 0.0, "resp": None, "fail_until": 0.0}
 _cview_lock = threading.Lock()
 VIEW_TTL = 1.0      # несколько вкладок браузера опрашивают одновременно: на один ssh хватает общего ответа
 FAIL_PAUSE = 10.0   # нет связи: не пускать ssh на каждый опрос (каждый ждёт ~8 с таймаута)
+CONSOLE_GRACE = 20.0   # короткий обрыв (дом/VPN моргнул): столько секунд после последнего удачного ответа держим его экран, а не плашку
+
+
+def _stale_view(key):
+    """Последний удачный экран этого же запроса, если он не старше CONSOLE_GRACE; иначе None (тогда плашка «Нет связи»)."""
+    good = _cview.get("good")
+    if good and good[0] == key and time.time() - good[1] < CONSOLE_GRACE:
+        return dict(good[2], stale=True)
+    return None
 
 
 def console_view(query):
@@ -578,11 +587,14 @@ def console_view(query):
         if _cview["key"] == key and now - _cview["ts"] < VIEW_TTL and _cview["resp"] is not None:
             return _cview["resp"]
         if now < _cview["fail_until"]:
-            return dict(ok=False, session="prod", available=True, running=False, starting=False, message="Нет связи с сервером PROD.")
+            return _stale_view(key) or dict(ok=False, session="prod", available=True, running=False, starting=False, message="Нет связи с сервером PROD.")
         resp = _console_view_fetch(mid, cols, hist)
-        _cview.update(key=key, ts=time.time(), resp=resp)
         if resp.get("ok") is False and resp.get("message"):
             _cview["fail_until"] = time.time() + FAIL_PAUSE
+            resp = _stale_view(key) or resp
+        else:
+            _cview["good"] = (key, time.time(), resp)
+        _cview.update(key=key, ts=time.time(), resp=resp)
         return resp
 
 
