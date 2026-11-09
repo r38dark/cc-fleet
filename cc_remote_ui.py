@@ -19,7 +19,7 @@ html:root:root.ag-pause-prod .fleet-live-account.prod .fleet-live-name::before,h
 .fleet-compact-account.prod[data-online="0"] .fleet-compact-name::before{background:var(--warn)}
 .fleet-remote-card{position:relative}
 .fleet-remote-card .fleet-card-footer{flex-wrap:wrap;row-gap:8px}
-.fleet-remote-card .fleet-card-caption{flex:1 1 100%;white-space:normal;overflow:visible;text-overflow:clip}
+.fleet-remote-card .fleet-card-caption{flex:1 1 0;white-space:normal;overflow:visible;text-overflow:clip}
 .fleet-remote-card .rm-relogin{margin:0}
 .fleet-remote-card .fleet-card-state.off{color:var(--warn)}
 .fleet-remote-card .fleet-card-date b{font-variant-numeric:tabular-nums}
@@ -209,7 +209,11 @@ var SVG_CAR='<svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentC
 var SVG_SWAP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h14l-3.5-3.5M20 16H6l3.5 3.5"></path></svg>';
 function meter(kind){return '<div class="fleet-live-meter" data-window="'+kind+'"><div class="fleet-live-meter-label"><span>'+(kind==='session'?'5 часов':'Неделя')+'</span><b>—</b><span class="fleet-live-reset">Время не получено</span></div><span class="fleet-live-track" aria-hidden="true"><span class="fleet-live-fill"></span></span></div>'}
 function gearIcon(){var g=$i('gear'),s=g&&g.querySelector('svg');return s?s.outerHTML:'⚙'}
-function subChip(iso){if(!iso)return'';var d=new Date(iso);if(isNaN(d))return'';var when=d.toLocaleDateString('ru',{day:'2-digit',month:'2-digit',year:'numeric'});return '<span class="chip" title="Дата оформления подписки">\ud83d\udcc5 '+when+'</span>'}
+// ближайшая годовщина оформления подписки (раз в месяц): «Подписка до» у PROD считается так же, как у локальных плиток
+function nextRenewal(iso){if(!iso)return'';var d=new Date(iso);if(isNaN(d))return'';var now=Date.now(),k=0,t;
+ do{k++;var y=d.getFullYear(),mo=d.getMonth()+k,last=new Date(y,mo+1,0).getDate();
+  t=new Date(y,mo,Math.min(d.getDate(),last),d.getHours(),d.getMinutes(),d.getSeconds())}while(t.getTime()<=now&&k<1200);
+ return t.toISOString()}
 function buildStrip(){
  if(tile)return true;var rows=$i('fleetLiveRows'),sum=$i('fleetActiveSummary');if(!rows||!sum)return false;
  compact=document.createElement('span');compact.className='fleet-compact-account prod';compact.dataset.engine='prod';
@@ -247,19 +251,22 @@ function paintStrip(m){
  tile.dataset.state=compact.dataset.state}
 function paintCard(m){
  var box=$i('cards');if(!box)return;var old=box.querySelector('.fleet-remote-card');
- if(!m){if(old)old.remove();return}
- var md=rmode(),sig=JSON.stringify([autoState().enabled,m.email,m.plan,m.model,m.effort,m.five_hour,m.seven_day,m.online,m.error,md.active,md.worker,md.to,md.busy,md.stage,md.error,md.pair&&md.pair.kind,md.tg,Math.floor(Date.now()/60000)]);
+ if(!m){if(old){old.remove();if(window.fleetClaudeCount)window.fleetClaudeCount()}return}
+ var md=rmode(),sig=JSON.stringify([autoState().enabled,m.email,m.plan,m.model,m.effort,m.five_hour,m.seven_day,m.subscription_since,m.login_expires,m.online,m.error,md.active,md.worker,md.to,md.busy,md.stage,md.error,md.pair&&md.pair.kind,md.tg,Math.floor(Date.now()/60000)]);
  if(old&&old.dataset.sig===sig)return;
  var el=document.createElement('div');el.className='card fleet-remote-card';el.dataset.sig=sig;el.dataset.remote=m.id;
  var st=status(m),bad=st!=='онлайн';
- el.innerHTML='<div class="top"><div class="fleet-identity"><div class="fleet-titleline"><strong class="fleet-account-name" title="Claude PROD">Claude PROD</strong>'+(m.plan?'<span class="tag plan">'+esc(m.plan.toUpperCase())+'</span>':'')+subChip(m.subscription_since)+'</div><span class="email" title="'+esc(m.email||'')+'">'+esc(m.email||'почта не получена')+'</span></div></div>'
+ el.innerHTML='<div class="top"><div class="fleet-identity"><div class="fleet-titleline"><strong class="fleet-account-name" title="Claude PROD">Claude PROD</strong>'+(m.plan?'<span class="tag plan">'+esc(m.plan.toUpperCase())+'</span>':'')+'</div><span class="email" title="'+esc(m.email||'')+'">'+esc(m.email||'почта не получена')+'</span></div></div>'
   +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
   +row('Сессия 5ч',m.five_hour,false)+row('Неделя',m.seven_day,true)
   +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD). Вручную переключённая работа остаётся там, куда её переключили. Codex и агент Notion переключаются вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
   +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: войди заново':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
-  +loginChip(m.login_expires)+'<button type="button" class="btn-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
+  +'<button type="button" class="btn-relogin fleet-footer-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
   +'</div>';   // кнопки «Передать работу» в этой карточке нет: она живёт в плитке «Активные аккаунты»
- if(old)old.replaceWith(el);else box.appendChild(el)}
+ try{var top=el.querySelector('.top');if(top&&window.fleetClaudeDates){var dbox=document.createElement('div');dbox.className='fleet-card-dates';
+  window.fleetClaudeDates({renewal_next:nextRenewal(m.subscription_since),login_expires:m.login_expires,plan:m.plan}).forEach(function(x){dbox.appendChild(x)});top.after(dbox)}}catch(e){}
+ if(old)old.replaceWith(el);else box.appendChild(el);
+ if(window.fleetClaudeCount)window.fleetClaudeCount()}
 var hadTab=null;
 // выбор модели и effort Claude на PROD: записывается в настройки там и применяется в запущенной сессии
 var qp=null,mdata=null,qnote='',qbad=false,qjob=false;

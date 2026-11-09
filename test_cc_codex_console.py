@@ -180,14 +180,14 @@ class Start(unittest.TestCase):
         argv, kw = calls[0]
         self.assertEqual(argv[0], "/usr/bin/systemd-run")
         self.assertIn("--unit=cc-codex-console.service", argv)
-        self.assertIn("--working-directory=" + C.CLI_CWD, argv)
+        self.assertIn("--working-directory=" + C.cli_cwd(), argv)
         self.assertIn("/usr/bin/screen", argv)
         self.assertIn("-mS", argv)
         self.assertEqual(argv[argv.index("-mS") + 1], "cc-codex")
         for want in ("--sandbox", "read-only", "--cd", self.work, "/x/codex"):
             self.assertIn(want, argv)
         self.assertEqual(argv[argv.index("--sandbox") + 1], "read-only")
-        self.assertEqual(kw["cwd"], C.CLI_CWD)
+        self.assertEqual(kw["cwd"], C.cli_cwd())
         self.assertEqual(kw["env"], {"PATH": "/usr/bin:/bin"})
         self.assertIn("--property=KillMode=control-group", argv)
         # лог сбрасывается раз в секунду с самого старта — через свой rc
@@ -196,6 +196,49 @@ class Start(unittest.TestCase):
             self.assertEqual(f.read(), 'logfile flush 1\nterm screen-256color\ntermcapinfo * "Km=\\E[M"\n')
         meta = cc_codex.jload(C._meta_path(), {})
         self.assertEqual((meta["pid"], meta["sandbox"], meta["cwd"], meta["slot"]), ("77", "read-only", self.work, "gpt1"))
+
+    def _start_capture(self, **patches):
+        """Запускает C.start() с подставленным subprocess.run и возвращает argv и kwargs systemd-run."""
+        calls = []
+
+        def run(argv, **kw):
+            calls.append((argv, kw))
+            return mock.Mock(returncode=0, stdout="", stderr="")
+        pids = iter([None, "77"])
+        with mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), mock.patch.object(C.subprocess, "run", run):
+            ok, msg = C.start()
+        self.assertTrue(ok, msg)
+        return calls[0]
+
+    def test_unit_folder_falls_back_to_root_on_a_clean_install(self):
+        # на чистой установке нет /opt/codex-trial (он только у нашего дева): systemd падал с 200/CHDIR и консоль «не запускалась»
+        with mock.patch.object(C, "CLI_CWD", os.path.join(TMP, "нет-такой-папки")):
+            self.assertEqual(C.cli_cwd(), "/")
+            argv, kw = self._start_capture()
+        self.assertIn("--working-directory=/", argv)
+        self.assertEqual(kw["cwd"], "/")
+
+    def test_unit_folder_is_kept_when_it_exists(self):
+        with mock.patch.object(C, "CLI_CWD", self.work):
+            self.assertEqual(C.cli_cwd(), self.work)
+            argv, kw = self._start_capture()
+        self.assertIn("--working-directory=" + self.work, argv)
+
+    def test_codex_home_reaches_the_unit_without_a_separate_user(self):
+        # без codex_user env панели в юнит не попадает: без --setenv codex брал пустой ~/.codex и просил вход заново
+        with mock.patch.object(C.cc_codex, "runas_user", return_value=None):
+            argv, kw = self._start_capture()
+        home = cc_codex.profile_dir("gpt1")
+        self.assertIn("--setenv=CODEX_HOME=" + home, argv)
+        self.assertLess(argv.index("--setenv=CODEX_HOME=" + home), argv.index("--"))  # ключ systemd-run, а не команды
+        self.assertEqual(kw["env"], {"PATH": "/usr/bin:/bin"})  # окружение панели по-прежнему не просачивается
+
+    def test_no_setenv_when_codex_runs_as_a_separate_user(self):
+        # у runuser переменные уже внутри команды (env -i K=V) — дублировать их --setenv не нужно
+        with mock.patch.object(C.cc_codex, "runas_user", return_value="nobody"):
+            argv, kw = self._start_capture()
+        self.assertFalse([a for a in argv if a.startswith("--setenv=")])
+        self.assertIn("CODEX_HOME=" + cc_codex.profile_dir("gpt1"), argv)
 
     def test_mcp_keys_go_into_command_line_and_meta_after_the_other_keys(self):
         calls = []

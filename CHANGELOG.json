@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.12",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Консоль Codex на новой установке, обновление из панели, плитки",
+        "p": [
+          "Консоль Codex на чистой установке стартует и видит вход (раньше не было папки запуска и CODEX_HOME)",
+          "Обновление из панели: install.sh нужен один раз для 2.0.12, дальше только если изменился установщик (install_since)",
+          "Плитки Claude DEV и PROD одинаковы (сроки, «Войти заново», число аккаунтов); короткий обрыв связи с PROD не пугает"
+        ]
+      },
+      "en": {
+        "t": "Codex console on new installs, updating from the panel, tiles",
+        "p": [
+          "Codex console now starts on a clean install and sees the sign-in (launch folder and CODEX_HOME were missing)",
+          "Panel updates: install.sh is needed once for 2.0.12, later only if the installer changed (install_since)",
+          "Claude DEV and PROD tiles match (dates, Sign in again, account count); a brief PROD link drop no longer alarms"
+        ]
+      }
+    },
+    {
       "v": "2.0.11",
       "date": "2026-11-09",
       "ru": {

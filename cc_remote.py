@@ -9,6 +9,8 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 MEMBERS_FILE = os.environ.get("CC_REMOTE_MEMBERS") or BASE + "/remote_members.json"
 STATE_FILE = os.environ.get("CC_REMOTE_STATE") or BASE + "/remote_state.json"
 CACHE_SEC = 180
+LINK_GRACE = 90.0   # обрыв ssh короче этого (дом/VPN моргнул) не показываем как «нет связи»: держим прежний вид
+LINK_RETRY = 20.0   # ...а перепроверяем через столько секунд, не через весь кэш
 USAGE_REMOTE = "/root/cc-remote/usage.py"
 
 
@@ -89,16 +91,22 @@ def fetch_limits(mid, force=False):
     row = dict(old)
     row.update(label=m.get("label") or mid, ts=time.time())
     if data is None:
-        row.update(online=False, error="ssh")
+        now = time.time()
+        since = float(old.get("fail_since") or now)
+        if old.get("online") and now - since < LINK_GRACE:
+            # одиночный обрыв: прежние цифры и скорая перепроверка, а не «нет связи» на все 3 минуты кэша
+            row.update(fail_since=since, ts=now - CACHE_SEC + LINK_RETRY)
+        else:
+            row.update(online=False, error="ssh", fail_since=since)
     elif data.get("ok"):
-        row.update(online=True, error="", email=data.get("email") or old.get("email") or "",
+        row.update(fail_since=0, online=True, error="", email=data.get("email") or old.get("email") or "",
                    plan=data.get("plan") or old.get("plan") or "",
                    five_hour=data.get("five_hour"), seven_day=data.get("seven_day"),
                    model=data.get("model") or old.get("model") or "", effort=data.get("effort") or old.get("effort") or "",
                    subscription_since=data.get("subscription_since") or old.get("subscription_since") or "",
                    login_expires=data.get("login_expires") or old.get("login_expires") or "")
     else:
-        row.update(online=True, error=str(data.get("error") or "error"))
+        row.update(fail_since=0, online=True, error=str(data.get("error") or "error"))
     state[mid] = row
     jsave(STATE_FILE, state)
     return row

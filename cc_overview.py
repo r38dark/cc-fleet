@@ -1085,16 +1085,17 @@ JS = r'''
  for(const head of [ch,xh]){const count=el('span','fleet-count');head.querySelector('h2').after(count)}
  function countText(n){const k=n%100,m=n%10;return n+' '+(k>=11&&k<=14?'аккаунтов':m===1?'аккаунт':m>=2&&m<=4?'аккаунта':'аккаунтов')}
  function putText(node,value){if(node.textContent!==value)node.textContent=value}
+ // число плиток блока Claude: локальные аккаунты + плитка второго сервера (если она есть)
+ function paintClaudeCount(local){putText(ch.querySelector('.fleet-count'),countText(local+(document.querySelector('#cards > .fleet-remote-card')?1:0)))}
+ window.fleetClaudeCount=function(){const d=(typeof lastSnap!=='undefined'&&lastSnap)||{};paintClaudeCount(Object.keys(d.accounts||{}).length)};
  // [notion-ai] сроки на виду: до какого числа оплачена подписка и до какого числа действует вход (раньше — в чипах и в меню «⋯»)
  function dayWord(n){const k=n%100,m=n%10;return k>=11&&k<=14?'дней':m===1?'день':m>=2&&m<=4?'дня':'дней'}
  function dateLeft(iso){const t=new Date(iso),ms=t-Date.now();if(!iso||isNaN(ms))return null;const days=Math.floor(ms/86400000);
   return{ms,days,date:t.toLocaleDateString('ru',{day:'2-digit',month:'2-digit'}),full:t.toLocaleString('ru',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),left:ms<=0?'сегодня':days>=1?days+' '+dayWord(days):Math.max(1,Math.floor(ms/3600000))+' ч'}}
  function cardDateItem(label,value,tone,title){const item=el('span','fleet-card-date'+(tone?' '+tone:''));item.append(el('span','fleet-card-date-label',label),el('b','',value));if(title)item.title=title;return item}
- function paintCardDates(card,a,engine){
-  let box=card.querySelector(':scope > .fleet-card-dates');
-  if(!box){box=el('div','fleet-card-dates');const top=card.querySelector(':scope > .top');if(!top)return;top.after(box)}
+ // даты Claude (подписка до / вход до): одна функция и для локальных плиток, и для плитки PROD
+ function claudeDateItems(a){
   const items=[];
-  if(engine==='claude'){
    const sub=dateLeft(a.renewal_next);
    if(a.lapsed||a.plan==='free')items.push(cardDateItem('Подписка','не активна (FREE)','urgent','Аккаунт на бесплатном плане — продли подписку и нажми «Я продлил» в меню ⋯'));
    else if(sub)items.push(cardDateItem('Подписка до',sub.date+' · '+(sub.ms<=0?'продление сегодня':sub.left),sub.days<3?'urgent':sub.days<=7?'warn':'','Ожидаемое продление (по прошлому списанию): '+sub.full+'. Если не продлится — аккаунт станет FREE'));
@@ -1102,6 +1103,14 @@ JS = r'''
    const login=dateLeft(a.login_expires);
    if(login)items.push(login.ms<=0?cardDateItem('Вход','истёк — «Войти заново» в меню ⋯','urgent','Вход истёк '+login.full):cardDateItem('Вход до',login.date+' · '+login.left,login.days<=3?'urgent':login.days<=7?'warn':'','Вход действует до '+login.full+'. Обновлением токена не продлевается — до этой даты нажми «Войти заново» в меню ⋯'));
    else items.push(cardDateItem('Вход','срок не известен','','Срок появится после входа через панель'));
+  return items}
+ window.fleetClaudeDates=claudeDateItems;
+ function paintCardDates(card,a,engine){
+  let box=card.querySelector(':scope > .fleet-card-dates');
+  if(!box){box=el('div','fleet-card-dates');const top=card.querySelector(':scope > .top');if(!top)return;top.after(box)}
+  const items=[];
+  if(engine==='claude'){
+   items.push(...claudeDateItems(a));
   }else{
    const sub=dateLeft(a.sub_until);
    if(a.lapsed)items.push(cardDateItem('Подписка','закончилась (FREE)','urgent','Подписка не продлена — аккаунт на бесплатном плане'));
@@ -1583,7 +1592,7 @@ JS = r'''
   renderLiveAccounts(snapshot);
   const d=snapshot||((typeof lastSnap!=='undefined'&&lastSnap)||{}),rows=Object.entries(d.accounts||{});
   document.querySelectorAll('#cards > .card').forEach((card,i)=>{if(rows[i])decorateCard(card,rows[i][1],rows[i][0],'claude')});
-  putText(ch.querySelector('.fleet-count'),countText(rows.length));
+  paintClaudeCount(rows.length);
   const current=rows.find(([,a])=>a.active);putText(claudeNote,current?(document.documentElement.classList.contains('ag-pause-claude')?'Выбран: ':'Сейчас: ')+(current[1].label||current[1].name||current[0]):'Активный аккаунт не выбран');
   const accounts=(typeof cxData!=='undefined'&&cxData?.accounts)||[];
   document.querySelectorAll('#cxcards > .card').forEach((card,i)=>{if(accounts[i])decorateCard(card,accounts[i],accounts[i].slot,'codex')});
