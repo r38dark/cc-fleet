@@ -941,6 +941,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.13** — "Sign-in until" on the second-server tile showed the access token lifetime (hours, it refreshes itself); it now shows
+  the login lifetime (`refreshTokenExpiresAt`, about 28 days), like the local tiles. The script on the second server is refreshed on
+  the next work transfer or reconnect.
 - **v2.0.12** — Codex console on a clean install: the launch folder is no longer hard-coded (`/opt/codex-trial`) and the sign-in
   folder `CODEX_HOME` now reaches the console service — without it the console did not start or asked to sign in again. Updating
   from the panel: the manifest has an `install_since` field — a manual `sudo ./install.sh` is needed once for 2.0.12 (older

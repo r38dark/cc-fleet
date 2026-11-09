@@ -53,9 +53,10 @@ def main():
     except Exception:
         email = ""
     res = {"ok": True, "email": email, "plan": plan, "subscription_since": subscription_since}
-    # срок действия текущего входа ("вход до") — для панели балансера
+    # срок жизни логина ("вход до"): refreshTokenExpiresAt (~28 дней от настоящего /login), как у локальных аккаунтов;
+    # expiresAt — это лишь access-токен на несколько часов, он обновляется сам и сроком входа не является
     try:
-        res["login_expires"] = datetime.fromtimestamp(int(oa.get("expiresAt") or 0) / 1000.0, tz=timezone.utc).isoformat()
+        res["login_expires"] = datetime.fromtimestamp(int(oa["refreshTokenExpiresAt"]) / 1000.0, tz=timezone.utc).isoformat()
     except Exception:
         res["login_expires"] = ""
     try:  # модель и effort по умолчанию на этом сервере (как «Модель/Effort» у Claude DEV)
