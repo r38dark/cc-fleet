@@ -1128,7 +1128,10 @@ class NotionAI:
             with self.lock, p.lock:
                 if not self.active():
                     target_claude = bool((body.get('choices') or {}).get('claude'))
-                    if not target_claude or self.claude_running():return orig_scenario(body)
+                    # Активная удалённая сессия проверяется NativeProfiles; для неё
+                    # не нужен запуск локальной беседы из снимка передачи.
+                    if (not target_claude or self.claude_running()
+                            or getattr(n, '_remote', lambda: None)() is not None):return orig_scenario(body)
                     try:
                         cand = type(p.state).from_data(p.state.export(), p.clock)
                         dry = cand.apply_scenario(body.get('choices'), body.get('confirm', ''), body.get('revision'))
