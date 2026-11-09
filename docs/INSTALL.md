@@ -292,7 +292,9 @@ sudo ./install.sh --check
 *(по желанию)* Notion AI — третий агент: живёт в постоянном чате Notion, получает сообщения из Telegram и из вкладки «Notion AI» в консоли, отвечает в Telegram (текст и голос) и работает на вашем сервере по SSH.
 Кроме главного агента можно создавать **своих агентов** (например, по проекту), у каждого — свой SSH-ключ и свой чат в Telegram. Нужен аккаунт Notion с Notion AI.
 
-**Шаг 1 из 7 — поставить службы.** Если на вопрос про Notion AI вы ответили `y`, установщик сделал это на шаге 12. Иначе: `sudo bash notion_ai/install.sh` (ставит Playwright с Chromium, службы `notion-delegate`, `notion-ai-view`, `notion-ai-tg`, команды `notion-ai-reply`, `notion-ai-mode`, `notion-ai-step`).
+**Проще всего — мастер в панели:** серая плитка «Notion AI» (или ⚙ → Notion AI → «Мастер подключения по шагам») → «Подключить Notion AI». Он проведёт по шагам 1–7 ниже, у каждого есть проверка; шаг 1 он делает сам.
+
+**Шаг 1 из 7 — поставить службы.** Если на вопрос про Notion AI вы ответили `y`, установщик сделал это на шаге 12. Иначе нажмите «Установить службы» в мастере или выполните: `sudo bash /opt/cc-limits/notion_ai/install.sh` (ставит Playwright с Chromium, службы `notion-delegate`, `notion-ai-view`, `notion-ai-tg`, команды `notion-ai-reply`, `notion-ai-mode`, `notion-ai-step`).
 **Проверка:** `systemctl is-active notion-delegate notion-ai-view` — оба `active`.
 
 **Шаг 2 из 7 — ссылка на постоянный чат.** В Notion откройте Notion AI, начните новый чат и скопируйте его адрес (`https://app.notion.com/chat?t=…`). В панели: ⚙ Общие настройки → Notion AI → «Ссылка на постоянный чат» → «Сохранить».

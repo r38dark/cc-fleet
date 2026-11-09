@@ -941,6 +941,9 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.15** — A "Set up Notion AI" wizard in the panel: the grey tile (or ⚙ → Notion AI → "Step-by-step wizard") walks through 7 steps with a
+  check after each — services (installed by the panel itself, no terminal), permanent chat link, email-code sign-in, Notion API token,
+  access key with the instruction, connection check, your own agent. The service files (`notion_ai/`) now live on every server and update with the button.
 - **v2.0.14** — Read-only polls of the second server (screen, limits, status) go over one persistent ssh connection (`ControlMaster`,
   120 s idle) instead of a fresh handshake every 2 s: on a less than perfect link a new connection sometimes hung for 5 s and showed
   "no connection". A read is retried once after a drop; input, writes and setup are never repeated and use a separate connection as before.

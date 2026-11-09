@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.15",
+      "date": "2026-11-09",
+      "ru": {
+        "t": "Мастер «Подключить Notion AI» в панели",
+        "p": [
+          "Серая плитка Notion AI открывает мастер: 7 шагов с проверками, службы ставит сама панель, без терминала",
+          "Мастер собирает вход по коду из письма, токен API, ключ доступа и проверку связи; открыть его можно и из ⚙ → Notion AI",
+          "Файлы служб Notion AI теперь есть на каждом сервере (папка notion_ai в каталоге балансера)"
+        ]
+      },
+      "en": {
+        "t": "A “Set up Notion AI” wizard in the panel",
+        "p": [
+          "The grey Notion AI tile opens a 7-step wizard with checks; the panel installs the services itself, no terminal",
+          "It covers the email-code sign-in, API token, access key and a connection check; also reachable from ⚙ → Notion AI",
+          "The Notion AI service files now ship to every server (the notion_ai folder in the balancer directory)"
+        ]
+      }
+    },
+    {
       "v": "2.0.14",
       "date": "2026-11-09",
       "ru": {

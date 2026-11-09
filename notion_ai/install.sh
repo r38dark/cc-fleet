@@ -48,7 +48,8 @@ mkdir -p "$BIN"
 for b in "$HERE"/bin/*; do install -m 755 "$b" "$BIN/$(basename "$b")"; done
 
 log "Модуль панели → $BASE/cc_notion_ai.py"
-keep "$BASE/cc_notion_ai.py"; install -m 644 "$HERE/../cc_notion_ai.py" "$BASE/cc_notion_ai.py"
+if [ "$HERE/../cc_notion_ai.py" -ef "$BASE/cc_notion_ai.py" ]; then log "(модуль панели уже на месте)"
+else keep "$BASE/cc_notion_ai.py"; install -m 644 "$HERE/../cc_notion_ai.py" "$BASE/cc_notion_ai.py"; fi
 if [ ! -f "$BASE/notion_ai.json" ]; then
   NAI_CFG="$BASE/notion_ai.json" python3 - <<'PY'
 import json, os
