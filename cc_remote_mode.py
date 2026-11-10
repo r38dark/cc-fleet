@@ -128,7 +128,8 @@ def put_file(m, data, remote, mode_bits="644"):
 
 def deploy_tools(m):
     return (put_file(m, Path(CTL).read_text(encoding="utf-8"), "/root/cc-remote/ctl.py", "755")
-            and put_file(m, Path(USAGE).read_text(encoding="utf-8"), "/root/cc-remote/usage.py", "755"))
+            and put_file(m, Path(USAGE).read_text(encoding="utf-8"), "/root/cc-remote/usage.py", "755")
+            and put_file(m, Path(R.BASE + "/remote_guard.py").read_text(encoding="utf-8"), "/root/cc-remote/remote_guard.py", "755"))
 
 
 def rsync(m, src, dst, to_remote, extra=()):
@@ -282,6 +283,11 @@ def _on_job(mid, reason, queued, resume, tg_on=True, restore=True):
             if sid:
                 rsync(m, "%s/%s.jsonl" % (PROJ, sid), PROJ + "/", True)
         _save(stage="запуск Claude на PROD", since_ts=time.time())
+        if _NS.get("cfg"):
+            import cc_remote_limits
+            prepared = R.ctl(mid, "guard-config", inp=json.dumps(cc_remote_limits.policy(_NS, R.cached().get(mid) or {}, True)))
+            if not prepared or not prepared.get("ok"):
+                raise RuntimeError("защита лимитов на PROD не настроена")
         res = ctl(m, "start %s %d" % (sid or "-", 1 if tg_on else 0), timeout=200)
         if not res.get("ok"):
             R.ssh_run(m, "python3 /root/cc-remote/ctl.py tg 0")

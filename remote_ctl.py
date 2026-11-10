@@ -6,6 +6,8 @@ import os
 import re
 import subprocess
 import sys
+import shlex
+from pathlib import Path
 import time
 
 HOME = os.environ.get("HOME") or "/root"
@@ -90,40 +92,54 @@ def key(k):
     sh(["tmux", "send-keys", "-t", TMUX, k])
 
 
-def start(sid, tg):
+def accept_startup_menu(text):
+    if not (MENU_YES.search(text) or MENU_TRUST.search(text)):
+        return False
+    current = next((line for line in text.splitlines() if "❯" in line), "")
+    if "no, exit" in current:
+        key("Down")
+        time.sleep(0.4)
+    elif not any(word in current for word in ("yes, i trust", "yes, i accept", "yes, continue")):
+        return False
+    key("Enter")
+    return True
+
+
+def start(sid, tg, use_guard=True):
     tg_state(1 if tg else 0)
     sh(["tmux", "kill-session", "-t", TMUX])
     cmd = "cd /root; export IS_SANDBOX=1 CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1; exec %s --dangerously-skip-permissions" % CLAUDE
+    try:
+        import remote_guard as guard
+        if not guard.SETTINGS.exists():
+            guard.configure(dict(enabled=True, threshold=90, weekly_cap=99, weekly_pause=False))
+        if use_guard and guard.SETTINGS.exists():
+            cmd = cmd.replace("; exec ", "; export CC_FLEET_LIMIT_GUARD=1; exec ")
+            cmd += " --settings " + shlex.quote(str(guard.SETTINGS))
+    except ImportError:
+        return ({"ok": False, "error": "limit_guard_missing"})
     if tg:
         cmd += " --channels plugin:telegram@claude-plugins-official"
     if sid and sid != "-":
         cmd += " --resume " + sid
     code, _ = sh(["tmux", "new-session", "-d", "-s", TMUX, "-x", "230", "-y", "50", cmd])
     if code != 0:
-        out({"ok": False, "error": "tmux"})
+        return ({"ok": False, "error": "tmux"})
     end = time.time() + 120
     seen = ""
     while time.time() < end:
         time.sleep(2)
         if not alive():
-            out({"ok": False, "error": "exited", "screen": screen(15)[-600:]})
+            return ({"ok": False, "error": "exited", "screen": screen(15)[-600:]})
         seen = screen(40)
         low = live_tail(seen).lower()  # только живая область: после --resume выше история беседы с теми же словами (07.11.26)
-        if MENU_YES.search(low):
-            key("Down") if "no, exit" in low else None
-            key("Enter")
-        elif MENU_TRUST.search(low):
-            # с 2.1.319 первым пунктом стоит «No, exit»: Enter на нём закрывал Claude (07.11.26) — сначала переводим курсор на «Yes»
-            cur = next((ln for ln in low.splitlines() if "❯" in ln), "")
-            if "no, exit" in cur:
-                key("Down")
-                time.sleep(0.4)
-            key("Enter")
-        elif ("❯" in low and "esc to interrupt" not in low and "loading" not in low
+        if accept_startup_menu(low):
+            continue
+        if ("❯" in low and "esc to interrupt" not in low and "loading" not in low
               and "resuming" not in low and not MENU_NO.search(low)):
             time.sleep(2)
-            out({"ok": True, "tg": bool(tg), "sid": sid})
-    out({"ok": False, "error": "timeout", "screen": seen[-600:]})
+            return ({"ok": True, "tg": bool(tg), "sid": sid})
+    return ({"ok": False, "error": "timeout", "screen": seen[-600:]})
 
 
 def hist_file():
@@ -139,16 +155,140 @@ def hist_file():
     return best
 
 
+def guard_status():
+    import remote_guard as guard
+    result = dict(guard.status(), ok=True, running=alive(), applied=False)
+    code, text = sh(["tmux", "display-message", "-p", "-t", TMUX, "#{pane_pid}"])
+    try:
+        env = Path("/proc/%d/environ" % int(text.strip())).read_bytes().split(b"\0")
+        result["applied"] = b"CC_FLEET_LIMIT_GUARD=1" in env
+    except (OSError, ValueError):
+        pass
+    tail = live_tail(screen(40)).lower() if result["running"] else ""
+    result["ready"] = bool(result["running"] and "❯" in tail and not MENU_NO.search(tail))
+    return result
+
+
+def composer_has_draft(raw):
+    """Ignore the dim placeholder and old echoed prompts; preserve real input."""
+    lines = raw.splitlines()
+    rules = [i for i, line in enumerate(lines) if re.match(r"^\s*[─━]{5,}", ANSI.sub("", line))]
+    if len(rules) >= 2:
+        lines = lines[rules[-2] + 1:rules[-1]]
+    prompts = [i for i, line in enumerate(lines) if re.match(r"^\s*❯", ANSI.sub("", line))]
+    if not prompts:
+        return False
+    i = prompts[-1]
+    if any(ANSI.sub("", line).strip() for line in lines[i+1:]):
+        return True
+    line = lines[i]
+    plain = ANSI.sub("", line)
+    content = re.sub(r"^\s*❯\s*", "", plain)
+    if not content:
+        return False
+    # Claude renders a suggestion in dim SGR 2 after the prompt, with the
+    # cursor still on the empty input. Actual typed characters use normal SGR.
+    dim, offset, column = False, 0, 0
+    start = plain.index("❯") + 1
+    for match in list(ANSI.finditer(line)) + [None]:
+        end = match.start() if match else len(line)
+        segment = line[offset:end]
+        visible = segment[max(0, start-column):]
+        if visible.strip() and not dim:
+            return True
+        column += len(segment)
+        if not match:
+            break
+        if match.group().endswith("m"):
+            values = [int(v or 0) for v in match.group()[2:-1].split(";")]
+            j = 0
+            while j < len(values):
+                value = values[j]
+                if value in (38, 48) and j+1 < len(values):
+                    j += 5 if values[j+1] == 2 else 3
+                    continue
+                if value in (0, 22):
+                    dim = False
+                elif value == 2:
+                    dim = True
+                j += 1
+        offset = match.end()
+    return False
+
+
+
+def current_sid():
+    code, text = sh(["tmux", "display-message", "-p", "-t", TMUX, "#{pane_pid}"])
+    sid = ""
+    try:
+        pid = int(text.strip())
+        args = Path("/proc/%d/cmdline" % pid).read_bytes().decode().split("\0")
+        for flag in ("--resume", "--session-id"):
+            if flag in args:
+                candidate = args[args.index(flag) + 1]
+                if re.fullmatch(r"[0-9a-fA-F-]{36}", candidate):
+                    sid = candidate
+        if not sid:
+            path = hist_file()
+            # A new conversation has no --resume argument. Only consider a
+            # transcript written during this process's lifetime.
+            stat = Path("/proc/%d/stat" % pid).read_text()
+            ticks = float(stat[stat.rfind(")") + 2:].split()[19])
+            uptime = float(Path("/proc/uptime").read_text().split()[0])
+            started = time.time() - uptime + ticks / os.sysconf("SC_CLK_TCK")
+            if path and os.path.getmtime(path) >= started:
+                candidate = Path(path).stem
+                if re.fullmatch(r"[0-9a-fA-F-]{36}", candidate):
+                    sid = candidate
+    except (OSError, ValueError, IndexError):
+        pass
+    return sid
+
+
+def guard_reload():
+    if not alive() or guard_status().get("applied"):
+        out(dict(ok=True, reloaded=False))
+    _, raw = sh(["tmux", "capture-pane", "-t", TMUX, "-p", "-e", "-J", "-S", "-40"])
+    text = ANSI.sub("", raw)
+    if busy(text) or composer_has_draft(raw):
+        out(dict(ok=True, reloaded=False, waiting=True))
+    sid = current_sid()
+    if not sid:
+        out(dict(ok=False, error="guard_session_unknown"))
+    import remote_guard as guard
+    attempt = guard.BASE / ("limits-" + guard.NAME + "-reload.json")
+    previous = guard.load(attempt)
+    if previous.get("failed") and time.time() - float(previous.get("ts") or 0) < 300:
+        out(dict(ok=False, error="guard_reload_cooldown"))
+    telegram = bool(tg_state())
+    result = start(sid, telegram)
+    if not result.get("ok"):
+        # Restore the same conversation if the new launch fails. Do not loop
+        # through repeated restarts and never leave the console silently dead.
+        restored = start(sid, telegram, use_guard=False)
+        guard.save(attempt, dict(failed=True, ts=time.time()))
+        out(dict(ok=False, error="guard_reload_failed", restored=bool(restored.get("ok"))))
+    guard.save(attempt, dict(failed=False, ts=time.time()))
+    out(dict(ok=True, reloaded=True))
+
+
 def main():
     a = sys.argv[1:] or ["status"]
     c = a[0]
+    if c == "guard-config":
+        import remote_guard as guard
+        out(guard.configure(json.load(sys.stdin)))
+    if c == "guard-status":
+        out(guard_status())
+    if c == "guard-reload":
+        guard_reload()
     if c == "status":
         s = screen(40) if alive() else ""
         out({"ok": True, "running": alive(), "busy": busy(s), "tg": tg_state()})
     if c == "screen":
         out({"ok": True, "running": alive(), "text": screen(int(a[1]) if len(a) > 1 else 60)})
     if c == "start":
-        start(a[1] if len(a) > 1 else "-", len(a) > 2 and a[2] == "1")
+        out(start(a[1] if len(a) > 1 else "-", len(a) > 2 and a[2] == "1"))
     if c == "stop":
         sh(["tmux", "kill-session", "-t", TMUX])
         out({"ok": True, "running": alive()})

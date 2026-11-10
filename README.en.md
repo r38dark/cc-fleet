@@ -941,6 +941,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.20** — Session and weekly quota guards protect Claude on a second server independently of automatic transfers. Pending actions continue in the same conversation after reset. Warnings include remote accounts.
+
 - **v2.0.19** — Resuming a running Codex turn after a panel restart no longer adds a delayed-reply label. The label remains for another delivery attempt of a ready answer.
 
 - **v2.0.18** — The five-hour and weekly Codex limit banner now also works with a single account. Full access and message queue behavior stay unchanged.
