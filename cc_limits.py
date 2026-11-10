@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.24"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.25"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3686,6 +3686,14 @@ html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 aut
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
 #ccliBox .ccli-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 #ccliBox pre{margin:6px 0 0;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Consolas,monospace;opacity:.85}
+.ccli-badge{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;margin:0 0 0 8px;border:1px solid rgba(69,214,171,.45);border-radius:99px;background:rgba(69,214,171,.12);color:var(--fleet-accent,#45d6ab);font:600 11px/1 Inter,system-ui,sans-serif;cursor:pointer;flex:none;animation:ccliGlow 2.6s ease-in-out infinite}
+.ccli-badge[hidden]{display:none}.ccli-badge svg{width:12px;height:12px;display:block}.ccli-badge b{font-weight:650}
+@keyframes ccliGlow{0%,100%{box-shadow:0 0 0 0 rgba(69,214,171,0)}50%{box-shadow:0 0 0 4px rgba(69,214,171,.2)}}
+@media (prefers-reduced-motion:reduce){.ccli-badge{animation:none}}
+.ccli-pop{position:fixed;z-index:60;width:min(340px,calc(100vw - 24px));box-sizing:border-box;padding:12px 14px;border:1px solid var(--fleet-line,#25303f);border-radius:12px;background:var(--card,#131923);color:var(--txt,#e8edf4);box-shadow:0 12px 32px rgba(0,0,0,.45);font:12.5px/1.45 Inter,system-ui,sans-serif;text-align:left}
+.ccli-pop[hidden]{display:none}.ccli-pop h4{margin:0 0 6px;font-size:13px}
+.ccli-pop .cp-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}.ccli-pop .cp-row small{display:block;color:var(--mut,#8c9bad);margin-top:2px}.ccli-pop small.bad,.ccli-pop .cp-note.bad{color:var(--bad,#ef969e)}
+.ccli-pop .cp-note{margin-top:8px;font-size:11.5px;color:var(--mut,#8c9bad)}.ccli-pop .cp-foot{display:flex;justify-content:flex-end;margin-top:10px}
 .segctl{display:inline-flex;border:1px solid #2a3140;border-radius:8px;overflow:hidden}
 .segctl button{margin:0;background:transparent;border:0;color:var(--mut);font-weight:600;padding:6px 12px;border-radius:0;font-size:12.5px}
 .segctl button.on{background:var(--acc);color:#0f1115}
@@ -4199,7 +4207,7 @@ html:root:root .cxmodn{display:none}
 html:root:root .hdrgear.cxmodbtn svg{display:block}
 }
 </style></head><body>
-<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><button type="button" class="ccli-badge" id="ccliBadge" hidden aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg><b>0</b></button><div class="ccli-pop" id="ccliPop" role="dialog" hidden></div><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
@@ -4359,6 +4367,8 @@ const I18N={
   ccliHint:'Кнопка запускает npm или штатное обновление Claude Code; работающую сессию она не перезапускает.',
   ccliE_not_npm:'Установка такого вида кнопке незнакома — она её не трогает.',ccliE_not_installed:'Claude Code не найден.',ccliE_no_node:'Нужны Node.js 18+ и npm.',
   ccliE_ssh:'Нет связи со вторым сервером.',ccliE_bad_target:'Недопустимая версия.',ccliE_nothing_to_rollback:'Возвращать нечего.',ccliE_spawn:'Не удалось запустить npm.',ccliE_x:'Не получилось. Попробуй ещё раз.',
+  ccliBadgeTitle:n=>`Доступны новые версии программ: ${n}`,ccliPopTitle:'Доступны новые версии',ccliPopSub:(a,b)=>`${a} → ${b}`,ccliPopUpdate:'Обновить',ccliPopCancel:'Отмена',ccliPopNone:'Всё актуально',
+  ccliPopNote:'Запущенные сессии не прервутся: новая версия подхватится при следующем запуске.',
   checking:'Проверяю…',
   checkErr:e=>`⚠ ошибка проверки: ${e}`,
   staleAt:t=>` · ниже данные на ${t}`,
@@ -4867,6 +4877,8 @@ const I18N={
   ccliHint:'The button runs npm or the built-in Claude Code updater; it does not restart a running session.',
   ccliE_not_npm:'This kind of installation is unknown to the button — it does not touch it.',ccliE_not_installed:'Claude Code is not found.',ccliE_no_node:'Node.js 18+ and npm are required.',
   ccliE_ssh:'No connection to the second server.',ccliE_bad_target:'Invalid version.',ccliE_nothing_to_rollback:'Nothing to roll back.',ccliE_spawn:'Could not start npm.',ccliE_x:'It did not work. Try again.',
+  ccliBadgeTitle:n=>`New program versions available: ${n}`,ccliPopTitle:'New versions available',ccliPopSub:(a,b)=>`${a} → ${b}`,ccliPopUpdate:'Update',ccliPopCancel:'Cancel',ccliPopNone:'Everything is up to date',
+  ccliPopNote:'Running sessions are not interrupted: the new version is picked up on the next start.',
   checking:'Checking…',
   checkErr:e=>`⚠ check failed: ${e}`,
   staleAt:t=>` · data below from ${t}`,
@@ -5297,7 +5309,7 @@ function applyI18n(){
  $('#updHdr').textContent=tr('updHdr');$('#bkHdr').textContent=tr('bkHdr');
  $('#autoHdr').textContent=tr('autoHdr');$('#optWrap').title=tr('optHint');$('#dockTabLbl').textContent=tr('dockTab');
  $('#autoNote').textContent=tr('optDisabledTitle');setConly(document.documentElement.classList.contains('conly'),false);
- if(typeof updRender==='function'){updRender();updSettingsRender();if(typeof bkRender==='function')bkRender();$('#ccliHdr').textContent=tr('ccliHdr');if(typeof ccliRender==='function')ccliRender();}  // смена языка перерисовывает баннер и блок настроек
+ if(typeof updRender==='function'){updRender();updSettingsRender();if(typeof bkRender==='function')bkRender();$('#ccliHdr').textContent=tr('ccliHdr');if(typeof ccliRender==='function'){ccliRender();ccliBadgeRender();}}  // смена языка перерисовывает баннер и блок настроек
  $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
  const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
  $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
@@ -7681,17 +7693,17 @@ $('#bkBox').addEventListener('change',async e=>{
  bkLoad();
 });
 // «Claude Code» в ⚙: версия, «Обновить» / «Вернуть» и ход npm — на этом сервере и на втором (PROD)
-let ccliData=null,ccliTimer=null,ccliMsg='';
+let ccliData=null,ccliTimer=null,ccliMsg='',ccliPopOpen=false;
 async function ccliPost(p,body){
  const r=await fetch(API+'claude-cli/'+p+'?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
  return r.json();
 }
 async function ccliLoad(check){
  try{const r=await fetch(API+'claude-cli?token='+TOKEN+(check?'&check=1':''));if(!r.ok)throw new Error(r.status);ccliData=await r.json();}catch(e){return;}
- ccliRender();
+ ccliRender();ccliBadgeRender();
  clearTimeout(ccliTimer);
  const busy=['local','remote'].some(k=>ccliData[k]&&ccliData[k].state==='running');
- if(busy&&!$('#scrim').hidden)ccliTimer=setTimeout(()=>ccliLoad(false),3000);
+ if(busy&&(!$('#scrim').hidden||ccliPopOpen))ccliTimer=setTimeout(()=>ccliLoad(false),3000);
 }
 function ccliRow(k,d){
  const where=tr(k==='remote'?'ccliProd':'ccliThis'),nm=k==='codex'?'Codex':'Claude Code';
@@ -7736,6 +7748,55 @@ $('#ccliBox').addEventListener('click',async e=>{
  try{const r=await ccliPost(act,{target:k,version:act==='update'?v:undefined});ccliMsg=r.ok?'':tr('ccliE_'+(r.error||'x'));}catch(x){ccliMsg=tr('ccliE_x');}
  ccliLoad(false);
 });
+// Бейдж «есть новая версия» в шапке (Claude Code, Claude Code на PROD, Codex) и окошко «Обновить / Отмена»
+function ccliNews(){
+ const d=ccliData;if(!d)return [];
+ return ['local','remote','codex'].filter(k=>{const x=d[k];if(!x||x.ok===false||!x.kind)return false;
+  return (x.update_available&&x.can_update)||x.state==='running'||(ccliPopOpen&&(x.state==='done'||x.state==='failed'));}).map(k=>[k,d[k]]);
+}
+function ccliPopRender(){
+ const pop=$('#ccliPop');if(!pop||!ccliPopOpen)return;
+ const rows=ccliNews().map(([k,d])=>{
+  const nm=k==='codex'?'Codex':'Claude Code',where=tr(k==='remote'?'ccliProd':'ccliThis');
+  let sub='',btn='';
+  if(d.state==='running')sub=tr('ccliRunning',nm,where,d.target==='latest'?(d.latest||''):d.target);
+  else if(d.state==='done')sub=tr(d.op==='rollback'?'ccliDoneRb':'ccliDone',d.from_version,d.version_after||d.version);
+  else if(d.state==='failed')sub=tr('ccliFailed',d.err||'');
+  else{sub=tr('ccliPopSub',d.version||'',d.latest||'');btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest||'latest')+'">'+tr('ccliPopUpdate')+'</button>';}
+  return '<div class="cp-row"><div><b>'+ccpEsc(nm+' '+where)+'</b><small'+(d.state==='failed'?' class="bad"':'')+'>'+ccpEsc(sub)+'</small></div>'+btn+'</div>';
+ }).join('');
+ pop.innerHTML='<h4>'+tr('ccliPopTitle')+'</h4>'+(rows||'<div class="cp-row"><small>'+tr('ccliPopNone')+'</small></div>')
+  +(ccliMsg?'<div class="cp-note bad">'+ccpEsc(ccliMsg)+'</div>':'')
+  +'<div class="cp-note">'+tr('ccliPopNote')+'</div><div class="cp-foot"><button type="button" class="ghostbtn" data-ccli-pop="close">'+tr('ccliPopCancel')+'</button></div>';
+}
+function ccliBadgeRender(){
+ const b=$('#ccliBadge');if(!b)return;
+ const news=ccliNews();
+ b.hidden=!news.length&&!ccliPopOpen;
+ const n=b.querySelector('b');if(n)n.textContent=String(news.length);
+ b.title=tr('ccliBadgeTitle',news.length);
+ ccliPopRender();
+}
+function ccliPopClose(){ccliPopOpen=false;const p=$('#ccliPop');if(p)p.hidden=true;ccliBadgeRender();}
+$('#ccliBadge').addEventListener('click',e=>{
+ e.stopPropagation();
+ if(ccliPopOpen)return ccliPopClose();
+ ccliPopOpen=true;ccliMsg='';
+ const p=$('#ccliPop'),r=e.currentTarget.getBoundingClientRect();p.hidden=false;
+ p.style.top=(r.bottom+8)+'px';p.style.left=Math.max(12,Math.min(r.left,innerWidth-356))+'px';
+ ccliPopRender();ccliLoad(false);
+});
+$('#ccliPop').addEventListener('click',async e=>{
+ const b=e.target.closest('[data-ccli-pop]');if(!b)return;
+ if(b.dataset.ccliPop==='close')return ccliPopClose();
+ b.disabled=true;
+ try{const r=await ccliPost('update',{target:b.dataset.k,version:b.dataset.v});ccliMsg=r.ok?'':tr('ccliE_'+(r.error||'x'));}catch(x){ccliMsg=tr('ccliE_x');}
+ ccliLoad(false);
+});
+document.addEventListener('click',e=>{if(ccliPopOpen&&!e.target.closest('#ccliPop,#ccliBadge'))ccliPopClose();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ccliPopOpen)ccliPopClose();});
+setTimeout(()=>ccliLoad(true),8000);       // после загрузки страницы — тихая проверка версий
+setInterval(()=>ccliLoad(true),1800000);   // и раз в полчаса
 $('#gear').addEventListener('click',()=>{bkMsg='';updSettingsRender();updLoad();bkLoad();ccliMsg='';ccliLoad(!ccliData||Date.now()/1000-((ccliData.local&&ccliData.local.checked)||0)>((ccliData.local&&ccliData.local.ttl)||1800));});
 applyI18n();load();setInterval(()=>load(),60000);cxLoad();setInterval(()=>cxLoad(),60000);cxbLoad(true);setInterval(()=>cxbLoad(),15000);
 updLoad();

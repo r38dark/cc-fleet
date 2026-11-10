@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.25",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Значок «есть новая версия»",
+        "p": [
+          "В шапке слева, у логотипа, загорается значок со стрелкой и цифрой, когда есть новая версия Claude Code (на этом сервере и на PROD) или Codex. Страница проверяет версии сама раз в полчаса.",
+          "По клику под значком открывается окошко: что обновить, кнопки «Обновить» и «Отмена»; ход обновления виден там же."
+        ]
+      },
+      "en": {
+        "t": "\"New version available\" badge",
+        "p": [
+          "A badge with an arrow and a number lights up in the header next to the logo when a new Claude Code (on this server and on PROD) or Codex is available. The page checks the versions by itself every half hour.",
+          "A click opens a small window under the badge: what to update, Update and Cancel buttons; the progress is shown there as well."
+        ]
+      }
+    },
+    {
       "v": "2.0.24",
       "date": "2026-11-10",
       "ru": {
