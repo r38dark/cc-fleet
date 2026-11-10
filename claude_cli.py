@@ -80,8 +80,12 @@ def _vtuple(v):
         return None
 
 
+def _pkg_json_path(root, pkg, local):
+    return os.path.join(root, "node_modules" if local else os.path.join("lib", "node_modules"), pkg, "package.json")
+
+
 def _read_version(root, pkg, local):
-    p = os.path.join(root, "node_modules" if local else os.path.join("lib", "node_modules"), pkg, "package.json")
+    p = _pkg_json_path(root, pkg, local)
     try:
         with open(p, encoding="utf-8") as f:
             v = str(json.load(f).get("version") or "")
@@ -154,7 +158,7 @@ def find_install(tool="claude"):
         seen.add((p, local))
         v = _read_version(p, pkg, local)
         if v:
-            return {"kind": "npm", "prefix": p, "local": local, "version": v}
+            return {"kind": "npm", "prefix": p, "local": local, "version": v, "pkg_json": _pkg_json_path(p, pkg, local)}
     return {"kind": None}
 
 
@@ -291,6 +295,17 @@ def status(check=False, tool="claude"):
            "err": st.get("err") or "", "log": _tail(tool) if (running or st.get("state") in ("failed", "done")) else "",
            "node": nodes, "can_update": bool(can and not running),
            "checked": st.get("latest_ts") or 0, "ttl": LATEST_TTL}
+    out["started"] = st.get("started") or 0
+    out["finished"] = st.get("finished") or 0
+    try:   # когда установлена текущая версия: запущенная раньше программа работает на прежней
+        if kind == "npm":
+            out["pkg_mtime"] = os.path.getmtime(info["pkg_json"])
+        elif kind == "native" and info.get("versions_dir") and cur:
+            out["pkg_mtime"] = os.path.getmtime(os.path.join(info["versions_dir"], cur))
+        else:
+            out["pkg_mtime"] = 0
+    except OSError:
+        out["pkg_mtime"] = 0
     if kind == "native":
         out["path"] = info.get("path") or info.get("link") or ""
     return out

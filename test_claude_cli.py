@@ -10,6 +10,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).parent
 MOD = str(HERE / "claude_cli.py")
@@ -87,6 +88,12 @@ class Status(CliCase):
         self.assertTrue(d["can_update"])
         self.assertFalse(d["update_available"])
 
+    def test_reports_when_the_package_was_installed(self):
+        d = self.cli("status")
+        pkg = self.prefix / "lib/node_modules/@anthropic-ai/claude-code/package.json"
+        self.assertAlmostEqual(d["pkg_mtime"], os.path.getmtime(pkg), delta=1)
+        self.assertEqual((d["started"], d["finished"]), (0, 0))
+
     def test_check_asks_registry(self):
         d = self.cli("status", "check")
         self.assertEqual(d["latest"], "2.1.322")
@@ -126,6 +133,8 @@ class Update(CliCase):
         d = self.wait()
         self.assertEqual((d["state"], d["version"], d["prev_version"]), ("done", "2.1.322", "2.1.319"))
         self.assertIn("added 1 package", d["log"])
+        self.assertTrue(d["started"] > 0 and d["finished"] >= d["started"])      # по ним страница считает «идёт N с» и «только что установлено»
+        self.assertAlmostEqual(d["pkg_mtime"], os.path.getmtime(self.prefix / "lib/node_modules/@anthropic-ai/claude-code/package.json"), delta=1)
         d = self.cli("rollback")
         self.assertEqual(d["op"], "rollback")
         d = self.wait()
@@ -359,8 +368,8 @@ class Page(unittest.TestCase):
         self.assertIn("<pre>line1</pre>", h)
 
     def test_done_offers_rollback(self):
-        h = render([{"local": row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, prev_version="2.1.319"), "remote": None}])[0]
-        self.assertIn("ccliDone(2.1.319|2.1.322)", h)
+        h = render([{"local": row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, prev_version="2.1.319", finished=time.time()), "remote": None}])[0]
+        self.assertIn("ccliOkTitle(Claude Code|2.1.319|2.1.322)", h)
         self.assertIn('data-ccli="rollback"', h)
         self.assertIn("ccliBtnRollback(2.1.319)", h)
         self.assertNotIn('data-ccli="update"', h)
@@ -389,6 +398,52 @@ class Page(unittest.TestCase):
         self.assertIn('data-k="remote"', h)
         self.assertNotIn("<img", h)
         self.assertIn("&lt;img", h)
+
+    def test_running_shows_moving_bar_elapsed_time_and_log(self):
+        h = render([{"local": row(state="running", op="update", target="latest", can_update=False, started=time.time() - 12, log="npm http fetch GET 200"), "remote": None}])[0]
+        self.assertIn('class="upd-bar ccli-bar"', h)
+        self.assertRegex(h, r"ccliSec\((1[1-4])\)")
+        self.assertIn("<pre>npm http fetch GET 200</pre>", h)
+        self.assertNotIn("data-ccli=", h)
+
+    def test_fresh_install_is_green_and_tells_what_to_do_next(self):
+        fresh = row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, finished=time.time() - 30)
+        old = row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, finished=time.time() - 7200)
+        h = render([{"local": fresh, "remote": None}, {"local": old, "remote": None}])
+        self.assertIn('class="updsub ok"', h[0])
+        self.assertIn("ccliNextClaude", h[0])
+        self.assertNotIn("ccliOkTitle", h[1])                    # через десять минут это обычная строка, не вечное «установлено»
+        self.assertNotIn("ccliNextClaude", h[1])
+
+    def test_codex_after_update_offers_restart_and_says_why(self):
+        cx = row(tool="codex", version="0.167.0", latest="0.167.0", update_available=False, state="done", op="update", from_version="0.166.0",
+                 version_after="0.167.0", finished=time.time() - 20, restart={"running": True, "stale": True, "busy": False})
+        h = render([{"local": row(update_available=False), "remote": None, "codex": cx}])[0]
+        self.assertIn("ccliOkTitle(Codex|0.166.0|0.167.0)", h)
+        self.assertIn("ccliNextCodex", h)
+        self.assertIn('data-ccli="restart" data-k="codex"', h)
+        self.assertIn("ccliRestartBtn", h)
+
+    def test_stale_console_keeps_the_restart_button_after_the_message_is_gone(self):
+        cx = row(tool="codex", version="0.167.0", latest="0.167.0", update_available=False, state="done", finished=time.time() - 7200,
+                 restart={"running": True, "stale": True, "busy": False})
+        h = render([{"local": row(update_available=False), "remote": None, "codex": cx}])[0]
+        self.assertIn("ccliStaleNote", h)
+        self.assertIn('data-ccli="restart"', h)
+
+    def test_restart_is_disabled_while_codex_answers_and_absent_when_console_is_fresh_or_stopped(self):
+        base = dict(tool="codex", version="0.167.0", latest="0.167.0", update_available=False)
+        busy = row(**base, restart={"running": True, "stale": True, "busy": True})
+        fresh = row(**base, restart={"running": True, "stale": False, "busy": False})
+        stopped = row(**base, restart={"running": False, "stale": False, "busy": False})
+        h = render([{"local": row(update_available=False), "remote": None, "codex": c} for c in (busy, fresh, stopped)])
+        self.assertIn('data-ccli="restart" data-k="codex" disabled', h[0])
+        self.assertNotIn('data-ccli="restart"', h[1])
+        self.assertNotIn('data-ccli="restart"', h[2])
+
+    def test_claude_has_no_restart_button_here(self):
+        h = render([{"local": row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, finished=time.time()), "remote": None}])[0]
+        self.assertNotIn('data-ccli="restart"', h)
 
     def test_codex_row(self):
         h = render([{"local": row(), "remote": None, "codex": row(tool="codex", version="0.166.0", latest="0.167.0")}])[0]
@@ -463,12 +518,12 @@ class Badge(unittest.TestCase):
         self.assertNotIn('data-ccli-pop="update"', r[0]["html"])
 
     def test_done_and_failed_are_visible_only_while_the_window_is_open(self):
-        done = row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False)
+        done = row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, finished=time.time())
         failed = row(state="failed", err='<b>boom</b>')
         r = badge([{"data": {"local": done, "remote": None, "codex": None}}, {"data": {"local": done, "remote": None, "codex": None}, "open": True},
                    {"data": {"local": failed, "remote": None, "codex": None}, "open": True}])
         self.assertTrue(r[0]["hidden"])
-        self.assertIn("ccliDone(2.1.319|2.1.322)", r[1]["html"])
+        self.assertIn("ccliOkTitle(Claude Code|2.1.319|2.1.322)", r[1]["html"])
         self.assertIn("ccliFailed(&lt;b&gt;boom&lt;/b&gt;)", r[2]["html"])      # текст из ответа экранирован
 
     def test_open_window_with_nothing_left_says_everything_is_up_to_date(self):
@@ -479,6 +534,122 @@ class Badge(unittest.TestCase):
     def test_markup_and_timers_are_wired(self):
         for part in ('id="ccliBadge"', 'id="ccliPop"', "setTimeout(()=>ccliLoad(true),8000)", "setInterval(()=>ccliLoad(true),1800000)", "data-ccli-pop"):
             self.assertIn(part, SRC, part)
+
+
+    def test_stale_console_keeps_the_badge_lit_and_the_window_offers_restart(self):
+        data = {"local": row(update_available=False), "remote": None,
+                "codex": row(tool="codex", version="0.167.0", update_available=False, restart={"running": True, "stale": True, "busy": False})}
+        r = badge([{"data": data}, {"data": data, "open": True}])
+        self.assertFalse(r[0]["hidden"])
+        self.assertEqual(r[0]["n"], "1")
+        self.assertIn('data-ccli-pop="restart" data-k="codex"', r[1]["html"])
+        self.assertIn("ccliStaleNote", r[1]["html"])
+        self.assertNotIn('data-ccli-pop="update"', r[1]["html"])
+
+    def test_window_shows_bar_while_running_and_next_step_after_install(self):
+        run = row(state="running", op="update", target="latest", can_update=False, started=time.time() - 5)
+        done = row(tool="codex", version="0.167.0", update_available=False, state="done", op="update", from_version="0.166.0", version_after="0.167.0",
+                   finished=time.time() - 5, restart={"running": True, "stale": True, "busy": False})
+        r = badge([{"data": {"local": run, "remote": None, "codex": None}, "open": True}, {"data": {"local": None, "remote": None, "codex": done}, "open": True}])
+        self.assertIn("upd-bar", r[0]["html"])
+        self.assertIn("ccliSec(", r[0]["html"])
+        self.assertIn("ccliOkTitle(Codex|0.166.0|0.167.0)", r[1]["html"])
+        self.assertIn("ccliNextCodex", r[1]["html"])
+        self.assertIn('data-ccli-pop="restart"', r[1]["html"])
+
+
+VER_HARNESS = r"""
+const LANG='ru';function tr(k,...a){return k+'('+a.join('|')+')';}
+const el={hidden:true,textContent:'',title:'',cls:{},classList:{toggle:(c,on)=>{el.cls[c]=!!on}}};
+function $(s){return s==='#ccliVer'?el:null}
+let ccliData=null,cur='claude';function consCur(){return cur}
+%s
+const out=[];for(const c of CASES){ccliData=c.data;cur=c.tab;el.hidden=true;el.textContent='';el.title='';el.cls={};ccliVerRender();out.push({hidden:el.hidden,text:el.textContent,stale:!!el.cls.stale,title:el.title});}
+console.log(JSON.stringify(out));
+"""
+
+
+def ver(cases):
+    js = cut(r"^function ccliVerRender\(\)\{.*?^\}$", "ccliVerRender")
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "v.js")
+        Path(p).write_text(("const CASES=%s;\n" % json.dumps(cases, ensure_ascii=False)) + VER_HARNESS % js, encoding="utf-8")
+        r = subprocess.run(["node", p], capture_output=True, text=True, timeout=30)
+        if r.returncode:
+            raise AssertionError(r.stderr[-800:])
+        return json.loads(r.stdout)
+
+
+@unittest.skipUnless(shutil.which("node"), "нет node")
+class VersionLabel(unittest.TestCase):
+    DATA = {"local": row(version="2.1.322"), "remote": row(version="2.1.321"),
+            "codex": row(tool="codex", version="0.167.0", restart={"running": True, "stale": True, "busy": False})}
+
+    def test_label_follows_the_active_tab(self):
+        r = ver([{"data": self.DATA, "tab": "claude"}, {"data": self.DATA, "tab": "prod"}, {"data": self.DATA, "tab": "codex"}])
+        self.assertEqual([x["text"] for x in r], ["Claude Code 2.1.322", "Claude Code 2.1.321 · PROD", "Codex 0.167.0"])
+        self.assertFalse(any(x["hidden"] for x in r))
+
+    def test_stale_console_is_marked(self):
+        r = ver([{"data": self.DATA, "tab": "codex"}, {"data": self.DATA, "tab": "claude"}])
+        self.assertTrue(r[0]["stale"])
+        self.assertIn("ccliStaleNote", r[0]["title"])
+        self.assertFalse(r[1]["stale"])
+
+    def test_hidden_without_data_for_notion_and_for_unavailable_second_server(self):
+        r = ver([{"data": None, "tab": "claude"}, {"data": self.DATA, "tab": "notion"}, {"data": {"local": None, "remote": {"ok": False}, "codex": None}, "tab": "prod"},
+                 {"data": self.DATA, "tab": "notion:abc"}])
+        self.assertTrue(all(x["hidden"] for x in r))
+
+    def test_markup_is_in_the_console_toolbar(self):
+        self.assertIn('id="ccliVer"', SRC)
+        ov = (HERE / "cc_overview.py").read_text(encoding="utf-8")
+        self.assertIn("toolbar.append(document.getElementById('cTabs'),document.getElementById('ccliVer'),term.querySelector('.tzoom'))", ov)
+
+
+class Restart(unittest.TestCase):
+    """POST /api/claude-cli/restart: перезапуск консоли Codex — не посреди запроса, сначала остановить, потом запустить."""
+
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.mkdtemp(prefix="cccli_rs_")
+        os.environ["CC_LIMITS_BASE"] = os.path.join(tmp, "base")
+        os.environ["CC_LIMITS_PROFILES"] = os.path.join(tmp, "profiles")
+        os.makedirs(os.environ["CC_LIMITS_BASE"], exist_ok=True)
+        import cc_limits as L
+        cls.L = L
+
+    def act(self, busy=False, stop=(True, "ok"), start=(True, "ok"), target="codex", codex="/x/codex"):
+        L = self.L
+        order = mock.Mock()
+        with mock.patch.object(L, "codex_bin", return_value=codex), mock.patch.object(L.cc_codex_console, "busy", return_value=busy), \
+                mock.patch.object(L.cc_codex_console, "stop", side_effect=lambda **k: (order.stop(), stop)[1]), \
+                mock.patch.object(L.cc_codex_console, "start", side_effect=lambda **k: (order.start(), start)[1]):
+            r = L.claude_cli_action("restart", {"target": target})
+        return r, [c[0] for c in order.mock_calls]
+
+    def test_busy_console_is_left_alone(self):
+        r, calls = self.act(busy=True)
+        self.assertEqual((r["ok"], r["error"], calls), (False, "busy", []))
+
+    def test_stop_then_start(self):
+        r, calls = self.act()
+        self.assertEqual((r["ok"], calls), (True, ["stop", "start"]))
+
+    def test_failed_stop_does_not_start_and_failed_start_is_reported(self):
+        r, calls = self.act(stop=(False, "x"))
+        self.assertEqual((r["error"], calls), ("stop_failed", ["stop"]))
+        r, calls = self.act(start=(False, "y"))
+        self.assertEqual((r["error"], calls), ("start_failed", ["stop", "start"]))
+
+    def test_only_codex_and_only_when_installed(self):
+        self.assertEqual(self.act(target="local")[0]["error"], "not_supported")
+        self.assertEqual(self.act(target="remote")[0]["error"], "not_supported")
+        self.assertEqual(self.act(codex="")[0]["error"], "not_installed")
+
+    def test_route_is_registered(self):
+        self.assertIn('"/api/claude-cli/restart"', SRC)
+        self.assertIn("def codex_restart_info(", SRC)
 
 
 class Integration(unittest.TestCase):
