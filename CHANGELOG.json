@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.26",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Шрифт части PROD и фоновые вкладки",
+        "p": [
+          "В разделённой консоли у части Claude PROD шрифт больше не сжимается: как у Codex и Claude DEV, длинные строки переносятся, размер всегда 100%.",
+          "Фоновая вкладка панели больше не опрашивает консоль и не меняет ширину экрана второго сервера (раньше раз в минуту она её сдвигала, и в видимой вкладке шрифт сжимался). При возврате на вкладку консоль обновляется сразу."
+        ]
+      },
+      "en": {
+        "t": "PROD part font and background tabs",
+        "p": [
+          "In the split console the Claude PROD part no longer shrinks its font: like Codex and Claude DEV, long lines wrap and the size is always 100%.",
+          "A background browser tab no longer polls the console or changes the screen width of the second server (it used to shift it once a minute, shrinking the font in the visible tab). The console refreshes at once when you return to the tab."
+        ]
+      }
+    },
+    {
       "v": "2.0.25",
       "date": "2026-11-10",
       "ru": {

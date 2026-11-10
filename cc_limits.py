@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.25"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.26"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -5497,8 +5497,8 @@ function fitPane(P){
  b.classList.remove('tcwrap');
  if(isNai(P.k)){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  if(!b.closest('.termwrap.tsplit')){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
- // Codex и Claude DEV рисуют экран шире окна части: сжимать шрифт нельзя (при тех же 100% он выходил мельче соседних, владелец 62811/62838), поэтому строки переносятся
- if(P.k==='codex'||P.k==='claude'){b.classList.add('tcwrap');if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
+ // Codex, Claude DEV и PROD рисуют экран шире окна части: сжимать шрифт нельзя (при тех же 100% он выходил мельче соседних, владелец 62811/62838, 63297), поэтому строки переносятся
+ if(P.k==='codex'||P.k==='claude'||P.k==='prod'){b.classList.add('tcwrap');if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  // подгонку по ширине меряем при масштабе 100% (--tz=1 на самой части): иначе шрифт, выросший от «+», тут же сжимался обратно, и у частей с длинными строками масштаб не менялся, а у остальных менялся (владелец 62676)
  b.style.setProperty('--tz','1');b.style.setProperty('--pz','1');
  const cs=getComputedStyle(b),pad=parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight),avail=b.clientWidth-pad,need=b.scrollWidth-pad;
@@ -5804,7 +5804,9 @@ document.getElementById('splitBtn').addEventListener('click',splitToggle);
 $('#cTabs').addEventListener('dragstart',e=>{const b=e.target.closest&&e.target.closest('.ctab');if(!b)return;const k=tabKey(b);if(!isKey(k)||!splitMq.matches||!splitKeysAvail().includes(k)){e.preventDefault();return;}DRAG={t:'tab',v:k};try{e.dataTransfer.setData('text/plain','tab:'+k);e.dataTransfer.effectAllowed='move';}catch(x){}dragBegin();});
 $('#cTabs').addEventListener('dragend',dragEnd);
 splitMq.addEventListener('change',()=>{consTabs();fitAll();});
-function tickAll(){syncPanes();document.querySelectorAll('#cTabs .ctab').forEach(b=>{const d=splitMq.matches&&isKey(tabKey(b))&&splitKeysAvail().includes(tabKey(b));if(b.draggable!==d)b.draggable=d;});for(const P of PANES)if(!P.hid)ccConsole(P);}
+function tickAll(){syncPanes();document.querySelectorAll('#cTabs .ctab').forEach(b=>{const d=splitMq.matches&&isKey(tabKey(b))&&splitKeysAvail().includes(tabKey(b));if(b.draggable!==d)b.draggable=d;});for(const P of PANES)if(!P.hid&&!document.hidden)ccConsole(P);}
+// фоновая вкладка консоль не опрашивает (её запрос с другой шириной менял экран общего tmux); вернулись на вкладку — экран обновляется сразу, не через 2 с
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tickAll();});
 window.fleetSplitOn=function(){try{return !!splitEff()}catch(e){return false}};
 window.fleetSplitWanted=function(){return splitMq.matches&&SPLIT.keys.length>1};
 window.fleetSplitShow=function(k){if(isKey(k))consPick(k);};
