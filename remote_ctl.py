@@ -282,6 +282,10 @@ def main():
         out(guard_status())
     if c == "guard-reload":
         guard_reload()
+    if c == "cli":  # cli status [check] | update [версия] | rollback — Claude Code на этом сервере (модуль claude_cli.py лежит рядом)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import claude_cli
+        out(claude_cli.run(a[1:]))
     if c == "status":
         s = screen(40) if alive() else ""
         out({"ok": True, "running": alive(), "busy": busy(s), "tg": tg_state()})

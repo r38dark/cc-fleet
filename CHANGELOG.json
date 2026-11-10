@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.23",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Обновление Claude Code из панели",
+        "p": [
+          "В «Настройки Claude» появился блок «Claude Code»: версия, доступная новая и кнопка «Обновить», журнал установки.",
+          "То же для второго сервера (PROD): обновляется по ssh одной кнопкой.",
+          "Кнопка «Вернуть» возвращает предыдущую версию, если новая что-то сломала. Работающие сессии не перезапускаются: новая версия подхватывается при следующем запуске."
+        ]
+      },
+      "en": {
+        "t": "Update Claude Code from the panel",
+        "p": [
+          "Settings → Claude has a new Claude Code block: the installed and the available version, an Update button and the install log.",
+          "The same for the second server (PROD): it is updated over ssh with one button.",
+          "A Roll back button returns the previous version if the new one breaks something. Running sessions are not restarted: the new version is picked up on the next start."
+        ]
+      }
+    },
+    {
       "v": "2.0.22",
       "date": "2026-11-10",
       "ru": {

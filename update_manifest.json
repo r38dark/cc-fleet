@@ -1,5 +1,5 @@
 {
-  "version": "2.0.22",
+  "version": "2.0.23",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -277,6 +277,10 @@
     },
     {
       "src": "remote_guard.py",
+      "mode": "644"
+    },
+    {
+      "src": "claude_cli.py",
       "mode": "644"
     }
   ]
