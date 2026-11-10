@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.29",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Надпись версии под шапкой части",
+        "p": [
+          "В разделённой консоли надпись версии в правом верхнем углу окна оказывалась под шапкой части и не была видна: теперь она ниже шапки.",
+          "После обновления «что дальше» учитывает, что программа не запущена: тогда сказано, что новая версия включится при запуске, а не «перезапусти»."
+        ]
+      },
+      "en": {
+        "t": "Version label below the part header",
+        "p": [
+          "In the split console the version label in the top right corner of a window was hidden under the part header: it is now below the header.",
+          "After an update, the \"what next\" hint takes into account that the program is not running: it says the new version is used on start instead of \"restart\"."
+        ]
+      }
+    },
+    {
       "v": "2.0.28",
       "date": "2026-11-10",
       "ru": {

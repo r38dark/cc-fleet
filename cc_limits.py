@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.28"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.29"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4458,6 +4458,7 @@ const I18N={
   ccliAskUpdate:(n,w,a,b)=>`Обновить ${n} ${w} с ${a} до ${b}? Запущенные сессии не прервутся, новая версия подхватится при следующем запуске.`,
   ccliAskRollback:(n,w,a,b)=>`Вернуть ${n} ${w} с ${a} на ${b}?`,
   ccliRunning:(n,w,v)=>`Идёт обновление ${n} ${w}${v?' до '+v:''}…`,
+  ccliNextClaudeStopped:'Claude сейчас не запущен: новая версия включится при его следующем запуске.',ccliNextCodexStopped:'Консоль Codex сейчас не запущена: новая версия включится при её запуске.',
   ccliPvOld:'Версия старая: есть новее.',ccliPvNew:'Версия актуальная.',ccliSec:s=>`${s} с`,ccliOkTitle:(n,a,b)=>`✅ Установлено: ${n} ${b} (было ${a})`,
   ccliNextClaude:'Запущенная сессия Claude пока на старой версии. Перезапусти Claude кнопкой: начнётся новая сессия.',ccliNextCodex:'Чтобы Codex заработал на новой версии, перезапусти консоль Codex.',
   ccliStaleNote:'Консоль запущена до обновления и работает на старой версии. Перезапусти её.',ccliRestartBtn:'Перезапустить консоль Codex',
@@ -4975,6 +4976,7 @@ const I18N={
   ccliAskUpdate:(n,w,a,b)=>`Update ${n} ${w} from ${a} to ${b}? Running sessions are not interrupted; the new version is picked up on the next start.`,
   ccliAskRollback:(n,w,a,b)=>`Roll ${n} ${w} back from ${a} to ${b}?`,
   ccliRunning:(n,w,v)=>`Updating ${n} ${w}${v?' to '+v:''}…`,
+  ccliNextClaudeStopped:'Claude is not running now: the new version is used on its next start.',ccliNextCodexStopped:'The Codex console is not running now: the new version is used when it starts.',
   ccliPvOld:'The version is old: a newer one is available.',ccliPvNew:'The version is up to date.',ccliSec:s=>`${s}s`,ccliOkTitle:(n,a,b)=>`✅ Installed: ${n} ${b} (was ${a})`,
   ccliNextClaude:'The running Claude session is still on the old version. Restart Claude with the button: a new session starts.',ccliNextCodex:'Restart the Codex console to run Codex on the new version.',
   ccliStaleNote:'The console was started before the update and runs the old version. Restart it.',ccliRestartBtn:'Restart the Codex console',
@@ -7835,7 +7837,7 @@ function ccliRow(k,d){
   if(d.state==='failed'){sub=tr('ccliFailed',d.err||'');bad=true;pre=d.log;}
   else if(d.state==='done'&&fresh){
    sub=d.op==='rollback'?tr('ccliDoneRb',d.from_version,d.version_after||d.version):tr('ccliOkTitle',nm,d.from_version,d.version_after||d.version);ok=true;pre=d.log;
-   next=tr(k==='codex'?'ccliNextCodex':'ccliNextClaude');
+   next=tr(r&&r.running===false?(k==='codex'?'ccliNextCodexStopped':'ccliNextClaudeStopped'):(k==='codex'?'ccliNextCodex':'ccliNextClaude'));
   }
   else if(d.update_available)sub=tr('ccliLatest',d.latest);
   else sub=tr(d.latest?'ccliUpToDate':'ccliNeverChecked');
@@ -7887,7 +7889,7 @@ function ccliPopRender(){
   }
   else if(d.state==='done'&&fresh){
    sub=d.op==='rollback'?tr('ccliDoneRb',d.from_version,d.version_after||d.version):tr('ccliOkTitle',nm,d.from_version,d.version_after||d.version);cls=' ok';
-   sub+=' '+tr(k==='codex'?'ccliNextCodex':'ccliNextClaude');
+   sub+=' '+tr(r&&r.running===false?(k==='codex'?'ccliNextCodexStopped':'ccliNextClaudeStopped'):(k==='codex'?'ccliNextCodex':'ccliNextClaude'));
   }
   else if(d.state==='failed'){sub=tr('ccliFailed',d.err||'');cls=' bad';}
   else if(d.update_available&&d.can_update){sub=tr('ccliPopSub',d.version||'',d.latest||'');btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest||'latest')+'">'+tr('ccliPopUpdate')+'</button>';}
@@ -7939,14 +7941,14 @@ function ccliPartVers(){
  const wrap=document.querySelector('.termwrap');if(!wrap||typeof PANES==='undefined')return;
  let box=document.getElementById('ccliPv');
  if(!box){box=document.createElement('div');box.id='ccliPv';box.className='ccli-pvbox';wrap.appendChild(box);}
- const wr=wrap.getBoundingClientRect();
+ const wr=wrap.getBoundingClientRect(),off=wrap.classList.contains('tsplit')?40:10;   // под шапкой части (30 px), иначе надпись оказывается под ней
  PANES.forEach((P,i)=>{
   const id='ccliPv'+i;let el=document.getElementById(id);
   const d=ccliData,info=P.k&&d?ccliPvInfo(P.k,d[P.k==='prod'?'remote':P.k==='codex'?'codex':'local']):null,b=P.box,r=b&&b.getBoundingClientRect();
   if(!info||P.hid||!r||r.width<140||b.offsetParent===null){if(el)el.hidden=true;return;}
   if(!el){el=document.createElement('span');el.id=id;box.appendChild(el);}
   el.className='ccli-pv '+(info.old?'old':'new');el.textContent=info.text;el.title=info.title;el.hidden=false;
-  el.style.top=Math.round(r.top-wr.top+8)+'px';el.style.left=Math.round(r.right-wr.left-el.offsetWidth-18)+'px';
+  el.style.top=Math.round(r.top-wr.top+off)+'px';el.style.left=Math.round(r.right-wr.left-el.offsetWidth-18)+'px';
  });
 }
 setInterval(ccliPartVers,2000);addEventListener('resize',ccliPartVers);setTimeout(()=>{ccliLoad(false);},1500);
