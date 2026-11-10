@@ -213,7 +213,7 @@ class Page(unittest.TestCase):
         self.assertIn("function splitMaxToggle(i){", L.PAGE)
         self.assertIn("if(MAXED&&i===splitActIdx(ks))MAXED=false;else{splitActivate(i);MAXED=true;}", L.PAGE)
         self.assertIn(".termwrap.tpmax .fleet-console-viewport>.tphide,.termwrap.tpmax .tpheads .tphide,.termwrap.tpmax .tpcomps .tphide{display:none!important}", L.PAGE)
-        self.assertIn("for(const P of PANES)if(!P.hid)ccConsole(P);", L.PAGE)  # спрятанные части не опрашиваем (у них нет ширины)
+        self.assertIn("for(const P of PANES)if(!P.hid&&!document.hidden)ccConsole(P);", L.PAGE)  # спрятанные части не опрашиваем (у них нет ширины), фоновую вкладку тоже
         # закрыть часть / добавить часть — выход из развёрнутого вида
         for fn in ("function splitClose(i){\n const ks=splitEff();if(!ks)return;\n MAXED=false;",
                    "function splitToggle(){\n const av=splitKeysAvail();if(av.length<2||!splitMq.matches)return;\n MAXED=false;"):
