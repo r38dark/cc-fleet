@@ -129,7 +129,21 @@ def put_file(m, data, remote, mode_bits="644"):
 def deploy_tools(m):
     return (put_file(m, Path(CTL).read_text(encoding="utf-8"), "/root/cc-remote/ctl.py", "755")
             and put_file(m, Path(USAGE).read_text(encoding="utf-8"), "/root/cc-remote/usage.py", "755")
-            and put_file(m, Path(R.BASE + "/remote_guard.py").read_text(encoding="utf-8"), "/root/cc-remote/remote_guard.py", "755"))
+            and put_file(m, Path(R.BASE + "/remote_guard.py").read_text(encoding="utf-8"), "/root/cc-remote/remote_guard.py", "755")
+            and put_file(m, Path(R.BASE + "/claude_cli.py").read_text(encoding="utf-8"), "/root/cc-remote/claude_cli.py", "755"))
+
+
+def cli_remote(*args, timeout=60):
+    """Claude Code на втором сервере: ctl.py cli status|update|rollback. Модуля claude_cli.py там могло не быть (пара подключена до этого релиза):
+    при пустом ответе докладываем инструменты и повторяем. → словарь; None — второй сервер не подключён или не ответил."""
+    mid = _member_id()
+    m = R.members().get(mid) if mid else None
+    if not m:
+        return None
+    r = R.ctl(mid, "cli", *args, timeout=timeout)
+    if r is None and deploy_tools(m):
+        r = R.ctl(mid, "cli", *args, timeout=timeout)
+    return r
 
 
 def rsync(m, src, dst, to_remote, extra=()):
