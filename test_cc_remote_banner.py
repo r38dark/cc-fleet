@@ -84,10 +84,28 @@ class Banner(unittest.TestCase):
             self.assertTrue(r["hidden"], lvl)
             self.assertEqual(r["html"], "", lvl)
 
-    def test_real_pause_banner_kept_while_on_prod(self):
-        # стоящая пауза и отключённая кнопкой пауза — не «некуда», их баннер остаётся
-        pz = {"active": True, "override": False, "kind": "session", "reason": "лимиты", "resume_at": 0}
+    def test_dev_pause_banner_hidden_while_work_is_on_prod(self):
+        # пауза по лимитам, «пауза отключена» и ручной выбор относятся к DEV: работа идёт на PROD, баннер не нужен (пауза видна на плитке)
+        for kind in ("session", "week"):
+            pz = {"active": True, "override": False, "kind": kind, "reason": "лимиты", "resume_at": 0}
+            r = render([self.case(remote=True, pause=pz)])[0]
+            self.assertTrue(r["hidden"], kind)
+            self.assertEqual(r["html"], "", kind)
+        off = {"active": False, "override": True}
+        r = render([self.case(remote=True, level="none", pause=off)])[0]
+        self.assertTrue(r["hidden"])
+        r = render([self.case(remote=True, level="manual", pause={"active": False, "override": False}, manual={"account": "acc3", "until": 0})])[0]
+        self.assertTrue(r["hidden"])
+
+    def test_reserve_pause_banner_kept_while_on_prod(self):
+        # пауза резерва — не про лимиты DEV, её баннер остаётся и при работе на PROD
+        pz = {"active": True, "override": False, "kind": "reserve", "reason": "резерв", "resume_at": 0, "notice_ts": 0, "grace": 60}
         r = render([self.case(remote=True, pause=pz)])[0]
+        self.assertFalse(r["hidden"])
+
+    def test_pause_banner_shown_while_work_is_on_dev(self):
+        pz = {"active": True, "override": False, "kind": "week", "reason": "лимиты", "resume_at": 0}
+        r = render([self.case(remote=False, pause=pz)])[0]
         self.assertFalse(r["hidden"])
         self.assertIn("ccpPauseTitle", r["html"])
 
