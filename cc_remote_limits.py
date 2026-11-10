@@ -42,13 +42,13 @@ def tick(ns):
         if enabled and info.get("running") and not info.get("applied"):
             # Only an idle, empty prompt and a verified session ID may be
             # reloaded. Busy sessions keep running until their next idle point.
-            result = R.ctl(mid, "guard-reload", timeout=150) or {}
+            result = R.ctl(mid, "guard-reload", timeout=300) or {}
             info = R.ctl(mid, "guard-status") or {}
         if not info.get("ok"):
             continue
         previous = state.get(mid) or {}
-        held = bool(enabled and info.get("applied") and info.get("blocked"))
-        current = {k: info[k] for k in ("configured", "applied", "waiting", "reasons", "resume_at", "running") if k in info}
+        held = bool(enabled and info.get("applied") and info.get("ready", True) and info.get("blocked"))
+        current = {k: info[k] for k in ("configured", "applied", "ready", "waiting", "reasons", "resume_at", "running") if k in info}
         current.update(enabled=enabled, blocked=held, ts=time.time(), notified_blocked=bool(previous.get("notified_blocked")))
         state[mid] = current
         # Pausing is a separate preference from percentage warnings.

@@ -299,5 +299,60 @@ class Composer(unittest.TestCase):
         self.assertTrue(self.draft(self.box('❯ \x1b[38;2;200;210;220mtyped text')))
 
 
+class LaunchRecovery(unittest.TestCase):
+    def setUp(self):
+        import re
+        from types import SimpleNamespace
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        for key,value in [('BASE',Path(self.tmp.name)),('NAME','fixture')]:
+            p=patch.object(G,key,value);p.start();self.addCleanup(p.stop)
+        source=(Path(__file__).parent/'remote_ctl.py').read_text();tree=ast.parse(source)
+        names={'accept_startup_menu','guard_reload'}
+        self.keys=[];self.starts=[];self.results=[{'ok':True}]
+        class Done(Exception):pass
+        self.Done=Done
+        def out(data):raise Done(data)
+        def start(*a,**kw):
+            self.starts.append((a,kw));return self.results.pop(0)
+        self.ns=dict(MENU_YES=re.compile('yes, (?:i accept|continue)'),MENU_TRUST=re.compile('yes, i trust'),
+                     key=self.keys.append,time=SimpleNamespace(sleep=lambda _:None,time=time.time),
+                     alive=lambda:True,guard_status=lambda:{'applied':False},out=out,
+                     sh=lambda *a:(0,''),TMUX='fixture',ANSI=re.compile('x'),busy=lambda _:False,
+                     composer_has_draft=lambda _:False,current_sid=lambda:'12345678-1234-1234-1234-123456789abc',
+                     tg_state=lambda:True,start=start)
+        exec('\n'.join(ast.get_source_segment(source,n) for n in tree.body
+                       if isinstance(n,ast.FunctionDef) and n.name in names),self.ns)
+
+    def test_selected_accept_is_not_moved_to_exit(self):
+        self.assertTrue(self.ns['accept_startup_menu']('❯ 1. yes, i accept\n  2. no, exit'))
+        self.assertEqual(self.keys,['Enter'])
+
+    def test_selected_exit_moves_to_accept(self):
+        self.assertTrue(self.ns['accept_startup_menu']('❯ 1. no, exit\n  2. yes, i trust'))
+        self.assertEqual(self.keys,['Down','Enter'])
+
+    def test_unknown_selection_is_not_confirmed(self):
+        self.assertFalse(self.ns['accept_startup_menu']('  1. yes, i trust\n  2. no, exit'))
+        self.assertEqual(self.keys,[])
+
+    def test_failed_launch_restores_same_session_and_telegram(self):
+        self.results=[{'ok':False},{'ok':True}]
+        with self.assertRaises(self.Done) as result:self.ns['guard_reload']()
+        self.assertTrue(result.exception.args[0]['restored'])
+        self.assertEqual(self.starts[0][0],self.starts[1][0])
+        self.assertEqual(self.starts[1][1],{'use_guard':False})
+
+    def test_failure_cooldown_prevents_restart_loop(self):
+        G.save(G.BASE/'limits-fixture-reload.json',dict(failed=True,ts=time.time()))
+        with self.assertRaises(self.Done) as result:self.ns['guard_reload']()
+        self.assertEqual(result.exception.args[0]['error'],'guard_reload_cooldown')
+        self.assertEqual(self.starts,[])
+
+    def test_successful_launch_uses_same_session_once(self):
+        with self.assertRaises(self.Done) as result:self.ns['guard_reload']()
+        self.assertTrue(result.exception.args[0]['reloaded'])
+        self.assertEqual(len(self.starts),1)
+
+
 if __name__ == "__main__":
     unittest.main()
