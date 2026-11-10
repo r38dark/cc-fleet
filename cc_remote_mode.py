@@ -141,8 +141,8 @@ def cli_remote(*args, timeout=60):
     if not m:
         return None
     r = R.ctl(mid, "cli", *args, timeout=timeout)
-    if r is None and deploy_tools(m):
-        r = R.ctl(mid, "cli", *args, timeout=timeout)
+    if (r is None or (args and args[0] == "status" and isinstance(r, dict) and r.get("ok") and "restart" not in r)) and deploy_tools(m):
+        r = R.ctl(mid, "cli", *args, timeout=timeout)    # пусто или ctl.py старой версии (без поля restart): докладываем инструменты и повторяем
     return r
 
 
