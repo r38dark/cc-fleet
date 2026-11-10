@@ -1,5 +1,5 @@
 {
-  "version": "2.0.19",
+  "version": "2.0.20",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -270,6 +270,14 @@
       "src": "scripts/claude_trust_fix.py",
       "dst": "claude_trust_fix.py",
       "mode": "755"
+    },
+    {
+      "src": "cc_remote_limits.py",
+      "mode": "644"
+    },
+    {
+      "src": "remote_guard.py",
+      "mode": "644"
     }
   ]
 }

@@ -6,6 +6,8 @@ import os
 import re
 import subprocess
 import sys
+import shlex
+from pathlib import Path
 import time
 
 HOME = os.environ.get("HOME") or "/root"
@@ -94,6 +96,15 @@ def start(sid, tg):
     tg_state(1 if tg else 0)
     sh(["tmux", "kill-session", "-t", TMUX])
     cmd = "cd /root; export IS_SANDBOX=1 CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1; exec %s --dangerously-skip-permissions" % CLAUDE
+    try:
+        import remote_guard as guard
+        if not guard.SETTINGS.exists():
+            guard.configure(dict(enabled=True, threshold=90, weekly_cap=99, weekly_pause=False))
+        if guard.SETTINGS.exists():
+            cmd = cmd.replace("; exec ", "; export CC_FLEET_LIMIT_GUARD=1; exec ")
+            cmd += " --settings " + shlex.quote(str(guard.SETTINGS))
+    except ImportError:
+        out({"ok": False, "error": "limit_guard_missing"})
     if tg:
         cmd += " --channels plugin:telegram@claude-plugins-official"
     if sid and sid != "-":
@@ -139,9 +150,63 @@ def hist_file():
     return best
 
 
+def guard_status():
+    import remote_guard as guard
+    result = dict(guard.status(), ok=True, running=alive(), applied=False)
+    code, text = sh(["tmux", "display-message", "-p", "-t", TMUX, "#{pane_pid}"])
+    try:
+        env = Path("/proc/%d/environ" % int(text.strip())).read_bytes().split(b"\0")
+        result["applied"] = b"CC_FLEET_LIMIT_GUARD=1" in env
+    except (OSError, ValueError):
+        pass
+    return result
+
+
+def guard_reload():
+    if not alive() or guard_status().get("applied"):
+        out(dict(ok=True, reloaded=False))
+    text = screen(40)
+    if busy(text) or any(re.match(r"^\s*❯\s+\S", line) for line in live_tail(text).splitlines()):
+        out(dict(ok=True, reloaded=False, waiting=True))
+    code, text = sh(["tmux", "display-message", "-p", "-t", TMUX, "#{pane_pid}"])
+    sid = ""
+    try:
+        pid = int(text.strip())
+        args = Path("/proc/%d/cmdline" % pid).read_bytes().decode().split("\0")
+        for flag in ("--resume", "--session-id"):
+            if flag in args:
+                candidate = args[args.index(flag) + 1]
+                if re.fullmatch(r"[0-9a-fA-F-]{36}", candidate):
+                    sid = candidate
+        if not sid:
+            path = hist_file()
+            # A new conversation has no --resume argument. Only consider a
+            # transcript written during this process's lifetime.
+            stat = Path("/proc/%d/stat" % pid).read_text()
+            ticks = float(stat[stat.rfind(")") + 2:].split()[19])
+            uptime = float(Path("/proc/uptime").read_text().split()[0])
+            started = time.time() - uptime + ticks / os.sysconf("SC_CLK_TCK")
+            if path and os.path.getmtime(path) >= started:
+                candidate = Path(path).stem
+                if re.fullmatch(r"[0-9a-fA-F-]{36}", candidate):
+                    sid = candidate
+    except (OSError, ValueError, IndexError):
+        pass
+    if not sid:
+        out(dict(ok=False, error="guard_session_unknown"))
+    start(sid, bool(tg_state()))
+
+
 def main():
     a = sys.argv[1:] or ["status"]
     c = a[0]
+    if c == "guard-config":
+        import remote_guard as guard
+        out(guard.configure(json.load(sys.stdin)))
+    if c == "guard-status":
+        out(guard_status())
+    if c == "guard-reload":
+        guard_reload()
     if c == "status":
         s = screen(40) if alive() else ""
         out({"ok": True, "running": alive(), "busy": busy(s), "tg": tg_state()})

@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.19"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.20"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -130,18 +130,19 @@ def tg_token():
 def tg_notify(text):
     chat_id = cfg().get("chat_id")
     if not chat_id:
-        return  # телеграм-уведомления не настроены — тихо пропускаем
+        return False
     token = tg_token()
     if not token:
-        # раньше здесь был молчаливый return — человек не понимал, почему тихо
-        print("tg_notify: chat_id задан, но токен бота не найден (ни в %s, "
-              "ни в ключе bot_token в config.json)" % TG_ENV, flush=True)
-        return
+        print("tg_notify: notification token unavailable", flush=True)
+        return False
     try:
-        http_json(f"https://api.telegram.org/bot{token}/sendMessage",
-                  {"chat_id": chat_id, "text": text})
+        result = http_json(f"https://api.telegram.org/bot{token}/sendMessage",
+                           {"chat_id": chat_id, "text": text})
+        return bool(result.get("ok"))
     except Exception as e:
-        print(f"tg_notify fail: {e}", flush=True)
+        # Exceptions can include the request URL and therefore the bot token.
+        print("tg_notify fail:", type(e).__name__, flush=True)
+        return False
 
 
 cc_codex.NOTIFY = tg_notify  # вход в ChatGPT завершён — сообщение в телеграм
@@ -2729,7 +2730,7 @@ def claude_limit_alerts(accs, prev):
     for n, row in sorted(accs.items()):
         if row.get("error") or row.get("plan") == "free":
             continue
-        mem, who = prev.setdefault(n, {}), (f" ({n})" if multi else "")
+        mem, who = prev.setdefault(n, {}), (" (%s)" % (row.get("limit_label") or n) if multi else "")
         for key, nm in (("five_hour", "5 ч"), ("seven_day", "неделя")):
             w = row.get(key) or {}
             pct = w.get("pct")
@@ -2755,7 +2756,11 @@ def _claude_limit_tick(snap):
     """Сверить лимиты Claude после опроса и написать в Telegram о новом пороге (config «limit_alerts»: false — выкл.)."""
     if cfg().get("limit_alerts") is False:
         return
-    accs = snap.get("accounts") or {}
+    accs = dict(snap.get("accounts") or {})
+    # Remote accounts must participate even when automatic transfers are off.
+    for mid, row in cc_remote.cached().items():
+        error = row.get("error") or ("offline" if not row.get("online") else "stale" if time.time() - float(row.get("ts") or 0) >= 600 else "")
+        accs["remote:" + mid] = dict(row, error=error, limit_label=(getattr(cc_remote, "members", lambda: {})().get(mid) or {}).get("label") or mid)
     if not accs:
         return
     st = jload(STATE, {})
@@ -2836,6 +2841,10 @@ def pause_state():
         d = pause_ctl.level_state()
         # [remote] работа передана на Claude PROD: аккаунты DEV забиты, но переключились туда — «некуда» не показываем
         d["remote"] = pause_ctl._remote_active()
+        import cc_remote_limits
+        rm = jload(os.path.join(BASE, "remote_mode.json"), {})
+        rp = cc_remote_limits.public().get(rm.get("member")) or {}
+        d["remote_pause"] = rp if d["remote"] and time.time() - float(rp.get("ts") or 0) < 600 else {}
         # Общая сводка включает подключённые аккаунты. Сам локальный гейт,
         # его уровень и время пробуждения остаются без изменений.
         snapshot = jload(SNAPSHOT) or {}
@@ -7156,6 +7165,17 @@ function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
  // Локальная пауза и активный PROD не скрывают исчерпание всей пары.
+ const rp=d&&d.remote_pause;
+ if(rp&&rp.enabled&&rp.applied&&rp.blocked){
+  const until=(rp.resume_at||0)*1000;
+  el.className='ccpause lvl-pause';el.hidden=false;
+  const title=LANG==='en'?'Claude on the remote server is paused':'Claude на втором сервере: пауза по лимитам';
+  const sub=LANG==='en'?'Pending actions wait for quota reset. The conversation is retained.':'Новые действия ждут сброса лимита. Беседа сохранена.';
+  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title
+   +'</div><div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+ccpEsc((rp.reasons||[]).join('; '))+'</div></div>'
+   +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)+'</div><div class="l">'+tr('ccpTillWake')+'</div></div>':'');
+  return;
+ }
  const fleet=d&&d.fleet;
  if(fleet&&fleet.remote_count&&fleet.all_blocked&&pause.kind!=='reserve'){
   const next=fleet.nearest||{},until=next.resets_at?new Date(next.resets_at).getTime():0;
@@ -7595,9 +7615,13 @@ def _remote_loop():
     while True:
         try:
             cc_remote.refresh_all()
+            import cc_remote_limits
+            cc_remote_limits.tick(globals())
+            with lock:
+                _claude_limit_tick(jload(SNAPSHOT, {}))
         except Exception as e:
-            print("remote: ошибка опроса", e, flush=True)
-        time.sleep(60)
+            print("remote: ошибка опроса", type(e).__name__, flush=True)
+        time.sleep(30)
 
 
 if __name__ == "__main__":

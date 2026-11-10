@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.20",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Лимиты и пауза Claude на втором сервере",
+        "p": [
+          "Порог лимита и недельная пауза защищают удалённого Claude независимо от автопередачи.",
+          "Ожидавшие действия продолжаются после сброса лимита в том же процессе и беседе.",
+          "Предупреждения учитывают удалённые аккаунты; пауза и восстановление видны в панели и Telegram."
+        ]
+      },
+      "en": {
+        "t": "Claude quota protection on the second server",
+        "p": [
+          "Session and weekly quota guards protect remote Claude independently of automatic transfers.",
+          "Pending actions continue after quota reset in the same process and conversation.",
+          "Quota warnings include remote accounts; pause and recovery appear in the panel and Telegram."
+        ]
+      }
+    },
+    {
       "v": "2.0.19",
       "date": "2026-11-10",
       "ru": {

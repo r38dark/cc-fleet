@@ -103,7 +103,9 @@ def fetch_limits(mid, force=False):
         return None
     state = jload(STATE_FILE, {})
     old = state.get(mid) or {}
-    if not force and time.time() - float(old.get("ts") or 0) < CACHE_SEC:
+    near = any(float((old.get(k) or {}).get("pct") or 0) >= 80 for k in ("five_hour", "seven_day"))
+    cache_sec = 30 if near else CACHE_SEC
+    if not force and time.time() - float(old.get("ts") or 0) < cache_sec:
         return old
     code, text = ssh_run(m, "python3 " + USAGE_REMOTE)
     data = None
@@ -119,7 +121,7 @@ def fetch_limits(mid, force=False):
         since = float(old.get("fail_since") or now)
         if old.get("online") and now - since < LINK_GRACE:
             # одиночный обрыв: прежние цифры и скорая перепроверка, а не «нет связи» на все 3 минуты кэша
-            row.update(fail_since=since, ts=now - CACHE_SEC + LINK_RETRY)
+            row.update(fail_since=since, ts=now - cache_sec + LINK_RETRY)
         else:
             row.update(online=False, error="ssh", fail_since=since)
     elif data.get("ok"):
