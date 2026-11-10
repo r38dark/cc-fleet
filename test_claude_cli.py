@@ -400,6 +400,87 @@ class Page(unittest.TestCase):
         self.assertEqual(h.count('class="updrow"'), 1)          # Codex не установлен — строки нет
 
 
+BADGE_HARNESS = r"""
+const LANG='ru';
+function tr(k,...a){return k+'('+a.join('|')+')';}
+const badge={hidden:true,title:'',_n:{textContent:''},querySelector:s=>badge._n};
+const pop={hidden:true,innerHTML:'',style:{}};
+function $(s){return s==='#ccliBadge'?badge:s==='#ccliPop'?pop:null;}
+let ccliData=null,ccliMsg='',ccliPopOpen=false;
+%s
+const out=[];for(const c of CASES){ccliData=c.data;ccliPopOpen=!!c.open;ccliMsg=c.msg||'';badge.hidden=true;badge._n.textContent='';pop.innerHTML='';ccliBadgeRender();out.push({hidden:badge.hidden,n:badge._n.textContent,title:badge.title,html:pop.innerHTML});}
+console.log(JSON.stringify(out));
+"""
+
+
+def badge(cases):
+    js = "\n".join([cut(r"^const ccpEsc=.*?;$", "ccpEsc"), cut(r"^function ccliNews\(\)\{.*?^\}$", "ccliNews"), cut(r"^function ccliPopRender\(\)\{.*?^\}$", "ccliPopRender"),
+                    cut(r"^function ccliBadgeRender\(\)\{.*?^\}$", "ccliBadgeRender")])
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "b.js")
+        Path(p).write_text(("const CASES=%s;\n" % json.dumps(cases, ensure_ascii=False)) + BADGE_HARNESS % js, encoding="utf-8")
+        r = subprocess.run(["node", p], capture_output=True, text=True, timeout=30)
+        if r.returncode:
+            raise AssertionError(r.stderr[-800:])
+        return json.loads(r.stdout)
+
+
+@unittest.skipUnless(shutil.which("node"), "нет node")
+class Badge(unittest.TestCase):
+    def test_hidden_when_everything_is_fresh_or_nothing_loaded(self):
+        r = badge([{"data": None}, {"data": {"local": row(update_available=False), "remote": row(update_available=False), "codex": None}}])
+        self.assertTrue(r[0]["hidden"])
+        self.assertTrue(r[1]["hidden"])
+        self.assertEqual(r[1]["n"], "0")
+
+    def test_shown_with_count_and_window_lists_updates_with_update_and_cancel(self):
+        data = {"local": row(), "remote": row(version="2.1.322", update_available=False), "codex": row(tool="codex", version="0.166.0", latest="0.167.0")}
+        r = badge([{"data": data}, {"data": data, "open": True}])
+        self.assertFalse(r[0]["hidden"])
+        self.assertEqual(r[0]["n"], "2")
+        self.assertIn("ccliBadgeTitle(2)", r[0]["title"])
+        self.assertEqual(r[0]["html"], "")                       # окошко закрыто — не рисуем
+        h = r[1]["html"]
+        self.assertIn("ccliPopTitle", h)
+        self.assertIn("ccliPopSub(2.1.319|2.1.322)", h)
+        self.assertIn("ccliPopSub(0.166.0|0.167.0)", h)
+        self.assertEqual(h.count('data-ccli-pop="update"'), 2)
+        self.assertIn('data-k="local"', h)
+        self.assertIn('data-k="codex"', h)
+        self.assertNotIn('data-k="remote"', h)                   # на PROD уже последняя
+        self.assertIn('data-ccli-pop="close"', h)
+        self.assertIn("ccliPopCancel", h)
+        self.assertIn("ccliPopNote", h)
+
+    def test_not_counted_when_it_cannot_be_updated_from_the_panel_or_second_server_is_down(self):
+        r = badge([{"data": {"local": row(can_update=False), "remote": {"ok": False, "error": "ssh"}, "codex": row(tool="codex", kind=None)}}])
+        self.assertTrue(r[0]["hidden"])
+
+    def test_running_keeps_badge_and_shows_progress_without_button(self):
+        r = badge([{"data": {"local": row(state="running", op="update", target="latest", can_update=False), "remote": None, "codex": None}, "open": True}])
+        self.assertFalse(r[0]["hidden"])
+        self.assertIn("ccliRunning(Claude Code|ccliThis()|2.1.322)", r[0]["html"])
+        self.assertNotIn('data-ccli-pop="update"', r[0]["html"])
+
+    def test_done_and_failed_are_visible_only_while_the_window_is_open(self):
+        done = row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False)
+        failed = row(state="failed", err='<b>boom</b>')
+        r = badge([{"data": {"local": done, "remote": None, "codex": None}}, {"data": {"local": done, "remote": None, "codex": None}, "open": True},
+                   {"data": {"local": failed, "remote": None, "codex": None}, "open": True}])
+        self.assertTrue(r[0]["hidden"])
+        self.assertIn("ccliDone(2.1.319|2.1.322)", r[1]["html"])
+        self.assertIn("ccliFailed(&lt;b&gt;boom&lt;/b&gt;)", r[2]["html"])      # текст из ответа экранирован
+
+    def test_open_window_with_nothing_left_says_everything_is_up_to_date(self):
+        r = badge([{"data": {"local": row(update_available=False), "remote": None, "codex": None}, "open": True}])
+        self.assertFalse(r[0]["hidden"])                         # пока окно открыто, бейдж не пропадает из-под курсора
+        self.assertIn("ccliPopNone", r[0]["html"])
+
+    def test_markup_and_timers_are_wired(self):
+        for part in ('id="ccliBadge"', 'id="ccliPop"', "setTimeout(()=>ccliLoad(true),8000)", "setInterval(()=>ccliLoad(true),1800000)", "data-ccli-pop"):
+            self.assertIn(part, SRC, part)
+
+
 class Integration(unittest.TestCase):
     def test_second_server_command_and_deploy(self):
         ctl = (HERE / "remote_ctl.py").read_text(encoding="utf-8")
