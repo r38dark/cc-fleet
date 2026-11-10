@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.29"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.30"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3781,9 +3781,13 @@ html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 aut
 #ccliBox .ccli-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .updsub.ok{color:var(--ok,#45d6ab)}.ccli-bar{margin:8px 0 2px}
 .ccli-pvbox{position:absolute;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none}
-.ccli-pv{position:absolute;padding:2px 7px;border-radius:5px;background:rgba(11,13,16,.78);font:11px/1.3 Inter,system-ui,sans-serif;white-space:nowrap;pointer-events:auto;cursor:default}
+.ccli-pv{position:absolute;padding:1px 5px;border-radius:4px;background:rgba(11,13,16,.78);font:9px/1.3 Inter,system-ui,sans-serif;white-space:nowrap;pointer-events:auto;cursor:default}
 .ccli-pv[hidden]{display:none}.ccli-pv.new{color:var(--ok,#45d6ab)}.ccli-pv.old{color:var(--warn,#ecc277)}
 @media (max-width:640px){.ccli-pvbox{display:none}}
+.ccps-box{position:absolute;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none}
+.ccps{position:absolute;box-sizing:border-box;padding:4px 9px;border-radius:7px;background:rgba(44,34,10,.93);border:1px solid rgba(236,194,119,.55);color:#f1d9a3;font:11px/1.3 Inter,system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.35);pointer-events:none}
+.ccps[hidden]{display:none}.ccps b{color:#ffe3a6}
+@media (max-width:640px){.ccps{font-size:10px;padding:3px 7px}}
 #ccliBox pre{margin:6px 0 0;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Consolas,monospace;opacity:.85}
 .ccli-badge{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;margin:0 0 0 8px;border:1px solid rgba(69,214,171,.45);border-radius:99px;background:rgba(69,214,171,.12);color:var(--fleet-accent,#45d6ab);font:600 11px/1 Inter,system-ui,sans-serif;cursor:pointer;flex:none;animation:ccliGlow 2.6s ease-in-out infinite}
 .ccli-badge[hidden]{display:none}.ccli-badge svg{width:12px;height:12px;display:block}.ccli-badge b{font-weight:650}
@@ -4611,6 +4615,9 @@ const I18N={
   ccpActive:' · активный',
   ccpChecks:n=>`перепроверок окна: <b>${n}</b>`,
   ccpTillWake:'до подъёма',
+  ccpsTitle:'Claude на паузе по лимитам',ccpsTitleCx:'Codex на паузе по лимитам',ccpsUntil:(at,left)=>` до ${at} (осталось ${left})`,
+  ccpsBody:'Новые действия ждут сброса. Сообщения в Telegram встают в очередь, беседа сохранена — после сброса работа продолжится сама.',
+  ccpsBodyCx:'Переключаться некуда. Сообщения из Telegram ждут в очереди и уйдут сами после сброса.',
   ccpTillNearest:'до ближайшего окна',
   ccpTillFree:n=>'до освобождения '+n,
   ccpTillReset:'до сброса окна',
@@ -5132,6 +5139,9 @@ const I18N={
   ccpActive:' · active',
   ccpChecks:n=>`window re-checks: <b>${n}</b>`,
   ccpTillWake:'until resume',
+  ccpsTitle:'Claude paused on limits',ccpsTitleCx:'Codex paused on limits',ccpsUntil:(at,left)=>` until ${at} (${left} left)`,
+  ccpsBody:'New actions wait for the reset. Telegram messages are queued, the conversation is kept — work resumes by itself after the reset.',
+  ccpsBodyCx:'Nowhere to switch. Telegram messages wait in the queue and go out by themselves after the reset.',
   ccpTillNearest:'until nearest window',
   ccpTillFree:n=>'until '+n+' frees up',
   ccpTillReset:'until window reset',
@@ -7934,7 +7944,7 @@ function ccliPvInfo(s,x){
  const k=s==='prod'?'remote':s==='codex'?'codex':s==='claude'?'local':'';
  if(!k||!x||x.ok===false||!x.version)return null;
  const stale=!!(x.restart&&x.restart.stale),old=stale||!!x.update_available;
- return {k:k,old:old,text:(k==='codex'?'Codex ':'Claude Code ')+x.version+(k==='remote'?' · PROD':''),
+ return {k:k,old:old,text:(k==='codex'?'Codex ':'Claude Code ')+x.version,
   title:old?tr(stale?(k==='codex'?'ccliStaleNote':'ccliStaleClaude'):'ccliPvOld'):tr('ccliPvNew')};
 }
 function ccliPartVers(){
@@ -7952,6 +7962,31 @@ function ccliPartVers(){
  });
 }
 setInterval(ccliPartVers,2000);addEventListener('resize',ccliPartVers);setTimeout(()=>{ccliLoad(false);},1500);
+// Полоса паузы сверху окна консоли Claude PROD и Codex: пока работа стоит на лимитах, видно, что это пауза, до какого часа и что сообщения встают в очередь
+function ccpsHtml(k){
+ const at=(ms,r,lead)=>'<b>\u23f8 '+tr(lead)+'</b>'+(ms?tr('ccpsUntil',ccpAt(ms),ccpLeft(ms)):'')+(r?' · '+ccpEsc(r):'');
+ if(k==='prod'){const rp=ccpData&&ccpData.remote_pause;if(!(rp&&rp.enabled&&rp.applied&&rp.blocked))return '';
+  return at((rp.resume_at||0)*1000,(rp.reasons||[]).join('; '),'ccpsTitle')+'. '+tr('ccpsBody');}
+ if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;if(!(p&&p.active&&p.paused))return '';
+  return at((p.resume_at||0)*1000,(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', '),'ccpsTitleCx')+'. '+tr('ccpsBodyCx');}
+ return '';
+}
+function ccpPartStrip(){
+ const wrap=document.querySelector('.termwrap');if(!wrap||typeof PANES==='undefined')return;
+ let box=document.getElementById('ccps');
+ const htmls=PANES.map(P=>ccpsHtml(P.k));
+ if(!box){if(!htmls.some(Boolean))return;box=document.createElement('div');box.id='ccps';box.className='ccps-box';wrap.appendChild(box);}
+ const wr=wrap.getBoundingClientRect(),off=(wrap.classList.contains('tsplit')?40:10)+(window.innerWidth>640?18:0);   // ниже надписи версии
+ PANES.forEach((P,i)=>{
+  const id='ccps'+i;let el=document.getElementById(id);
+  const b=P.box,r=b&&b.getBoundingClientRect();
+  if(!htmls[i]||P.hid||!r||r.width<200||b.offsetParent===null){if(el)el.hidden=true;return;}
+  if(!el){el=document.createElement('div');el.id=id;el.className='ccps';box.appendChild(el);}
+  el.innerHTML=htmls[i];el.hidden=false;
+  el.style.top=Math.round(r.top-wr.top+off)+'px';el.style.left=Math.round(r.left-wr.left+10)+'px';el.style.width=Math.round(r.width-20)+'px';
+ });
+}
+setInterval(ccpPartStrip,1000);addEventListener('resize',ccpPartStrip);
 setTimeout(()=>ccliLoad(true),8000);       // после загрузки страницы — тихая проверка версий
 setInterval(()=>ccliLoad(true),1800000);   // и раз в полчаса
 $('#gear').addEventListener('click',()=>{bkMsg='';updSettingsRender();updLoad();bkLoad();ccliMsg='';ccliLoad(!ccliData||Date.now()/1000-((ccliData.local&&ccliData.local.checked)||0)>((ccliData.local&&ccliData.local.ttl)||1800));});

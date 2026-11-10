@@ -616,7 +616,7 @@ class VersionLabel(unittest.TestCase):
     def test_text_follows_the_part(self):
         r = pv([{"s": "claude", "x": row(version="2.1.322", update_available=False)}, {"s": "prod", "x": row(version="2.1.321", update_available=False)},
                 {"s": "codex", "x": row(tool="codex", version="0.167.0", update_available=False)}])
-        self.assertEqual([x["text"] for x in r], ["Claude Code 2.1.322", "Claude Code 2.1.321 · PROD", "Codex 0.167.0"])
+        self.assertEqual([x["text"] for x in r], ["Claude Code 2.1.322", "Claude Code 2.1.321", "Codex 0.167.0"])
 
     def test_green_when_current_yellow_when_newer_exists_or_started_before_the_update(self):
         r = pv([{"s": "claude", "x": row(update_available=False)},

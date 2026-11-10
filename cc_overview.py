@@ -954,6 +954,19 @@ html:root:root:root .fleet-quick-panel .cxqlist{max-height:none;overflow:visible
 html:root:root:root .fleet-settings-panel .fleet-model-catalog{max-height:none;overflow:visible}
 html:root:root:root #naiModelQ{overflow:hidden}
 
+/* шкала лимита на плитках активных аккаунтов (вариант «Затухание и пульс»): пятичасовой — очень прозрачная заливка ОСТАТКА с мягким краем, меняет цвет от зелёного к красному,
+   когда осталось меньше 15% — «дышит»; недельный — яркая светящаяся линия сверху, растёт слева направо; Notion AI не трогаем */
+#fleetActiveAccounts .fleet-compact-account[data-lb]{position:relative;isolation:isolate}
+#fleetActiveAccounts .fleet-compact-account[data-lb]::before,#fleetActiveAccounts .fleet-compact-account[data-lb]::after{content:"";position:absolute;left:0;top:0;pointer-events:none;border-radius:inherit;transition:width .6s ease}
+#fleetActiveAccounts .fleet-compact-account[data-lb]::before{bottom:0;z-index:-1;width:calc(var(--r5,0)*100%);background:linear-gradient(90deg,var(--c5,transparent) 0,var(--c5,transparent) max(0px,calc(100% - 46px)),transparent 100%)}
+#fleetActiveAccounts .fleet-compact-account[data-lb]::after{inset:-1px;z-index:1;transition:background-size .6s ease;background:linear-gradient(var(--cwu,transparent),var(--cwu,transparent)) 0 0/calc(var(--uw,0)*100%) 2px no-repeat,linear-gradient(180deg,var(--cwg,transparent),transparent) 0 0/calc(var(--uw,0)*100%) 9px no-repeat}   /* недельная линия: слой во всю плитку с её радиусом, линия — лишь верхние 2 px, по закруглению обрезается */
+#fleetActiveAccounts .fleet-compact-account[data-lb][data-crit="1"]::before{animation:fleetLbBreath 1.8s ease-in-out infinite}
+@keyframes fleetLbBreath{0%,100%{opacity:.5}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){#fleetActiveAccounts .fleet-compact-account[data-lb]::before,#fleetActiveAccounts .fleet-compact-account[data-lb]::after{transition:none;animation:none!important}}
+/* поле ввода консоли: подсказка в одну строку с многоточием; пока поле пустое, полосы прокрутки нет (на телефоне при узком поле подсказка переносилась и давала серую полоску) */
+.fleet-composer textarea::placeholder,.tpcomp textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fleet-composer textarea:placeholder-shown,.tpcomp textarea:placeholder-shown{overflow:hidden}
+
 '''
 
 JS = r'''
@@ -2010,6 +2023,29 @@ JS = r'''
  mirrorLoad();
 
  loadRotation();setInterval(()=>{if(!document.hidden)loadRotation()},5000);
+})();
+
+// Шкала лимита на плитках активных аккаунтов Claude и Codex («Затухание и пульс»): переменные считаются из процентов в самих плитках, Notion AI не трогаем
+(()=>{
+ function limitBarVars(u5,uw){
+  const c=v=>Math.max(0,Math.min(1,isFinite(v)?v:0)),hsl=(h,a,l,s)=>'hsla('+Math.round(h)+','+s+'%,'+l+'%,'+a+')';
+  u5=c(u5);uw=c(uw);const r5=1-u5;
+  return {'--r5':r5,'--uw':uw,'--c5':hsl(150*r5,.10,56,76),'--cwu':hsl(170*(1-uw),.95,60,88),'--cwg':hsl(170*(1-uw),.35,60,88)};
+ }
+ function paintLimitBars(){
+  document.querySelectorAll('#fleetActiveAccounts .fleet-compact-account:not(.notion)').forEach(t=>{
+   const g=k=>{const e=t.querySelector('.fleet-compact-window[data-window='+k+'] .fleet-compact-used'),v=e?parseFloat(e.textContent):NaN;return isFinite(v)?v/100:null};
+   const a=g('session'),b=g('week');
+   if(a===null&&b===null){t.removeAttribute('data-lb');t.removeAttribute('data-crit');return;}
+   const v=limitBarVars(a===null?0:a,b===null?0:b);
+   for(const k in v)t.style.setProperty(k,v[k]);
+   t.setAttribute('data-crit',a!==null&&v['--r5']<.15?'1':'0');
+   t.setAttribute('data-lb','1');
+  });
+ }
+ const strip=document.getElementById('fleetActiveAccounts');
+ if(strip){let t=null;new MutationObserver(()=>{clearTimeout(t);t=setTimeout(paintLimitBars,60)}).observe(strip,{childList:true,subtree:true,characterData:true});}
+ paintLimitBars();setTimeout(paintLimitBars,1500);
 })();
 '''
 
