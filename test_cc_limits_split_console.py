@@ -162,7 +162,7 @@ class Page(unittest.TestCase):
         self.assertIn("P.box.classList.add('tpchat');P.nv=document.createElement('div');P.nv.className='nai-view tpnai';", L.PAGE)
         self.assertIn("if(isNai(P.k))return;", L.PAGE)
         self.assertIn("e.stopImmediatePropagation();const text=input.value;if(!text.trim())return;P.chat.send(text,", L.PAGE)
-        self.assertIn("c.form.querySelector('.tpkey').hidden=isNai(P.k);", L.PAGE)
+        self.assertIn("c.form.querySelectorAll('.tpkey').forEach(b=>{b.hidden=isNai(P.k);});", L.PAGE)
         # при разделении вкладками Notion ведёт cc_limits.py, вне разделения — прежнее окно поверх консоли
         self.assertIn("sp=window.fleetSplitOn&&window.fleetSplitOn()", L.PAGE)
         self.assertIn("if(window.fleetSplitOn&&window.fleetSplitOn()){if(on)close();return}", L.PAGE)
