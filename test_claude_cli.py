@@ -1,5 +1,5 @@
-"""Обновление Claude Code из панели: модуль claude_cli.py (версия, обновление, возврат) на подставных npm/node в временной папке.
-Запуск: python3 -m unittest test_claude_cli -v. Настоящий npm и настоящие сессии не трогаются."""
+"""Обновление Claude Code и Codex из панели: модуль claude_cli.py (версия, обновление, возврат; npm и нативная установка) на подставных npm/node/claude
+во временной папке, плюс блок страницы. Запуск: python3 -m unittest test_claude_cli -v. Настоящие npm и сессии не трогаются."""
 import json
 import os
 import re
@@ -14,15 +14,18 @@ from pathlib import Path
 HERE = Path(__file__).parent
 MOD = str(HERE / "claude_cli.py")
 
+# подделка npm: view -> FAKE_LATEST; install [-g] --prefix P pkg@V -> кладёт package.json версии V (latest -> FAKE_LATEST) в P/lib/node_modules/pkg (-g) или P/node_modules/pkg
 FAKE_NPM = """#!/bin/sh
-# подделка npm: view -> FAKE_LATEST; install -g --prefix P pkg@V -> кладёт package.json версии V (latest -> FAKE_LATEST)
 if [ "$1" = "view" ]; then [ -n "$FAKE_VIEW_FAIL" ] && exit 1; echo "${FAKE_LATEST:-2.1.322}"; exit 0; fi
 if [ "$1" = "install" ]; then
   [ -n "$FAKE_INSTALL_FAIL" ] && { echo "npm ERR! simulated failure" >&2; exit 1; }
   sleep "${FAKE_DELAY:-0}"
-  prefix="$4"; spec="$5"; ver="${spec##*@}"; [ "$ver" = "latest" ] && ver="${FAKE_LATEST:-2.1.322}"
-  d="$prefix/lib/node_modules/@anthropic-ai/claude-code"; mkdir -p "$d"
-  printf '{"name":"@anthropic-ai/claude-code","version":"%s"}' "$ver" > "$d/package.json"
+  shift; glob=0; prefix=""; spec=""
+  while [ $# -gt 0 ]; do case "$1" in -g) glob=1;; --prefix) shift; prefix="$1";; *) spec="$1";; esac; shift; done
+  name="${spec%@*}"; ver="${spec##*@}"; [ "$ver" = "latest" ] && ver="${FAKE_LATEST:-2.1.322}"
+  if [ "$glob" = 1 ]; then d="$prefix/lib/node_modules/$name"; else d="$prefix/node_modules/$name"; fi
+  mkdir -p "$d"
+  printf '{"name":"%s","version":"%s"}' "$name" "$ver" > "$d/package.json"
   echo "added 1 package"; exit 0
 fi
 exit 2
@@ -35,6 +38,8 @@ def script(path, text):
 
 
 class CliCase(unittest.TestCase):
+    """npm-установка Claude Code в <tmp>/prefix, подставные npm и node в <tmp>/bin."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         t = Path(self.tmp.name)
@@ -48,9 +53,10 @@ class CliCase(unittest.TestCase):
         (self.bin / "claude").symlink_to(pkg / "bin/claude.exe")
         script(self.bin / "npm", FAKE_NPM)
         script(self.bin / "node", "#!/bin/sh\necho v20.1.0\n")
-        self.env = dict(os.environ, PATH="%s:/usr/bin:/bin" % self.bin, CC_CLI_STATE_DIR=str(self.state),
+        self.env = dict(os.environ, PATH="%s:/usr/bin:/bin" % self.bin, CC_CLI_STATE_DIR=str(self.state), CC_CLI_REGISTRY="npm",
                         CC_CLI_NPM=str(self.bin / "npm"), CC_CLI_NODE=str(self.bin / "node"), HOME=self.tmp.name)
-        self.env.pop("FAKE_INSTALL_FAIL", None)
+        for k in ("FAKE_INSTALL_FAIL", "FAKE_VIEW_FAIL", "CC_CLI_LATEST"):
+            self.env.pop(k, None)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -59,13 +65,19 @@ class CliCase(unittest.TestCase):
         r = subprocess.run([sys.executable, MOD, *args], capture_output=True, text=True, timeout=60, env=dict(self.env, **extra_env))
         return json.loads(r.stdout.strip().splitlines()[-1])
 
-    def wait(self, tries=60):
+    def py(self, code, **extra_env):
+        """Вызов функций модуля напрямую (Codex доступен только панели, в ctl.py его нет)."""
+        r = subprocess.run([sys.executable, "-c", "import json,sys;sys.path.insert(0,%r);import claude_cli as c;%s" % (str(HERE), code)],
+                           capture_output=True, text=True, timeout=60, env=dict(self.env, **extra_env))
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    def wait(self, tries=60, call=None):
         for _ in range(tries):
-            d = self.cli("status")
+            d = call() if call else self.cli("status")
             if d["state"] != "running":
                 return d
             time.sleep(0.2)
-        self.fail("npm не закончил")
+        self.fail("обновление не закончилось")
 
 
 class Status(CliCase):
@@ -86,21 +98,22 @@ class Status(CliCase):
         self.assertIsNone(d["latest"])
         self.assertFalse(d["update_available"])
 
-    def test_native_install_is_not_touched(self):
-        (self.prefix / "lib/node_modules/@anthropic-ai/claude-code/package.json").unlink()
-        (self.bin / "claude").unlink()
-        script(self.bin / "claude", "#!/bin/sh\nexit 0\n")   # обычный файл вне npm-пакета = нативная установка
-        d = self.cli("status")
-        self.assertEqual(d["kind"], "native")
-        self.assertFalse(d["can_update"])
-        self.assertEqual(self.cli("update")["error"], "not_npm")
-
-    def test_old_node_blocks_update(self):
+    def test_old_node_blocks_npm_update(self):
         script(self.bin / "node", "#!/bin/sh\necho v16.0.0\n")
         d = self.cli("status")
         self.assertFalse(d["node"]["ready"])
         self.assertFalse(d["can_update"])
         self.assertEqual(self.cli("update")["error"], "no_node")
+
+    def test_unknown_binary_is_not_touched(self):
+        (self.prefix / "lib/node_modules/@anthropic-ai/claude-code/package.json").unlink()
+        (self.bin / "claude").unlink()
+        script(self.bin / "claude", "#!/bin/sh\nexit 0\n")   # обычный файл вне npm-пакета и вне папки versions
+        d = self.cli("status")
+        self.assertEqual(d["kind"], "native")
+        self.assertIsNone(d["version"])
+        self.assertFalse(d["can_update"])
+        self.assertEqual(self.cli("update")["error"], "not_npm")
 
 
 class Update(CliCase):
@@ -132,12 +145,135 @@ class Update(CliCase):
         for bad in ("1.2; rm -rf /", "latest;id", "../x", "2.1"):
             self.assertEqual(self.cli("update", bad)["error"], "bad_target", bad)
 
-    def test_killed_npm_is_reported_as_failed(self):
+    def test_killed_process_is_reported_as_failed(self):
         (self.state / "claude_cli_state.json").write_text(json.dumps(
             {"state": "running", "pid": 99999999, "started": time.time(), "op": "update", "from_version": "2.1.319"}))
         d = self.cli("status")
         self.assertEqual(d["state"], "failed")
-        self.assertIn("остановлен", d["err"])
+        self.assertIn("остановлено", d["err"])
+
+
+class Native(unittest.TestCase):
+    """Нативная установка Claude Code: ~/.local/bin/claude -> ~/.local/share/claude/versions/X.Y.Z, обновление — `claude update`."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.home, self.state = t / "home", t / "state"
+        self.bin, self.vers = self.home / ".local/bin", self.home / ".local/share/claude/versions"
+        for d in (self.state, self.bin, self.vers):
+            d.mkdir(parents=True)
+        fake = """#!/bin/sh
+# подделка нативного claude: update кладёт версию 2.1.322 и переставляет ссылку (как делает настоящая)
+if [ "$1" = "update" ]; then
+  [ -n "$FAKE_UPDATE_FAIL" ] && { echo "update failed: simulated" >&2; exit 1; }
+  cp "%(v)s/2.1.319" "%(v)s/2.1.322" && ln -sfn "%(v)s/2.1.322" "%(b)s/claude" && echo "Updated to 2.1.322"; exit 0
+fi
+exit 0
+""" % {"v": self.vers, "b": self.bin}
+        script(self.vers / "2.1.319", fake)
+        script(self.vers / "2.1.316", "#!/bin/sh\nexit 0\n")
+        (self.bin / "claude").symlink_to(self.vers / "2.1.319")
+        self.env = dict(os.environ, PATH="%s:/usr/bin:/bin" % self.bin, CC_CLI_STATE_DIR=str(self.state), CC_CLI_LATEST="2.1.322", HOME=str(self.home))
+        for k in ("FAKE_UPDATE_FAIL", "CC_CLI_NPM", "CC_CLI_NODE"):
+            self.env.pop(k, None)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def cli(self, *args, **extra_env):
+        r = subprocess.run([sys.executable, MOD, *args], capture_output=True, text=True, timeout=60, env=dict(self.env, **extra_env))
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    def wait(self):
+        for _ in range(60):
+            d = self.cli("status")
+            if d["state"] != "running":
+                return d
+            time.sleep(0.2)
+        self.fail("обновление не закончилось")
+
+    def link(self):
+        return os.path.basename(os.path.realpath(self.bin / "claude"))
+
+    def test_status_reads_version_from_folder_and_offers_older_one(self):
+        d = self.cli("status", "check")
+        self.assertEqual((d["kind"], d["version"], d["latest"], d["can_update"], d["prev_version"]), ("native", "2.1.319", "2.1.322", True, "2.1.316"))
+        self.assertTrue(d["update_available"])
+
+    def test_update_runs_the_native_updater_and_keeps_old_version(self):
+        self.assertTrue(self.cli("update")["ok"])
+        d = self.wait()
+        self.assertEqual((d["state"], d["version"], d["prev_version"]), ("done", "2.1.322", "2.1.319"))
+        self.assertEqual(self.link(), "2.1.322")
+        self.assertTrue((self.vers / "2.1.319").exists())      # старая версия осталась на диске
+        self.assertIn("Updated to 2.1.322", d["log"])
+
+    def test_rollback_switches_the_link_back_without_a_process(self):
+        self.cli("update")
+        self.wait()
+        d = self.cli("rollback")
+        self.assertEqual((d["ok"], d["state"], d["op"], d["version"]), (True, "done", "rollback", "2.1.319"))
+        self.assertEqual(self.link(), "2.1.319")
+        self.assertEqual(self.cli("rollback")["ok"], True)     # дальше можно вернуться и на 2.1.316 (самая новая из старых)
+        self.assertEqual(self.link(), "2.1.316")
+
+    def test_rollback_without_saved_older_version(self):
+        (self.vers / "2.1.316").unlink()
+        self.assertEqual(self.cli("rollback")["error"], "nothing_to_rollback")
+
+    def test_failed_native_update_keeps_the_link(self):
+        self.cli("update", FAKE_UPDATE_FAIL="1")
+        d = self.wait()
+        self.assertEqual((d["state"], d["version"]), ("failed", "2.1.319"))
+        self.assertIn("simulated", d["err"])
+        self.assertEqual(self.link(), "2.1.319")
+
+    def test_native_does_not_need_node_and_ignores_requested_version(self):
+        self.assertTrue(self.cli("update", "2.1.320")["ok"])    # номер версии у нативного апдейтера выбрать нельзя
+        d = self.wait()
+        self.assertEqual((d["state"], d["version"], d["target"]), ("done", "2.1.322", "latest"))
+
+
+class Codex(CliCase):
+    """Codex ставится в <папка>/node_modules (как на нашем деве) или глобально; подсказка о его бинарнике приходит от панели."""
+
+    def local_codex(self):
+        d = Path(self.tmp.name) / "codexdir"
+        pkg = d / "node_modules/@openai/codex"
+        (pkg / "bin").mkdir(parents=True)
+        (pkg / "package.json").write_text(json.dumps({"name": "@openai/codex", "version": "0.166.0"}))
+        script(pkg / "bin/codex.js", "#!/bin/sh\nexit 0\n")
+        (d / "node_modules/.bin").mkdir()
+        (d / "node_modules/.bin/codex").symlink_to(pkg / "bin/codex.js")
+        return d
+
+    def test_local_install_is_updated_with_prefix_and_without_g(self):
+        d = self.local_codex()
+        hint = "c.BIN_HINT['codex']=%r;" % str(d / "node_modules/.bin/codex")
+        s = self.py(hint + "print(json.dumps(c.status(check=True,tool='codex')))", CC_CLI_LATEST="0.167.0")
+        self.assertEqual((s["tool"], s["kind"], s["version"], s["latest"], s["update_available"]), ("codex", "npm", "0.166.0", "0.167.0", True))
+        self.assertTrue(self.py(hint + "print(json.dumps(c.start('latest',tool='codex')))", FAKE_LATEST="0.167.0")["ok"])
+        s = self.wait(call=lambda: self.py(hint + "print(json.dumps(c.status(tool='codex')))"))
+        self.assertEqual((s["state"], s["version"], s["prev_version"]), ("done", "0.167.0", "0.166.0"))
+        self.assertTrue((d / "node_modules/@openai/codex/package.json").exists())      # обновилась именно локальная папка
+        self.assertFalse((d / "lib").exists())                                          # и без глобальной раскладки
+        s = self.py(hint + "print(json.dumps(c.rollback(tool='codex')))")
+        s = self.wait(call=lambda: self.py(hint + "print(json.dumps(c.status(tool='codex')))"))
+        self.assertEqual((s["state"], s["version"]), ("done", "0.166.0"))
+
+    def test_codex_state_is_separate_from_claude(self):
+        d = self.local_codex()
+        hint = "c.BIN_HINT['codex']=%r;" % str(d / "node_modules/.bin/codex")
+        self.py(hint + "print(json.dumps(c.start('latest',tool='codex')))", FAKE_INSTALL_FAIL="1")
+        self.wait(call=lambda: self.py(hint + "print(json.dumps(c.status(tool='codex')))"))
+        self.assertEqual(self.cli("status")["state"], "idle")                           # у Claude Code состояния не появилось
+        self.assertTrue((self.state / "codex_cli_state.json").exists())
+
+    def test_no_codex_no_row(self):
+        s = self.py("print(json.dumps(c.status(tool='codex')))")
+        self.assertIsNone(s["kind"])
+        self.assertFalse(s["can_update"])
 
 
 SRC = (HERE / "cc_limits.py").read_text(encoding="utf-8")
@@ -173,7 +309,7 @@ def render(cases):
 
 
 def row(**kw):
-    d = {"ok": True, "kind": "npm", "version": "2.1.319", "latest": "2.1.322", "update_available": True, "prev_version": "", "state": "idle", "op": "",
+    d = {"ok": True, "tool": "claude", "kind": "npm", "version": "2.1.319", "latest": "2.1.322", "update_available": True, "prev_version": "", "state": "idle", "op": "",
          "target": "", "from_version": "", "version_after": "", "err": "", "log": "", "node": {"ready": True}, "can_update": True, "path": ""}
     d.update(kw)
     return d
@@ -197,7 +333,7 @@ class Page(unittest.TestCase):
 
     def test_block_and_routes_are_wired(self):
         for part in ('id="ccliBox"', 'id="ccliHdr"', "API+'claude-cli?token='", "API+'claude-cli/'+p+'?token='", "ccliLoad(", 'u.path == "/api/claude-cli"',
-                     '"/api/claude-cli/update", "/api/claude-cli/rollback"', "def claude_cli_view(", "def claude_cli_action("):
+                     '"/api/claude-cli/update", "/api/claude-cli/rollback"', "def claude_cli_view(", "def claude_cli_action(", "BIN_HINT"):
             self.assertIn(part, SRC, part)
 
     def test_update_button_and_check(self):
@@ -205,6 +341,7 @@ class Page(unittest.TestCase):
         self.assertIn('data-ccli="update"', h)
         self.assertIn("ccliBtnUpdate(2.1.322)", h)
         self.assertIn("ccliLatest(2.1.322)", h)
+        self.assertIn("ccliLine(Claude Code|ccliThis()|2.1.319)", h)
         self.assertIn('data-ccli="check"', h)
         self.assertNotIn('data-ccli="rollback"', h)
         self.assertEqual(h.count('class="updrow"'), 1)          # второго сервера нет — одна строка
@@ -228,12 +365,18 @@ class Page(unittest.TestCase):
         self.assertIn("ccliBtnRollback(2.1.319)", h)
         self.assertNotIn('data-ccli="update"', h)
 
-    def test_native_and_missing_node_and_no_link(self):
-        h = render([{"local": row(kind="native", path="/root/.local/bin/claude", can_update=False, update_available=False), "remote": None},
+    def test_native_install_has_buttons_and_needs_no_node(self):
+        h = render([{"local": row(kind="native", node={"ready": False}, path="/root/.local/bin/claude", prev_version="2.1.316"), "remote": None}])[0]
+        self.assertIn('data-ccli="update"', h)
+        self.assertIn('data-ccli="rollback"', h)
+        self.assertNotIn("ccliNoNode", h)
+
+    def test_unknown_binary_missing_node_no_link_and_not_found(self):
+        h = render([{"local": row(kind="native", version=None, path="/opt/x/claude", can_update=False, update_available=False), "remote": None},
                     {"local": row(node={"ready": False}, can_update=False), "remote": None},
                     {"local": row(), "remote": {"ok": False, "error": "ssh"}},
                     {"local": row(kind=None, version=None, can_update=False), "remote": None}])
-        self.assertIn("ccliNative(/root/.local/bin/claude)", h[0])
+        self.assertIn("ccliNative(/opt/x/claude)", h[0])
         self.assertNotIn("data-ccli=", h[0])
         self.assertIn("ccliNoNode", h[1])
         self.assertNotIn('data-ccli="update"', h[1])
@@ -246,6 +389,15 @@ class Page(unittest.TestCase):
         self.assertIn('data-k="remote"', h)
         self.assertNotIn("<img", h)
         self.assertIn("&lt;img", h)
+
+    def test_codex_row(self):
+        h = render([{"local": row(), "remote": None, "codex": row(tool="codex", version="0.166.0", latest="0.167.0")}])[0]
+        self.assertEqual(h.count('class="updrow"'), 2)
+        self.assertIn('data-k="codex"', h)
+        self.assertIn("ccliLine(Codex|ccliThis()|0.166.0)", h)
+        self.assertIn("ccliBtnUpdate(0.167.0)", h)
+        h = render([{"local": row(), "remote": None, "codex": None}])[0]
+        self.assertEqual(h.count('class="updrow"'), 1)          # Codex не установлен — строки нет
 
 
 class Integration(unittest.TestCase):

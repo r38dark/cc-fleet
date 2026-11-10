@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.23"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.24"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2868,9 +2868,14 @@ def pause_state():
 
 
 def claude_cli_view(check=False):
-    """GET /api/claude-cli: версия Claude Code и ход обновления на этом сервере и (если пара подключена) на втором. check — спросить реестр npm."""
+    """GET /api/claude-cli: версия Claude Code и Codex и ход обновления на этом сервере и Claude Code на втором (если пара подключена). check — спросить реестр."""
     import claude_cli
-    out = {"ok": True, "local": claude_cli.status(check=check), "remote": None}
+    out = {"ok": True, "local": claude_cli.status(check=check), "remote": None, "codex": None}
+    cbin = codex_bin()
+    if cbin:   # Codex на этом сервере: путь подсказываем модулю (он лежит в папке установки панели или в системном npm)
+        claude_cli.BIN_HINT["codex"] = cbin
+        cx = claude_cli.status(check=check, tool="codex")
+        out["codex"] = cx if cx.get("kind") else None
     try:
         import cc_remote_mode
         if cc_remote_mode._member_id():
@@ -2894,6 +2899,12 @@ def claude_cli_action(action, body):
         return dict(r, ok=bool(r.get("ok"))) if r is not None else {"ok": False, "error": "ssh"}
     if where == "local":
         return claude_cli.start(ver) if action == "update" else claude_cli.rollback()
+    if where == "codex":
+        cbin = codex_bin()
+        if not cbin:
+            return {"ok": False, "error": "not_installed"}
+        claude_cli.BIN_HINT["codex"] = cbin
+        return claude_cli.start(ver, tool="codex") if action == "update" else claude_cli.rollback(tool="codex")
     return {"ok": False, "error": "bad_where"}
 
 
@@ -4233,7 +4244,7 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
   <div id="updBox"></div>
   <div class="modalh" id="bkHdr">Копии аккаунтов</div>
   <div id="bkBox"></div>
-  <div class="modalh" id="ccliHdr">Claude Code</div>
+  <div class="modalh" id="ccliHdr">Claude Code и Codex</div>
   <div id="ccliBox"></div>
   <div class="modalh" id="modelsHdr">Модели</div>
   <div class="modalsub" id="modalSub">Отметь, какие показывать кнопками на главной — применяется сразу, без «Сохранить»</div>
@@ -4333,20 +4344,20 @@ const I18N={
   thrSet:v=>'Порог: '+v+'%',
   optOn:'Автовыбор включён — ручные переключения заблокированы',
   optOff:'Автовыбор выключен — ручные переключения доступны',
-  ccliHdr:'Claude Code',ccliThis:'на этом сервере',ccliProd:'на PROD',
-  ccliLine:(w,v)=>`Claude Code ${w}: ${v||'—'}`,
+  ccliHdr:'Claude Code и Codex',ccliThis:'на этом сервере',ccliProd:'на PROD',
+  ccliLine:(n,w,v)=>`${n} ${w}: ${v||'—'}`,
   ccliLatest:v=>`Доступна версия ${v}`,ccliUpToDate:'Установлена последняя версия',ccliNeverChecked:'Проверка новой версии ещё не выполнялась',
   ccliBtnCheck:'Проверить',ccliBtnUpdate:v=>`Обновить до ${v}`,ccliBtnRollback:v=>`Вернуть ${v}`,ccliBtnRetry:'Повторить',
-  ccliAskUpdate:(w,a,b)=>`Обновить Claude Code ${w} с ${a} до ${b}? Запущенные сессии не прервутся, новая версия подхватится при следующем запуске.`,
-  ccliAskRollback:(w,a,b)=>`Вернуть Claude Code ${w} с ${a} на ${b}?`,
-  ccliRunning:(w,v)=>`Идёт обновление ${w}${v?' до '+v:''}…`,
+  ccliAskUpdate:(n,w,a,b)=>`Обновить ${n} ${w} с ${a} до ${b}? Запущенные сессии не прервутся, новая версия подхватится при следующем запуске.`,
+  ccliAskRollback:(n,w,a,b)=>`Вернуть ${n} ${w} с ${a} на ${b}?`,
+  ccliRunning:(n,w,v)=>`Идёт обновление ${n} ${w}${v?' до '+v:''}…`,
   ccliDone:(a,b)=>`Готово: ${a} → ${b}. Запущенные сессии подхватят новую версию после перезапуска.`,
   ccliDoneRb:(a,b)=>`Возврат выполнен: ${a} → ${b}. Запущенные сессии подхватят её после перезапуска.`,
   ccliFailed:e=>`Не удалось обновить: ${e||'ошибка npm'}. Прежняя версия осталась.`,
-  ccliNative:p=>`Claude Code поставлен не через npm (${p}) — обновляй его тем способом, которым ставил.`,
+  ccliNative:p=>`Установка такого вида (${p}) кнопке незнакома — обновляй программу тем способом, которым ставил.`,
   ccliNone:'Claude Code не найден на этом сервере.',ccliNoNode:'Для обновления нужны Node.js 18 или новее и npm.',ccliNoLink:'Нет связи со вторым сервером.',
-  ccliHint:'Кнопка запускает npm install -g; работающую сессию Claude она не перезапускает.',
-  ccliE_not_npm:'Claude Code поставлен не через npm — кнопка его не трогает.',ccliE_not_installed:'Claude Code не найден.',ccliE_no_node:'Нужны Node.js 18+ и npm.',
+  ccliHint:'Кнопка запускает npm или штатное обновление Claude Code; работающую сессию она не перезапускает.',
+  ccliE_not_npm:'Установка такого вида кнопке незнакома — она её не трогает.',ccliE_not_installed:'Claude Code не найден.',ccliE_no_node:'Нужны Node.js 18+ и npm.',
   ccliE_ssh:'Нет связи со вторым сервером.',ccliE_bad_target:'Недопустимая версия.',ccliE_nothing_to_rollback:'Возвращать нечего.',ccliE_spawn:'Не удалось запустить npm.',ccliE_x:'Не получилось. Попробуй ещё раз.',
   checking:'Проверяю…',
   checkErr:e=>`⚠ ошибка проверки: ${e}`,
@@ -4841,20 +4852,20 @@ const I18N={
   thrSet:v=>'Threshold: '+v+'%',
   optOn:'Auto-pick enabled — manual switching blocked',
   optOff:'Auto-pick disabled — manual switching available',
-  ccliHdr:'Claude Code',ccliThis:'on this server',ccliProd:'on PROD',
-  ccliLine:(w,v)=>`Claude Code ${w}: ${v||'—'}`,
+  ccliHdr:'Claude Code and Codex',ccliThis:'on this server',ccliProd:'on PROD',
+  ccliLine:(n,w,v)=>`${n} ${w}: ${v||'—'}`,
   ccliLatest:v=>`Version ${v} is available`,ccliUpToDate:'The latest version is installed',ccliNeverChecked:'No version check yet',
   ccliBtnCheck:'Check',ccliBtnUpdate:v=>`Update to ${v}`,ccliBtnRollback:v=>`Roll back to ${v}`,ccliBtnRetry:'Retry',
-  ccliAskUpdate:(w,a,b)=>`Update Claude Code ${w} from ${a} to ${b}? Running sessions are not interrupted; the new version is picked up on the next start.`,
-  ccliAskRollback:(w,a,b)=>`Roll Claude Code ${w} back from ${a} to ${b}?`,
-  ccliRunning:(w,v)=>`Updating ${w}${v?' to '+v:''}…`,
+  ccliAskUpdate:(n,w,a,b)=>`Update ${n} ${w} from ${a} to ${b}? Running sessions are not interrupted; the new version is picked up on the next start.`,
+  ccliAskRollback:(n,w,a,b)=>`Roll ${n} ${w} back from ${a} to ${b}?`,
+  ccliRunning:(n,w,v)=>`Updating ${n} ${w}${v?' to '+v:''}…`,
   ccliDone:(a,b)=>`Done: ${a} → ${b}. Running sessions pick up the new version after a restart.`,
   ccliDoneRb:(a,b)=>`Rolled back: ${a} → ${b}. Running sessions pick it up after a restart.`,
   ccliFailed:e=>`Update failed: ${e||'npm error'}. The previous version is kept.`,
-  ccliNative:p=>`Claude Code was not installed with npm (${p}) — update it the way you installed it.`,
+  ccliNative:p=>`This kind of installation (${p}) is unknown to the button — update the program the way you installed it.`,
   ccliNone:'Claude Code is not found on this server.',ccliNoNode:'Updating needs Node.js 18 or newer and npm.',ccliNoLink:'No connection to the second server.',
-  ccliHint:'The button runs npm install -g; it does not restart a running Claude session.',
-  ccliE_not_npm:'Claude Code was not installed with npm — the button does not touch it.',ccliE_not_installed:'Claude Code is not found.',ccliE_no_node:'Node.js 18+ and npm are required.',
+  ccliHint:'The button runs npm or the built-in Claude Code updater; it does not restart a running session.',
+  ccliE_not_npm:'This kind of installation is unknown to the button — it does not touch it.',ccliE_not_installed:'Claude Code is not found.',ccliE_no_node:'Node.js 18+ and npm are required.',
   ccliE_ssh:'No connection to the second server.',ccliE_bad_target:'Invalid version.',ccliE_nothing_to_rollback:'Nothing to roll back.',ccliE_spawn:'Could not start npm.',ccliE_x:'It did not work. Try again.',
   checking:'Checking…',
   checkErr:e=>`⚠ check failed: ${e}`,
@@ -7683,20 +7694,20 @@ async function ccliLoad(check){
  if(busy&&!$('#scrim').hidden)ccliTimer=setTimeout(()=>ccliLoad(false),3000);
 }
 function ccliRow(k,d){
- const where=tr(k==='remote'?'ccliProd':'ccliThis');
+ const where=tr(k==='remote'?'ccliProd':'ccliThis'),nm=k==='codex'?'Codex':'Claude Code';
  if(!d)return '';
- if(d.ok===false)return '<div class="updrow"><div class="updtxt"><b>'+ccpEsc(tr('ccliLine',where,''))+'</b><div class="updsub bad">'+ccpEsc(tr('ccliNoLink'))+'</div></div></div>';
- const head='<b>'+ccpEsc(tr('ccliLine',where,d.version||''))+'</b>';
+ if(d.ok===false)return '<div class="updrow"><div class="updtxt"><b>'+ccpEsc(tr('ccliLine',nm,where,''))+'</b><div class="updsub bad">'+ccpEsc(tr('ccliNoLink'))+'</div></div></div>';
+ const head='<b>'+ccpEsc(tr('ccliLine',nm,where,d.version||''))+'</b>';
  let sub='',btns='',pre='',bad=false;
  if(!d.kind){sub=tr('ccliNone');bad=true;}
- else if(d.kind==='native'){sub=tr('ccliNative',d.path||'');}
- else if(d.state==='running'){sub=tr('ccliRunning',where,d.target==='latest'?(d.latest||''):d.target);pre=d.log;}
+ else if(d.kind==='native'&&!d.version){sub=tr('ccliNative',d.path||'');}
+ else if(d.state==='running'){sub=tr('ccliRunning',nm,where,d.target==='latest'?(d.latest||''):d.target);pre=d.log;}
  else{
   if(d.state==='failed'){sub=tr('ccliFailed',d.err||'');bad=true;pre=d.log;}
   else if(d.state==='done'){sub=tr(d.op==='rollback'?'ccliDoneRb':'ccliDone',d.from_version,d.version_after||d.version);}
   else if(d.update_available)sub=tr('ccliLatest',d.latest);
   else sub=tr(d.latest?'ccliUpToDate':'ccliNeverChecked');
-  if(!d.node||!d.node.ready){sub=tr('ccliNoNode');bad=true;}
+  if(d.kind==='npm'&&(!d.node||!d.node.ready)){sub=tr('ccliNoNode');bad=true;}
   else{
    btns+='<button type="button" class="ghostbtn" data-ccli="check">'+tr('ccliBtnCheck')+'</button>';
    if(d.state!=='failed'&&d.update_available&&d.can_update)btns+='<button type="button" class="ghostbtn" data-ccli="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest)+'">'+ccpEsc(tr('ccliBtnUpdate',d.latest))+'</button>';
@@ -7710,7 +7721,7 @@ function ccliRow(k,d){
 function ccliRender(){
  const box=$('#ccliBox');if(!box||$('#scrim').hidden)return;
  const d=ccliData;if(!d){box.innerHTML='';return;}
- box.innerHTML=ccliRow('local',d.local)+ccliRow('remote',d.remote)
+ box.innerHTML=ccliRow('local',d.local)+ccliRow('remote',d.remote)+ccliRow('codex',d.codex)
   +(ccliMsg?'<div class="modalsub" style="margin:0">'+ccpEsc(ccliMsg)+'</div>':'')
   +'<div class="modalsub" style="margin:6px 0 0">'+tr('ccliHint')+'</div>';
 }
@@ -7718,8 +7729,8 @@ $('#ccliBox').addEventListener('click',async e=>{
  const b=e.target.closest('[data-ccli]');if(!b||!ccliData)return;
  const act=b.dataset.ccli,k=b.dataset.k,v=b.dataset.v;
  if(act==='check'){b.disabled=true;ccliMsg='';return ccliLoad(true);}
- const d=ccliData[k]||{},where=tr(k==='remote'?'ccliProd':'ccliThis');
- const q=act==='update'?tr('ccliAskUpdate',where,d.version||'',v==='latest'?(d.latest||''):v):tr('ccliAskRollback',where,d.version||'',v);
+ const d=ccliData[k]||{},where=tr(k==='remote'?'ccliProd':'ccliThis'),nm=k==='codex'?'Codex':'Claude Code';
+ const q=act==='update'?tr('ccliAskUpdate',nm,where,d.version||'',v==='latest'?(d.latest||''):v):tr('ccliAskRollback',nm,where,d.version||'',v);
  if(!await window.fleetAsk(b,q,tr('askYes')))return;
  b.disabled=true;
  try{const r=await ccliPost(act,{target:k,version:act==='update'?v:undefined});ccliMsg=r.ok?'':tr('ccliE_'+(r.error||'x'));}catch(x){ccliMsg=tr('ccliE_x');}

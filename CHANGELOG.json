@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.24",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Обновление нативного Claude Code и Codex",
+        "p": [
+          "Кнопка «Обновить» в «Настройки Claude» теперь работает и с нативной установкой Claude Code (штатным обновлением), а не только с npm; «Вернуть» переключает ссылку на сохранённую версию.",
+          "Появилась строка Codex: версия, «Обновить» и «Вернуть» (раньше Codex в панели можно было только установить)."
+        ]
+      },
+      "en": {
+        "t": "Updating native Claude Code and Codex",
+        "p": [
+          "The Update button in Settings → Claude now also works with the native Claude Code installation (its built-in updater), not only npm; Roll back switches the link to a saved version.",
+          "There is a Codex row now: the version, Update and Roll back (before, Codex could only be installed from the panel)."
+        ]
+      }
+    },
+    {
       "v": "2.0.23",
       "date": "2026-11-10",
       "ru": {

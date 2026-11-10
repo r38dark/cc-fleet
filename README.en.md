@@ -941,6 +941,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.24** — The update button in Settings → Claude also works with the native Claude Code installation (its built-in updater; Roll back switches the link to a saved version), and there is a Codex row with Update and Roll back.
+
 - **v2.0.23** — Update Claude Code from the panel: Settings → Claude has a Claude Code block showing the installed and the available version; Update runs npm install -g, Roll back returns the previous version; the same for the second server (PROD) over ssh. Running sessions are not restarted.
 
 - **v2.0.22** — While work runs on the second server (PROD), the pause banner of this server's Claude is not shown: the pause is visible on the account tile. The auto-selection switch is called "Auto-pick" everywhere (it used to be "Limit optimization", "Optimizer active" and "The service decides").
