@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.21"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.22"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4210,7 +4210,7 @@ const I18N={
   h1:'⚡ Claude — лимиты аккаунтов',
   loading:'Загрузка…',
   autoLbl:thr=>'Авто-переключение при <span id="thrLbl">'+thr+'</span>% сессии',
-  optLbl:'Оптимизация переключений лимитов',
+  optLbl:'Автовыбор',
   optDisabledTitle:'Не действует: включён «Автовыбор» в «Управление аккаунтами» — он сам выбирает аккаунт по этим порогам',
   refresh:'Обновить сейчас',
   updated:'Обновлено',
@@ -4219,9 +4219,9 @@ const I18N={
   week:'Неделя',
   resetIn:(h,mm,clock)=>`сброс через ${h?h+' ч ':''}${mm} мин (${clock})`,
   usingNow:'Используется сейчас',
-  optimizeRules:'Рулит оптимизация',
+  optimizeRules:'Рулит автовыбор',
   switchTo:'Переключиться',
-  switchBlockedTitle:'Заблокировано: включена оптимизация переключений лимитов',
+  switchBlockedTitle:'Заблокировано: включён автовыбор аккаунта',
   extended:'Я продлил',
   lapsedTag:'НЕАКТИВНЫЙ',
   lapsedTitle:'Аккаунт неактивный',
@@ -4263,8 +4263,8 @@ const I18N={
   askCxCompact:'Сжать контекст Codex (/compact)?',
   askStartCx:'Запустить консоль Codex?',
   askStartProd:'Запустить консоль PROD?',
-  askOptOn:'Включить оптимизацию переключений лимитов? Ручные переключения аккаунтов Claude будут заблокированы.',
-  askOptOff:'Выключить оптимизацию переключений лимитов? Ручные переключения аккаунтов Claude снова станут доступны.',
+  askOptOn:'Включить автовыбор аккаунта? Ручные переключения аккаунтов Claude будут заблокированы.',
+  askOptOff:'Выключить автовыбор аккаунта? Ручные переключения аккаунтов Claude снова станут доступны.',
   askRelogin:'Войти заново в этот аккаунт? Запустится новый вход: понадобятся ссылка и код.',
   askRenew:'Отметить, что подписка продлена, и проверить вход?',
   askCxPref:'Применить выбор модели Codex для этого аккаунта?',
@@ -4291,8 +4291,8 @@ const I18N={
   ccpHintWeekOff:'работа пойдёт до 100% недели',
   ccpBtnSettings:'Открыть настройки',ccpHintSettings:'опция «Пауза на недельном потолке»',
   thrSet:v=>'Порог: '+v+'%',
-  optOn:'Оптимизация лимитов включена — ручные переключения заблокированы',
-  optOff:'Оптимизация выключена — ручные переключения доступны',
+  optOn:'Автовыбор включён — ручные переключения заблокированы',
+  optOff:'Автовыбор выключен — ручные переключения доступны',
   checking:'Проверяю…',
   checkErr:e=>`⚠ ошибка проверки: ${e}`,
   staleAt:t=>` · ниже данные на ${t}`,
@@ -4437,7 +4437,7 @@ const I18N={
   modelsHdr:'Модели',
   modelsSub:'Отмеченные модели показываются в быстром меню плитки Claude. Применяется сразу.',
   tzMinusTitle:'Шрифт консоли меньше',tzPlusTitle:'Шрифт консоли крупнее',tzResetTitle:'Размер шрифта консоли — клик вернёт 100%',
-  fsTitle:'Только консоль, во весь экран',fsExitTitle:'Вернуться к обычному виду (Esc)',dockTab:'Аккаунты',dockSes:'Сессия 5ч',dockWeek:'Неделя',autoHdr:'Авто-переключение',optHint:'Рулит сервис, ручные кнопки блокируются',
+  fsTitle:'Только консоль, во весь экран',fsExitTitle:'Вернуться к обычному виду (Esc)',dockTab:'Аккаунты',dockSes:'Сессия 5ч',dockWeek:'Неделя',autoHdr:'Авто-переключение',optHint:'Автовыбор: сервис сам выбирает аккаунт, ручные кнопки блокируются',
   modelsDone:'Готово',
   noModelsEnabled:'Ни одна модель не включена — открой ⚙',
   efName:k=>({low:'низкий',medium:'средний',high:'высокий',xhigh:'очень высокий',max:'максимум'})[k]||k,
@@ -4706,7 +4706,7 @@ const I18N={
   h1:'⚡ Claude — Account Limits',
   loading:'Loading…',
   autoLbl:thr=>'Auto-switch at <span id="thrLbl">'+thr+'</span>% of session',
-  optLbl:'Limit optimization',
+  optLbl:'Auto-pick',
   optDisabledTitle:'Inactive: Auto-pick in Account management chooses the account by these thresholds',
   refresh:'Refresh now',
   updated:'Updated',
@@ -4715,9 +4715,9 @@ const I18N={
   week:'Week',
   resetIn:(h,mm,clock)=>`resets in ${h?h+'h ':''}${mm}m (${clock})`,
   usingNow:'In use now',
-  optimizeRules:'Optimizer active',
+  optimizeRules:'Auto-pick active',
   switchTo:'Switch to this',
-  switchBlockedTitle:'Blocked: limit-switch optimization is on',
+  switchBlockedTitle:'Blocked: Auto-pick is on',
   extended:'I renewed',
   lapsedTag:'INACTIVE',
   lapsedTitle:'Account inactive',
@@ -4759,8 +4759,8 @@ const I18N={
   askCxCompact:'Compact the Codex context (/compact)?',
   askStartCx:'Start the Codex console?',
   askStartProd:'Start the PROD console?',
-  askOptOn:'Enable limit optimization? Manual switching of Claude accounts will be blocked.',
-  askOptOff:'Disable limit optimization? Manual switching of Claude accounts will be available again.',
+  askOptOn:'Enable Auto-pick? Manual switching of Claude accounts will be blocked.',
+  askOptOff:'Disable Auto-pick? Manual switching of Claude accounts will be available again.',
   askRelogin:'Sign in to this account again? A new sign-in starts: you will need the link and the code.',
   askRenew:'Mark the subscription as renewed and check the sign-in?',
   askCxPref:'Apply the Codex model choice for this account?',
@@ -4784,8 +4784,8 @@ const I18N={
   ccpHintWeekOff:'work goes on up to 100% of the week',
   ccpBtnSettings:'Open settings',ccpHintSettings:'option “Pause at the weekly cap”',
   thrSet:v=>'Threshold: '+v+'%',
-  optOn:'Limit optimization enabled — manual switching blocked',
-  optOff:'Optimization disabled — manual switching available',
+  optOn:'Auto-pick enabled — manual switching blocked',
+  optOff:'Auto-pick disabled — manual switching available',
   checking:'Checking…',
   checkErr:e=>`⚠ check failed: ${e}`,
   staleAt:t=>` · data below from ${t}`,
@@ -4933,7 +4933,7 @@ const I18N={
   modelsHdr:'Models',
   modelsSub:'Checked models show in the Claude tile quick menu. Applies instantly.',
   tzMinusTitle:'Smaller console font',tzPlusTitle:'Larger console font',tzResetTitle:'Console font size — click to reset to 100%',
-  fsTitle:'Console only, full screen',fsExitTitle:'Back to the normal view (Esc)',dockTab:'Accounts',dockSes:'Session 5h',dockWeek:'Week',autoHdr:'Auto-switch',optHint:'The service decides, manual buttons are blocked',
+  fsTitle:'Console only, full screen',fsExitTitle:'Back to the normal view (Esc)',dockTab:'Accounts',dockSes:'Session 5h',dockWeek:'Week',autoHdr:'Auto-switch',optHint:'Auto-pick: the service chooses the account, manual buttons are blocked',
   modelsDone:'Done',
   noModelsEnabled:'No models enabled — open ⚙',
   efName:k=>({low:'low',medium:'medium',high:'high',xhigh:'extra high',max:'maximum'})[k]||k,
@@ -7195,7 +7195,8 @@ function ccpRender(){
  // переключаться некуда > активный забит
  const mode=pause.override?'off':pause.active?'pause':lvl;
  // [remote] работа на Claude PROD: лимиты DEV не значат «переключаться некуда» — переключились туда
- if(d.remote&&['hard','week','weekrisk','gate'].includes(mode)){el.hidden=true;return;}
+ // пауза по лимитам, «пауза отключена» и ручной выбор тоже относятся к этому серверу: работа идёт на PROD, на плитке аккаунта они видны; резервную паузу не прячем
+ if(d.remote&&['hard','week','weekrisk','gate','pause','off','manual'].includes(mode)&&!(mode==='pause'&&pause.kind==='reserve')){el.hidden=true;return;}
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);
  let title,sub,timer=null,tlabel='',action=null;

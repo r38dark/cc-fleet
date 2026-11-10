@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.22",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Баннер паузы и название автовыбора",
+        "p": [
+          "Когда работа идёт на втором сервере, баннер паузы Claude этого сервера не показывается: пауза видна на плитке аккаунта, в баннер она вернётся вместе с работой.",
+          "Переключатель называется «Автовыбор» во всех подписях, подсказках и вопросах (раньше было четыре разных названия)."
+        ]
+      },
+      "en": {
+        "t": "Pause banner and the Auto-pick name",
+        "p": [
+          "While work runs on the second server, the pause banner of this server's Claude is not shown: the pause is visible on the account tile and comes back to the banner together with the work.",
+          "The switch is called \"Auto-pick\" in every label, hint and question (it used to have four different names)."
+        ]
+      }
+    },
+    {
       "v": "2.0.21",
       "date": "2026-11-10",
       "ru": {
