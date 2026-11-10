@@ -109,7 +109,8 @@ def codex_args():
 def codex_note(conf=None):
     """Строка в начало сообщений Codex: только для самостоятельного профиля Codex Full."""
     if SOLO_PROFILE():
-        return "[Профиль Codex Full: работаешь самостоятельно. Claude и Notion-агент не используются.]"
+        import cc_codex_bridge
+        return "[Профиль Codex Full: работаешь самостоятельно. " + cc_codex_bridge.team_note("Claude и Notion-агент не используются.") + "]"
     return ""
 
 

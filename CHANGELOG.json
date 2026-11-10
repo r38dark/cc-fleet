@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.31",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Своя фраза и права записи для Codex",
+        "p": [
+          "В config.json два необязательных ключа: codex_team_note — своя фраза вместо «Другой исполнитель и Notion-агент не используются» (инструкции Codex, его AGENTS.md, строка в начале сообщений, текст роли Claude на втором сервере) и codex_writable_roots — папки, куда Codex может писать сверх своей (режим workspace-write). Без ключей всё как раньше.",
+          "AGENTS.md Codex обновляется перед каждым запуском Codex, а не только при сохранении настроек моста.",
+          "Из текста для Claude на втором сервере убрана подсказка «голос .ogg, как требует CLAUDE.md». Обновление и переустановка config.json не трогают."
+        ]
+      },
+      "en": {
+        "t": "Your own team note and write access for Codex",
+        "p": [
+          "Two optional keys in config.json: codex_team_note — your own sentence instead of \"The other executor and the Notion agent are not used\" (Codex instructions, its AGENTS.md, the line at the start of messages, the role text for Claude on the second server) and codex_writable_roots — folders Codex may write to besides its own (workspace-write mode). Without the keys everything is as before.",
+          "Codex AGENTS.md is refreshed before every Codex start, not only when the bridge settings are saved.",
+          "The hint \"voice .ogg, as CLAUDE.md requires\" is gone from the text for Claude on the second server. Updates and reinstalls do not touch config.json."
+        ]
+      }
+    },
+    {
       "v": "2.0.30",
       "date": "2026-11-10",
       "ru": {

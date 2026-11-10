@@ -74,7 +74,7 @@ class NativeProfiles:
             out=self.manager.exchange(e)/'outbox/task.md'
             return prefix+f'Ты ведущий, {op} исполнитель. Проект самостоятельно не изменяй. Один проверяемый шаг запиши в {out}; первая строка права: чтение / дев / полные. Шаг уходит исполнителю только после подтверждения человека в балансере. Не вызывай второго исполнителя самостоятельно и не создавай встречные связки. После получения результата проверь его относительно цели и подготовь следующий шаг либо сообщи итог.'
         if data['role']=='executor':return prefix+f'Ты исполнитель {op}. Выполняй только подтверждённый шаг и его ограничения. Не делегируй задачу ведущему или другим агентам. Верни проверенный результат и проверки.'
-        return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. Другой исполнитель и Notion-агент не используются. Согласование изменений с человеком сохраняется; секреты не выводи.'
+        return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. '+self.bridge.team_note('Другой исполнитель и Notion-агент не используются.')+' Согласование изменений с человеком сохраняется; секреты не выводи.'
 
     def claude_policy(self, state):
         plan=self.plan(state,'claude');cwd=self.claude_cwd if plan['access']=='full' else str(self.manager.exchange('claude')) if plan['role']=='leader' else self.claude_work
@@ -520,7 +520,9 @@ def bind(ns, inputs):
     original_mcp=console.MCP
     def codex_mcp():
         if not profiles.managed['codex']:return original_mcp()
-        return ['-c','sandbox_workspace_write.writable_roots='+json.dumps([str(profiles.exchange('codex')/'outbox')]),'-c','developer_instructions='+json.dumps(native.prompt(profiles.state,'codex'),ensure_ascii=False)]
+        try:bridge.ensure_exchange()   # перед каждым запуском Codex: AGENTS.md с текущим текстом из config.json (файл с меткой моста обновится сам)
+        except Exception:pass
+        return ['-c','sandbox_workspace_write.writable_roots='+json.dumps([str(profiles.exchange('codex')/'outbox')]+native.bridge.extra_writable_roots()),'-c','developer_instructions='+json.dumps(native.prompt(profiles.state,'codex'),ensure_ascii=False)]
     console.MCP=codex_mcp;bridge.MCP_ARGS=codex_mcp
     ns['FLEET_ROTATION'].suspended=lambda:not profiles.input_allowed('codex')
     console.PRESERVE_THREAD=lambda:profiles.managed['codex']

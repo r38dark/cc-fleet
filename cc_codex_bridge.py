@@ -15,6 +15,27 @@ from cc_input_queue import InputQueue
 
 BASE = os.environ.get("CC_LIMITS_BASE", "/opt/cc-limits")  # cc_limits подставляет свой BASE
 
+
+def _config_value(key):
+    """Ключ из config.json балансера; читаем при каждом вызове (файл маленький): правка подхватывается без перезапуска."""
+    try:
+        with open(os.path.join(BASE, "config.json"), encoding="utf-8") as f:
+            return json.load(f).get(key)
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def team_note(default):
+    """Фраза про других исполнителей для Codex: config.json, ключ codex_team_note (задаёт владелец); нет ключа — прежний текст."""
+    v = _config_value("codex_team_note")
+    return v.strip() if isinstance(v, str) and v.strip() else default
+
+
+def extra_writable_roots():
+    """Папки, куда Codex может писать сверх своей (песочница workspace-write): config.json, ключ codex_writable_roots, абсолютные пути."""
+    v = _config_value("codex_writable_roots")
+    return [p for p in v if isinstance(p, str) and os.path.isabs(p)] if isinstance(v, list) else []
+
 # --- подставляются из cc_limits ---
 BIN = lambda: cc_codex.find_bin(None)  # путь к codex
 SESSION = lambda: "claude"  # имя screen-сессии Claude Code
@@ -880,7 +901,8 @@ def ensure_workspace(s=None):
     template = AGENTS_SELF_FULL_TEXT if active_profile(current) == "codex_solo_full" else AGENTS_SELF_TEXT
     if current['access']=='full' and (active_profile(current) == RESERVE_ID or RESERVE_ACTIVE()):
         template = AGENTS_RESERVE_FULL_TEXT
-    text = AGENTS_MARK + "\n" + template.format(project=project_dir(current) or "(не задан)")
+    text = AGENTS_MARK + "\n" + template.format(project=project_dir(current) or "(не задан)",
+                                                 team=team_note("Claude и Notion-агент не используются."))
     text += "\n" + RESERVE_NOTE() + "\n" + image_output_note(current) + "\n"
     try:
         old = None
@@ -915,7 +937,7 @@ AGENTS_SELF_FULL_TEXT = """# Codex Full — работает самостоят�
 
 Ты общаешься с человеком через Telegram и консоль. Эта папка — твоя рабочая: здесь читай, пиши и запускай.
 Проект: {project}
-Claude и Notion-агент не используются. Выполняй работу самостоятельно в пределах прав пользователя ОС.
+{team} Выполняй работу самостоятельно в пределах прав пользователя ОС.
 Полный доступ Codex не выдаёт root, ключи или права сервера и не отменяет согласование изменений с человеком.
 Секреты не выводи в ответы, код и журналы; пароли и ключи в чате не запрашивай.
 Отвечай коротко и по делу; сделал — скажи что и как проверил.
