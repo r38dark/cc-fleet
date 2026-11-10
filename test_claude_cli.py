@@ -441,6 +441,17 @@ class Page(unittest.TestCase):
         self.assertNotIn('data-ccli="restart"', h[1])
         self.assertNotIn('data-ccli="restart"', h[2])
 
+    def test_what_next_depends_on_whether_the_program_is_running(self):
+        done = dict(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, finished=time.time())
+        cx = dict(tool="codex", version="0.167.0", update_available=False, state="done", op="update", from_version="0.166.0", version_after="0.167.0", finished=time.time())
+        h = render([{"local": row(**done, restart={"running": False, "stale": False, "busy": False}), "remote": None, "codex": row(**cx, restart={"running": False, "stale": False, "busy": False})},
+                    {"local": row(**done, restart={"running": True, "stale": False, "busy": False}), "remote": None, "codex": row(**cx, restart={"running": True, "stale": True, "busy": False})}])
+        self.assertIn("ccliNextClaudeStopped", h[0])
+        self.assertIn("ccliNextCodexStopped", h[0])
+        self.assertNotIn("ccliNextClaude(", h[0])
+        self.assertIn("ccliNextClaude", h[1])
+        self.assertNotIn("Stopped", h[1])
+
     def test_claude_restart_button_for_this_server_and_second_server(self):
         stale = {"running": True, "stale": True, "busy": False}
         h = render([{"local": row(update_available=False, restart=stale), "remote": row(update_available=False, restart=stale), "codex": None}])[0]
@@ -623,6 +634,10 @@ class VersionLabel(unittest.TestCase):
         r = pv([{"s": "notion", "x": row()}, {"s": "notion:abc", "x": row()}, {"s": "claude", "x": None}, {"s": "prod", "x": {"ok": False}},
                 {"s": "claude", "x": row(version=None)}])
         self.assertEqual(r, [None, None, None, None, None])
+
+    def test_label_sits_below_the_part_header_in_split_mode(self):
+        self.assertIn("off=wrap.classList.contains('tsplit')?40:10", SRC)
+        self.assertIn("el.style.top=Math.round(r.top-wr.top+off)+'px';", SRC)
 
     def test_label_is_in_each_window_not_in_the_tab_row(self):
         for part in ("function ccliPartVers(){", "setInterval(ccliPartVers,2000);addEventListener('resize',ccliPartVers);", ".ccli-pv.new{color:var(--ok,#45d6ab)}", ".ccli-pv.old{color:var(--warn,#ecc277)}"):
