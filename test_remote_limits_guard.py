@@ -264,5 +264,40 @@ class ProcessGate(unittest.TestCase):
                 if child.poll() is None:child.kill();child.wait()
 
 
+class Composer(unittest.TestCase):
+    def setUp(self):
+        source=(Path(__file__).parent/'remote_ctl.py').read_text()
+        import re
+        ns=dict(re=re,ANSI=re.compile(r"\x1b\[[0-9;?]*[A-Za-z]"))
+        tree=ast.parse(source)
+        node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='composer_has_draft')
+        exec(ast.get_source_segment(source,node),ns)
+        self.draft=ns['composer_has_draft']
+        self.rule='─'*30
+
+    def box(self,text):return '❯ old submitted message\n'+self.rule+'\n'+text+'\n'+self.rule+'\nstatus'
+
+    def test_dim_suggestion_is_empty_input(self):
+        self.assertFalse(self.draft(self.box('❯ \x1b[2msuggestion')))
+
+    def test_normal_text_is_a_draft(self):
+        self.assertTrue(self.draft(self.box('❯ unsent draft')))
+
+    def test_reset_dim_text_is_a_draft(self):
+        self.assertTrue(self.draft(self.box('❯ \x1b[2m\x1b[22munsent draft')))
+
+    def test_empty_composer_ignores_echo(self):
+        self.assertFalse(self.draft(self.box('❯ ')))
+
+    def test_multiline_draft_is_preserved(self):
+        self.assertTrue(self.draft(self.box('❯ \n  second line')))
+
+    def test_draft_followed_by_dim_completion_is_preserved(self):
+        self.assertTrue(self.draft(self.box('❯ draft\x1b[2m suggestion')))
+
+    def test_truecolor_parameter_is_not_dim(self):
+        self.assertTrue(self.draft(self.box('❯ \x1b[38;2;200;210;220mtyped text')))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -162,11 +162,60 @@ def guard_status():
     return result
 
 
+def composer_has_draft(raw):
+    """Ignore the dim placeholder and old echoed prompts; preserve real input."""
+    lines = raw.splitlines()
+    rules = [i for i, line in enumerate(lines) if re.match(r"^\s*[─━]{5,}", ANSI.sub("", line))]
+    if len(rules) >= 2:
+        lines = lines[rules[-2] + 1:rules[-1]]
+    prompts = [i for i, line in enumerate(lines) if re.match(r"^\s*❯", ANSI.sub("", line))]
+    if not prompts:
+        return False
+    i = prompts[-1]
+    if any(ANSI.sub("", line).strip() for line in lines[i+1:]):
+        return True
+    line = lines[i]
+    plain = ANSI.sub("", line)
+    content = re.sub(r"^\s*❯\s*", "", plain)
+    if not content:
+        return False
+    # Claude renders a suggestion in dim SGR 2 after the prompt, with the
+    # cursor still on the empty input. Actual typed characters use normal SGR.
+    dim, offset, column = False, 0, 0
+    start = plain.index("❯") + 1
+    for match in list(ANSI.finditer(line)) + [None]:
+        end = match.start() if match else len(line)
+        segment = line[offset:end]
+        visible = segment[max(0, start-column):]
+        if visible.strip() and not dim:
+            return True
+        column += len(segment)
+        if not match:
+            break
+        if match.group().endswith("m"):
+            values = [int(v or 0) for v in match.group()[2:-1].split(";")]
+            j = 0
+            while j < len(values):
+                value = values[j]
+                if value in (38, 48) and j+1 < len(values):
+                    j += 5 if values[j+1] == 2 else 3
+                    continue
+                if value in (0, 22):
+                    dim = False
+                elif value == 2:
+                    dim = True
+                j += 1
+        offset = match.end()
+    return False
+
+
+
 def guard_reload():
     if not alive() or guard_status().get("applied"):
         out(dict(ok=True, reloaded=False))
-    text = screen(40)
-    if busy(text) or any(re.match(r"^\s*❯\s+\S", line) for line in live_tail(text).splitlines()):
+    _, raw = sh(["tmux", "capture-pane", "-t", TMUX, "-p", "-e", "-J", "-S", "-40"])
+    text = ANSI.sub("", raw)
+    if busy(text) or composer_has_draft(raw):
         out(dict(ok=True, reloaded=False, waiting=True))
     code, text = sh(["tmux", "display-message", "-p", "-t", TMUX, "#{pane_pid}"])
     sid = ""
