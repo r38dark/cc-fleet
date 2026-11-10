@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.27",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Ход обновления, перезапуск Codex, версия в углу",
+        "p": [
+          "Пока идёт обновление Claude Code или Codex, видна бегущая полоска, время и последняя строка журнала; по завершении зелёное «Установлено: …» и что делать дальше.",
+          "У Codex после обновления появляется кнопка «Перезапустить консоль Codex» (разговор продолжается, пока Codex отвечает — перезапуск ждёт). Значок в шапке горит, пока консоль работает на старой версии.",
+          "В правом верхнем углу консоли — маленькая надпись версии активной вкладки: Claude Code, Claude Code на PROD или Codex."
+        ]
+      },
+      "en": {
+        "t": "Update progress, Codex restart, version in the corner",
+        "p": [
+          "While Claude Code or Codex is updating, a moving bar, the elapsed time and the last log line are shown; when it is done there is a green \"Installed: ...\" and what to do next.",
+          "After a Codex update there is a \"Restart the Codex console\" button (the conversation continues; the restart waits while Codex is answering). The header badge stays lit while the console runs the old version.",
+          "A small label in the top right corner of the console shows the version of the active tab: Claude Code, Claude Code on PROD or Codex."
+        ]
+      }
+    },
+    {
       "v": "2.0.26",
       "date": "2026-11-10",
       "ru": {

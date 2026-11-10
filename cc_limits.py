@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.26"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.27"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2867,6 +2867,17 @@ def pause_state():
         return {"ok": False, "err": str(e)[:200], "level": "none", "pause": {"active": False}}
 
 
+def codex_restart_info(cx):
+    """Консоль Codex: запущена ли, запущена ли ДО установки текущей версии (тогда она работает на прежней), идёт ли сейчас запрос."""
+    try:
+        running = bool(cc_codex_console.status().get("running"))
+        started = float((cc_codex_console._meta() or {}).get("started") or 0)
+        stale = bool(running and started and cx.get("pkg_mtime") and started < float(cx["pkg_mtime"]))
+        return {"running": running, "stale": stale, "busy": bool(running and cc_codex_console.busy())}
+    except Exception:
+        return None
+
+
 def claude_cli_view(check=False):
     """GET /api/claude-cli: версия Claude Code и Codex и ход обновления на этом сервере и Claude Code на втором (если пара подключена). check — спросить реестр."""
     import claude_cli
@@ -2876,6 +2887,8 @@ def claude_cli_view(check=False):
         claude_cli.BIN_HINT["codex"] = cbin
         cx = claude_cli.status(check=check, tool="codex")
         out["codex"] = cx if cx.get("kind") else None
+        if out["codex"]:
+            out["codex"]["restart"] = codex_restart_info(out["codex"])
     try:
         import cc_remote_mode
         if cc_remote_mode._member_id():
@@ -2893,6 +2906,18 @@ def claude_cli_action(action, body):
     ver = str(body.get("version") or "latest")
     if action == "update" and ver != "latest" and not claude_cli.VERSION_RE.match(ver):
         return {"ok": False, "error": "bad_target"}
+    if action == "restart":   # перезапуск консоли Codex после обновления: разговор продолжается (codex resume), мост Telegram подцепится сам
+        if where != "codex":
+            return {"ok": False, "error": "not_supported"}
+        if not codex_bin():
+            return {"ok": False, "error": "not_installed"}
+        if cc_codex_console.busy():   # посреди запроса не перезапускаем
+            return {"ok": False, "error": "busy"}
+        ok, message = cc_codex_console.stop()
+        if not ok:
+            return {"ok": False, "error": "stop_failed", "message": message}
+        ok, message = cc_codex_console.start()
+        return {"ok": True, "message": message} if ok else {"ok": False, "error": "start_failed", "message": message}
     if where == "remote":
         import cc_remote_mode
         r = cc_remote_mode.cli_remote(*(["update", ver] if action == "update" else ["rollback"]))
@@ -3341,7 +3366,7 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/api/backup/restore":  # «Восстановить недостающие»: живые профили не трогаются
             res = cc_backup.restore_missing(PROFILES, BACKUP_DIR)
             return self._send(200, dict(backup_status(), ok=True, restored=res["restored"]))
-        if u.path in ("/api/claude-cli/update", "/api/claude-cli/rollback"):  # «Обновить» / «Вернуть» Claude Code (⚙ Настройки Claude)
+        if u.path in ("/api/claude-cli/update", "/api/claude-cli/rollback", "/api/claude-cli/restart"):  # «Обновить» / «Вернуть» Claude Code (⚙ Настройки Claude)
             return self._send(200, claude_cli_action(u.path.rsplit("/", 1)[1], body))
         if u.path == "/api/notion/save":  # имя и ссылка Notion-агента ([notion-ai] резерва больше нет)
             c = cfg()  # без lock — как /api/config: он не реентерабельный и занят на время опроса
@@ -3685,6 +3710,9 @@ html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 aut
 @media (prefers-reduced-motion:reduce){.upd-bar i{animation:none;width:100%;opacity:.45}}
 .updrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
 #ccliBox .ccli-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.updsub.ok{color:var(--ok,#45d6ab)}.ccli-bar{margin:8px 0 2px}
+.ccli-ver{font:11px/1 Inter,system-ui,sans-serif;color:var(--fleet-muted,#8c9bad);white-space:nowrap;margin:0 12px 0 auto;opacity:.9}.ccli-ver.stale{color:var(--warn,#ecc277)}
+@media (max-width:640px){.ccli-ver{display:none}}
 #ccliBox pre{margin:6px 0 0;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Consolas,monospace;opacity:.85}
 .ccli-badge{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;margin:0 0 0 8px;border:1px solid rgba(69,214,171,.45);border-radius:99px;background:rgba(69,214,171,.12);color:var(--fleet-accent,#45d6ab);font:600 11px/1 Inter,system-ui,sans-serif;cursor:pointer;flex:none;animation:ccliGlow 2.6s ease-in-out infinite}
 .ccli-badge[hidden]{display:none}.ccli-badge svg{width:12px;height:12px;display:block}.ccli-badge b{font-weight:650}
@@ -4212,7 +4240,7 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
- <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
+ <span class="ccli-ver" id="ccliVer" hidden></span><div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="splitBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
 <span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden><span id="termIdleTxt"></span><button type="button" id="termIdleGo" hidden></button></div></pre>
@@ -4359,7 +4387,11 @@ const I18N={
   ccliAskUpdate:(n,w,a,b)=>`Обновить ${n} ${w} с ${a} до ${b}? Запущенные сессии не прервутся, новая версия подхватится при следующем запуске.`,
   ccliAskRollback:(n,w,a,b)=>`Вернуть ${n} ${w} с ${a} на ${b}?`,
   ccliRunning:(n,w,v)=>`Идёт обновление ${n} ${w}${v?' до '+v:''}…`,
-  ccliDone:(a,b)=>`Готово: ${a} → ${b}. Запущенные сессии подхватят новую версию после перезапуска.`,
+  ccliSec:s=>`${s} с`,ccliOkTitle:(n,a,b)=>`✅ Установлено: ${n} ${b} (было ${a})`,
+  ccliNextClaude:'Запущенная сессия Claude пока на старой версии: новая включится, когда Claude запустится заново.',ccliNextCodex:'Чтобы Codex заработал на новой версии, перезапусти консоль Codex.',
+  ccliStaleNote:'Консоль запущена до обновления и работает на старой версии. Перезапусти её.',ccliRestartBtn:'Перезапустить консоль Codex',
+  ccliAskRestart:'Перезапустить консоль Codex? Разговор продолжится с того же места. Если Codex сейчас отвечает на запрос, подожди.',
+  ccliE_busy:'Codex сейчас отвечает на запрос. Дождись ответа и повтори.',ccliE_stop_failed:'Не удалось остановить консоль Codex.',ccliE_start_failed:'Консоль остановлена, но не запустилась: запусти её кнопкой «Запустить».',ccliE_not_supported:'Для этой программы перезапуск из панели пока недоступен.',
   ccliDoneRb:(a,b)=>`Возврат выполнен: ${a} → ${b}. Запущенные сессии подхватят её после перезапуска.`,
   ccliFailed:e=>`Не удалось обновить: ${e||'ошибка npm'}. Прежняя версия осталась.`,
   ccliNative:p=>`Установка такого вида (${p}) кнопке незнакома — обновляй программу тем способом, которым ставил.`,
@@ -4869,7 +4901,11 @@ const I18N={
   ccliAskUpdate:(n,w,a,b)=>`Update ${n} ${w} from ${a} to ${b}? Running sessions are not interrupted; the new version is picked up on the next start.`,
   ccliAskRollback:(n,w,a,b)=>`Roll ${n} ${w} back from ${a} to ${b}?`,
   ccliRunning:(n,w,v)=>`Updating ${n} ${w}${v?' to '+v:''}…`,
-  ccliDone:(a,b)=>`Done: ${a} → ${b}. Running sessions pick up the new version after a restart.`,
+  ccliSec:s=>`${s}s`,ccliOkTitle:(n,a,b)=>`✅ Installed: ${n} ${b} (was ${a})`,
+  ccliNextClaude:'The running Claude session is still on the old version: the new one starts when Claude is launched again.',ccliNextCodex:'Restart the Codex console to run Codex on the new version.',
+  ccliStaleNote:'The console was started before the update and runs the old version. Restart it.',ccliRestartBtn:'Restart the Codex console',
+  ccliAskRestart:'Restart the Codex console? The conversation continues from the same place. If Codex is answering a request right now, wait.',
+  ccliE_busy:'Codex is answering a request right now. Wait for the reply and try again.',ccliE_stop_failed:'Could not stop the Codex console.',ccliE_start_failed:'The console was stopped but did not start: start it with the Start button.',ccliE_not_supported:'Restart from the panel is not available for this program yet.',
   ccliDoneRb:(a,b)=>`Rolled back: ${a} → ${b}. Running sessions pick it up after a restart.`,
   ccliFailed:e=>`Update failed: ${e||'npm error'}. The previous version is kept.`,
   ccliNative:p=>`This kind of installation (${p}) is unknown to the button — update the program the way you installed it.`,
@@ -7711,26 +7747,33 @@ function ccliRow(k,d){
  const where=tr(k==='remote'?'ccliProd':'ccliThis'),nm=k==='codex'?'Codex':'Claude Code';
  if(!d)return '';
  if(d.ok===false)return '<div class="updrow"><div class="updtxt"><b>'+ccpEsc(tr('ccliLine',nm,where,''))+'</b><div class="updsub bad">'+ccpEsc(tr('ccliNoLink'))+'</div></div></div>';
- const head='<b>'+ccpEsc(tr('ccliLine',nm,where,d.version||''))+'</b>';
- let sub='',btns='',pre='',bad=false;
+ const head='<b>'+ccpEsc(tr('ccliLine',nm,where,d.version||''))+'</b>',r=d.restart||null,fresh=!!d.finished&&(Date.now()/1000-d.finished)<600;
+ let sub='',btns='',pre='',bar='',next='',bad=false,ok=false;
  if(!d.kind){sub=tr('ccliNone');bad=true;}
  else if(d.kind==='native'&&!d.version){sub=tr('ccliNative',d.path||'');}
- else if(d.state==='running'){sub=tr('ccliRunning',nm,where,d.target==='latest'?(d.latest||''):d.target);pre=d.log;}
- else{
+ else if(d.state==='running'){
+  const sec=d.started?Math.max(0,Math.round(Date.now()/1000-d.started)):0;
+  sub=tr('ccliRunning',nm,where,d.target==='latest'?(d.latest||''):d.target)+' · '+tr('ccliSec',sec);pre=d.log;bar='<div class="upd-bar ccli-bar"><i></i></div>';
+ }else{
   if(d.state==='failed'){sub=tr('ccliFailed',d.err||'');bad=true;pre=d.log;}
-  else if(d.state==='done'){sub=tr(d.op==='rollback'?'ccliDoneRb':'ccliDone',d.from_version,d.version_after||d.version);}
+  else if(d.state==='done'&&fresh){
+   sub=d.op==='rollback'?tr('ccliDoneRb',d.from_version,d.version_after||d.version):tr('ccliOkTitle',nm,d.from_version,d.version_after||d.version);ok=true;pre=d.log;
+   next=tr(k==='codex'?'ccliNextCodex':'ccliNextClaude');
+  }
   else if(d.update_available)sub=tr('ccliLatest',d.latest);
   else sub=tr(d.latest?'ccliUpToDate':'ccliNeverChecked');
+  if(r&&r.stale&&!ok)next=tr('ccliStaleNote');
   if(d.kind==='npm'&&(!d.node||!d.node.ready)){sub=tr('ccliNoNode');bad=true;}
   else{
    btns+='<button type="button" class="ghostbtn" data-ccli="check">'+tr('ccliBtnCheck')+'</button>';
    if(d.state!=='failed'&&d.update_available&&d.can_update)btns+='<button type="button" class="ghostbtn" data-ccli="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest)+'">'+ccpEsc(tr('ccliBtnUpdate',d.latest))+'</button>';
    else if(d.state==='failed'&&d.can_update)btns+='<button type="button" class="ghostbtn" data-ccli="update" data-k="'+k+'" data-v="latest">'+tr('ccliBtnRetry')+'</button>';
    if(d.prev_version&&d.can_update)btns+='<button type="button" class="ghostbtn" data-ccli="rollback" data-k="'+k+'" data-v="'+ccpEsc(d.prev_version)+'">'+ccpEsc(tr('ccliBtnRollback',d.prev_version))+'</button>';
+   if(k==='codex'&&r&&r.running&&(r.stale||ok))btns+='<button type="button" class="ghostbtn" data-ccli="restart" data-k="codex"'+(r.busy?' disabled':'')+'>'+tr('ccliRestartBtn')+'</button>';
   }
  }
- return '<div class="updrow"><div class="updtxt">'+head+'<div class="updsub'+(bad?' bad':'')+'">'+ccpEsc(sub)+'</div>'
-  +(pre?'<pre>'+ccpEsc(pre)+'</pre>':'')+'</div><div class="ccli-btns">'+btns+'</div></div>';
+ return '<div class="updrow"><div class="updtxt">'+head+'<div class="updsub'+(bad?' bad':ok?' ok':'')+'">'+ccpEsc(sub)+'</div>'+bar
+  +(next?'<div class="updsub">'+ccpEsc(next)+'</div>':'')+(pre?'<pre>'+ccpEsc(pre)+'</pre>':'')+'</div><div class="ccli-btns">'+btns+'</div></div>';
 }
 function ccliRender(){
  const box=$('#ccliBox');if(!box||$('#scrim').hidden)return;
@@ -7744,7 +7787,7 @@ $('#ccliBox').addEventListener('click',async e=>{
  const act=b.dataset.ccli,k=b.dataset.k,v=b.dataset.v;
  if(act==='check'){b.disabled=true;ccliMsg='';return ccliLoad(true);}
  const d=ccliData[k]||{},where=tr(k==='remote'?'ccliProd':'ccliThis'),nm=k==='codex'?'Codex':'Claude Code';
- const q=act==='update'?tr('ccliAskUpdate',nm,where,d.version||'',v==='latest'?(d.latest||''):v):tr('ccliAskRollback',nm,where,d.version||'',v);
+ const q=act==='restart'?tr('ccliAskRestart'):act==='update'?tr('ccliAskUpdate',nm,where,d.version||'',v==='latest'?(d.latest||''):v):tr('ccliAskRollback',nm,where,d.version||'',v);
  if(!await window.fleetAsk(b,q,tr('askYes')))return;
  b.disabled=true;
  try{const r=await ccliPost(act,{target:k,version:act==='update'?v:undefined});ccliMsg=r.ok?'':tr('ccliE_'+(r.error||'x'));}catch(x){ccliMsg=tr('ccliE_x');}
@@ -7754,18 +7797,26 @@ $('#ccliBox').addEventListener('click',async e=>{
 function ccliNews(){
  const d=ccliData;if(!d)return [];
  return ['local','remote','codex'].filter(k=>{const x=d[k];if(!x||x.ok===false||!x.kind)return false;
-  return (x.update_available&&x.can_update)||x.state==='running'||(ccliPopOpen&&(x.state==='done'||x.state==='failed'));}).map(k=>[k,d[k]]);
+  return (x.update_available&&x.can_update)||x.state==='running'||!!(x.restart&&x.restart.stale)||(ccliPopOpen&&(x.state==='done'||x.state==='failed'));}).map(k=>[k,d[k]]);
 }
 function ccliPopRender(){
  const pop=$('#ccliPop');if(!pop||!ccliPopOpen)return;
  const rows=ccliNews().map(([k,d])=>{
-  const nm=k==='codex'?'Codex':'Claude Code',where=tr(k==='remote'?'ccliProd':'ccliThis');
-  let sub='',btn='';
-  if(d.state==='running')sub=tr('ccliRunning',nm,where,d.target==='latest'?(d.latest||''):d.target);
-  else if(d.state==='done')sub=tr(d.op==='rollback'?'ccliDoneRb':'ccliDone',d.from_version,d.version_after||d.version);
-  else if(d.state==='failed')sub=tr('ccliFailed',d.err||'');
-  else{sub=tr('ccliPopSub',d.version||'',d.latest||'');btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest||'latest')+'">'+tr('ccliPopUpdate')+'</button>';}
-  return '<div class="cp-row"><div><b>'+ccpEsc(nm+' '+where)+'</b><small'+(d.state==='failed'?' class="bad"':'')+'>'+ccpEsc(sub)+'</small></div>'+btn+'</div>';
+  const nm=k==='codex'?'Codex':'Claude Code',where=tr(k==='remote'?'ccliProd':'ccliThis'),r=d.restart||null,fresh=!!d.finished&&(Date.now()/1000-d.finished)<600;
+  let sub='',btn='',bar='',cls='';
+  if(d.state==='running'){
+   const sec=d.started?Math.max(0,Math.round(Date.now()/1000-d.started)):0;
+   sub=tr('ccliRunning',nm,where,d.target==='latest'?(d.latest||''):d.target)+' · '+tr('ccliSec',sec);bar='<div class="upd-bar ccli-bar"><i></i></div>';
+  }
+  else if(d.state==='done'&&fresh){
+   sub=d.op==='rollback'?tr('ccliDoneRb',d.from_version,d.version_after||d.version):tr('ccliOkTitle',nm,d.from_version,d.version_after||d.version);cls=' ok';
+   sub+=' '+tr(k==='codex'?'ccliNextCodex':'ccliNextClaude');
+  }
+  else if(d.state==='failed'){sub=tr('ccliFailed',d.err||'');cls=' bad';}
+  else if(d.update_available&&d.can_update){sub=tr('ccliPopSub',d.version||'',d.latest||'');btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest||'latest')+'">'+tr('ccliPopUpdate')+'</button>';}
+  else if(r&&r.stale)sub=tr('ccliStaleNote');
+  if(k==='codex'&&r&&r.running&&(r.stale||(d.state==='done'&&fresh)))btn='<button type="button" class="ghostbtn" data-ccli-pop="restart" data-k="codex"'+(r.busy?' disabled':'')+'>'+tr('ccliRestartBtn')+'</button>';
+  return '<div class="cp-row"><div><b>'+ccpEsc(nm+' '+where)+'</b><small class="'+cls.trim()+'">'+ccpEsc(sub)+'</small>'+bar+'</div>'+btn+'</div>';
  }).join('');
  pop.innerHTML='<h4>'+tr('ccliPopTitle')+'</h4>'+(rows||'<div class="cp-row"><small>'+tr('ccliPopNone')+'</small></div>')
   +(ccliMsg?'<div class="cp-note bad">'+ccpEsc(ccliMsg)+'</div>':'')
@@ -7790,13 +7841,25 @@ $('#ccliBadge').addEventListener('click',e=>{
 });
 $('#ccliPop').addEventListener('click',async e=>{
  const b=e.target.closest('[data-ccli-pop]');if(!b)return;
- if(b.dataset.ccliPop==='close')return ccliPopClose();
+ const act=b.dataset.ccliPop;
+ if(act==='close')return ccliPopClose();
  b.disabled=true;
- try{const r=await ccliPost('update',{target:b.dataset.k,version:b.dataset.v});ccliMsg=r.ok?'':tr('ccliE_'+(r.error||'x'));}catch(x){ccliMsg=tr('ccliE_x');}
+ try{const r=await ccliPost(act,{target:b.dataset.k,version:act==='update'?b.dataset.v:undefined});ccliMsg=r.ok?'':tr('ccliE_'+(r.error||'x'));}catch(x){ccliMsg=tr('ccliE_x');}
  ccliLoad(false);
 });
 document.addEventListener('click',e=>{if(ccliPopOpen&&!e.target.closest('#ccliPop,#ccliBadge'))ccliPopClose();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ccliPopOpen)ccliPopClose();});
+// Надпись версии в правом верхнем углу консоли: по активной вкладке (Claude Code, Claude Code на PROD, Codex)
+function ccliVerRender(){
+ const el=$('#ccliVer');if(!el)return;
+ const s=typeof consCur==='function'?consCur():'claude',k=s==='prod'?'remote':s==='codex'?'codex':s==='claude'?'local':'',x=k&&ccliData?ccliData[k]:null;
+ if(!x||x.ok===false||!x.version){el.hidden=true;return;}
+ el.textContent=(k==='codex'?'Codex ':'Claude Code ')+x.version+(k==='remote'?' · PROD':'');
+ el.classList.toggle('stale',!!(x.restart&&x.restart.stale));
+ el.title=x.restart&&x.restart.stale?tr('ccliStaleNote'):'';
+ el.hidden=false;
+}
+setInterval(ccliVerRender,2000);setTimeout(()=>{ccliLoad(false);},1500);
 setTimeout(()=>ccliLoad(true),8000);       // после загрузки страницы — тихая проверка версий
 setInterval(()=>ccliLoad(true),1800000);   // и раз в полчаса
 $('#gear').addEventListener('click',()=>{bkMsg='';updSettingsRender();updLoad();bkLoad();ccliMsg='';ccliLoad(!ccliData||Date.now()/1000-((ccliData.local&&ccliData.local.checked)||0)>((ccliData.local&&ccliData.local.ttl)||1800));});

@@ -941,6 +941,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.27** — The progress of a Claude Code / Codex update is visible (a bar, time, log) with "Installed" and what to do next when it is done; Codex has a "Restart the Codex console" button (the header badge stays lit while the console runs the old version); a version label in the top right corner of the console for the active tab.
+
 - **v2.0.26** — In the split console the font of the Claude PROD part no longer shrinks (like Codex and Claude DEV, lines wrap and the size is always 100%); a background browser tab no longer polls the console or shifts the screen width of the second server.
 
 - **v2.0.25** — A "new version available" badge in the header next to the logo: it lights up when a new Claude Code (on this server and on PROD) or Codex is available; a click opens a window with Update and Cancel. The versions are checked every half hour.
