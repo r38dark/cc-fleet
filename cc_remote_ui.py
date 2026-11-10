@@ -83,7 +83,12 @@ function when(win,week){var t=win&&win.resets_at?new Date(win.resets_at):null;if
 function pct(win){return win&&isFinite(win.pct)?Math.round(win.pct):null}
 function tone(p){return p==null?'unknown':p>=99?'bad':p>=85?'warn':'normal'}
 function color(p){return p==null?'var(--txt)':p>=99?'var(--bad)':p>=85?'var(--warn)':'var(--ok)'}
-function status(m){return !m.online?'нет связи':m.error==='no_login'?'нужен вход':m.error==='token_expired'?'токен устарел':m.error&&m.error.indexOf('http_')===0?'лимиты не получены':'онлайн'}
+function httpCode(m){return m&&m.error&&m.error.indexOf('http_')===0?m.error.slice(5):''}
+function status(m){return !m.online?'нет связи':m.error==='no_login'?'нужен вход':m.error==='token_expired'?'токен устарел':httpCode(m)?'лимиты не обновились · '+httpCode(m):'онлайн'}
+// пояснение к надписи: что случилось и почему цифры на плитке могут быть старыми
+function statusHint(m){var c=httpCode(m);if(!c)return '';
+ var why=c==='429'?'слишком частые запросы к Anthropic':c==='401'||c==='403'?'доступ отклонён, возможно, нужен новый вход':c.charAt(0)==='5'?'сбой на стороне Anthropic':'ответ сервера Anthropic с ошибкой';
+ return 'Запрос лимитов вернул ошибку '+c+' ('+why+'). Показаны цифры последнего удачного опроса — они могли устареть. Опрос повторится сам; Claude на PROD от этого не останавливается.'}
 function modelName(id){if(!id)return '—';var m=/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$)/.exec(id);if(!m)return id;return m[1].charAt(0).toUpperCase()+m[1].slice(1)+' '+m[2]+(m[3]?'.'+m[3]:'')}
 var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),tok=(typeof TOKEN!=='undefined'?TOKEN:''),pollT=0,note='';
 function rmode(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}return s&&s.remote_mode||{}}
@@ -236,7 +241,7 @@ function paintStrip(m){
  compact.dataset.state=m&&m.online&&!m.error?'ready':'warning';compact.dataset.online=m&&m.online?'1':'0';
  compact.querySelector('.fleet-compact-name').title=name+(mail?' · '+mail:'')+(m&&m.plan?' · '+m.plan.toUpperCase():'');
  compact.querySelector('.rm-cmodel').textContent=mname;compact.querySelector('.rm-ceffort').textContent=eff;
- compact.querySelector('.fleet-compact-warning').textContent=m&&(!m.online||m.error)?st:'';
+ var cwn=compact.querySelector('.fleet-compact-warning');cwn.textContent=m&&(!m.online||m.error)?st:'';cwn.title=m?statusHint(m):'';
  var cw=compact.querySelectorAll('.fleet-compact-window'),lim=tile.querySelector('.cxlim'),lims='';
  wins.forEach(function(w,i){var p=pct(w);cw[i].dataset.tone=tone(p);cw[i].querySelector('.fleet-compact-used').textContent=p==null?'—':p+'%';cw[i].querySelector('.fleet-compact-range').textContent=(i===0&&w&&w.resets_at&&!isNaN(new Date(w.resets_at)))?(new Date(w.resets_at)>new Date()?clk(new Date(w.resets_at)):'сброс'):when(w,i===1);
   var mt=tile.querySelectorAll('.fleet-live-meter')[i];mt.dataset.tone=tone(p);mt.querySelector('b').textContent=p==null?'—':p+'%';mt.querySelector('.fleet-live-fill').style.width=(p==null?0:Math.min(100,p))+'%';mt.querySelector('.fleet-live-reset').textContent=when(w,i===1);
@@ -257,7 +262,7 @@ function paintCard(m){
  var el=document.createElement('div');el.className='card fleet-remote-card';el.dataset.sig=sig;el.dataset.remote=m.id;
  var st=status(m),bad=st!=='онлайн';
  el.innerHTML='<div class="top"><div class="fleet-identity"><div class="fleet-titleline"><strong class="fleet-account-name" title="Claude PROD">Claude PROD</strong>'+(m.plan?'<span class="tag plan">'+esc(m.plan.toUpperCase())+'</span>':'')+'</div><span class="email" title="'+esc(m.email||'')+'">'+esc(m.email||'почта не получена')+'</span></div></div>'
-  +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
+  +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'" title="'+esc(statusHint(m))+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
   +row('Сессия 5ч',m.five_hour,false)+row('Неделя',m.seven_day,true)
   +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD). Вручную переключённая работа остаётся там, куда её переключили. Codex и агент Notion переключаются вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
   +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: войди заново':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'

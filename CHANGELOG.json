@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.30",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Шкала лимита, полоса паузы и подписи",
+        "p": [
+          "На плитках активных аккаунтов Claude и Codex появилась прозрачная шкала: заливка показывает остаток пятичасового лимита (убывает с мягким краем, цвет от зелёного к красному, при остатке меньше 15% «дышит»), недельный лимит — яркая светящаяся линия сверху. Notion AI не затронут.",
+          "Пока Claude на PROD или Codex стоят на паузе по лимитам, сверху их окна консоли видна полоса: до какого часа пауза, что за лимит, сообщения из Telegram встают в очередь.",
+          "Подпись «лимиты не получены» заменена на «лимиты не обновились · код ошибки» с подсказкой; надпись версии в углу консоли — только номер, мельче; на телефоне в поле ввода консоли нет серой полоски прокрутки."
+        ]
+      },
+      "en": {
+        "t": "Limit gauge, pause strip and labels",
+        "p": [
+          "The active Claude and Codex account tiles now have a transparent gauge: the fill shows what is left of the five-hour limit (it shrinks with a soft edge, green to red, pulses when less than 15% is left), the weekly limit is a bright glowing line on top. Notion AI is not affected.",
+          "While Claude on PROD or Codex is paused on limits, a strip at the top of its console window shows until when, which limit, and that Telegram messages wait in the queue.",
+          "The \"limits not received\" label became \"limits not updated · error code\" with a hint; the version label in the console corner is just the number, smaller; on a phone the console input has no grey scrollbar."
+        ]
+      }
+    },
+    {
       "v": "2.0.29",
       "date": "2026-11-10",
       "ru": {
