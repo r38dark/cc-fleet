@@ -19,7 +19,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.20"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.21"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3589,7 +3589,7 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .tpcomp button{margin:0;min-height:0;padding:0;flex:none}
 .tpcomp .tpsend{display:grid;place-items:center;width:28px;height:28px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;box-shadow:none}
 .tpcomp .tpsend svg{display:block;width:16px;height:16px;pointer-events:none}
-.tpcomp .tpkey{background:transparent;color:#73869d;border:1px solid #2a3644;padding:2px 5px;border-radius:4px;font:10px ui-monospace,monospace}
+.tpcomp .tpkey{background:transparent;color:#73869d;border:1px solid #2a3644;padding:2px 5px;border-radius:4px;font:10px ui-monospace,monospace;min-width:20px;text-align:center}
 /* --- чат Notion AI в части разделённой консоли --- */
 .termbox.tpchat{display:flex!important;flex-direction:column;overflow:hidden!important}
 html:root:root #termBox.tpchat,html:root:root .tpextra.tpchat{white-space:normal!important;font-family:ui-monospace,"SFMono-Regular",Consolas,monospace}
@@ -5512,8 +5512,8 @@ function newPane(){
 const DRAFTS={};  // черновик по модели: переставили части местами — текст ушёл вместе с моделью
 function compMake(P){
  const w=document.createElement('div');w.className='tpcw';
- w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form>';
- const form=w.children[0],input=form.children[0],send=form.children[2],stat=document.createElement('span');  // строки «Ввод в …» у части нет: статус отправки пишется в невидимый узел, ошибки показывает toast
+ w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="up">↑</button><button type="button" class="tpkey" data-console-key="down">↓</button><button type="button" class="tpkey" data-console-key="enter">⏎</button><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form>';
+ const form=w.children[0],input=form.children[0],send=form.querySelector('.tpsend'),stat=document.createElement('span');  // строки «Ввод в …» у части нет: статус отправки пишется в невидимый узел, ошибки показывает toast
  P.comp={w:w,form:form,input:input,send:send,stat:stat,model:null};
  input.addEventListener('input',()=>{DRAFTS[P.k]=input.value;});
  w.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
@@ -5525,11 +5525,11 @@ function compSync(P,on){
  const c=P.comp;if(!c)return;
  const n=tabName(P.k);
  c.w.classList.toggle('on',on);
- c.form.querySelector('.tpkey').hidden=isNai(P.k);  // Esc — только для консолей
+ c.form.querySelectorAll('.tpkey').forEach(b=>{b.hidden=isNai(P.k);});  // ↑ ↓ ⏎ Esc — только для консолей
  if(c.model!==P.k){
   c.model=P.k;c.input.value=DRAFTS[P.k]||'';
   c.input.placeholder=(LANG==='en'?'Message to ':'Сообщение в ')+n+'…';c.input.setAttribute('aria-label',c.input.placeholder);
-  c.send.title=LANG==='en'?'Send':'Отправить';c.form.querySelector('.tpkey').title=LANG==='en'?'Esc to console':'Esc в консоль';
+  c.send.title=LANG==='en'?'Send':'Отправить';c.form.querySelectorAll('.tpkey').forEach(b=>{const k=b.dataset.consoleKey;b.title=LANG==='en'?({up:'Arrow up',down:'Arrow down',enter:'Enter (select)',escape:'Esc'}[k]+' to console'):({up:'Стрелка вверх в консоль',down:'Стрелка вниз в консоль',enter:'Enter в консоль (выбрать пункт)',escape:'Esc в консоль'}[k]);b.setAttribute('aria-label',b.title);});
  }
 }
 function placeFrame(ks){

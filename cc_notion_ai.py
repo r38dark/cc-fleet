@@ -2203,10 +2203,10 @@ function place(){if(!on||!view)return;var b=$i('termBox');if(!b)return;if(view.p
   view.style.top=(r.top-o.top-op.clientTop+op.scrollTop)+'px';view.style.left=(r.left-o.left-op.clientLeft+op.scrollLeft)+'px';view.style.width=r.width+'px';view.style.height=r.height+'px'}
  var inp=$i('fleetInput');if(inp)inp.placeholder=ph(inp);
  if(stick)view.scrollTop=view.scrollHeight}
-function setInput(lock){var inp=$i('fleetInput'),st=$i('fleetInputState'),stR=st&&st.nextElementSibling,send=$i('fleetSend'),key=document.querySelector('#fleetConsoleForm [data-console-key]');if(!inp)return;
- if(lock){saved={ph:inp.placeholder,dis:inp.disabled,st:st?st.textContent:'',stR:stR?stR.textContent:'',send:send?send.disabled:false,key:key?key.disabled:false};
-  inp.disabled=false;inp.placeholder=ph(inp);if(st)st.textContent=agentAid?'Ввод в чат агента «'+agentName+'»':'Ввод в чат Notion AI';if(stR)stR.textContent=agentAid?agentName+' · свой чат':'Notion AI · постоянный чат';if(send)send.disabled=sending;if(key)key.disabled=true}
- else if(saved){inp.disabled=saved.dis;inp.placeholder=saved.ph;if(st)st.textContent=saved.st;if(stR)stR.textContent=saved.stR;if(send)send.disabled=saved.send;if(key)key.disabled=saved.key;saved=null}}
+function setInput(lock){var inp=$i('fleetInput'),st=$i('fleetInputState'),stR=st&&st.nextElementSibling,send=$i('fleetSend'),keys=[].slice.call(document.querySelectorAll('#fleetConsoleForm [data-console-key]'));if(!inp)return;
+ if(lock){saved={ph:inp.placeholder,dis:inp.disabled,st:st?st.textContent:'',stR:stR?stR.textContent:'',send:send?send.disabled:false,key:keys.length?keys[0].disabled:false};
+  inp.disabled=false;inp.placeholder=ph(inp);if(st)st.textContent=agentAid?'Ввод в чат агента «'+agentName+'»':'Ввод в чат Notion AI';if(stR)stR.textContent=agentAid?agentName+' · свой чат':'Notion AI · постоянный чат';if(send)send.disabled=sending;keys.forEach(function(k){k.disabled=true})}
+ else if(saved){inp.disabled=saved.dis;inp.placeholder=saved.ph;if(st)st.textContent=saved.st;if(stR)stR.textContent=saved.stR;if(send)send.disabled=saved.send;keys.forEach(function(k){k.disabled=saved.key});saved=null}}
 // [notion-ai] Отправка из поля ввода консоли → POST notion-ai/send → notion-delegate кладёт сообщение в постоянный чат.
 function sendMsg(){var inp=$i('fleetInput'),st=$i('fleetInputState'),send=$i('fleetSend');if(sending||!inp)return;var text=inp.value;if(!text.trim())return;
  sending=true;if(send)send.disabled=true;if(st)st.textContent='Отправляю в чат Notion AI…';

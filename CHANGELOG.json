@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.21",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Стрелки и Enter в окне консоли",
+        "p": [
+          "Рядом с Esc появились кнопки ↑ ↓ ⏎: меню в консоли (например, выбор при исчерпанном лимите) выбирается без клавиатуры, в том числе на телефоне.",
+          "Кнопки есть и в общем окне ввода, и в окне каждой части разделённой консоли.",
+          "После клика по консоли стрелки, Enter и Esc с клавиатуры уходят прямо в неё; в поле ввода всё работает как раньше."
+        ]
+      },
+      "en": {
+        "t": "Arrow keys and Enter in the console input",
+        "p": [
+          "Next to Esc there are now ↑ ↓ ⏎ buttons: console menus (for example the choice shown when a limit is exhausted) can be used without a keyboard, on a phone too.",
+          "The buttons are in the shared input and in the input of every part of the split console.",
+          "After a click on the console, the arrow keys, Enter and Esc from the keyboard go straight to it; the input field works as before."
+        ]
+      }
+    },
+    {
       "v": "2.0.20",
       "date": "2026-11-10",
       "ru": {
