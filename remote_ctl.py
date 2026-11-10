@@ -285,7 +285,16 @@ def main():
     if c == "cli":  # cli status [check] | update [версия] | rollback — Claude Code на этом сервере (модуль claude_cli.py лежит рядом)
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import claude_cli
-        out(claude_cli.run(a[1:]))
+        res = claude_cli.run(a[1:])
+        if isinstance(res, dict) and res.get('ok') and (a[1:2] or ['status'])[0] == 'status':
+            started = 0
+            if alive():
+                try:
+                    started = float(sh(['tmux', 'display', '-p', '-t', TMUX, '#{session_created}'])[1].strip() or 0)
+                except ValueError:
+                    started = 0
+            res['restart'] = {'running': alive(), 'started': started, 'tg': bool(tg_state())}   # для кнопки «Перезапустить Claude»
+        out(res)
     if c == "status":
         s = screen(40) if alive() else ""
         out({"ok": True, "running": alive(), "busy": busy(s), "tg": tg_state()})

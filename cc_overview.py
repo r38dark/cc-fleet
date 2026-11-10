@@ -27,7 +27,7 @@ html:root:root .fleet-console-toolbar .ctab{position:relative;display:flex;align
 .fleet-console-toolbar .ctab::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--fleet-claude)}.fleet-console-toolbar #ctCodex::before{background:var(--fleet-accent)}
 html:root:root .fleet-console-toolbar .ctab.on{color:#ecf1f6}.fleet-console-toolbar .ctab.on::after{content:"";height:2px;position:absolute;bottom:-1px;left:0;right:0;background:#4cdbb0}
 html:root:root .fleet-console-toolbar .ctacts{margin:0 0 0 4px;display:flex;gap:5px}.fleet-console-toolbar .iconbtn{background:transparent!important;color:#8799ae;border-color:#2a3542;border-radius:6px;width:26px;height:26px}.fleet-console-toolbar .iconbtn svg{width:14px;height:14px}
-html:root:root .fleet-console-toolbar #ccliVer{margin:0 0 0 auto}html:root:root .fleet-console-toolbar #ccliVer+.tzoom{margin-left:0}html:root:root .fleet-console-toolbar .tzoom{position:static;margin-left:auto;display:flex;gap:4px;padding:0;background:transparent}.fleet-console-toolbar .tzval{color:#8da0b7;font-size:11px;font-weight:450}
+html:root:root .fleet-console-toolbar .tzoom{position:static;margin-left:auto;display:flex;gap:4px;padding:0;background:transparent}.fleet-console-toolbar .tzval{color:#8da0b7;font-size:11px;font-weight:450}
 html:not(.conly) #termBox{height:clamp(360px,41dvh,510px)!important;min-height:360px!important;max-height:none!important;flex:none!important;margin:0;border:0;border-radius:0;padding:28px 30px 16px;background:var(--fleet-terminal);color:#d2dce9;font:calc(12px * var(--tz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace;white-space:pre;overflow:auto}
 .fleet-composer{display:flex;align-items:center;gap:11px;margin:0;padding:11px 20px;border-top:1px solid #263140;background:#101620;color:#dbe3ed;flex:none}
 .fleet-composer::before{content:"›";color:#73dbb7;font:22px ui-monospace,monospace}
@@ -1026,7 +1026,7 @@ JS = r'''
  brand.querySelector('.fleet-brand-name').append(document.getElementById('termDot'));
  hdr.querySelector('.hdrctl').prepend(profilebar);
  const headerButtons=hdr.querySelector('.hdrbtns');if(headerButtons)hdr.querySelector('.hdrctl').append(headerButtons);
- const toolbar=el('div','fleet-console-toolbar');toolbar.append(document.getElementById('cTabs'),document.getElementById('ccliVer'),term.querySelector('.tzoom'));term.prepend(toolbar);
+ const toolbar=el('div','fleet-console-toolbar');toolbar.append(document.getElementById('cTabs'),term.querySelector('.tzoom'));term.prepend(toolbar);
  const consoleFrame=el('div','fleet-console-viewport'),consoleBox=document.getElementById('termBox'),consoleTabs=document.getElementById('cTabs'),consoleZoom=toolbar.querySelector('.tzoom'),consoleActions=consoleTabs.querySelector('.ctacts');
  consoleBox.before(consoleFrame);consoleFrame.append(consoleBox);
  const mobileConsole=matchMedia('(max-width:640px), (max-width:1000px) and (pointer:coarse)'),legacyDock=document.querySelector('.dock');

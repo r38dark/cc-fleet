@@ -441,9 +441,23 @@ class Page(unittest.TestCase):
         self.assertNotIn('data-ccli="restart"', h[1])
         self.assertNotIn('data-ccli="restart"', h[2])
 
-    def test_claude_has_no_restart_button_here(self):
-        h = render([{"local": row(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, finished=time.time()), "remote": None}])[0]
-        self.assertNotIn('data-ccli="restart"', h)
+    def test_claude_restart_button_for_this_server_and_second_server(self):
+        stale = {"running": True, "stale": True, "busy": False}
+        h = render([{"local": row(update_available=False, restart=stale), "remote": row(update_available=False, restart=stale), "codex": None}])[0]
+        self.assertIn('data-ccli="restart" data-k="local"', h)
+        self.assertIn('data-ccli="restart" data-k="remote"', h)
+        self.assertEqual(h.count("ccliRestartClaude"), 2)
+        self.assertEqual(h.count("ccliStaleClaude"), 2)
+
+    def test_claude_restart_after_a_fresh_install_and_no_button_when_it_is_not_running(self):
+        done = dict(state="done", op="update", from_version="2.1.319", version_after="2.1.322", version="2.1.322", update_available=False, finished=time.time())
+        h = render([{"local": row(**done, restart={"running": True, "stale": False, "busy": False}), "remote": None},
+                    {"local": row(**done, restart={"running": False, "stale": False, "busy": False}), "remote": None},
+                    {"local": row(update_available=False, restart=None), "remote": None}])
+        self.assertIn('data-ccli="restart" data-k="local"', h[0])
+        self.assertNotIn('data-ccli="restart"', h[1])
+        self.assertIn("ccliNextClaude", h[1])                                       # остановлен: новая версия включится при запуске
+        self.assertNotIn('data-ccli="restart"', h[2])
 
     def test_codex_row(self):
         h = render([{"local": row(), "remote": None, "codex": row(tool="codex", version="0.166.0", latest="0.167.0")}])[0]
@@ -546,6 +560,13 @@ class Badge(unittest.TestCase):
         self.assertIn("ccliStaleNote", r[1]["html"])
         self.assertNotIn('data-ccli-pop="update"', r[1]["html"])
 
+    def test_claude_restart_in_the_window(self):
+        data = {"local": row(update_available=False, restart={"running": True, "stale": True, "busy": False}), "remote": None, "codex": None}
+        r = badge([{"data": data, "open": True}])
+        self.assertIn('data-ccli-pop="restart" data-k="local"', r[0]["html"])
+        self.assertIn("ccliRestartClaude", r[0]["html"])
+        self.assertIn("ccliStaleClaude", r[0]["html"])
+
     def test_window_shows_bar_while_running_and_next_step_after_install(self):
         run = row(state="running", op="update", target="latest", can_update=False, started=time.time() - 5)
         done = row(tool="codex", version="0.167.0", update_available=False, state="done", op="update", from_version="0.166.0", version_after="0.167.0",
@@ -558,22 +579,19 @@ class Badge(unittest.TestCase):
         self.assertIn('data-ccli-pop="restart"', r[1]["html"])
 
 
-VER_HARNESS = r"""
+PV_HARNESS = r"""
 const LANG='ru';function tr(k,...a){return k+'('+a.join('|')+')';}
-const el={hidden:true,textContent:'',title:'',cls:{},classList:{toggle:(c,on)=>{el.cls[c]=!!on}}};
-function $(s){return s==='#ccliVer'?el:null}
-let ccliData=null,cur='claude';function consCur(){return cur}
 %s
-const out=[];for(const c of CASES){ccliData=c.data;cur=c.tab;el.hidden=true;el.textContent='';el.title='';el.cls={};ccliVerRender();out.push({hidden:el.hidden,text:el.textContent,stale:!!el.cls.stale,title:el.title});}
+const out=CASES.map(c=>ccliPvInfo(c.s,c.x));
 console.log(JSON.stringify(out));
 """
 
 
-def ver(cases):
-    js = cut(r"^function ccliVerRender\(\)\{.*?^\}$", "ccliVerRender")
+def pv(cases):
+    js = cut(r"^function ccliPvInfo\(s,x\)\{.*?^\}$", "ccliPvInfo")
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "v.js")
-        Path(p).write_text(("const CASES=%s;\n" % json.dumps(cases, ensure_ascii=False)) + VER_HARNESS % js, encoding="utf-8")
+        Path(p).write_text(("const CASES=%s;\n" % json.dumps(cases, ensure_ascii=False)) + PV_HARNESS % js, encoding="utf-8")
         r = subprocess.run(["node", p], capture_output=True, text=True, timeout=30)
         if r.returncode:
             raise AssertionError(r.stderr[-800:])
@@ -582,29 +600,150 @@ def ver(cases):
 
 @unittest.skipUnless(shutil.which("node"), "нет node")
 class VersionLabel(unittest.TestCase):
-    DATA = {"local": row(version="2.1.322"), "remote": row(version="2.1.321"),
-            "codex": row(tool="codex", version="0.167.0", restart={"running": True, "stale": True, "busy": False})}
+    """Надпись версии в правом верхнем углу КАЖДОГО окна консоли: жёлтая — старая, зелёная — актуальная (владелец 63335)."""
 
-    def test_label_follows_the_active_tab(self):
-        r = ver([{"data": self.DATA, "tab": "claude"}, {"data": self.DATA, "tab": "prod"}, {"data": self.DATA, "tab": "codex"}])
+    def test_text_follows_the_part(self):
+        r = pv([{"s": "claude", "x": row(version="2.1.322", update_available=False)}, {"s": "prod", "x": row(version="2.1.321", update_available=False)},
+                {"s": "codex", "x": row(tool="codex", version="0.167.0", update_available=False)}])
         self.assertEqual([x["text"] for x in r], ["Claude Code 2.1.322", "Claude Code 2.1.321 · PROD", "Codex 0.167.0"])
-        self.assertFalse(any(x["hidden"] for x in r))
 
-    def test_stale_console_is_marked(self):
-        r = ver([{"data": self.DATA, "tab": "codex"}, {"data": self.DATA, "tab": "claude"}])
-        self.assertTrue(r[0]["stale"])
-        self.assertIn("ccliStaleNote", r[0]["title"])
-        self.assertFalse(r[1]["stale"])
+    def test_green_when_current_yellow_when_newer_exists_or_started_before_the_update(self):
+        r = pv([{"s": "claude", "x": row(update_available=False)},
+                {"s": "claude", "x": row(update_available=True)},
+                {"s": "codex", "x": row(tool="codex", update_available=False, restart={"running": True, "stale": True})},
+                {"s": "prod", "x": row(update_available=False, restart={"running": True, "stale": True})},
+                {"s": "codex", "x": row(tool="codex", update_available=False, restart={"running": True, "stale": False})}])
+        self.assertEqual([x["old"] for x in r], [False, True, True, True, False])
+        self.assertIn("ccliPvNew", r[0]["title"])
+        self.assertIn("ccliPvOld", r[1]["title"])
+        self.assertIn("ccliStaleNote", r[2]["title"])
+        self.assertIn("ccliStaleClaude", r[3]["title"])
 
-    def test_hidden_without_data_for_notion_and_for_unavailable_second_server(self):
-        r = ver([{"data": None, "tab": "claude"}, {"data": self.DATA, "tab": "notion"}, {"data": {"local": None, "remote": {"ok": False}, "codex": None}, "tab": "prod"},
-                 {"data": self.DATA, "tab": "notion:abc"}])
-        self.assertTrue(all(x["hidden"] for x in r))
+    def test_nothing_for_notion_missing_data_or_unavailable_second_server(self):
+        r = pv([{"s": "notion", "x": row()}, {"s": "notion:abc", "x": row()}, {"s": "claude", "x": None}, {"s": "prod", "x": {"ok": False}},
+                {"s": "claude", "x": row(version=None)}])
+        self.assertEqual(r, [None, None, None, None, None])
 
-    def test_markup_is_in_the_console_toolbar(self):
-        self.assertIn('id="ccliVer"', SRC)
+    def test_label_is_in_each_window_not_in_the_tab_row(self):
+        for part in ("function ccliPartVers(){", "setInterval(ccliPartVers,2000);addEventListener('resize',ccliPartVers);", ".ccli-pv.new{color:var(--ok,#45d6ab)}", ".ccli-pv.old{color:var(--warn,#ecc277)}"):
+            self.assertIn(part, SRC, part)
+        self.assertNotIn('id="ccliVer"', SRC)
+        self.assertNotIn("ccliVerRender", SRC)
         ov = (HERE / "cc_overview.py").read_text(encoding="utf-8")
-        self.assertIn("toolbar.append(document.getElementById('cTabs'),document.getElementById('ccliVer'),term.querySelector('.tzoom'))", ov)
+        self.assertNotIn("ccliVer", ov)                            # из строки вкладок надпись убрана
+
+
+class ClaudeRestart(unittest.TestCase):
+    """Перезапуск Claude из панели: этот сервер (screen, start_claude.sh) и второй (ctl.py stop/start); новая сессия (решение владельца 63326)."""
+
+    @classmethod
+    def setUpClass(cls):
+        tmp = tempfile.mkdtemp(prefix="cccli_cr_")
+        os.environ["CC_LIMITS_BASE"] = os.path.join(tmp, "base")
+        os.environ["CC_LIMITS_PROFILES"] = os.path.join(tmp, "profiles")
+        os.makedirs(os.environ["CC_LIMITS_BASE"], exist_ok=True)
+        import cc_limits as L
+        cls.L = L
+
+    def local(self, alive=True, remote=False, notion=False, side=False, stop=True, start=True):
+        L = self.L
+        nai = mock.Mock()
+        nai.side_running.return_value, nai.stop_claude.return_value, nai.start_claude.return_value = side, stop, start
+        with mock.patch.object(L, "NOTION_AI", nai, create=True), mock.patch.object(L.cc_fleet, "claude_alive", return_value=alive), \
+                mock.patch("pause_ctl._remote_active", return_value=remote), mock.patch.object(L, "jload", return_value={"active": notion}):
+            r = L.claude_restart_local()
+        return r, [c[0] for c in nai.mock_calls]
+
+    def test_local_stop_then_start(self):
+        r, calls = self.local()
+        self.assertEqual((r, calls), ({"ok": True}, ["side_running", "stop_claude", "start_claude"]))
+
+    def test_local_not_touched_when_not_running_or_the_start_script_would_refuse(self):
+        self.assertEqual(self.local(alive=False), ({"ok": False, "error": "not_running"}, []))
+        self.assertEqual(self.local(remote=True), ({"ok": False, "error": "other_worker"}, []))     # работа на PROD: start_claude.sh не стартует, DEV остался бы выключен
+        self.assertEqual(self.local(notion=True), ({"ok": False, "error": "other_worker"}, []))     # профиль Notion AI — то же
+        r, calls = self.local(side=True)
+        self.assertEqual((r["error"], calls), ("side_session", ["side_running"]))
+
+    def test_local_failures_are_reported_and_start_is_not_tried_after_a_failed_stop(self):
+        r, calls = self.local(stop=False)
+        self.assertEqual((r["error"], calls), ("stop_failed", ["side_running", "stop_claude"]))
+        r, calls = self.local(start=False)
+        self.assertEqual((r["error"], calls), ("start_failed", ["side_running", "stop_claude", "start_claude"]))
+
+    def remote(self, members=True, job_alive=False, status=None, start=None):
+        import cc_remote_mode as M
+        L = self.L
+        status = {"ok": True, "running": True, "tg": True} if status is None else status
+        start = {"ok": True} if start is None else start
+        calls = []
+
+        def fake_ctl(mid, *a, **k):
+            calls.append(a)
+            return status if a[0] == "status" else ({"ok": True} if a[0] == "stop" else start)
+        job = mock.Mock()
+        job.is_alive.return_value = job_alive
+        with mock.patch.object(M, "_member_id", return_value="m1"), mock.patch.object(L.cc_remote, "members", return_value={"m1": {"host": "h"}} if members else {}), \
+                mock.patch.object(L.cc_remote, "ctl", side_effect=fake_ctl), mock.patch.dict(M._job, {"t": job}):
+            r = L.claude_restart_remote()
+        return r, calls
+
+    def test_remote_stop_then_start_with_the_same_telegram_state(self):
+        r, calls = self.remote()
+        self.assertEqual((r, calls), ({"ok": True}, [("status",), ("stop",), ("start", "-", "1")]))
+        r, calls = self.remote(status={"ok": True, "running": True, "tg": False})
+        self.assertEqual(calls[-1], ("start", "-", "0"))           # Telegram не включаем, если он у второго сервера и не был включён
+
+    def test_remote_not_touched_when_not_running_busy_or_unreachable(self):
+        self.assertEqual(self.remote(status={"ok": True, "running": False}), ({"ok": False, "error": "not_running"}, [("status",)]))
+        self.assertEqual(self.remote(job_alive=True), ({"ok": False, "error": "busy"}, []))          # идёт передача работы
+        self.assertEqual(self.remote(members=False), ({"ok": False, "error": "ssh"}, []))
+
+    def test_remote_unreachable_and_failed_start(self):
+        import cc_remote_mode as M
+        L = self.L
+        with mock.patch.object(M, "_member_id", return_value="m1"), mock.patch.object(L.cc_remote, "members", return_value={"m1": {"host": "h"}}), \
+                mock.patch.object(L.cc_remote, "ctl", return_value=None):
+            self.assertEqual(L.claude_restart_remote(), {"ok": False, "error": "ssh"})
+        r, calls = self.remote(start={"ok": False, "error": "timeout"})
+        self.assertEqual((r["ok"], r["error"], r["message"]), (False, "start_failed", "timeout"))
+
+    def test_restart_is_routed_by_target(self):
+        L = self.L
+        with mock.patch.object(L, "claude_restart_local", return_value={"ok": True, "w": "l"}) as lo, mock.patch.object(L, "claude_restart_remote", return_value={"ok": True, "w": "r"}) as re_:
+            self.assertEqual(L.claude_cli_action("restart", {"target": "local"})["w"], "l")
+            self.assertEqual(L.claude_cli_action("restart", {"target": "remote"})["w"], "r")
+        self.assertEqual((lo.call_count, re_.call_count), (1, 1))
+
+    def test_restart_info_from_second_server_stale_logic(self):
+        L = self.L
+        mk = lambda started, running=True, mtime=1000: {"ok": True, "pkg_mtime": mtime, "restart": {"running": running, "started": started, "tg": True}}
+        self.assertTrue(L.claude_restart_info_remote(mk(500))["stale"])               # запущен до установки пакета
+        self.assertFalse(L.claude_restart_info_remote(mk(1500))["stale"])
+        self.assertFalse(L.claude_restart_info_remote(mk(500, running=False))["stale"])
+        self.assertIsNone(L.claude_restart_info_remote({"ok": True}))                 # ctl.py старой версии — поля нет
+
+    def test_second_server_status_carries_restart_and_old_ctl_triggers_redeploy(self):
+        import cc_remote_mode as M
+        calls = []
+
+        def fake_ctl(mid, *a, **k):
+            calls.append(a)
+            return {"ok": True, "version": "2.1.322"} if len(calls) == 1 else {"ok": True, "version": "2.1.322", "restart": {"running": True}}
+        with mock.patch.object(M, "_member_id", return_value="m1"), mock.patch.object(M.R, "members", return_value={"m1": {"host": "h"}}), \
+                mock.patch.object(M.R, "ctl", side_effect=fake_ctl), mock.patch.object(M, "deploy_tools", return_value=True) as dep:
+            r = M.cli_remote("status")
+        self.assertEqual(dep.call_count, 1)                                            # ответ без поля restart — доставили свежий ctl.py и спросили ещё раз
+        self.assertIn("restart", r)
+        self.assertEqual(len(calls), 2)
+
+    def test_ctl_cli_status_reports_restart_fields(self):
+        env = dict(os.environ, CC_CLI_STATE_DIR=tempfile.mkdtemp(prefix="cccli_ctl_"), CC_REMOTE_TMUX="cc-test-no-such-session")
+        r = subprocess.run([sys.executable, str(HERE / "remote_ctl.py"), "cli", "status"], capture_output=True, text=True, timeout=60, env=env)
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertTrue(d["ok"])
+        self.assertEqual(set(d["restart"]), {"running", "started", "tg"})
+        self.assertFalse(d["restart"]["running"])
 
 
 class Restart(unittest.TestCase):
@@ -643,8 +782,8 @@ class Restart(unittest.TestCase):
         self.assertEqual((r["error"], calls), ("start_failed", ["stop", "start"]))
 
     def test_only_codex_and_only_when_installed(self):
-        self.assertEqual(self.act(target="local")[0]["error"], "not_supported")
-        self.assertEqual(self.act(target="remote")[0]["error"], "not_supported")
+        self.assertEqual(self.act(target="bogus")[0]["error"], "not_supported")      # local и remote теперь перезапускают Claude (см. ClaudeRestart)
+        self.assertEqual(self.act(target="")[0]["error"], "not_supported")
         self.assertEqual(self.act(codex="")[0]["error"], "not_installed")
 
     def test_route_is_registered(self):

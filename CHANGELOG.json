@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.28",
+      "date": "2026-11-10",
+      "ru": {
+        "t": "Перезапуск Claude после обновления",
+        "p": [
+          "После обновления Claude Code появляется кнопка «Перезапустить Claude» (на этом сервере и на PROD): он останавливается и запускается заново, начинается новая сессия, Telegram подключается сам. Перед этим подтверждение.",
+          "Значок в шапке горит, пока Claude работает на старой версии. Если работа сейчас идёт не на этом Claude, кнопка не нужна и не выполняется.",
+          "Надпись версии теперь в правом верхнем углу каждого окна консоли (у каждой части разделения своя), а не в строке вкладок: жёлтая — версия старая (запущена до обновления или есть новее), зелёная — актуальная."
+        ]
+      },
+      "en": {
+        "t": "Restart Claude after an update",
+        "p": [
+          "After a Claude Code update there is a \"Restart Claude\" button (on this server and on PROD): Claude is stopped and started again, a new session begins and Telegram reconnects by itself. A confirmation comes first.",
+          "The header badge stays lit while Claude runs the old version. If the work is not on this Claude right now, the button is not needed and does nothing.",
+          "The version label is now in the top right corner of every console window (each split part has its own) instead of the tab row: yellow when the version is old (started before the update or a newer one exists), green when it is current."
+        ]
+      }
+    },
+    {
       "v": "2.0.27",
       "date": "2026-11-10",
       "ru": {
