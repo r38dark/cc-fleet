@@ -21,7 +21,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.32"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.33"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3819,9 +3819,10 @@ html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 aut
 .ccli-pv[hidden]{display:none}.ccli-pv.new{color:var(--ok,#45d6ab)}.ccli-pv.old{color:var(--warn,#ecc277)}
 @media (max-width:640px){.ccli-pvbox{display:none}}
 .ccps-box{position:absolute;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none}
-.ccps{position:absolute;box-sizing:border-box;padding:4px 9px;border-radius:7px;background:rgba(44,34,10,.93);border:1px solid rgba(236,194,119,.55);color:#f1d9a3;font:11px/1.3 Inter,system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.35);pointer-events:none}
-.ccps[hidden]{display:none}.ccps b{color:#ffe3a6}
-@media (max-width:640px){.ccps{font-size:10px;padding:3px 7px}}
+.ccps{position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:rgba(165,172,190,.28);pointer-events:none}
+.ccps svg{display:block;width:min(30%,150px);height:auto;aspect-ratio:1}
+.ccps[hidden]{display:none}
+@media (max-width:640px){.ccps svg{width:min(34%,100px)}}
 #ccliBox pre{margin:6px 0 0;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Consolas,monospace;opacity:.85}
 .ccli-badge{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;margin:0 0 0 8px;border:1px solid rgba(69,214,171,.45);border-radius:99px;background:rgba(69,214,171,.12);color:var(--fleet-accent,#45d6ab);font:600 11px/1 Inter,system-ui,sans-serif;cursor:pointer;flex:none;animation:ccliGlow 2.6s ease-in-out infinite}
 .ccli-badge[hidden]{display:none}.ccli-badge svg{width:12px;height:12px;display:block}.ccli-badge b{font-weight:650}
@@ -7423,8 +7424,9 @@ function ccpRender(){
  if(rp&&rp.enabled&&rp.applied&&rp.blocked){
   const until=(rp.resume_at||0)*1000;
   el.className='ccpause lvl-pause';el.hidden=false;
-  const title=LANG==='en'?'Claude on the remote server is paused':'Claude на втором сервере: пауза по лимитам';
-  const sub=LANG==='en'?'Pending actions wait for quota reset. The conversation is retained.':'Новые действия ждут сброса лимита. Беседа сохранена.';
+  // (63532) один текст паузы: подробный, что раньше был полосой в консоли, теперь здесь; в консоли осталась большая иконка паузы
+  const title='\u23f8 '+tr('ccpsTitle')+(until?tr('ccpsUntil',ccpAt(until),'<span class="ccp-left" data-until="'+until+'">'+ccpLeft(until)+'</span>'):'');
+  const sub=tr('ccpsBody');
   el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title
    +'</div><div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+ccpEsc((rp.reasons||[]).join('; '))+'</div></div>'
    +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)+'</div><div class="l">'+tr('ccpTillWake')+'</div></div>':'');
@@ -7534,6 +7536,7 @@ function ccpRender(){
     +'<div class="l">'+tlabel+'</div></div>':'');
 }
 function ccpTick(){
+ document.querySelectorAll('#ccPause .ccp-left').forEach(e=>{e.textContent=ccpLeft(+e.dataset.until)});   // «осталось …» в тексте паузы тикает
  const pz=ccpData&&ccpData.pause;
  // пауза резерва, отказа инструмента ещё не было: опрашиваем чаще, чтобы отсчёт «доделывает» появился сразу
  if(pz&&pz.active&&pz.kind==='reserve'&&!pz.notice_ts&&Date.now()-ccpLoadedAt>4000)ccpLoad();
@@ -8005,19 +8008,23 @@ function ccpsHtml(k){
   return at((p.resume_at||0)*1000,(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', '),'ccpsTitleCx')+'. '+tr('ccpsBodyCx');}
  return '';
 }
+const PAUSE_ICO='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5.2" y="3.6" width="5" height="16.8" rx="1.7"/><rect x="13.8" y="3.6" width="5" height="16.8" rx="1.7"/></svg>';
+function ccpPlain(h){return String(h).replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');}
 function ccpPartStrip(){
  const wrap=document.querySelector('.termwrap');if(!wrap||typeof PANES==='undefined')return;
  let box=document.getElementById('ccps');
  const htmls=PANES.map(P=>ccpsHtml(P.k));
  if(!box){if(!htmls.some(Boolean))return;box=document.createElement('div');box.id='ccps';box.className='ccps-box';wrap.appendChild(box);}
- const wr=wrap.getBoundingClientRect(),off=(wrap.classList.contains('tsplit')?40:10)+(window.innerWidth>640?18:0);   // ниже надписи версии
+ const wr=wrap.getBoundingClientRect();
  PANES.forEach((P,i)=>{
   const id='ccps'+i;let el=document.getElementById(id);
   const b=P.box,r=b&&b.getBoundingClientRect();
   if(!htmls[i]||P.hid||!r||r.width<200||b.offsetParent===null){if(el)el.hidden=true;return;}
   if(!el){el=document.createElement('div');el.id=id;el.className='ccps';box.appendChild(el);}
-  el.innerHTML=htmls[i];el.hidden=false;
-  el.style.top=Math.round(r.top-wr.top+off)+'px';el.style.left=Math.round(r.left-wr.left+10)+'px';el.style.width=Math.round(r.width-20)+'px';
+  // (63532) в консоли — большая серая прозрачная иконка паузы по центру части; сам текст паузы показан в верхнем баннере (здесь — подсказка при наведении)
+  if(el.innerHTML!==PAUSE_ICO)el.innerHTML=PAUSE_ICO;
+  el.title=ccpPlain(htmls[i]);el.hidden=false;
+  el.style.top=Math.round(r.top-wr.top)+'px';el.style.left=Math.round(r.left-wr.left)+'px';el.style.width=Math.round(r.width)+'px';el.style.height=Math.round(r.height)+'px';
  });
 }
 setInterval(ccpPartStrip,1000);addEventListener('resize',ccpPartStrip);

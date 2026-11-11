@@ -21,6 +21,22 @@ class RemoteLimits(unittest.TestCase):
     def test_unknown_member(self):
         self.assertIsNone(cc_remote.fetch_limits('нет'))
 
+    def test_throttled_answer_is_numbers_with_stale_mark_not_an_error(self):
+        # 63531: Anthropic ответил 429, скрипт лимитов отдал последние цифры с метками stale/retry_at — на плитке не ошибка «429»
+        cc_remote.fetch_limits('prod')
+        self.answer = (0, json.dumps({'ok': True, 'stale': True, 'stale_code': 429, 'retry_at': 1794380000.0,
+                                      'five_hour': {'pct': 88.0, 'resets_at': 'x'}, 'seven_day': {'pct': 9.0, 'resets_at': 'y'}}))
+        row = cc_remote.fetch_limits('prod', force=True)
+        self.assertEqual(row['error'], '')
+        self.assertTrue(row['online'])
+        self.assertTrue(row['stale'])
+        self.assertEqual(row['retry_at'], 1794380000.0)
+        self.assertEqual(row['five_hour']['pct'], 88.0)
+        self.answer = (0, json.dumps({'ok': True, 'five_hour': {'pct': 50.0, 'resets_at': 'x'}, 'seven_day': {'pct': 9.0, 'resets_at': 'y'}}))
+        row = cc_remote.fetch_limits('prod', force=True)
+        self.assertNotIn('stale', row)                      # свежие цифры метку снимают
+        self.assertNotIn('retry_at', row)
+
     def test_ok_and_cache(self):
         a = cc_remote.fetch_limits('prod')
         self.assertTrue(a['online'])

@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.33",
+      "date": "2026-11-11",
+      "ru": {
+        "t": "Пауза и лимиты Claude на втором сервере",
+        "p": [
+          "Надпись «лимиты не обновились · 429» у Claude на втором сервере: при подходе к порогу и панель, и защита лимитов опрашивали Anthropic каждые 30 секунд (по два запроса за раз). Теперь у скрипта лимитов общий кэш на 60 секунд, профиль запрашивается раз в 6 часов, а после 429 опрос на время останавливается (Retry-After) и показываются последние цифры.",
+          "Пауза по лимитам — один текст: подробное сообщение («до …, осталось …, сообщения в Telegram встают в очередь») теперь в верхнем баннере, а в окне консоли — большая серая прозрачная иконка паузы по центру.",
+          "На плитке «Активные аккаунты» у Claude на втором сервере во время паузы — «⏸ пауза по лимитам до …» вместо ошибки."
+        ]
+      },
+      "en": {
+        "t": "Pause and limits of Claude on the second server",
+        "p": [
+          "The \"limits not updated · 429\" label for Claude on the second server: near the threshold both the panel and the limit guard polled Anthropic every 30 seconds (two requests each time). The limits script now has a shared 60-second cache, asks for the profile once per 6 hours, and after a 429 pauses polling for a while (Retry-After) and shows the last known numbers.",
+          "The pause on limits is one text now: the detailed message (\"until …, … left, Telegram messages are queued\") moved to the top banner, and the console window shows a big gray translucent pause icon in the center instead.",
+          "On the \"Active accounts\" tile, Claude on the second server shows \"⏸ paused on limits until …\" during a pause instead of an error."
+        ]
+      }
+    },
+    {
       "v": "2.0.32",
       "date": "2026-11-11",
       "ru": {
