@@ -86,9 +86,14 @@ function color(p){return p==null?'var(--txt)':p>=99?'var(--bad)':p>=85?'var(--wa
 function httpCode(m){return m&&m.error&&m.error.indexOf('http_')===0?m.error.slice(5):''}
 function status(m){return !m.online?'нет связи':m.error==='no_login'?'нужен вход':m.error==='token_expired'?'токен устарел':httpCode(m)?'лимиты не обновились · '+httpCode(m):'онлайн'}
 // пояснение к надписи: что случилось и почему цифры на плитке могут быть старыми
-function statusHint(m){var c=httpCode(m);if(!c)return '';
+function statusHint(m){var c=httpCode(m);
+ if(!c&&m&&m.stale)return 'Anthropic временно ограничил частоту запросов лимитов (429): показаны последние цифры. Опрос возобновится около '+(m.retry_at?clk(new Date(m.retry_at*1000)):'через несколько минут')+'; Claude на PROD от этого не останавливается.';
+ if(!c)return '';
  var why=c==='429'?'слишком частые запросы к Anthropic':c==='401'||c==='403'?'доступ отклонён, возможно, нужен новый вход':c.charAt(0)==='5'?'сбой на стороне Anthropic':'ответ сервера Anthropic с ошибкой';
  return 'Запрос лимитов вернул ошибку '+c+' ('+why+'). Показаны цифры последнего удачного опроса — они могли устареть. Опрос повторится сам; Claude на PROD от этого не останавливается.'}
+// (63531) пауза по лимитам Claude PROD (та же, что в верхнем баннере): на плитке показываем её, а не «лимиты не обновились»
+function pauseInfo(){try{var d=typeof ccpData!=='undefined'?ccpData:null,rp=d&&d.remote_pause;return rp&&rp.enabled&&rp.applied&&rp.blocked?rp:null}catch(e){return null}}
+function pauseText(){var rp=pauseInfo();return rp?'\u23f8 пауза по лимитам'+(rp.resume_at?' до '+clk(new Date(rp.resume_at*1000)):''):''}
 function modelName(id){if(!id)return '—';var m=/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$)/.exec(id);if(!m)return id;return m[1].charAt(0).toUpperCase()+m[1].slice(1)+' '+m[2]+(m[3]?'.'+m[3]:'')}
 var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),tok=(typeof TOKEN!=='undefined'?TOKEN:''),pollT=0,note='';
 function rmode(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}return s&&s.remote_mode||{}}
@@ -241,7 +246,7 @@ function paintStrip(m){
  compact.dataset.state=m&&m.online&&!m.error?'ready':'warning';compact.dataset.online=m&&m.online?'1':'0';
  compact.querySelector('.fleet-compact-name').title=name+(mail?' · '+mail:'')+(m&&m.plan?' · '+m.plan.toUpperCase():'');
  compact.querySelector('.rm-cmodel').textContent=mname;compact.querySelector('.rm-ceffort').textContent=eff;
- var cwn=compact.querySelector('.fleet-compact-warning');cwn.textContent=m&&(!m.online||m.error)?st:'';cwn.title=m?statusHint(m):'';
+ var cwn=compact.querySelector('.fleet-compact-warning');var pz=pauseText();cwn.textContent=pz||(m&&(!m.online||m.error)?st:'');cwn.title=pz?pz+'. Новые действия ждут сброса, беседа сохранена.':(m?statusHint(m):'');
  var cw=compact.querySelectorAll('.fleet-compact-window'),lim=tile.querySelector('.cxlim'),lims='';
  wins.forEach(function(w,i){var p=pct(w);cw[i].dataset.tone=tone(p);cw[i].querySelector('.fleet-compact-used').textContent=p==null?'—':p+'%';cw[i].querySelector('.fleet-compact-range').textContent=(i===0&&w&&w.resets_at&&!isNaN(new Date(w.resets_at)))?(new Date(w.resets_at)>new Date()?clk(new Date(w.resets_at)):'сброс'):when(w,i===1);
   var mt=tile.querySelectorAll('.fleet-live-meter')[i];mt.dataset.tone=tone(p);mt.querySelector('b').textContent=p==null?'—':p+'%';mt.querySelector('.fleet-live-fill').style.width=(p==null?0:Math.min(100,p))+'%';mt.querySelector('.fleet-live-reset').textContent=when(w,i===1);

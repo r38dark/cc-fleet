@@ -131,6 +131,12 @@ def fetch_limits(mid, force=False):
                    model=data.get("model") or old.get("model") or "", effort=data.get("effort") or old.get("effort") or "",
                    subscription_since=data.get("subscription_since") or old.get("subscription_since") or "",
                    login_expires=data.get("login_expires") or old.get("login_expires") or "")
+        # (63531) Anthropic ответил 429, скрипт лимитов отдал последние удачные цифры и паузу опроса: это не ошибка, но цифры не свежие
+        if data.get("stale"):
+            row.update(stale=True, retry_at=data.get("retry_at") or 0)
+        else:
+            row.pop("stale", None)
+            row.pop("retry_at", None)
     else:
         row.update(fail_since=0, online=True, error=str(data.get("error") or "error"))
     state[mid] = row
