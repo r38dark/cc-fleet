@@ -764,6 +764,15 @@ def set_model(body):
     if d is None or not d.get("ok"):
         return dict(ok=False, message="Не удалось записать выбор на PROD.")
     R.fetch_limits(mid, force=True)
+    try:   # сообщение в Telegram: одно на смену модели и/или effort (модель и effort подряд склеиваются)
+        import cc_model_notice
+        names = {m_["id"]: m_["name"] for m_ in view["models"]}
+        old_m, old_e = view["model"], view["effort"]
+        new_m, new_e = model or old_m, effort or old_e
+        cc_model_notice.changed("Claude PROD", "claude", {"model": names.get(old_m, old_m), "effort": old_e},
+                                {"model": names.get(new_m, new_m), "effort": new_e})
+    except Exception:
+        pass
     tail = (" Claude на PROD сейчас отвечает: применится при следующем запуске." if d.get("wait")
             else " Применено в запущенном Claude." if d.get("applied")
             else " Применится при следующем запуске Claude на PROD.")

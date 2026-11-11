@@ -299,7 +299,7 @@ class Rotation:
                 if saved.get('service_tier') and selected_model.get('fast') != saved['service_tier']:
                     return False, 'Следующий аккаунт не поддерживает выбранный режим Fast.'
                 ok, message = self.codex.set_prefs(self.binary(), slot, saved['model'], saved.get('effort') or '',
-                                                  bool(saved.get('service_tier')))
+                                                  bool(saved.get('service_tier')), notify=False)
                 if not ok:
                     return False, message
             if not self.console._ask_lock.acquire(blocking=False):

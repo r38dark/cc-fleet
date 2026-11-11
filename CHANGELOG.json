@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.32",
+      "date": "2026-11-11",
+      "ru": {
+        "t": "Сообщения в Telegram: смена модели и обновления",
+        "p": [
+          "Когда в панели меняют модель и/или effort (Claude на этом сервере, Claude на втором сервере, Codex), в Telegram приходит одно сообщение: что было → что стало. Модель и effort, нажатые подряд, склеиваются в одно; у Codex учитывается и Fast, сообщение идёт в его чат.",
+          "Вышла новая версия Claude Code или Codex — сообщение в Telegram (раз на версию); после обновления из панели — «обновлён: X → Y» (с подсказкой перезапустить) или «не удалось: причина».",
+          "Выключатели в config.json: model_change_notify и cli_update_notify (по умолчанию включены)."
+        ]
+      },
+      "en": {
+        "t": "Telegram messages: model changes and updates",
+        "p": [
+          "When the model and/or effort is changed in the panel (Claude on this server, Claude on the second server, Codex), one Telegram message arrives: what it was → what it is now. Model and effort changed in a row are merged into one; for Codex Fast counts too and the message goes to its chat.",
+          "A new Claude Code or Codex version is out — a Telegram message (once per version); after an update from the panel — \"updated: X → Y\" (with a restart hint) or \"failed: reason\".",
+          "Switches in config.json: model_change_notify and cli_update_notify (both on by default)."
+        ]
+      }
+    },
+    {
       "v": "2.0.31",
       "date": "2026-11-10",
       "ru": {
