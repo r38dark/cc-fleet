@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 import urllib.parse
 
@@ -260,6 +261,27 @@ class RemoteConsole(unittest.TestCase):
         self.assertTrue(r['ok'])
         self.assertTrue(self.calls[0][0].endswith('ctl.py setmodel - high'))
         self.assertTrue(any('usage.py' in c for c, _ in self.calls[1:]))  # данные панели перечитаны
+
+    def test_set_model_sends_one_notice_with_old_and_new_values(self):
+        import cc_model_notice
+        self._models()
+        sent = []
+        saved = (cc_model_notice.SEND, cc_model_notice.WINDOW, cc_model_notice.ENABLED)
+        cc_model_notice.SEND = {"claude": sent.append, "codex": sent.append}
+        cc_model_notice.WINDOW = 0.05
+        cc_model_notice.ENABLED = lambda: True
+        self.addCleanup(lambda: [setattr(cc_model_notice, k, v) for k, v in zip(("SEND", "WINDOW", "ENABLED"), saved)])
+        self.answer = {'ok': True, 'applied': ['/effort high'], 'wait': False}
+        self.assertTrue(M.set_model({'effort': 'high'})['ok'])
+        time.sleep(0.4)
+        self.assertEqual(len(sent), 1)
+        self.assertIn('🔄 Claude PROD: сменили effort', sent[0])
+        self.assertIn('effort: low → high', sent[0])
+        self.assertIn('модель: A (без изменений)', sent[0])
+        self.answer = {'ok': False}
+        self.assertFalse(M.set_model({'effort': 'medium'})['ok'])        # запись не удалась — сообщения нет
+        time.sleep(0.4)
+        self.assertEqual(len(sent), 1)
 
     def test_set_model_reports_wait_when_claude_is_busy(self):
         self._models()

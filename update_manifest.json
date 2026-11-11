@@ -1,5 +1,5 @@
 {
-  "version": "2.0.31",
+  "version": "2.0.32",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -281,6 +281,14 @@
     },
     {
       "src": "claude_cli.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_model_notice.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_cli_notice.py",
       "mode": "644"
     }
   ]

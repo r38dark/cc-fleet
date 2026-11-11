@@ -421,6 +421,28 @@ class CodexTest(unittest.TestCase):
         d = cc_codex.fetch_account(self.bin, slot)
         self.assertEqual((d["model"], d["effort"], d["fast"]), (None, None, False))
 
+    def test_set_prefs_sends_one_notice_with_old_and_new_values(self):
+        import cc_model_notice
+        slot = self._add()
+        sent = []
+        saved = (cc_model_notice.SEND, cc_model_notice.WINDOW, cc_model_notice.ENABLED)
+        cc_model_notice.SEND = {"claude": sent.append, "codex": sent.append}
+        cc_model_notice.WINDOW = 0.05
+        cc_model_notice.ENABLED = lambda: True
+        self.addCleanup(lambda: [setattr(cc_model_notice, k, v) for k, v in zip(("SEND", "WINDOW", "ENABLED"), saved)])
+        cc_codex.get_accounts(self.bin, force=True)                       # кэш с прежними настройками аккаунта
+        ok, msg = cc_codex.set_prefs(self.bin, slot, "gpt-x", "high", True)
+        self.assertTrue(ok, msg)
+        time.sleep(0.4)
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(sent[0].startswith("🔄 Codex"))
+        for part in ("effort: low → high", "Fast: выкл → вкл", "модель: GPT-X (без изменений)"):   # gpt-x и был моделью по умолчанию
+            self.assertIn(part, sent[0])
+        ok, msg = cc_codex.set_prefs(self.bin, slot, "", "", False, notify=False)   # автоматическое возвращение настроек — тишина
+        self.assertTrue(ok, msg)
+        time.sleep(0.4)
+        self.assertEqual(len(sent), 1)
+
     def test_set_prefs_validation(self):
         slot = self._add()
         self.assertFalse(cc_codex.set_prefs(self.bin, slot, "nope", "", False)[0])

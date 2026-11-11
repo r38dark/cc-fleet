@@ -826,16 +826,18 @@ def _slot_lock(slot):
         return _slot_locks.setdefault(slot, threading.RLock())
 
 
-def set_prefs(bin_path, slot, model, effort, fast, lang="ru"):
+def set_prefs(bin_path, slot, model, effort, fast, lang="ru", notify=True):
     """Пустое значение = «по умолчанию Codex» (ключ убирается из config.toml). → (ok, сообщение)."""
     if not _SLOT_RE.match(slot or "") or slot not in profile_slots():
         return False, _t(lang, "Неизвестный аккаунт.", "Unknown account.")
     model, effort, fast = (model or "").strip(), (effort or "").strip(), bool(fast)
     with _slot_lock(slot):
         with _lock:
-            models = (_cache.get(slot) or {}).get("data", {}).get("models") or []
+            prev = dict((_cache.get(slot) or {}).get("data") or {})
+            models = prev.get("models") or []
         if not models:
-            models = fetch_account(bin_path, slot).get("models") or []
+            prev = fetch_account(bin_path, slot) or {}
+            models = prev.get("models") or []
         by_id = {m["id"]: m for m in models}
         if model and model not in by_id:
             return False, _t(lang, "Такой модели у этого аккаунта нет.", "This account has no such model.")
@@ -857,6 +859,22 @@ def set_prefs(bin_path, slot, model, effort, fast, lang="ru"):
             return False, _t(lang, f"Не удалось записать настройки: {e}", f"Could not write the settings: {e}")
         with _lock:
             _cache.pop(slot, None)
+    if notify:   # сообщение в Telegram: одно на смену модели, effort и/или Fast (только нажатие человека — не ротация аккаунтов)
+        try:
+            import cc_model_notice
+            dflt = next((m for m in models if m.get("is_default")), None) or {}
+
+            def _nm(mid):
+                m = by_id.get(mid) if mid else dflt
+                return (m or {}).get("name") or (m or {}).get("id") or mid or "по умолчанию"
+            pm = prev.get("model")
+            label = (meta(slot) or {}).get("label") or ""
+            cc_model_notice.changed(
+                "Codex · " + label if label else "Codex", "codex",
+                {"model": _nm(pm), "effort": prev.get("effort") or (by_id.get(pm) or dflt).get("default_effort"), "fast": bool(prev.get("fast"))},
+                {"model": _nm(model), "effort": effort or cur.get("default_effort"), "fast": fast})
+        except Exception:
+            pass
     return True, _t(lang, "✅ Настройки записаны.", "✅ Settings saved.")
 
 

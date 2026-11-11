@@ -11,6 +11,8 @@ import cc_codex
 import cc_codex_bridge
 import cc_codex_console
 import cc_codex_emergency
+import cc_cli_notice
+import cc_model_notice
 import cc_notion
 import cc_remote
 import cc_lock
@@ -19,7 +21,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.31"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.32"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -146,6 +148,19 @@ def tg_notify(text):
 
 
 cc_codex.NOTIFY = tg_notify  # вход в ChatGPT завершён — сообщение в телеграм
+
+
+def _codex_say(text):
+    """Сообщение про Codex: в чат Codex, если мост настроен, иначе — в общий чат уведомлений."""
+    return bool(cc_codex_bridge.BRIDGE.send(text)) or tg_notify(text)
+
+
+# сообщения в Telegram: смена модели/effort в панели и обновления Claude Code и Codex (выключатели в config.json: model_change_notify, cli_update_notify)
+cc_model_notice.ENABLED = lambda: cfg().get("model_change_notify", True) is not False
+cc_model_notice.SEND = {"claude": lambda text: tg_notify(text), "codex": _codex_say}
+cc_cli_notice.STATE = os.path.join(BASE, "cli_notice.json")
+cc_cli_notice.ENABLED = lambda: cfg().get("cli_update_notify", True) is not False
+cc_cli_notice.SEND = {"claude": lambda text: tg_notify(text), "codex": _codex_say}
 
 
 def codex_bin():
@@ -1748,6 +1763,17 @@ def session_effort(model_id=None):
     except Exception:
         pass
     return settings_effort(model_id)
+
+
+def _model_notice_state(mid=None, top=False):
+    """Модель и effort для сообщения о смене в Telegram: по settings.json (то, что записала панель), экран не читаем.
+    top — effort лежит в общем effortLevel (так set_effort пишет, когда живой сессии нет), а не у модели."""
+    try:
+        s = jload(SETTINGS, {}) or {}
+        mid = mid or s.get("model")
+        return {"model": all_models().get(mid, mid), "effort": s.get("effortLevel") if top else settings_effort(mid, s)}
+    except Exception:
+        return {}
 
 
 def set_effort(level):
@@ -3392,10 +3418,18 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, {"ok": False, "plan": plan,
                 "message": "Не удалось проверить план: " + (row.get("error") or "?")})
         if u.path == "/api/model":
+            before = _model_notice_state()
             ok, msg = set_default_model(body.get("model", ""))
+            if ok:
+                cc_model_notice.changed("Claude DEV", "claude", before, _model_notice_state())
             return self._send(200 if ok else 400, {"ok": ok, "message": msg, "model": model_info()})
         if u.path == "/api/effort":
+            smid = session_model()
+            top = not (smid and smid.startswith("claude-"))   # так set_effort выбирает, куда писать
+            before = _model_notice_state(smid, top)
             ok, msg = set_effort(body.get("effort", ""))
+            if ok:
+                cc_model_notice.changed("Claude DEV", "claude", before, _model_notice_state(smid, top))
             return self._send(200 if ok else 400, {"ok": ok, "message": msg, "model": model_info()})
         if u.path == "/api/session":
             ok, msg = send_session_command(body.get("cmd", ""))
@@ -8015,6 +8049,49 @@ def _remote_loop():
         time.sleep(30)
 
 
+# Сторож обновлений Claude Code и Codex → сообщения в Telegram (cc_cli_notice): вышла новая версия, обновлён, не удалось.
+# Версии в сети проверяет раз в 6 часов, итог обновления (кнопкой в панели) ловит за ~минуту; PROD — раз в 10 минут, пока идёт обновление — чаще.
+def _cli_notice_loop():
+    import claude_cli
+    time.sleep(45)
+    last_check = last_remote = 0.0
+    remote_running = False
+    while True:
+        try:
+            now = time.time()
+            check = now - last_check > 6 * 3600
+            views = {}
+            loc = claude_cli.status(check=check)
+            if loc.get("kind"):
+                loc["restart"] = claude_restart_info_local(loc)
+                views["claude@local"] = loc
+            cbin = codex_bin()
+            if cbin:
+                claude_cli.BIN_HINT["codex"] = cbin
+                cx = claude_cli.status(check=check, tool="codex")
+                if cx.get("kind"):
+                    cx["restart"] = codex_restart_info(cx)
+                    views["codex@local"] = cx
+            if check or now - last_remote > (30 if remote_running else 600):
+                last_remote = now
+                try:
+                    import cc_remote_mode
+                    if cc_remote_mode._member_id():
+                        r = cc_remote_mode.cli_remote("status", *(["check"] if check else []))
+                        if isinstance(r, dict) and r.get("ok") and r.get("kind"):
+                            r["restart"] = claude_restart_info_remote(r)
+                            views["claude@remote"] = r
+                            remote_running = r.get("state") == "running"
+                except Exception:
+                    pass
+            if check:
+                last_check = now
+            cc_cli_notice.tick(views)
+        except Exception as e:
+            print("cli-notice:", type(e).__name__, flush=True)
+        time.sleep(60)
+
+
 if __name__ == "__main__":
     try:  # internal_secret для _index_authed(): один раз, переживает перезапуски и обновления
         _c = cfg()
@@ -8033,6 +8110,7 @@ if __name__ == "__main__":
     threading.Thread(target=_dialog_watchdog, daemon=True).start()
     threading.Thread(target=_remote_loop, daemon=True, name="cc-remote-loop").start()
     threading.Thread(target=UPDATER.loop, daemon=True, name="cc-update-loop").start()
+    threading.Thread(target=_cli_notice_loop, daemon=True, name="cc-cli-notice").start()
     cc_codex_emergency.start()  # аварийный режим: после перезапуска довести до рабочего состояния или снять, запустить сторож срока
     cc_backup.start(lambda: PROFILES, BACKUP_DIR, lambda: cfg().get("profile_backup", True) is not False)  # копии профилей аккаунтов
     cc_notion.start()  # такт профилей (cc_profiles подменяет start); [notion-ai] сторожа резерва больше нет
