@@ -3793,13 +3793,13 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .ccli-pv[hidden]{display:none}.ccli-pv.new{color:var(--ok,#45d6ab)}.ccli-pv.old{color:var(--warn,#ecc277)}
 @media (max-width:640px){.ccli-pvbox{display:none}}
 .ccps-box{position:absolute;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none}
-.ccps{position:absolute;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:16px;color:rgba(165,172,190,.28);pointer-events:none;container-type:inline-size}
-.ccps-clock{display:flex;flex-direction:column;align-items:center;gap:7px;max-width:100%;text-align:center}
-.ccps-caption{font-size:clamp(10px,2.8cqw,13px);line-height:1.4;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
-.ccps-value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:clamp(18px,8cqw,62px);font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.04em;line-height:1.1;white-space:nowrap}
-.ccps-unknown{font-size:clamp(13px,4cqw,20px);white-space:normal}
+.ccps{position:absolute;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;color:rgba(185,194,212,.82);text-shadow:0 2px 16px #080b10;pointer-events:none;container-type:size}
+.ccps-clock{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:100%;text-align:center}
+.ccps-caption{font-size:clamp(16px,min(calc(130cqw / var(--ccps-caption-chars)),calc(12cqh / var(--ccps-count))),160px);line-height:1.2;font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.ccps-value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:clamp(22px,min(calc(152cqw / var(--ccps-chars)),calc(65cqh / var(--ccps-count))),400px);font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.04em;line-height:1.02;white-space:nowrap}
+.ccps-unknown{font-size:clamp(16px,min(calc(140cqw / var(--ccps-chars)),calc(38cqh / var(--ccps-count))),80px);white-space:normal}
 .ccps[hidden]{display:none}
-@media (max-width:640px){.ccps{gap:18px;padding:10px}.ccps-clock{gap:5px}}
+@media (max-width:640px){.ccps{gap:16px;padding:10px}.ccps-clock{gap:9px}}
 #ccliBox pre{margin:6px 0 0;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Consolas,monospace;opacity:.85}
 .ccli-badge{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;margin:0 0 0 8px;border:1px solid rgba(69,214,171,.45);border-radius:99px;background:rgba(69,214,171,.12);color:var(--fleet-accent,#45d6ab);font:600 11px/1 Inter,system-ui,sans-serif;cursor:pointer;flex:none;animation:ccliGlow 2.6s ease-in-out infinite}
 .ccli-badge[hidden]{display:none}.ccli-badge svg{width:12px;height:12px;display:block}.ccli-badge b{font-weight:650}
@@ -8084,7 +8084,11 @@ function ccpsCountdown(until,now){
  return (days?tr('ccpsDays',days)+' ':'')+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(left%60);
 }
 function ccpsTimerHtml(k,s,now){
- return ccpsWindows(k,s).map(w=>'<div class="ccps-clock"><div class="ccps-caption">'+ccpEsc(tr(w.window==='5h'?'ccpsReset5h':w.window==='week'?'ccpsResetWeek':'ccpsReset'))+'</div><div class="ccps-value'+(!w.resume_at?' ccps-unknown':'')+'" role="timer" aria-live="off">'+ccpEsc(ccpsCountdown((+w.resume_at||0)*1000,now))+'</div></div>').join('');
+ const windows=ccpsWindows(k,s);
+ return windows.map(w=>{
+  const caption=tr(w.window==='5h'?'ccpsReset5h':w.window==='week'?'ccpsResetWeek':'ccpsReset'),value=ccpsCountdown((+w.resume_at||0)*1000,now);
+  return '<div class="ccps-clock" style="--ccps-count:'+windows.length+';--ccps-chars:'+value.length+';--ccps-caption-chars:'+caption.length+'"><div class="ccps-caption">'+ccpEsc(caption)+'</div><div class="ccps-value'+(!w.resume_at?' ccps-unknown':'')+'" role="timer" aria-live="off">'+ccpEsc(value)+'</div></div>';
+ }).join('');
 }
 function ccpPlain(h){return String(h).replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');}
 function ccpPartStrip(){

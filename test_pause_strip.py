@@ -203,7 +203,7 @@ class PauseStrip(unittest.TestCase):
         self.assertIn("#ccPause .ccp-left", tick[:400])               # «осталось …» в тексте идёт каждую секунду
         style=SRC[SRC.index('.ccps{'):SRC.index('.ccps-clock{')]
         self.assertIn('pointer-events:none',style)
-        self.assertIn('rgba(165,172,190,.28)',style)
+        self.assertIn('rgba(185,194,212,.82)',style)
         self.assertNotIn('const PAUSE_ICO=',SRC)
         self.assertNotIn('const OUT_ICO=',SRC)
 
