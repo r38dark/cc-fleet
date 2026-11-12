@@ -31,6 +31,7 @@ def node(js):
 
 # от ccpsHtml до ccpPartStrip включительно: правило лимита (limx*), иконки, бейджи плиток и сама полоса — одним куском, как в странице
 FUNC = cut(r"^function ccpsHtml\(k\)\{.*?^function ccpPartStrip\(\)\{.*?^\}$", "ccpsHtml … ccpPartStrip")
+POLICY_STRINGS = cut(r"^  ccpaWeek:.*?\n  ccpaWait:.*?$", "переводы нормализованного бюджета")
 
 HARNESS = r'''
 const els={};let box=null;
@@ -43,7 +44,8 @@ const PANES=PANES_JSON.map(p=>({k:p.k,hid:!!p.hid,box:{offsetParent:p.off?null:{
 const T={ccpsTitle:'Claude на паузе по лимитам',ccpsTitleCx:'Codex на паузе по лимитам',ccpsBody:'Сообщения в Telegram встают в очередь.',ccpsBodyCx:'Сообщения из Telegram ждут в очереди.',
   ccpsUntil:(at,left)=>' до '+at+' (осталось '+left+')',cxlpWin:m=>m===300?'окно 5 ч':'окно неделя',
   limxPause:at=>'пауза по лимитам'+(at?' до '+at:''),limxOutWeek:at=>'лимит недели исчерпан'+(at?' до '+at:''),limxOut5h:at=>'лимит 5 ч исчерпан'+(at?' до '+at:''),limxOut:at=>'лимит исчерпан'+(at?' до '+at:''),
-  limxTipPause:'Новые действия ждут сброса.',limxTipOut:'Настоящий лимит исчерпан.'};
+  limxTipPause:'Новые действия ждут сброса.',limxTipOut:'Настоящий лимит исчерпан.',
+  POLICY_STRINGS_HERE};
 const tr=(k,...a)=>typeof T[k]==='function'?T[k](...a):T[k];
 const ccpAt=ms=>'23:10', ccpLeft=ms=>'12 мин 00 с', ccpEsc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let ccpData=DATA_JSON, cxlpData=CX_JSON, lastSnap=SNAP_JSON;
@@ -54,7 +56,7 @@ console.log(JSON.stringify(Object.keys(els).filter(k=>k!=='ccps').map(k=>({id:k,
 
 
 def run(data, panes, split=False, cx=None, snap=None):
-    js = (HARNESS.replace("FUNC_HERE", FUNC).replace("DATA_JSON", json.dumps(data)).replace("CX_JSON", json.dumps(cx)).replace("SNAP_JSON", json.dumps(snap))
+    js = (HARNESS.replace("FUNC_HERE", FUNC).replace("POLICY_STRINGS_HERE", POLICY_STRINGS).replace("DATA_JSON", json.dumps(data)).replace("CX_JSON", json.dumps(cx)).replace("SNAP_JSON", json.dumps(snap))
           .replace("PANES_JSON", json.dumps(panes)).replace("SPLIT", "true" if split else "false"))
     return node(js)
 
@@ -68,6 +70,27 @@ FUTURE = 4102444800   # 2100 год: сброс ещё не прошёл
 
 @unittest.skipUnless(shutil.which("node"), "нет node")
 class PauseStrip(unittest.TestCase):
+    def test_current_claude_weekly_states_draw_distinct_icons_in_their_own_panes(self):
+        data = {'claude_limits': {
+            'claude': {'window': 'week', 'pct': 100, 'threshold': 99, 'resume_at': FUTURE, 'waiting': True},
+            'prod': {'window': 'week', 'pct': 99, 'threshold': 99, 'resume_at': FUTURE+3600, 'waiting': True}},
+            'pause': {'active': True, 'resume_at': FUTURE}, 'remote_pause': {}}
+        r = run(data, PANES, split=True)
+        self.assertEqual([(x['id'],x['kind']) for x in r], [('ccps0','out'),('ccps1','pause')])
+        self.assertIn('<path',r[0]['html'])
+        self.assertNotIn('<rect',r[0]['html'])
+        self.assertIn('Claude DEV: лимит недели исчерпан',r[0]['title'])
+        self.assertIn('<rect',r[1]['html'])
+        self.assertIn('Claude PROD',r[1]['title'])
+        # A configured quota hold is not proof of an active Telegram queue.
+        self.assertNotIn('очеред',r[1]['title'])
+        self.assertEqual((r[0]['left'],r[1]['left']),('0px','620px'))
+
+    def test_recovered_claude_budget_hides_both_icons(self):
+        data = {'claude_limits': {}, 'pause': {'active': True},
+                'remote_pause': {'enabled': True, 'applied': True, 'blocked': True}}
+        self.assertEqual(run(data,PANES),[])
+
     def test_prod_icon_over_prod_part_with_time_reason_and_queue_note_in_title(self):
         r = run(BLOCKED, PANES)
         self.assertEqual([x["id"] for x in r], ["ccps1"])                # только часть PROD, у Claude DEV иконки нет

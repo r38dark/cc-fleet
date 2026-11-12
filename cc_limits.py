@@ -7968,6 +7968,14 @@ setInterval(ccliPartVers,2000);addEventListener('resize',ccliPartVers);setTimeou
 // Пауза по лимитам в окне консоли Claude DEV, Claude PROD и Codex: пока работа стоит на лимитах, видно, что это пауза, до какого часа и что сообщения встают в очередь
 function ccpsHtml(k){
  const at=(ms,r,lead)=>'<b>⏸ '+tr(lead)+'</b>'+(ms?tr('ccpsUntil',ccpAt(ms),ccpLeft(ms)):'')+(r?' · '+ccpEsc(r):'');
+ // Claude: тот же нормализованный бюджет, что в отдельных верхних плашках.
+ // Исчерпанные 100% обозначает крестик; ожидание настроенного порога — пауза.
+ if((k==='claude'||k==='prod')&&ccpData&&ccpData.claude_limits){
+  const s=ccpData.claude_limits[k];if(!s||!s.waiting||typeof s.pct==='number'&&s.pct>=100)return '';
+  const until=(+s.resume_at||0)*1000,name=k==='prod'?'Claude PROD':'Claude DEV';
+  const title=tr(s.window==='pause'?'ccpaPause':s.window==='week'?'ccpaWeek':'ccpaSession',name,s.pct==null?'?':Math.round(s.pct),until?ccpAt(until):'');
+  return '<b>⏸ '+ccpEsc(title)+'</b>. '+ccpEsc(tr(s.window==='pause'?'ccpaKnownPause':'ccpaWait',s.threshold));
+ }
  if(k==='prod'){const rp=ccpData&&ccpData.remote_pause;if(!(rp&&rp.enabled&&rp.applied&&rp.blocked))return '';
   return at((rp.resume_at||0)*1000,(rp.reasons||[]).join('; '),'ccpsTitle')+'. '+tr('ccpsBody');}
  if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;if(!(p&&p.active&&p.paused))return '';
@@ -7996,6 +8004,13 @@ function limxWinOf(w,name){const t=w&&w.resets_at?Date.parse(w.resets_at):NaN;re
 function limxState(k){
  let pause=null,wins=[],reported=false;
  try{
+  if((k==='claude'||k==='prod')&&ccpData&&ccpData.claude_limits){
+   const s=ccpData.claude_limits[k];if(!s)return null;
+   const until=(+s.resume_at||0)*1000,full=typeof s.pct==='number'&&s.pct>=100;
+   if(s.waiting&&!full)pause={until};
+   if(s.window==='week'||s.window==='5h')wins=[{win:s.window,pct:s.pct,until}];
+   return limxPick(pause,wins,false,Date.now());
+  }
   if(ccpsHtml(k)){const d=ccpData||{},u=k==='prod'?(d.remote_pause||{}).resume_at:k==='codex'?(cxlpData||{}).resume_at:(d.pause||{}).resume_at;pause={until:(+u||0)*1000};}
   const snap=typeof lastSnap!=='undefined'?lastSnap:null;
   if(k==='claude'){const a=snap&&snap.accounts&&snap.accounts[snap.active];if(a)wins=[limxWinOf(a.five_hour,'5h'),limxWinOf(a.seven_day,'week')];}

@@ -95,6 +95,37 @@ class Pick(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("node"), "нет node")
 class Text(unittest.TestCase):
+    def test_claude_icons_use_the_same_budget_as_the_two_top_banners(self):
+        data = {'claude_limits': {
+            'claude': {'window': 'week', 'pct': 100, 'threshold': 99, 'resume_at': TS(W_UP), 'waiting': True},
+            'prod': {'window': 'week', 'pct': 99, 'threshold': 99, 'resume_at': TS(H_UP), 'waiting': True}},
+            'pause': {'active': True, 'resume_at': TS(H_UP)}, 'remote_pause': {}}
+        r = state(data=data)
+        self.assertEqual((r['claude']['kind'], r['claude']['win']), ('out', 'week'))
+        self.assertEqual(r['claude']['text'], 'лимит недели исчерпан до Чт 12.11 17:59')
+        self.assertEqual((r['prod']['kind'], r['prod']['text']), ('pause', 'пауза по лимитам до 13.11 02:29'))
+        self.assertIsNone(r['codex'])
+
+    def test_fresh_budget_removes_icons_despite_old_pause_and_old_snapshot(self):
+        data = {'claude_limits': {}, 'pause': {'active': True},
+                'remote_pause': {'enabled': True, 'applied': True, 'blocked': True}}
+        snap = {'active': 'acc1', 'accounts': {'acc1': {'seven_day': {'pct': 100, 'resets_at': W_UP}}},
+                'remote': {'prod': {'seven_day': {'pct': 100, 'resets_at': H_UP}}}}
+        self.assertEqual(state(data=data, snap=snap), {'claude': None, 'prod': None, 'codex': None})
+
+    def test_disabled_policy_does_not_draw_pause_but_actual_exhaustion_stays(self):
+        data = {'claude_limits': {
+            'claude': {'window': 'week', 'pct': 99, 'waiting': False, 'resume_at': TS(W_UP)},
+            'prod': {'window': 'week', 'pct': 100, 'waiting': False, 'resume_at': TS(H_UP)}},
+            'pause': {'active': True}, 'remote_pause': {'enabled': True, 'applied': True, 'blocked': True}}
+        r = state(data=data)
+        self.assertIsNone(r['claude'])
+        self.assertEqual(r['prod']['kind'], 'out')
+
+    def test_confirmed_pause_with_unknown_percent_remains_a_pause(self):
+        data = {'claude_limits': {'prod': {'window': 'pause', 'pct': None, 'waiting': True, 'resume_at': TS(H_UP)}}}
+        self.assertEqual(state(data=data)['prod']['kind'], 'pause')
+
     def test_codex_single_account_week_used_up(self):
         cx = {"active": True, "paused": False, "single": True, "windows": [10080], "resets": {"10080": TS(W_UP)}, "resume_at": TS(W_UP)}
         r = state(cx=cx)
