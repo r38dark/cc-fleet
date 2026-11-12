@@ -7,10 +7,6 @@ cfg() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.
 SCREEN="$(cfg screen_session claude)"
 WORK="$(cfg work_dir "$HOME")"
 cd "$WORK" || exit 1
-# включён профиль «Notion AI · только он» — бота слушает мост notion-ai-tg, Claude не стартует
-if python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("active") else 1)' "$BASE/notion_ai_mode.json" 2>/dev/null; then
-  echo "Профиль Notion AI включён — Claude не запускаю (выключи его на панели или: notion-ai-mode off)"; exit 0
-fi
 # работа передана на второй сервер (кнопка в панели) — бота слушает Claude там, здесь Claude не стартует
 if python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("active") else 1)' "$BASE/remote_mode.json" 2>/dev/null; then
   echo "Работа на втором сервере — Claude здесь не запускаю (верни её кнопкой «Вернуть» в панели)"; exit 0

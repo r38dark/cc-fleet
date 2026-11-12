@@ -39,7 +39,7 @@ JS = "\n".join([
 ])
 
 HARNESS = r"""
-const LANG='ru',CCP_GRACE=120;
+const LANG='ru';
 function tr(k,...a){return k+'('+a.join('|')+')';}
 const el={hidden:true,className:'',innerHTML:''};
 function $(s){return s==='#ccPause'?el:null;}
@@ -97,11 +97,11 @@ class Banner(unittest.TestCase):
         r = render([self.case(remote=True, level="manual", pause={"active": False, "override": False}, manual={"account": "acc3", "until": 0})])[0]
         self.assertTrue(r["hidden"])
 
-    def test_reserve_pause_banner_kept_while_on_prod(self):
-        # пауза резерва — не про лимиты DEV, её баннер остаётся и при работе на PROD
-        pz = {"active": True, "override": False, "kind": "reserve", "reason": "резерв", "resume_at": 0, "notice_ts": 0, "grace": 60}
+    def test_old_service_pause_record_is_hidden_while_on_prod_like_any_limits_pause(self):
+        # запись прежнего служебного вида паузы — обычная пауза: при работе на PROD баннер DEV не показывается
+        pz = {"active": True, "override": False, "kind": "reserve", "reason": "старая запись", "resume_at": 0}
         r = render([self.case(remote=True, pause=pz)])[0]
-        self.assertFalse(r["hidden"])
+        self.assertTrue(r["hidden"])
 
     def test_pause_banner_shown_while_work_is_on_dev(self):
         pz = {"active": True, "override": False, "kind": "week", "reason": "лимиты", "resume_at": 0}

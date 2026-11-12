@@ -41,8 +41,8 @@ def busy():
     return bool(t and t.is_alive())
 
 
-TARGETS = ("dev", "prod", "codex", "notion")
-NAMES = {"dev": "Claude DEV", "prod": "Claude PROD", "codex": "Codex", "notion": "Notion AI"}
+TARGETS = ("dev", "prod", "codex")
+NAMES = {"dev": "Claude DEV", "prod": "Claude PROD", "codex": "Codex"}
 _wcache = {"ts": 0.0, "val": "dev", "key": None}
 
 
@@ -52,26 +52,23 @@ def tg():
 
 
 def worker():
-    """Кто сейчас работает: dev (Claude DEV), prod, codex или notion. Та же логика, что pickWorking в шапке панели."""
+    """Кто сейчас работает: dev (Claude DEV), prod или codex. Та же логика, что pickWorking в шапке панели."""
     if active() and tg():
         return "prod"
-    nai = _nai()
-    if nai is None:
+    wk = _wk()
+    if wk is None:
         return "dev"
-    key = (nai.active(), id(nai.profiles))
+    key = id(wk.profiles)
     if _wcache["key"] == key and time.time() - _wcache["ts"] < 2:
         return _wcache["val"]
     val = "dev"
     try:
-        if nai.active():
-            val = "notion"
-        else:
-            p = nai.profiles
-            c, x = not p.paused("claude"), not p.paused("codex")
-            if x and not c:
-                val = "codex"
-            elif x and c and getattr(p.state, "leader", None) == "codex":
-                val = "codex"
+        p = wk.profiles
+        c, x = not p.paused("claude"), not p.paused("codex")
+        if x and not c:
+            val = "codex"
+        elif x and c and getattr(p.state, "leader", None) == "codex":
+            val = "codex"
     except Exception:
         val = "dev"
     _wcache.update(ts=time.time(), val=val, key=key)
@@ -100,8 +97,8 @@ def _save(**kw):
     return d
 
 
-def _nai():
-    return _NS.get("NOTION_AI")
+def _wk():
+    return _NS.get("WORKERS")   # cc_workers: Claude здесь (запуск/остановка), папка «текущий проект», профили
 
 
 def _notify(text):
@@ -202,8 +199,8 @@ def checks_line(checks):
 
 def project_files_ok():
     """Карточка, сообщения владельца и хвост беседы лежат на dev и обновлены: их читает тот, кто подхватывает работу."""
-    nai = _nai()
-    folder = nai.handoff_project_dir() if nai else None
+    wk = _wk()
+    folder = wk.handoff_project_dir() if wk else None
     try:
         return all((folder / n).is_file() and (folder / n).stat().st_size > 0 for n in ("card.md", "owner_last.md", "handoff_tail.md"))
     except Exception:
@@ -215,9 +212,10 @@ def friend_claude_md():
     intro = Path(src).read_text(encoding="utf-8") if Path(src).is_file() else ""
     m = R.members().get(_member_id()) or {}
     host, key = back_ssh(m)
-    try:
-        owner = str(json.loads(Path(R.BASE, "notion_ai.json").read_text(encoding="utf-8")).get("owner") or "").strip()
-    except (OSError, ValueError):
+    try:   # имя владельца — ключ «owner» в config.json; нет ключа — «владелец»
+        conf = _NS["cfg"]() if _NS.get("cfg") else R.jload(os.path.join(R.BASE, "config.json"), {})
+        owner = str((conf if isinstance(conf, dict) else {}).get("owner") or "").strip()
+    except Exception:
         owner = ""
     for name, value in (("{owner}", owner or "владелец"), ("{main_host}", host or "адрес основного сервера"), ("{back_key}", key)):
         intro = intro.replace(name, value)
@@ -226,13 +224,13 @@ def friend_claude_md():
 
 
 def brief(reason, queued):
-    nai = _nai()
-    folder = nai.handoff_project_dir() if nai else None
+    wk = _wk()
+    folder = wk.handoff_project_dir() if wk else None
     state = ""
     try:
-        if nai:
-            nai.handoff_refresh_owner_last()   # свежие сообщения владельца и хвост беседы прямо сейчас, а не с прошлого переключения
-            state = nai.handoff_tail_state()
+        if wk:
+            wk.handoff_refresh_owner_last()   # свежие сообщения владельца и хвост беседы прямо сейчас, а не с прошлого переключения
+            state = wk.handoff_tail_state()
     except Exception:
         pass
     parts = ["[PANEL %s] Работа передана тебе (Claude PROD). Причина: %s. Работа теперь у тебя: Telegram включён, "
@@ -269,7 +267,7 @@ def _fail(msg):
 def _on_job(mid, reason, queued, resume, tg_on=True, restore=True):
     """tg_on=False: PROD стартует без Telegram (исполнитель при ведущем Codex). restore=False: при сбое Claude DEV не будим."""
     m = R.members()[mid]
-    nai = _nai()
+    wk = _wk()
 
     def undo():
         if restore:
@@ -282,9 +280,9 @@ def _on_job(mid, reason, queued, resume, tg_on=True, restore=True):
         _save(stage="инструменты на сервере", error="")
         if not deploy_tools(m):
             return _fail("PROD не принимает файлы по ssh")
-        snap = (nai.claude_snapshot() or {}) if resume else {}   # ДО остановки: у погашенного Claude беседу уже не определить
+        snap = (wk.claude_snapshot() or {}) if resume else {}   # ДО остановки: у погашенного Claude беседу уже не определить
         _save(stage="остановка Claude здесь")
-        if nai.screen_busy() and not nai.stop_claude():   # гасит и основной Claude, и побочную сессию
+        if wk.screen_busy() and not wk.stop_claude():   # гасит и основной Claude, и побочную сессию
             return _fail("Claude здесь не остановился")
         _save(stage="копирование памяти и правил")
         friend_md = friend_claude_md()
@@ -343,11 +341,11 @@ def _on_job(mid, reason, queued, resume, tg_on=True, restore=True):
 
 
 def _restore_local():
-    nai = _nai()
+    wk = _wk()
     _save(active=False, member=None)
     try:
-        if not nai.claude_running():
-            nai.start_claude()
+        if not wk.claude_running():
+            wk.start_claude()
     except Exception:
         pass
 
@@ -374,9 +372,6 @@ def on(mid, reason="вручную", queued="", resume=False, force=False):
             return {"ok": True, "message": "Работа уже на PROD."}
         if busy():
             return {"ok": False, "busy": True, "message": "Передача уже идёт."}
-        nai = _nai()
-        if nai is not None and nai.active():
-            return {"ok": False, "message": "Включён профиль Notion AI: сначала выключи его."}
         bad = _prod_not_ready(mid, force)
         if bad:
             return {"ok": False, "message": bad}
@@ -388,10 +383,10 @@ def on(mid, reason="вручную", queued="", resume=False, force=False):
 
 
 def _off_job(reason, force, restore=True):
-    """restore=False: Claude здесь не запускается (работа уходит дальше к Codex/Notion AI, Claude DEV не будим)."""
+    """restore=False: Claude здесь не запускается (работа уходит дальше к Codex, Claude DEV не будим)."""
     mid = mode().get("member")
     m = R.members().get(mid)
-    nai = _nai()
+    wk = _wk()
     try:
         _save(stage="сбор результата с PROD")
         since = float(mode().get("since_ts") or mode().get("since") or 0)
@@ -411,14 +406,14 @@ def _off_job(reason, force, restore=True):
         checks = [("беседа PROD скопирована", (all(remote_size(m, n) == _local_size(PROJ + "/" + os.path.basename(n)) for n in names) if names else None)),
                   ("память", rsync_pending(m, PROJ + "/memory/", PROJ + "/memory/", False) == 0)]
         try:
-            nai.handoff_refresh_owner_last()   # хвост беседы собираем уже из принесённой беседы
+            wk.handoff_refresh_owner_last()   # хвост беседы собираем уже из принесённой беседы
         except Exception:
             pass
         checks.append(("карточка, сообщения владельца и хвост беседы", project_files_ok()))
         _save(active=False, member=None, stage="запуск Claude здесь" if restore else "", last=dict(since=since, reason=reason))
         _wcache["ts"] = 0.0
-        if restore and not nai.claude_running():
-            nai.start_claude()
+        if restore and not wk.claude_running():
+            wk.start_claude()
         try:
             st = Path(_NS["BASE"]) / "profile_runtime/handoff-sync.json"
             d = json.loads(st.read_text())
@@ -430,11 +425,11 @@ def _off_job(reason, force, restore=True):
             _save(stage="записка для Claude DEV")
             delivered = False
             try:
-                delivered = bool(nai.handoff_sync("claude"))
+                delivered = bool(wk.handoff_sync("claude"))
             except Exception:
                 pass
             if not delivered:
-                nai._later(nai.handoff_sync, "claude")   # не успел подняться: повторим позже, как раньше
+                wk._later(wk.handoff_sync, "claude")   # не успел подняться: повторим позже, как раньше
             checks.append(("Claude DEV получил записку", delivered))
             good, line = checks_line(checks)
             _save(stage="", delivery=line, delivery_ok=good)
@@ -470,7 +465,7 @@ def off(reason="вручную", force=False):
 
 
 def _scenario(claude, codex):
-    p = _nai().profiles
+    p = _wk().profiles
     return p.apply_scenario(dict(choices=dict(claude=claude, codex=codex), revision=p.state.revision, confirm="подтверждаю"))
 
 
@@ -489,9 +484,9 @@ def _to_dev(src, reason):
 
 
 def _hand_job(src, target, mid, reason):
-    """Любое место → любое: PROD снимается без пробуждения Claude DEV, если дальше Codex или Notion AI;
-    в PROD из Codex/Notion AI работа идёт через Claude DEV (только так профили остаются согласованными)."""
-    nai = _nai()
+    """Любое место → любое: PROD снимается без пробуждения Claude DEV, если дальше Codex;
+    в PROD из Codex работа идёт через Claude DEV (только так профили остаются согласованными)."""
+    wk = _wk()
     ok, msg = True, ""
     try:
         if target == "dev":
@@ -505,9 +500,9 @@ def _hand_job(src, target, mid, reason):
                 ok, msg = _step(_off_job(reason, False, False))
             if ok:
                 _save(stage="включаю " + NAMES[target])
-                ok, msg = _step(_scenario(None, "full") if target == "codex" else nai.on(kind="full", by="панель"))
-                if not ok and src == "prod" and not nai.claude_running():
-                    nai.start_claude()
+                ok, msg = _step(_scenario(None, "full"))
+                if not ok and src == "prod" and not wk.claude_running():
+                    wk.start_claude()
                     msg += " Работа осталась у Claude DEV."
         if not ok:
             _fail(msg)
@@ -524,7 +519,7 @@ def handoff(target, reason="по кнопке в панели", force=False):
             return {"ok": False, "message": "Неизвестная цель передачи."}
         if lock_message():
             return {"ok": False, "message": lock_message()}
-        if _nai() is None:
+        if _wk() is None:
             return {"ok": False, "message": "Профили панели не подключены."}
         if busy():
             return {"ok": False, "busy": True, "message": "Передача уже идёт."}
@@ -867,7 +862,7 @@ def pair_kind():
     if not active():
         return ""
     try:
-        ch = getattr(_nai().profiles.state, "manual_choices", None)
+        ch = getattr(_wk().profiles.state, "manual_choices", None)
     except Exception:
         return ""
     if not isinstance(ch, dict):
@@ -922,11 +917,11 @@ def scenario_route(body):
         kind = "off"
     else:
         return None
-    nai = _nai()
-    if nai is None:
+    wk = _wk()
+    if wk is None:
         return None
     rev = body.get("revision")
-    if type(rev) is not int or rev != nai.profiles.state.revision:
+    if type(rev) is not int or rev != wk.profiles.state.revision:
         return {"ok": False, "conflict": True, "message": "Сценарий уже изменился. Обнови выбор."}
     return pair(kind, "через окно выбора профиля")
 
@@ -1056,7 +1051,7 @@ def announce_role(role, wait=30):
     if not m or role not in ROLE_TEXT:
         return False
     if role == "leader":
-        dest = str(_nai().profiles.exchange("claude") / "outbox" / "task.md")
+        dest = str(_wk().profiles.exchange("claude") / "outbox" / "task.md")
         if not (back_ssh(m)[0] and put_file(m, _orch_script(dest, m), ORCH_PATH, "755")):
             return False
     import cc_codex_bridge   # фраза про второго исполнителя — из config.json (ключ codex_team_note), как у Codex
@@ -1066,15 +1061,15 @@ def announce_role(role, wait=30):
 
 
 def _local_busy():
-    native = getattr(_nai().profiles, "native", None)
+    native = getattr(_wk().profiles, "native", None)
     return bool(native and native.busy())
 
 
 def _pair_job(kind, mid, reason):
-    nai = _nai()
+    wk = _wk()
     ok, msg = True, ""
     try:
-        local = nai.claude_running()
+        local = wk.claude_running()
         src = worker()
         if kind == "off":
             if pair_kind() == "prod_codex":
@@ -1128,8 +1123,8 @@ def pair(kind, reason="по кнопке в панели", force=False):
     with LOCK:
         if kind not in PAIR_KINDS:
             return {"ok": False, "message": "Неизвестный вариант пары."}
-        nai = _nai()
-        if nai is None:
+        wk = _wk()
+        if wk is None:
             return {"ok": False, "message": "Профили панели не подключены."}
         if busy():
             return {"ok": False, "busy": True, "message": "Операция уже идёт."}
@@ -1138,8 +1133,6 @@ def pair(kind, reason="по кнопке в панели", force=False):
             return {"ok": True, "message": "Пара с PROD не включена."}
         if kind == cur:
             return {"ok": True, "message": "Эта пара уже включена."}
-        if nai.active():
-            return {"ok": False, "message": "Включён профиль Notion AI: сначала передай работу в Claude или Codex."}
         mid = mode().get("member") if active() else next(iter(R.members()), "")
         m = R.members().get(mid)
         if not m:

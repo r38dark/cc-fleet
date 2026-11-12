@@ -24,10 +24,9 @@ class ConsoleKeysTest(unittest.TestCase):
         s = src("cc_overview.py")
         self.assertIn("{ArrowUp:'up',ArrowDown:'down',Enter:'enter',Escape:'escape'}", s)
         self.assertIn("closest('#termBox,.tpextra,.fleet-console-viewport')", s)
-        # в поле ввода, кнопках, ссылках и с модификаторами клавиши не перехватываются; у чата Notion AI клавиш нет
+        # в поле ввода, кнопках, ссылках и с модификаторами клавиши не перехватываются
         self.assertIn("input,textarea,select,button,a,[contenteditable=", s)
         self.assertIn("e.ctrlKey||e.altKey||e.metaKey||e.shiftKey", s)
-        self.assertIn("indexOf('notion')===0", s)
 
     def test_split_parts_have_same_keys(self):
         s = src("cc_limits.py")
@@ -36,13 +35,7 @@ class ConsoleKeysTest(unittest.TestCase):
         # кнопка отправки ищется по классу: индекс ребёнка сдвигается при добавлении кнопок
         self.assertIn("send=form.querySelector('.tpsend')", s)
         self.assertNotIn("send=form.children[2]", s)
-        self.assertIn("c.form.querySelectorAll('.tpkey').forEach(b=>{b.hidden=isNai(P.k);})", s)
-
-    def test_notion_chat_locks_every_console_key(self):
-        s = src("cc_notion_ai.py")
-        self.assertIn("querySelectorAll('#fleetConsoleForm [data-console-key]')", s)
-        self.assertIn("keys.forEach(function(k){k.disabled=true})", s)
-        self.assertIn("keys.forEach(function(k){k.disabled=saved.key})", s)
+        self.assertNotIn("b.hidden=", s[s.index("function compSync(P,on){"):s.index("function placeFrame(ks){")])   # ↑ ↓ ⏎ Esc у каждой части
 
     def test_server_accepts_the_four_keys(self):
         s = src("cc_fleet.py")

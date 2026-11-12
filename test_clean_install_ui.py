@@ -20,8 +20,8 @@ class NoSecondServer(unittest.TestCase):
     def test_everything_about_the_second_server_is_hidden_by_one_rule(self):
         rule = self.page[self.page.index("html.no-prod #ctProd"):]
         rule = rule[:rule.index("}")]
-        for sel in ("#ctProd", '.nai-seg[data-ag="prod"]', ".fleet-live-account.prod", ".fleet-compact-account.prod", '.fleet-acc[data-engine="prod"]',
-                    ".nai-h3.t-prod", '.rm-hand[data-target="prod"]', '.tpmi[data-k="prod"]'):
+        for sel in ("#ctProd", '.wk-seg[data-ag="prod"]', ".fleet-live-account.prod", ".fleet-compact-account.prod", '.fleet-acc[data-engine="prod"]',
+                    ".wk-h3.t-prod", '.rm-hand[data-target="prod"]', '.tpmi[data-k="prod"]'):
             self.assertIn("html.no-prod " + sel, rule, sel)
         self.assertIn("display:none!important", rule)  # тема меню консоли задаёт display:flex у .ctab — без !important атрибут hidden не работает
 

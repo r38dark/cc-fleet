@@ -47,12 +47,12 @@ eq(splitCloseAt(['a','b','c'],2,2),{keys:['a','b'],act:1},'закрыли пос
 eq(splitPick(['claude','prod'],0,'prod'),{keys:['claude','prod'],act:1},'вкладка показанной — выбирает часть');
 eq(splitPick(['claude','prod'],1,'codex'),{keys:['claude','codex'],act:1},'не показанной — заменяет выбранную');
 // консоль идёт за исполнителем (владелец 62577): новый встаёт на часть прежнего, а не на выбранную рукой
-eq(splitFollow(['claude','codex','notion'],2,'claude','prod'),{keys:['prod','codex','notion'],act:0},'DEV→PROD: заменилась часть DEV, Notion на месте');
-eq(splitFollow(['prod','codex','notion'],1,'prod','claude'),{keys:['claude','codex','notion'],act:0},'PROD→DEV: заменилась часть PROD');
-eq(splitFollow(['claude','prod','notion'],2,'claude','prod'),{keys:['claude','prod','notion'],act:1},'новый уже показан — выбирается его часть');
-eq(splitFollow(['codex','notion'],1,'claude','prod'),{keys:['codex','prod'],act:1},'прежнего нет на экране — как обычная вкладка');
+eq(splitFollow(['claude','codex','x'],2,'claude','prod'),{keys:['prod','codex','x'],act:0},'DEV→PROD: заменилась часть DEV, выбранная рукой часть на месте');
+eq(splitFollow(['prod','codex','x'],1,'prod','claude'),{keys:['claude','codex','x'],act:0},'PROD→DEV: заменилась часть PROD');
+eq(splitFollow(['claude','prod','x'],2,'claude','prod'),{keys:['claude','prod','x'],act:1},'новый уже показан — выбирается его часть');
+eq(splitFollow(['codex','x'],1,'claude','prod'),{keys:['codex','prod'],act:1},'прежнего нет на экране — как обычная вкладка');
 eq(splitFollow(['claude','codex'],0,'','prod'),{keys:['prod','codex'],act:0},'прежнего исполнителя не знаем — как обычная вкладка');
-eq(splitFollow(['claude','notion:a1'],1,'claude','codex'),{keys:['codex','notion:a1'],act:0},'любой исполнитель, не только PROD');
+eq(splitFollow(['claude','x1'],1,'claude','codex'),{keys:['codex','x1'],act:0},'любой исполнитель, не только PROD');
 console.log('done');
 """
 
@@ -101,16 +101,15 @@ class Page(unittest.TestCase):
         self.assertIn("window.fleetBindComposer(form,input,send,stat,()=>P.k);", L.PAGE)
         self.assertIn("function renderComps(ks){", L.PAGE)
         self.assertIn("renderHeads(ks);\n renderComps(ks);", L.PAGE)
-        # общее окно скрыто только пока окна частей на месте и открыт не чат Notion AI
-        self.assertIn(".termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}", L.PAGE)
-        self.assertIn(".termwrap.nai-on .tpcomps{display:none!important}", L.PAGE)
+        # общее окно скрыто, пока окна частей на месте
+        self.assertIn(".termwrap.tsplit.tpcomps-on>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on>.fleet-input-status{display:none!important}", L.PAGE)
 
     def test_selected_part_has_a_muted_green_frame_only(self):
         # у частей консоли — приглушённо-зелёная рамка только выбранной (серые рамки частей убраны, владелец 62486);
         # рамка охватывает шапку, экран и окно ввода, строки «Ввод в …» у части нет (62461)
         self.assertIn(".tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid transparent}", L.PAGE)
         self.assertIn(".tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}", L.PAGE)
-        self.assertIn(".termwrap.tsplit:not(.nai-on) .tpfr{display:block}", L.PAGE)
+        self.assertIn(".termwrap.tsplit .tpfr{display:block}", L.PAGE)
         self.assertIn("renderComps(ks);\n applyMax(ks);\n placeFrame(ks);", L.PAGE)
         # размеры дробные (округление уводило правый край под рамку блока), нижние углы — как у блока, соседние рамки перекрываются на 1px
         self.assertIn("f.style.width=(b.width+lap).toFixed(2)+'px'", L.PAGE)
@@ -136,49 +135,34 @@ class Page(unittest.TestCase):
                      "splitCommit(splitDrop(ks,splitActIdx(ks),i,k),k);", '<span class="tpcaret" aria-hidden="true">▾</span>',
                      "const i=+c.dataset.i,m=document.getElementById('tpMenu');if(m&&+m.dataset.i===i){closeModelMenu();return;}splitActivate(i);openModelMenu(i);"):
             self.assertIn(part, L.PAGE, part)
-        self.assertIn("splitKeysAvail().map(k=>{", L.PAGE)  # в меню — все доступные модели, включая Notion AI и агентов
+        self.assertIn("splitKeysAvail().map(k=>{", L.PAGE)  # в меню — все доступные модели
         self.assertIn(".tpmenu{position:fixed;z-index:70;", L.PAGE)
 
     def test_split_keeps_the_console_block_height(self):
         # общее окно ввода со строкой статуса выше окон частей на 39px: добавлены к экрану, «Активные аккаунты» остаются на месте
-        self.assertIn("height:calc(clamp(360px,41dvh,510px) + 39px)", L.PAGE)
-        self.assertIn("height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)", L.PAGE)
-        self.assertIn("height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)", L.PAGE)
+        # высота как у одной консоли (+48 px строки третьего агента, отданной консоли) + шапка части 39 px
+        self.assertIn("height:calc(clamp(408px,calc(41dvh + 48px),558px) + 39px)", L.PAGE)
+        self.assertIn("height:calc(clamp(388px,calc(100dvh - 382px),688px) + 39px)", L.PAGE)
+        self.assertIn("height:calc(clamp(368px,calc(100dvh - 422px),658px) + 39px)", L.PAGE)
 
     def test_claude_card_footer_has_a_visible_relogin_button(self):
         # как у карточки PROD: «Войти заново» на виду в подвале, а не только в меню ⋯
         self.assertIn("if(engine==='claude'&&footer&&!footer.querySelector('.fleet-footer-relogin'))", L.PAGE)
         self.assertIn("reloginAsk(slot,rb)", L.PAGE)
 
-    def test_notion_chat_can_be_a_part_of_the_split_console(self):
-        # Notion AI (главный чат и агенты) — отдельная часть с тем же управлением: перетаскивание, свой чат и своё окно ввода
-        for part in ("function chatHtml(d,rows,stale,aid,nm,pl){", "view.innerHTML=chatHtml(d,rows,stale,agentAid,agentName,pend);",
-                     "window.naiChat=function(el,aid){", "window.naiKeys=function(){", "window.naiClose=function(){if(on)close()};"):
-            self.assertIn(part, L.PAGE, part)
-        # ключи частей: claude / prod / codex и Notion ('notion', 'notion:<id агента>')
-        self.assertIn("/^(claude|prod|codex|notion(:\\S+)?)$/.test(k)", L.PAGE)
-        self.assertIn("function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[],R.contains('ag-unlinked-notion')?[]:naiList().map(x=>x.key));}", L.PAGE)
-        # чат в части: своя область, опрос и отправка у самого чата; сообщение идёт в чат, а не в консоль
-        self.assertIn("P.box.classList.add('tpchat');P.nv=document.createElement('div');P.nv.className='nai-view tpnai';", L.PAGE)
-        self.assertIn("if(isNai(P.k))return;", L.PAGE)
-        self.assertIn("e.stopImmediatePropagation();const text=input.value;if(!text.trim())return;P.chat.send(text,", L.PAGE)
-        self.assertIn("c.form.querySelectorAll('.tpkey').forEach(b=>{b.hidden=isNai(P.k);});", L.PAGE)
-        # при разделении вкладками Notion ведёт cc_limits.py, вне разделения — прежнее окно поверх консоли
-        self.assertIn("sp=window.fleetSplitOn&&window.fleetSplitOn()", L.PAGE)
-        self.assertIn("if(window.fleetSplitOn&&window.fleetSplitOn()){if(on)close();return}", L.PAGE)
-        self.assertIn("!(window.fleetSplitWanted&&window.fleetSplitWanted())", L.PAGE)
-        self.assertIn("if(isNai(k)&&!splitEff())return;", L.PAGE)
-        self.assertIn("if(ks&&window.naiClose)window.naiClose();", L.PAGE)
-        # вкладки агентов создаются позже страницы — перетаскивание делегировано на #cTabs
+    def test_parts_are_the_three_models(self):
+        # ключи частей: claude / prod / codex
+        self.assertIn("/^(claude|prod|codex)$/.test(k)", L.PAGE)
+        self.assertIn("function tabKey(b){return b.dataset.s;}", L.PAGE)
+        self.assertIn("function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]);}", L.PAGE)
         self.assertIn("$('#cTabs').addEventListener('dragstart',", L.PAGE)
 
-    def test_unlinked_codex_and_notion_are_not_offered_for_the_split(self):
-        # призрачные Codex и Notion AI не попадают ни в части консоли, ни в меню моделей части (владелец 62622)
+    def test_unlinked_codex_is_not_offered_for_the_split(self):
+        # призрачный Codex не попадает ни в части консоли, ни в меню моделей части (владелец 62622)
         self.assertIn("cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]", L.PAGE)
-        self.assertIn("R.contains('ag-unlinked-notion')?[]:naiList()", L.PAGE)
 
     def test_wizard_window_is_anchored_to_the_ghost_tile_when_there_is_no_header_button(self):
-        self.assertIn("function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#naiAgents .nai-seg[data-ag=\"codex\"]')||b)}", L.PAGE)
+        self.assertIn("function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#wkAgents .wk-seg[data-ag=\"codex\"]')||b)}", L.PAGE)
         self.assertIn("r=ciAnchor().getBoundingClientRect();", L.PAGE)
 
     def test_codex_tab_is_not_chosen_and_console_not_autostarted_without_login(self):
@@ -198,11 +182,8 @@ class Page(unittest.TestCase):
 
     def test_follow_replaces_the_previous_workers_part(self):
         # при передаче работы заменяется часть прежнего исполнителя, а не выбранная рукой (владелец 62577); часть модели, которой нет среди доступных, — по-старому, кликом
-        self.assertIn("if(ks&&splitKeysAvail().includes(tabKey(b))){const ob=seen?document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[seen]||'ctClaude'):null;"
+        self.assertIn("if(ks&&splitKeysAvail().includes(tabKey(b))){const ob=seen?document.getElementById({prod:'ctProd',codex:'ctCodex'}[seen]||'ctClaude'):null;"
                       "splitCommit(splitFollow(ks,splitActIdx(ks),ob?tabKey(ob):'',tabKey(b)),tabKey(b));return;}", L.PAGE)
-
-    def test_notion_chat_hides_extra_parts(self):
-        self.assertIn(".termwrap.nai-on .tpextra,.termwrap.nai-on .tpheads{display:none!important}", L.PAGE)
 
     def test_layout_is_saved_in_browser_only(self):
         self.assertIn("localStorage.setItem('cc_split'", L.PAGE)
@@ -222,9 +203,9 @@ class Page(unittest.TestCase):
     def test_part_header_has_compact_and_new_session_buttons(self):
         # «Сжать контекст» и «Новая сессия» — в шапке каждой части с консолью (62680); команда идёт модели этой части
         self.assertIn("function partActs(k,i){", L.PAGE)
-        self.assertIn("if(!(k==='claude'||k==='prod'||k==='codex'))return '';", L.PAGE)  # у Notion AI кнопок нет
+        self.assertIn("if(!(k==='claude'||k==='prod'||k==='codex'))return '';", L.PAGE)
         self.assertIn("function splitPartCmd(i,cmd,btn){const ks=splitEff();if(!ks||i<0||i>=ks.length)return;splitActivate(i);consActCmd(cmd,btn);}", L.PAGE)
-        self.assertIn("html:root:root .termwrap.tsplit:not(.nai-on) .fleet-console-toolbar .ctacts{display:none!important}", L.PAGE)
+        self.assertIn("html:root:root .termwrap.tsplit .fleet-console-toolbar .ctacts{display:none!important}", L.PAGE)
 
     def test_zoom_scales_every_part_by_the_same_ratio(self):
         # подгонка по ширине меряется при масштабе 100%: иначе она отменяла «+/−» у частей с длинными строками (62676)

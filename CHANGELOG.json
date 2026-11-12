@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.34",
+      "date": "2026-11-12",
+      "ru": {
+        "t": "Общий релиз: интерфейс лимитов и повтор обновления",
+        "p": [
+          "Удалён третий агент, его профили и резерв; общие функции передачи работы и восстановления беседы сохранены. Освободившееся место отдано консоли.",
+          "Пауза и исчерпание лимитов показаны бейджами на рамке активных аккаунтов. В консоли исчерпавшего лимит агента появляется прозрачный крестик; пауза имеет приоритет.",
+          "После ошибки обновления Claude Code или Codex доступен повтор. Окно обновления автоматически отслеживает установку Codex."
+        ]
+      },
+      "en": {
+        "t": "Combined release: limit indicators and update retry",
+        "p": [
+          "Removed the third agent, its profiles and reserve mode while preserving shared handoff and conversation recovery. The console uses the freed space.",
+          "Pause and exhausted limits appear as badges on active account borders. An exhausted agent has a translucent cross in its console; pause takes priority.",
+          "Failed Claude Code and Codex updates offer Retry. The update window now polls Codex installation progress."
+        ]
+      }
+    },
+    {
       "v": "2.0.33",
       "date": "2026-11-11",
       "ru": {

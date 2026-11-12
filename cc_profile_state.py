@@ -1,8 +1,9 @@
-"""Два рабочих профиля (Full и Оркестратор) для каждого исполнителя, без срока действия. [notion-ai] Резерв убран."""
+"""Два рабочих профиля (Full и Оркестратор) для каждого исполнителя, без срока действия. Служебных режимов нет:
+записи прежних версий с ними читаются как обычный сценарий (см. ProfileState.from_data)."""
 import copy
 import threading
 import time
-from cc_manual_scenarios import ManualScenarioMixin, validate_stored_choices, reserve_confirmed
+from cc_manual_scenarios import ManualScenarioMixin, validate_stored_choices
 
 ENGINES = ('claude', 'codex')
 
@@ -71,21 +72,21 @@ class ProfileScenarios:
             engine = self.service['engine']
             if self.availability[self.other(engine)] or not self.availability[engine] or not self.auto[engine]['enabled']:
                 self._restore()
-        # [notion-ai] автоматического резерва нет: служебный режим сам не включается
+        # служебный режим сам не включается
 
     def _check_revision(self, revision):
         if revision is not None and revision != self.revision:
             return dict(ok=False, message='Сценарий уже изменился. Обнови выбор.', conflict=True)
 
     def configure(self, engine, enabled, emergency=False, confirm='', revision=None):
-        """[notion-ai] Настроек резерва больше нет: включить нечего."""
+        """Настроек служебного режима больше нет: включить нечего."""
         with self.lock:
             if engine not in ENGINES:
                 return dict(ok=False, message='Неизвестный исполнитель.')
             stale = self._check_revision(revision)
             if stale:
                 return stale
-            return dict(ok=False, message='Резерв убран из панели: включать нечего.')
+            return dict(ok=False, message='Служебный режим убран из панели: включать нечего.')
 
     def set_availability(self, engine, available):
         with self.lock:
@@ -195,9 +196,9 @@ class ProfileState(ManualScenarioMixin, ProfileScenarios):
                 for key in ('selected', 'last_solo'):
                     if base[key][engine] not in allowed:
                         base[key][engine] = engine+'_solo_full'
-        if state.service:  # [notion-ai] служебных режимов (резерв, аварийный) больше нет: возвращаем прежний сценарий
+        if state.service:  # служебных режимов прежних версий больше нет: возвращаем прежний сценарий
             state._restore()
-        # выбор «резерв» из старых записей не активируем — сессии остаются как есть до нового выбора
+        # прежний служебный выбор («reserve») из старых записей не активируем — сессии остаются как есть до нового выбора
         if isinstance(state.manual_choices, dict) and 'reserve' in state.manual_choices.values():
             state.manual_choices = None
         if isinstance(state.restore, dict) and isinstance(state.restore.get('manual_choices'), dict) \
@@ -209,7 +210,7 @@ class ProfileState(ManualScenarioMixin, ProfileScenarios):
         if state.service:
             state.service['emergency'] = False
         for engine in ENGINES:
-            # [notion-ai] автоматического резерва нет — старые галочки выключаются
+            # автоматических служебных режимов нет — старые галочки выключаются
             state.auto[engine] = dict(enabled=False, emergency=False)
         state.until = 0
         for base in [dict(manual_choices=state.manual_choices,selected=state.selected,leader=state.leader),state.restore or {}]:

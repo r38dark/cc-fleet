@@ -15,8 +15,8 @@ def cfg(**kw):
     return dict(dict(A.DEFAULTS, enabled=True), **kw)
 
 
-def native(level='hard', role='solo', stale=False, notion=False):
-    return dict(level=level, role=role, stale=stale, notion_active=notion)
+def native(level='hard', role='solo', stale=False):
+    return dict(level=level, role=role, stale=stale)
 
 
 def prod(usable=True):
@@ -61,7 +61,6 @@ class Decide(unittest.TestCase):
     def test_only_solo_claude_is_handed_off(self):
         for role in ('leader', 'executor', 'paused', ''):
             self.assertIsNone(self.run_ticks(3, cfg(), native(role=role), prod(), mode(), memo())[0], role)
-        self.assertIsNone(self.run_ticks(3, cfg(), native(notion=True), prod(), mode(), memo())[0])
 
     def test_no_handoff_when_prod_has_no_limit(self):
         self.assertIsNone(self.run_ticks(3, cfg(), native(), prod(False), mode(), memo())[0])

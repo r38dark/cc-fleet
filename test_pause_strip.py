@@ -1,4 +1,5 @@
-"""Пауза в окнах консоли Claude PROD и Codex (63532: большая серая иконка по центру части, текст — сверху и в title): настоящий JS из cc_limits.py под node с подделкой документа."""
+"""Пауза и исчерпанный лимит в окнах консоли Claude DEV, Claude PROD и Codex (63532: большая серая иконка по центру части — пауза или крестик, текст — сверху и в title):
+настоящий JS из cc_limits.py под node с подделкой документа."""
 import json
 import os
 import re
@@ -28,30 +29,32 @@ def node(js):
         return json.loads(r.stdout)
 
 
-FUNC = (cut(r"^function ccpsHtml\(k\)\{.*?^\}$", "ccpsHtml") + "\n" + cut(r"^const PAUSE_ICO=.*?;$", "PAUSE_ICO") + "\n"
-        + cut(r"^function ccpPlain\(h\)\{[^\n]*\}$", "ccpPlain") + "\n" + cut(r"^function ccpPartStrip\(\)\{.*?^\}$", "ccpPartStrip"))
+# от ccpsHtml до ccpPartStrip включительно: правило лимита (limx*), иконки, бейджи плиток и сама полоса — одним куском, как в странице
+FUNC = cut(r"^function ccpsHtml\(k\)\{.*?^function ccpPartStrip\(\)\{.*?^\}$", "ccpsHtml … ccpPartStrip")
 
 HARNESS = r'''
 const els={};let box=null;
-const mkEl=()=>({hidden:false,style:{},className:'',innerHTML:'',title:'',appendChild(c){}});
+const mkEl=()=>({hidden:false,style:{},dataset:{},className:'',innerHTML:'',title:'',appendChild(c){}});
 const wrap={classList:{contains:c=>SPLIT&&c==='tsplit'},getBoundingClientRect:()=>({left:100,top:50}),appendChild(c){box=c}};
 const document={querySelector:()=>wrap,getElementById:id=>id==='ccps'?box:(els[id]||null),
   createElement:()=>{const e=mkEl();Object.defineProperty(e,'id',{set(v){this._id=v;els[v]=this},get(){return this._id}});return e}};
-const window={innerWidth:1400};
+const window={innerWidth:1400,FLEET_TZ:'Asia/Irkutsk'};const setInterval=()=>0,matchMedia=()=>({matches:false});const LANG='ru';
 const PANES=PANES_JSON.map(p=>({k:p.k,hid:!!p.hid,box:{offsetParent:p.off?null:{},getBoundingClientRect:()=>({left:p.l,top:p.t,width:p.w,height:p.h||400})}}));
 const T={ccpsTitle:'Claude на паузе по лимитам',ccpsTitleCx:'Codex на паузе по лимитам',ccpsBody:'Сообщения в Telegram встают в очередь.',ccpsBodyCx:'Сообщения из Telegram ждут в очереди.',
-  ccpsUntil:(at,left)=>' до '+at+' (осталось '+left+')',cxlpWin:m=>m===300?'окно 5 ч':'окно неделя'};
+  ccpsUntil:(at,left)=>' до '+at+' (осталось '+left+')',cxlpWin:m=>m===300?'окно 5 ч':'окно неделя',
+  limxPause:at=>'пауза по лимитам'+(at?' до '+at:''),limxOutWeek:at=>'лимит недели исчерпан'+(at?' до '+at:''),limxOut5h:at=>'лимит 5 ч исчерпан'+(at?' до '+at:''),limxOut:at=>'лимит исчерпан'+(at?' до '+at:''),
+  limxTipPause:'Новые действия ждут сброса.',limxTipOut:'Настоящий лимит исчерпан.'};
 const tr=(k,...a)=>typeof T[k]==='function'?T[k](...a):T[k];
 const ccpAt=ms=>'23:10', ccpLeft=ms=>'12 мин 00 с', ccpEsc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let ccpData=DATA_JSON, cxlpData=CX_JSON;
+let ccpData=DATA_JSON, cxlpData=CX_JSON, lastSnap=SNAP_JSON;
 FUNC_HERE
 ccpPartStrip();
-console.log(JSON.stringify(Object.keys(els).filter(k=>k!=='ccps').map(k=>({id:k,hidden:els[k].hidden,html:els[k].innerHTML,title:els[k].title,top:els[k].style.top,left:els[k].style.left,width:els[k].style.width,height:els[k].style.height}))));
+console.log(JSON.stringify(Object.keys(els).filter(k=>k!=='ccps').map(k=>({id:k,hidden:els[k].hidden,html:els[k].innerHTML,kind:els[k].dataset.kind,title:els[k].title,top:els[k].style.top,left:els[k].style.left,width:els[k].style.width,height:els[k].style.height}))));
 '''
 
 
-def run(data, panes, split=False, cx=None):
-    js = (HARNESS.replace("FUNC_HERE", FUNC).replace("DATA_JSON", json.dumps(data)).replace("CX_JSON", json.dumps(cx))
+def run(data, panes, split=False, cx=None, snap=None):
+    js = (HARNESS.replace("FUNC_HERE", FUNC).replace("DATA_JSON", json.dumps(data)).replace("CX_JSON", json.dumps(cx)).replace("SNAP_JSON", json.dumps(snap))
           .replace("PANES_JSON", json.dumps(panes)).replace("SPLIT", "true" if split else "false"))
     return node(js)
 
@@ -60,6 +63,7 @@ BLOCKED = {"remote_pause": {"enabled": True, "applied": True, "blocked": True, "
 CODEX = {"active": True, "paused": True, "resume_at": 1794324600, "windows": [300]}
 PANES = [{"k": "claude", "l": 100, "t": 50, "w": 600}, {"k": "prod", "l": 720, "t": 50, "w": 600}]
 PANES_CX = [{"k": "claude", "l": 100, "t": 50, "w": 600}, {"k": "codex", "l": 720, "t": 50, "w": 600}]
+FUTURE = 4102444800   # 2100 год: сброс ещё не прошёл
 
 
 @unittest.skipUnless(shutil.which("node"), "нет node")
@@ -76,14 +80,51 @@ class PauseStrip(unittest.TestCase):
         self.assertNotIn("<b>", x["title"])
         self.assertEqual((x["top"], x["left"], x["width"], x["height"]), ("0px", "620px", "600px", "400px"))   # на всю часть: иконка по центру
 
-    def test_codex_strip_only_when_codex_is_paused_on_limits(self):
+    def test_codex_pause_icon_only_when_codex_is_paused_on_limits(self):
         r = run({}, PANES_CX, cx=CODEX)
         self.assertEqual([x["id"] for x in r], ["ccps1"])
         self.assertIn("<svg", r[0]["html"])
+        self.assertEqual(r[0]["kind"], "pause")
         for part in ("Codex на паузе по лимитам", "до 23:10", "окно 5 ч", "очереди"):
             self.assertIn(part, r[0]["title"])
-        for cx in (None, {"active": False}, {"active": True, "paused": False, "resume_at": 1794324600}):
-            self.assertEqual(run({}, PANES_CX, cx=cx), [], cx)           # просто предупреждение о лимите — не пауза, полосы нет
+        for cx in (None, {"active": False}):
+            self.assertEqual(run({}, PANES_CX, cx=cx), [], cx)           # лимита нет — иконки нет
+
+    def test_codex_limit_used_up_without_pause_shows_a_cross(self):
+        # один аккаунт Codex: паузы нет никогда, а лимит кончается — крестик того же стиля в части Codex
+        r = run({}, PANES_CX, cx={"active": True, "paused": False, "single": True, "windows": [10080], "resume_at": FUTURE, "resets": {"10080": FUTURE}})
+        self.assertEqual([x["id"] for x in r], ["ccps1"])
+        x = r[0]
+        self.assertEqual(x["kind"], "out")
+        self.assertIn("<path", x["html"])                                # крестик, не две полоски паузы
+        self.assertNotIn("<rect", x["html"])
+        self.assertIn("Codex: лимит недели исчерпан до ", x["title"])
+        self.assertEqual((x["top"], x["left"], x["width"], x["height"]), ("0px", "620px", "600px", "400px"))   # вся часть Codex: крестик по центру
+        r = run({}, PANES_CX, cx={"active": True, "paused": False, "windows": [], "resume_at": None})
+        self.assertEqual((r[0]["kind"], r[0]["title"].split(".")[0]), ("out", "Codex: лимит исчерпан"))   # сервис сказал «лимит» без окна
+
+    def test_pause_wins_over_used_up_limit(self):
+        snap = {"remote": {"prod": {"five_hour": {"pct": 100, "resets_at": "2099-01-01T00:00:00Z"}, "seven_day": {"pct": 40}}}}
+        r = run(BLOCKED, PANES, snap=snap)
+        self.assertEqual([(x["id"], x["kind"]) for x in r], [("ccps1", "pause")])
+        self.assertIn("Claude на паузе по лимитам", r[0]["title"])
+        r = run({}, PANES, snap=snap)                                    # паузы нет — крестик «лимит 5 ч исчерпан»
+        self.assertEqual([(x["id"], x["kind"]) for x in r], [("ccps1", "out")])
+        self.assertIn("Claude PROD: лимит 5 ч исчерпан до ", r[0]["title"])
+
+    def test_claude_dev_pause_and_used_up_week_in_its_own_part(self):
+        dev = {"pause": {"active": True, "override": False, "resume_at": 1794324600, "reason": "сессия 93%"}}
+        r = run(dev, PANES)
+        self.assertEqual([(x["id"], x["kind"]) for x in r], [("ccps0", "pause")])   # часть Claude DEV, не PROD
+        self.assertIn("Claude на паузе по лимитам", r[0]["title"])
+        for off in ({"pause": dict(dev["pause"], override=True)}, dict(dev, stale=True), {"pause": dict(dev["pause"], active=False)}):
+            self.assertEqual(run(off, PANES), [], off)                   # пауза отключена вручную / снимок устарел — паузы нет
+        snap = {"active": "acc1", "accounts": {"acc1": {"five_hour": {"pct": 20}, "seven_day": {"pct": 100, "resets_at": "2099-01-01T00:00:00Z"}}}}
+        r = run({"pause": dict(dev["pause"], override=True)}, PANES, snap=snap)
+        self.assertEqual([(x["id"], x["kind"]) for x in r], [("ccps0", "out")])   # пауза отключена, неделя на 100 % — крестик
+        self.assertIn("Claude DEV: лимит недели исчерпан до ", r[0]["title"])
+        old = {"active": "acc1", "accounts": {"acc1": {"seven_day": {"pct": 100, "resets_at": "2020-01-01T00:00:00Z"}}}}
+        self.assertEqual(run({}, PANES, snap=old), [])                   # сброс уже прошёл — окно свободно, цифры старые
 
     def test_each_strip_goes_only_over_its_own_part(self):
         r = run(BLOCKED, PANES_CX, cx=CODEX)                             # у PROD-части нет, у Codex-части есть
@@ -135,6 +176,7 @@ class PauseStrip(unittest.TestCase):
         tick = SRC[SRC.index("function ccpTick(){"):]
         self.assertIn("#ccPause .ccp-left", tick[:400])               # «осталось …» в тексте идёт каждую секунду
         icon = SRC[SRC.index("const PAUSE_ICO="):]
+        self.assertIn("stroke=\"currentColor\"", SRC[SRC.index("const OUT_ICO="):][:300])   # крестик — тем же серым прозрачным цветом
         self.assertIn("pointer-events:none", SRC[SRC.index(".ccps{"):SRC.index(".ccps svg{")])  # иконка не мешает консоли
         self.assertIn("currentColor", icon[:200])                      # цвет — серый прозрачный из CSS
 

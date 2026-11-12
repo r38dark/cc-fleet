@@ -28,7 +28,7 @@ html:root:root .fleet-console-toolbar .ctab{position:relative;display:flex;align
 html:root:root .fleet-console-toolbar .ctab.on{color:#ecf1f6}.fleet-console-toolbar .ctab.on::after{content:"";height:2px;position:absolute;bottom:-1px;left:0;right:0;background:#4cdbb0}
 html:root:root .fleet-console-toolbar .ctacts{margin:0 0 0 4px;display:flex;gap:5px}.fleet-console-toolbar .iconbtn{background:transparent!important;color:#8799ae;border-color:#2a3542;border-radius:6px;width:26px;height:26px}.fleet-console-toolbar .iconbtn svg{width:14px;height:14px}
 html:root:root .fleet-console-toolbar .tzoom{position:static;margin-left:auto;display:flex;gap:4px;padding:0;background:transparent}.fleet-console-toolbar .tzval{color:#8da0b7;font-size:11px;font-weight:450}
-html:not(.conly) #termBox{height:clamp(360px,41dvh,510px)!important;min-height:360px!important;max-height:none!important;flex:none!important;margin:0;border:0;border-radius:0;padding:28px 30px 16px;background:var(--fleet-terminal);color:#d2dce9;font:calc(12px * var(--tz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace;white-space:pre;overflow:auto}
+html:not(.conly) #termBox{height:clamp(408px,calc(41dvh + 48px),558px)!important;min-height:408px!important;max-height:none!important;flex:none!important;margin:0;border:0;border-radius:0;padding:28px 30px 16px;background:var(--fleet-terminal);color:#d2dce9;font:calc(12px * var(--tz,1))/1.65 ui-monospace,"SFMono-Regular",Consolas,monospace;white-space:pre;overflow:auto}
 .fleet-composer{display:flex;align-items:center;gap:11px;margin:0;padding:11px 20px;border-top:1px solid #263140;background:#101620;color:#dbe3ed;flex:none}
 .fleet-composer::before{content:"›";color:#73dbb7;font:22px ui-monospace,monospace}
 .fleet-composer textarea{flex:1;min-width:0;resize:vertical;min-height:28px;max-height:180px;margin:0;padding:5px 0;background:none;color:#dbe3ed;border:0;outline:0;border-radius:0;font:12px/1.5 ui-monospace,Consolas,monospace}.fleet-composer textarea::placeholder{color:#65768c}.fleet-composer textarea:focus-visible{box-shadow:0 1px #45d6ab}
@@ -233,7 +233,8 @@ html.conly .fleet-active-strip{display:none!important}
 .fleet-pause-summary .ccp-timer .l{font-size:10px;line-height:1.5}
 .fleet-pause-chevron{grid-column:4;grid-row:1;width:12px;height:12px}
 .fleet-pause-content .ccp-title{font-size:13px;font-weight:600;margin-bottom:7px}
-@media(min-width:1100px) and (min-height:700px){html:not(.conly) #termBox{height:clamp(340px,calc(100dvh - 430px),640px)!important;min-height:340px!important}}
+/* высота консоли на ПК: строка третьего агента в «Активных аккаунтах» убрана — её 48 px (строка 42 + зазор 6) отданы консоли, блок аккаунтов кончается там же, где раньше */
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) #termBox{height:clamp(388px,calc(100dvh - 382px),688px)!important;min-height:388px!important}}
 @media(max-width:1100px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 78px 78px;gap:12px}.fleet-live-name{font-size:13px}}
 @media(max-width:740px){.fleet-live-rows{grid-template-columns:minmax(0,1fr);gap:7px}.fleet-live-account{grid-template-columns:minmax(0,1fr) 78px 78px;min-height:54px;padding:8px 11px}.fleet-live-head{gap:7px}.fleet-live-label{font-size:10px}.fleet-tools>summary{font-size:11px;padding-right:3px}.fleet-pause-summary{padding:5px 9px;gap:7px}.fleet-pause-summary .ccp-timer .l{display:none}.fleet-pause-content{padding-left:24px}.fleet-tools-panel{max-height:calc(100dvh - 240px)}}
 @media(max-width:380px){.fleet-live-account{grid-template-columns:minmax(0,1fr) 62px 62px;gap:9px}.fleet-live-name{font-size:12px}.fleet-live-email{font-size:10px}.fleet-live-meter-label{font-size:10px}.fleet-live-meter-label b{font-size:12px}.fleet-live-label{max-width:180px;line-height:1.4}}
@@ -401,11 +402,6 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
 .fleet-profile-choose{font-size:11px;color:var(--fleet-accent);font-weight:500}
 #cxMenu .fleet-profile-card .fleet-profile-more{display:flex;align-items:center;justify-content:center;gap:4px;width:auto;height:28px;min-height:28px;margin:0;padding:5px 6px;border:1px solid var(--fleet-line);border-radius:5px;background:transparent;color:var(--fleet-muted);box-shadow:none;font-size:11px;font-weight:500;line-height:1}
 #cxMenu .fleet-profile-more svg{width:12px;height:12px}
-#cxMenu .fleet-profile-service{grid-column:1/-1;display:grid;grid-template-columns:0 minmax(0,1fr) auto;align-items:center;gap:0 10px;margin:0;padding:12px 14px;min-height:64px;border:1px solid var(--fleet-line);border-radius:9px;background:transparent;box-shadow:none;cursor:default}
-#cxMenu .fleet-profile-service::before,#cxMenu .fleet-profile-service .cxpr{display:none}
-#cxMenu .fleet-profile-service .cxpt{grid-column:2;min-width:0}.fleet-profile-auto{grid-column:3;font-size:10px;color:var(--fleet-muted);padding:4px 7px;border:1px solid var(--fleet-line);border-radius:5px}
-#cxMenu .fleet-profile-service .cxpnm{font-size:13px;text-transform:none;letter-spacing:0}#cxMenu .fleet-profile-service .cxroute{display:none}
-#cxMenu .fleet-profile-service .cxps{font-size:11px;line-height:1.5;-webkit-line-clamp:2;margin-top:3px}
 #cxMenu .cxemg{border:1px solid color-mix(in srgb,var(--bad),var(--fleet-line) 55%);border-radius:9px;background:transparent;padding:13px;margin:0}
 #cxMenu .cxemg::before{display:none}#cxMenu .cxemg .cxpnm{font-size:13px;text-transform:none;letter-spacing:0}#cxMenu .cxemg .cxes{font-size:12px;line-height:1.5}
 .fleet-palette-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 18px;border-top:1px solid var(--fleet-line);flex:none;font-size:11px;line-height:1.5;color:var(--fleet-muted)}
@@ -422,7 +418,6 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
  #cxMenu.fleet-profile-palette .fleet-profile-card{padding:12px;min-height:0}.fleet-profile-card-head{margin-bottom:8px;min-height:27px}#cxMenu .fleet-profile-card .cxpr{width:27px;height:27px;font-size:14px;border-radius:6px}
  #cxMenu .fleet-profile-card .cxpnm{font-size:16px}#cxMenu .fleet-profile-card .cxpn{margin-bottom:7px}#cxMenu .fleet-profile-card .cxps{font-size:12px;line-height:1.55}.fleet-profile-meta{margin-top:10px;font-size:10px}.fleet-profile-card-footer{margin-top:11px;padding-top:9px}
  .fleet-palette-footer{padding:11px 12px;font-size:10px}.fleet-palette-help{max-width:52%;text-align:right;font-size:9px}
- #cxMenu .fleet-profile-service{padding:11px;grid-template-columns:minmax(0,1fr) auto;gap:8px}#cxMenu .fleet-profile-service .cxpt{grid-column:1}.fleet-profile-auto{grid-column:2;font-size:9px;padding:4px 5px}
 }
 /* На ПК весь обычный каталог виден сразу, без прокрутки внутри меню. */
 #cxMenu.fleet-profile-desktop .fleet-palette-header{padding:10px 14px;gap:12px;min-height:0}
@@ -446,11 +441,6 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
 #cxMenu.fleet-profile-desktop .fleet-profile-meta>span{padding:3px 5px}
 #cxMenu.fleet-profile-desktop .fleet-profile-card-footer{margin-top:9px;padding-top:8px;min-height:26px}
 #cxMenu.fleet-profile-desktop .fleet-profile-card .fleet-profile-more{height:26px;min-height:26px;padding:5px 7px}
-#cxMenu.fleet-profile-desktop .fleet-profile-service-heading{font-size:10px;margin:2px 0 0}
-#cxMenu.fleet-profile-desktop .mirror-service{min-height:0;padding:10px 12px;gap:12px}
-#cxMenu.fleet-profile-desktop .mirror-service .cxps{font-size:12px;line-height:1.5;margin-top:4px}
-#cxMenu.fleet-profile-desktop .mirror-service-actions{gap:6px}
-#cxMenu.fleet-profile-desktop .mirror-service-actions>button{min-height:27px;padding:5px 8px}
 #cxMenu.fleet-profile-desktop .fleet-palette-footer{padding:8px 14px;font-size:10px}
 @media(prefers-reduced-motion:reduce){html:root:root #cxMenu.fleet-profile-palette{animation:none}}
 
@@ -463,7 +453,6 @@ html:root:root #cxMenuScrim.fleet-profile-backdrop:not([hidden]){display:block!i
  #cxMenu .fleet-profile-card .cxps{margin-top:3px}
 }
 
-.fleet-profile-service-heading{grid-column:1/-1;font-size:11px;font-weight:550;color:var(--fleet-muted);margin-top:2px}
 
 /* У каждого исполнителя свой профиль; одна структура, два цвета. */
 .mirror-profile-footer{grid-column:1/-1;grid-row:2;display:flex;align-items:center;gap:12px;justify-content:space-between;border-top:1px solid var(--fleet-line);padding-top:8px;min-width:0}
@@ -480,25 +469,18 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 #cxMenu[data-engine="claude"] .fleet-profile-card.act{border-color:var(--fleet-claude);background:linear-gradient(140deg,var(--fleet-claude-soft),var(--bg) 85%)}
 .mirror-profile-tabs{display:flex;gap:6px;align-items:center}.mirror-profile-tabs button{margin:0;padding:3px 8px;border:1px solid var(--fleet-line);border-radius:5px;background:transparent;color:var(--fleet-muted);font-size:10px;font-weight:550;letter-spacing:.04em;box-shadow:none}
 .mirror-profile-tabs [data-mirror-tab="claude"][aria-selected="true"]{color:var(--fleet-claude);border-color:var(--fleet-claude);background:var(--fleet-claude-soft)}.mirror-profile-tabs [data-mirror-tab="codex"][aria-selected="true"]{color:#45d6ab;border-color:#45d6ab;background:#16352e}
-#cxMenu .mirror-service{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px;border:1px solid var(--fleet-line);border-radius:9px;background:color-mix(in srgb,var(--fleet-accent-soft) 30%,var(--card));margin:0}
-.mirror-service-copy{flex:1;min-width:0}.mirror-service-copy>strong{font-size:13px;font-weight:600;color:var(--txt)}#cxMenu .mirror-service .cxps{display:block;font-size:12px;line-height:1.55;color:var(--fleet-muted);margin:5px 0 0;-webkit-line-clamp:unset}
-.mirror-service-actions{display:flex;flex-direction:column;align-items:stretch;gap:7px;flex:none}.mirror-service-actions button,#cxMenu .mirror-service .cxpinfo button{font-size:11px;padding:7px 9px;background:transparent;border:1px solid var(--fleet-line);border-radius:6px;color:var(--txt);margin:0;box-shadow:none}
-#cxMenu .mirror-service .cxpinfo{font-size:12px;line-height:1.6;padding:12px 0 0;border-top:1px solid var(--fleet-line);margin-top:12px;background:transparent}
 .mirror-flow{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:0 0 10px}.mirror-flow span{padding:2px 6px;border:1px solid var(--fleet-line);border-radius:4px;font-size:10px;color:var(--fleet-accent)}.mirror-flow i{font-style:normal;color:var(--fleet-muted)}
-#cxMenu .cxpinfo p{margin:8px 0;font-size:12px;line-height:1.55}.mirror-service small{display:block;color:var(--fleet-muted);font-size:11px;margin-top:7px}
+#cxMenu .cxpinfo p{margin:8px 0;font-size:12px;line-height:1.55}
 #cxMenu[aria-busy="true"] .cxpbody{pointer-events:none;opacity:.7}
 .mirror-confirm[data-engine="claude"]{--mirror-color:var(--fleet-claude)}.mirror-confirm[data-engine="codex"]{--mirror-color:var(--fleet-accent)}.mirror-confirm h3{color:var(--mirror-color)}.mirror-confirm #mirrorConfirmApply{background:var(--mirror-color);color:var(--bg)}
-@media(min-width:1100px) and (min-height:700px){html:not(.conly) body.fleet-mirror #termBox{height:clamp(320px,calc(100dvh - 470px),610px)!important;min-height:320px!important}}
-@media(max-width:640px){.mirror-profile-footer{grid-row:3;gap:7px;padding-top:7px}.mirror-profile-holder{max-width:none;flex:1}.mirror-profile-footer .mirror-profile-button{font-size:11px;padding:5px 6px;height:29px;gap:4px}.mirror-profile-button .cxbtnname{font-size:11px}.mirror-profile-button>svg:first-child{display:none}.mirror-pair-summary{max-width:55%;font-size:9px;text-align:right}#cxMenu .mirror-service{padding:11px;gap:9px}.mirror-service-copy>strong{font-size:12px}.mirror-service-actions button{font-size:10px;padding:6px}}
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) body.fleet-mirror #termBox{height:clamp(368px,calc(100dvh - 422px),658px)!important;min-height:368px!important}}
+@media(max-width:640px){.mirror-profile-footer{grid-row:3;gap:7px;padding-top:7px}.mirror-profile-holder{max-width:none;flex:1}.mirror-profile-footer .mirror-profile-button{font-size:11px;padding:5px 6px;height:29px;gap:4px}.mirror-profile-button .cxbtnname{font-size:11px}.mirror-profile-button>svg:first-child{display:none}.mirror-pair-summary{max-width:55%;font-size:9px;text-align:right}}
 
 .mirror-profile-holder #cxGrp{border-radius:6px;overflow:visible}.mirror-profile-footer .mirror-profile-button{border-radius:6px!important}
-#cxMenu .mirror-service{opacity:1;cursor:default}#cxMenu .mirror-service *{pointer-events:auto}
-#cxMenu .mirror-service .mirror-service-copy{opacity:1}#cxMenu .mirror-service strong{color:var(--txt)}
-#cxMenu .mirror-service-state{display:inline-block;font-size:10px;color:var(--fleet-accent);margin-left:10px}
 .mirror-auto-settings{display:flex;flex-direction:column;align-items:flex-start;gap:9px;padding-top:8px}.mirror-auto-settings label{display:flex;align-items:flex-start;gap:8px;color:var(--txt);font-size:12px;line-height:1.5;cursor:pointer}.mirror-auto-settings input{width:15px;height:15px;flex:none;margin:2px 0 0;accent-color:var(--fleet-accent)}
 #cxMenu .mirror-auto-settings small{margin:0;font-size:11px;line-height:1.6}
 .fleet-live-account[data-provider="claude"] .mirror-profile-button .cxdot{background:var(--fleet-claude)}
-@media(max-width:640px){.mirror-profile-button .cxbtnname{max-width:none!important}.mirror-service-copy>strong{display:block}.mirror-service-state{margin:5px 0!important}}
+@media(max-width:640px){.mirror-profile-button .cxbtnname{max-width:none!important}}
 
 .mirror-task-button{margin:0;padding:3px 7px;min-height:23px;border:1px solid var(--fleet-line);border-radius:5px;font-size:10px;background:var(--card);color:var(--txt);box-shadow:none}.mirror-task-button[data-status="pending"]{border-color:var(--warn);color:var(--warn)}.mirror-task-button[hidden]{display:none}.mirror-task-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto;background:var(--bg);border:1px solid var(--fleet-line);border-radius:7px;padding:12px;font-size:12px;line-height:1.6}@media(max-width:640px){.fleet-live-head{flex-wrap:wrap}.mirror-task-button{font-size:10px;margin-left:auto}}
 /* Reset times stay visible, with an explicit control in both disclosure states. */
@@ -523,7 +505,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 .fleet-live-reset{display:inline-flex;align-items:baseline;gap:4px;min-width:0;font-size:10px;color:var(--txt);font-variant-numeric:tabular-nums}
 .fleet-live-reset-label{color:var(--fleet-muted);font-size:9px}
 .fleet-live-reset time{white-space:nowrap}
-/* [notion-ai] свёрнутая полоса: аккаунты всегда строками, колонки «имя · 5ч · неделя · пометка» выровнены между строками (subgrid) */
+/* свёрнутая полоса: аккаунты всегда строками, колонки «имя · 5ч · неделя · пометка» выровнены между строками (subgrid) */
 .fleet-compact-account{grid-column:1/-1;display:grid;grid-template-columns:subgrid;align-items:center;min-width:0;padding:7px 0;white-space:nowrap;font-size:12px;--live-accent:var(--fleet-claude)}
 .fleet-compact-account+.fleet-compact-account{border-top:1px solid var(--fleet-line)}
 .fleet-compact-account>*{grid-row:1;min-width:0}
@@ -545,7 +527,7 @@ html:root:root #cxMenu[data-engine="claude"]{--fleet-accent:var(--fleet-claude);
 @media(min-width:641px) and (max-width:900px){.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(90px,1fr) minmax(145px,175px) 145px 245px;gap:10px}}
 @media(max-width:640px){.fleet-live-timezone{font-size:9px}.fleet-live-summary{padding:10px 30px 10px 10px}.fleet-compact-account{flex-wrap:wrap;gap:7px 10px}.fleet-compact-name{flex-basis:100%;max-width:100%}.fleet-compact-window{flex-basis:100%;gap:6px}.fleet-compact-range{font-size:11px;gap:4px}.fleet-compact-name{font-size:12px}.fleet-live-fold[open]>.fleet-live-rows{padding:0;gap:7px}.fleet-live-fold[open] .fleet-live-account{grid-template-columns:minmax(0,1fr) 82px 110px;gap:4px 10px}.fleet-live-meter-label{flex-wrap:wrap;gap:3px}.fleet-live-meter-label b{font-size:12px}.fleet-live-reset{flex-basis:100%;flex-wrap:wrap;gap:2px;font-size:10px;line-height:1.35}.fleet-live-reset time{white-space:normal}.fleet-live-reset-label{font-size:9px}}
 .fleet-live-fold:not([open])>.fleet-live-footer{display:none!important}
-/* [notion-ai] аккордеон активных моделей: строки в общей рамке, раскрытая строка — плитка на том же месте */
+/* аккордеон активных моделей: строки в общей рамке, раскрытая строка — плитка на том же месте */
 html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetActiveSummary,html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-footer{display:none!important}
 html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-fold{border:1px solid var(--fleet-line);border-radius:9px;background:var(--card)}
 html:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{display:grid;grid-template-columns:minmax(0,max-content) max-content max-content max-content max-content minmax(0,1fr) auto;column-gap:20px;row-gap:0;padding:0 13px}
@@ -629,7 +611,7 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-
 }
 /* Один общий монолит вместо боковых меню. */
 #cxMenu.mono-profile-window{width:min(1040px,calc(100vw - 24px));border-radius:12px}
-#cxMenu.mono-profile-window .mirror-profile-tabs,#cxMenu.mono-profile-window .fleet-profile-compare,#cxMenu.mono-profile-window .fleet-profile-service-heading{display:none!important}
+#cxMenu.mono-profile-window .mirror-profile-tabs,#cxMenu.mono-profile-window .fleet-profile-compare{display:none!important}
 #cxMenu.mono-profile-window .fleet-palette-header{padding:14px 18px;border-bottom:1px solid var(--fleet-line);background:var(--card)}
 #cxMenu.mono-profile-window .fleet-palette-tools{padding:12px 18px}
 #cxMenu.mono-profile-window .fleet-palette-tools[hidden]{display:none}
@@ -651,25 +633,20 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-
 #cxMenu.mono-profile-window .fleet-profile-card-footer{border:0;padding:0;margin-top:8px;min-height:26px}
 #cxMenu.mono-profile-window .fleet-profile-more{min-height:26px;font-size:11px;padding:5px 8px}
 .mono-window-note{border-top:1px solid var(--fleet-line);padding:10px 18px;font-size:10px;line-height:1.6;color:var(--fleet-muted)}
-.mono-agent .dlginp{height:34px;min-height:34px;font-size:12px;padding:7px 9px;margin:0}.mono-agent .cxbrow button{height:34px;min-height:34px;padding:7px 10px;font-size:11px;margin:0}
-.mono-notion-help{grid-column:1/-1;font-size:11px;color:var(--fleet-muted);margin-top:5px}.mono-notion-help>summary{cursor:pointer}.mono-notion-help .ntsteps{font-size:11px;line-height:1.6}.mono-notion-help .ntnote{font-size:11px}
+
 @media(max-width:700px){
  .mono-provider-grid{grid-template-columns:minmax(0,1fr)}.mono-provider+.mono-provider{border-left:0;border-top:1px solid var(--fleet-line)}
  #cxMenu.mono-profile-window .fleet-palette-current{font-size:10px;max-width:46%}#cxMenu.mono-profile-window .fleet-palette-heading h2{font-size:16px;white-space:normal}
- .mono-provider-head{padding:11px 13px}#cxMenu.mono-profile-window .fleet-profile-card,#cxMenu.mono-profile-window .mono-reserve{padding:12px 13px}.mono-reserve-config,.mono-agent{padding:13px}
- .mono-agent>header,.mono-reserve-status{align-items:flex-start;flex-wrap:wrap}.mono-auto{font-size:13px}
+ .mono-provider-head{padding:11px 13px}#cxMenu.mono-profile-window .fleet-profile-card{padding:12px 13px}
 }
 
 
-.mono-agent>header span{min-width:0;max-width:100%;overflow-wrap:anywhere}.mono-notion-help code{white-space:normal;overflow-wrap:anywhere}
-@media(max-width:700px){.mono-agent .dlginp{font-size:16px;min-height:38px;height:38px}}
 
 /* Ручная сборка одного сценария без автоматического назначения второй роли. */
 #cxMenu.mono-profile-window .manual-role{transition:background .15s ease}
 #cxMenu.mono-profile-window .manual-role[aria-disabled="true"]{background:color-mix(in srgb,var(--card) 90%,var(--fleet-line));cursor:not-allowed}
 #cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .mono-mode-head,
 #cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .cxpt,
-#cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .mono-reserve-copy,
 #cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .fleet-profile-choose{opacity:.55}
 #cxMenu.mono-profile-window .manual-role[aria-disabled="true"] .fleet-profile-more{opacity:1}
 #cxMenu.mono-profile-window .manual-role.act{background:color-mix(in srgb,var(--fleet-accent) 7%,var(--card));box-shadow:inset 3px 0 var(--fleet-accent)}
@@ -695,7 +672,7 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-
  #cxMenu.mono-profile-window .manual-provider-grid .mono-provider-head{padding:10px 13px;flex-wrap:wrap}
  #cxMenu.mono-profile-window .manual-provider-grid .mono-provider-head span{font-size:9px}
  .manual-compatibility{padding:8px 13px;min-height:0}
- #cxMenu.mono-profile-window .manual-role.fleet-profile-card,#cxMenu.mono-profile-window .mono-reserve.manual-role{padding:11px 13px}
+ #cxMenu.mono-profile-window .manual-role.fleet-profile-card{padding:11px 13px}
  #cxMenu.mono-profile-window .manual-role .fleet-profile-more{min-height:30px;padding:6px 9px}
  .manual-apply-bar{grid-template-columns:minmax(0,1fr);padding:12px 13px;gap:10px}
  .manual-scenario-actions{justify-content:stretch}.manual-scenario-actions button{flex:1;min-height:36px}
@@ -764,8 +741,8 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-accoun
 .fleet-accounts-heading{display:block;color:var(--txt);font-size:18px;font-weight:550;line-height:1.35;margin-top:3px}
 .fleet-accounts-chevron{flex:none;width:8px;height:8px;margin:0 4px 5px 0;color:var(--fleet-muted);border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg)}
 .fleet-accounts-fold[open] .fleet-accounts-chevron{transform:rotate(225deg);margin-bottom:0}
-html:root:root.ag-live-claude #fleetActiveAccounts .fleet-compact-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-compact-account.codex,html:root:root.ag-live-notion #fleetActiveAccounts .fleet-compact-account.notion{box-shadow:inset 0 0 0 1px #49d6aa}
-html:root:root.ag-live-claude #fleetActiveAccounts .fleet-live-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-live-account.codex,html:root:root.ag-live-notion #fleetActiveAccounts .fleet-live-account.notion{border-color:#49d6aa}
+html:root:root.ag-live-claude #fleetActiveAccounts .fleet-compact-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-compact-account.codex{box-shadow:inset 0 0 0 1px #49d6aa}
+html:root:root.ag-live-claude #fleetActiveAccounts .fleet-live-account.claude,html:root:root.ag-live-codex #fleetActiveAccounts .fleet-live-account.codex{border-color:#49d6aa}
 
 /* Сверху только название и аккаунт; все показатели и управление — ниже. */
 html:root:root #fleetActiveAccounts .fleet-live-account{grid-template-columns:minmax(0,1fr);grid-template-areas:"identity" "profile"}
@@ -774,7 +751,6 @@ html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:0 1 360px;max-wi
 html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-provider-controls{flex:0 1 210px;width:210px;max-width:210px;min-width:0}
 html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter{flex:1 1 170px;min-width:0}
 html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter[data-window="week"]{flex-basis:240px}
-html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{flex:1 1 260px;min-width:0}
 @media(max-width:900px){
  html:root:root #fleetActiveAccounts .mirror-profile-footer{flex-wrap:wrap;gap:10px}
  html:root:root #fleetActiveAccounts .mirror-profile-holder{flex:1 1 calc(50% - 5px);max-width:none}
@@ -782,7 +758,6 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .n
  html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter,html:root:root #fleetActiveAccounts .mirror-profile-footer .fleet-live-meter[data-window="week"]{flex:1 1 calc(50% - 5px)}
  html:root:root #fleetActiveAccounts .mirror-profile-footer .mirror-profile-button{height:auto;min-height:34px}
  html:root:root #fleetActiveAccounts .mirror-profile-button .cxbtnname{white-space:normal;line-height:1.25;overflow-wrap:anywhere}
- html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .nai-live-note{flex:1 1 100%}
 }
 
 /* ===== Активные аккаунты: полоса =====
@@ -792,9 +767,8 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-live-account.notion .n
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode #fleetLiveRows{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:6px}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc{display:block;min-width:0}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open{grid-column:1/-1}
-/* в одну строку идут только аккаунты Claude (Claude DEV и PROD); Codex и Notion AI — каждый на всю ширину */
-html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.codex),
-html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.notion){grid-column:1/-1}
+/* в одну строку идут только аккаунты Claude (Claude DEV и PROD); Codex — на всю ширину */
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.codex){grid-column:1/-1}
 /* второй сервер не подключён (Claude PROD скрыт) — строка Claude одна и занимает всю ширину; появится второй — обе встанут рядом */
 html.no-prod:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{grid-column:1/-1}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:0}
@@ -803,13 +777,10 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{b
 html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude,
 html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod,
 html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex,
-html:root:root:root.ag-live-notion #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.notion{border-color:#49d6aa;box-shadow:none}
 html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-name::before,
 html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-name::before,
 html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex .fleet-compact-name::before,
-html:root:root:root.ag-live-notion #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.notion .fleet-compact-name::before{background:#49d6aa}
 /* «пауза» словом в строке аккаунта не пишем: состояние показывает значок ⏸ перед именем */
-html:root:root:root.ag-pause-notion #fleetActiveAccounts .fleet-compact-account.notion .nai-cs{display:none}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"] .fleet-compact-range{display:inline-flex;margin-left:2px;color:var(--fleet-muted)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model .fleet-compact-label::after,
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort .fleet-compact-label::after,
@@ -825,10 +796,9 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[da
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort,
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window{flex:none;display:inline-flex;align-items:center;gap:6px}
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="week"] .fleet-compact-range{margin-left:12px;gap:7px}
- html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account .nai-cs{flex:0 1 auto;min-width:0}
  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc-chev{flex:none;margin:0 3px 4px auto}
 }
-/* Нижняя панель полного экрана: подсказки PROD, Codex и Notion AI */
+/* Нижняя панель полного экрана: подсказки PROD и Codex */
 .dpop .dsub{margin-top:6px;font-size:11.5px;font-weight:500;color:var(--mut)}
 .dchip.dx.paused .dmail,.dchip.paused .dmail{color:var(--mut)}
 .dchip.paused:not(.dx) .dmail::after{content:" · пауза";font-weight:500}
@@ -856,8 +826,8 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-n
   html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="week"] .fleet-compact-range{margin-left:8px;gap:5px}
 }
 @media(min-width:1260px) and (max-width:1379px){
-  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:not(.notion) .fleet-compact-model .fleet-compact-label,
-  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:not(.notion) .fleet-compact-effort .fleet-compact-label{display:none}
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account .fleet-compact-model .fleet-compact-label,
+  html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account .fleet-compact-effort .fleet-compact-label{display:none}
   /* есть пометка «проверить»/«устарело» — места на дату сброса не хватает, она остаётся в раскрытой плитке */
   html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:has(.fleet-compact-warning:not(:empty)) .fleet-compact-window[data-window="week"] .fleet-compact-range{display:none}
 }
@@ -877,7 +847,7 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open .fleet-live-n
 }
 
 /* колонки свёрнутых строк одной ширины у всех аккаунтов: разделитель после имени и колонки Модель / Effort / 5ч стоят ровно, длинная подпись обрезается многоточием.
-   Ширины — по самым длинным значениям (имя + «пауза», GPT-6.1-Sol, «Модель:» у Notion AI), три диапазона плотности как у ячеек выше. */
+   Ширины — по самым длинным значениям (имя + «пауза», GPT-6.1-Sol), три диапазона плотности как у ячеек выше. */
 #fleetActiveAccounts.fleet-acc-mode{--cid:172px;--cmod:130px;--ceff:80px;--cses:112px}
 @media(min-width:1380px) and (max-width:1579px){
  #fleetActiveAccounts.fleet-acc-mode{--cid:160px;--cmod:120px;--ceff:74px;--cses:92px}
@@ -952,10 +922,9 @@ html:root:root:root .fleet-quick-panel>.cxpbody,html:root:root:root .fleet-setti
 html:root:root:root .fleet-quick-panel .cxqlist{max-height:none;overflow:visible}
 /* списки моделей внутри окон не прокручиваются сами: прокручивается только окно целиком (раньше — полоса в полосе) */
 html:root:root:root .fleet-settings-panel .fleet-model-catalog{max-height:none;overflow:visible}
-html:root:root:root #naiModelQ{overflow:hidden}
 
 /* шкала лимита на плитках активных аккаунтов (вариант «Затухание и пульс»): пятичасовой — очень прозрачная заливка ОСТАТКА с мягким краем, меняет цвет от зелёного к красному,
-   когда осталось меньше 15% — «дышит»; недельный — яркая светящаяся линия сверху, растёт слева направо; Notion AI не трогаем */
+   когда осталось меньше 15% — «дышит»; недельный — яркая светящаяся линия сверху, растёт слева направо */
 #fleetActiveAccounts .fleet-compact-account[data-lb]{position:relative;isolation:isolate}
 #fleetActiveAccounts .fleet-compact-account[data-lb]::before,#fleetActiveAccounts .fleet-compact-account[data-lb]::after{content:"";position:absolute;left:0;top:0;pointer-events:none;border-radius:inherit;transition:width .6s ease}
 #fleetActiveAccounts .fleet-compact-account[data-lb]::before{bottom:0;z-index:-1;width:calc(var(--r5,0)*100%);background:linear-gradient(90deg,var(--c5,transparent) 0,var(--c5,transparent) max(0px,calc(100% - 46px)),transparent 100%)}
@@ -967,6 +936,42 @@ html:root:root:root #naiModelQ{overflow:hidden}
 .fleet-composer textarea::placeholder,.tpcomp textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fleet-composer textarea:placeholder-shown,.tpcomp textarea:placeholder-shown{overflow:hidden}
 
+/* Пауза по лимитам и исчерпанный лимит — бейдж-«пилюля» на верхней рамке строки аккаунта (Claude DEV, Claude PROD, Codex): половина над линией рамки,
+   position:absolute — соседей не двигает и строки не занимает; у раскрытой плитки стоит на её верхней рамке. Ставит и обновляет limxBadges (cc_limits). */
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc{position:relative}
+#fleetActiveAccounts .fleet-acc-badge{--b:var(--warn);position:absolute;z-index:3;top:0;right:14px;transform:translateY(-50%);display:inline-flex;align-items:center;gap:4px;box-sizing:border-box;max-width:calc(100% - 28px);height:16px;padding:0 7px 0 6px;border:1px solid color-mix(in srgb,var(--b) 55%,var(--fleet-line));border-radius:999px;background:color-mix(in srgb,var(--b) 13%,var(--card));color:var(--b);font:600 10px/14px Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0;white-space:nowrap;cursor:default}
+#fleetActiveAccounts .fleet-acc-badge[data-kind="out"]{--b:var(--bad)}
+#fleetActiveAccounts .fleet-acc-badge>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#fleetActiveAccounts .fleet-acc-badge>i{flex:none;width:7px;height:7px;background:currentColor;-webkit-mask:var(--bi) center/contain no-repeat;mask:var(--bi) center/contain no-repeat}
+#fleetActiveAccounts .fleet-acc-badge[data-kind="pause"]>i{--bi:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='5.2' y='3.6' width='5' height='16.8' rx='1.7'/%3E%3Crect x='13.8' y='3.6' width='5' height='16.8' rx='1.7'/%3E%3C/svg%3E")}
+#fleetActiveAccounts .fleet-acc-badge[data-kind="out"]>i{--bi:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='4.8' stroke-linecap='round'%3E%3Cpath d='M5.8 5.8l12.4 12.4M18.2 5.8L5.8 18.2'/%3E%3C/svg%3E")}
+/* Меню профиля на плитках «Активных аккаунтов» (Claude DEV, Codex): компактное окно одного аккаунта */
+.tp-pop{--tp-c:var(--fleet-claude)}
+.tp-pop .cxpbody{padding:14px 16px 16px}
+.tp-pop h3{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--txt)}
+.tp-pop p,.tp-pop li{margin:0;font-size:12px;line-height:1.5;color:var(--fleet-muted)}
+.tp-pop ul{margin:10px 0 0;padding:0;list-style:none}
+.tp-pop li{position:relative;padding-left:16px}
+.tp-pop li::before{content:"";position:absolute;left:3px;top:.62em;width:5px;height:5px;border-radius:50%;background:var(--tp-c)}
+.tp-pop .tp-note{margin-top:10px}
+.tp-pop .tp-note.bad{color:var(--warn)}
+.tp-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.tp-btns button{height:32px;padding:0 14px;border-radius:7px;border:1px solid var(--fleet-line);background:var(--bg);color:var(--txt);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.tp-btns button:focus-visible{outline:2px solid var(--tp-c);outline-offset:2px}
+.tp-btns .tp-yes{border-color:var(--tp-c);background:color-mix(in srgb,var(--tp-c) 22%,var(--bg))}
+.tp-btns button[disabled]{opacity:.55;cursor:default}
+.tp-opts{display:grid;gap:8px;margin:10px 0 0}
+.tp-opt{display:grid;grid-template-columns:16px minmax(0,1fr) auto;column-gap:10px;row-gap:3px;align-items:start;box-sizing:border-box;width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--fleet-line);background:var(--bg);color:var(--txt);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tp-opt i{grid-row:1/3;box-sizing:border-box;width:14px;height:14px;margin-top:2px;border-radius:50%;border:2px solid var(--fleet-line)}
+.tp-opt b{min-width:0;font-size:13px;font-weight:600}
+.tp-opt em{font-style:normal;font-size:11px;font-weight:600;color:var(--tp-c)}
+.tp-opt span{grid-column:2/4;font-size:12px;line-height:1.45;color:var(--fleet-muted)}
+.tp-opt.on{border-color:color-mix(in srgb,var(--tp-c) 55%,var(--fleet-line))}
+.tp-opt.on i,.tp-opt.sel i{border-color:var(--tp-c);background:radial-gradient(circle,var(--tp-c) 0 36%,transparent 40%)}
+.tp-opt.sel{border-color:var(--tp-c);background:color-mix(in srgb,var(--tp-c) 12%,var(--bg))}
+.tp-opt[disabled]{opacity:.55;cursor:default}
+.tp-opt.on[disabled]{opacity:1}
+.tp-opt:focus-visible{outline:2px solid var(--tp-c);outline-offset:2px}
 '''
 
 JS = r'''
@@ -1020,7 +1025,6 @@ JS = r'''
   document.addEventListener('keydown',e=>{if(!on||e.ctrlKey||e.altKey||e.metaKey||e.shiftKey||e.isComposing)return;
    const k={ArrowUp:'up',ArrowDown:'down',Enter:'enter',Escape:'escape'}[e.key];if(!k)return;
    const t=e.target;if(t&&t.closest&&t.closest('input,textarea,select,button,a,[contenteditable="true"]'))return;
-   const s=typeof consCur==='function'?consCur():'claude';if(typeof s==='string'&&s.indexOf('notion')===0)return;   // у чата Notion AI клавиш нет
    e.preventDefault();if(!e.repeat)sendConsoleKey(k)});})();
  function renderRotation(d){rotationData=d;if(!document.querySelector('.fleet-cx-options:focus-within')){document.getElementById('fleetCxThreshold').value=d.threshold||90;document.getElementById('fleetCxCap').value=d.weekly_cap||99;}document.getElementById('fleetCxOpt').checked=!!d.optimize;rotation.replaceChildren();const text=el('span','',d.message||'Проверка лимитов');rotation.append(text);if(d.next_label)rotation.append(el('span','','Следующий: '+d.next_label));if(d.last_error)rotation.append(el('span','err',d.last_error));
   document.querySelectorAll('#cxcards .card').forEach((c,i)=>{const a=typeof cxData!=='undefined'&&cxData.accounts&&cxData.accounts[i];c.classList.toggle('fleet-active',!!a&&a.slot===d.active);if(!a)return;const top=c.querySelector('.top .email');if(top&&a.slot!==d.active)top.querySelector('.fleet-active-label')?.remove();if(top&&a.slot===d.active&&!top.querySelector('.fleet-active-label'))top.append(el('span','fleet-active-label','Выбран'));const existing=c.querySelector('.fleet-pick');if(existing){existing.textContent=a.slot===d.active?'Выбран':'Выбрать';existing.disabled=a.slot===d.active||!!d.optimize;existing.title=d.optimize?'Ручной выбор доступен при выключенной оптимизации':'';}if(!existing){const b=el('button','btn-sw fleet-pick',a.slot===d.active?'Выбран':'Выбрать');b.disabled=a.slot===d.active||!!d.optimize;b.title=d.optimize?'Ручной выбор доступен при выключенной оптимизации':'';b.onclick=async()=>{b.disabled=true;try{const r=await post('chatgpt/rotation/switch',{slot:a.slot});toast(r.message);loadRotation()}catch(e){toast('⚠ '+e.message);loadRotation()}};const acts=c.querySelector('.acts');if(acts)acts.prepend(b)}});
@@ -1113,7 +1117,7 @@ JS = r'''
  // число плиток блока Claude: локальные аккаунты + плитка второго сервера (если она есть)
  function paintClaudeCount(local){putText(ch.querySelector('.fleet-count'),countText(local+(document.querySelector('#cards > .fleet-remote-card')?1:0)))}
  window.fleetClaudeCount=function(){const d=(typeof lastSnap!=='undefined'&&lastSnap)||{};paintClaudeCount(Object.keys(d.accounts||{}).length)};
- // [notion-ai] сроки на виду: до какого числа оплачена подписка и до какого числа действует вход (раньше — в чипах и в меню «⋯»)
+ // сроки на виду: до какого числа оплачена подписка и до какого числа действует вход (раньше — в чипах и в меню «⋯»)
  function dayWord(n){const k=n%100,m=n%10;return k>=11&&k<=14?'дней':m===1?'день':m>=2&&m<=4?'дня':'дней'}
  function dateLeft(iso){const t=new Date(iso),ms=t-Date.now();if(!iso||isNaN(ms))return null;const days=Math.floor(ms/86400000);
   return{ms,days,date:t.toLocaleDateString('ru',{day:'2-digit',month:'2-digit'}),full:t.toLocaleString('ru',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),left:ms<=0?'сегодня':days>=1?days+' '+dayWord(days):Math.max(1,Math.floor(ms/3600000))+' ч'}}
@@ -1209,7 +1213,7 @@ JS = r'''
  const liveRows=el('div','fleet-live-rows');liveRows.id='fleetLiveRows';liveFold.append(liveSummary,liveRows,liveFooter);liveStrip.append(liveHead,liveFold);term.after(liveStrip);
 
  // Нижняя панель полного экрана консоли: старый код рисует в ней только аккаунты Claude (список написан, когда движок был один).
- // PROD, Codex и Notion AI достраиваем из ячеек полосы «Активные аккаунты»: тот же вид, та же подсказка при наведении.
+ // PROD и Codex достраиваем из ячеек полосы «Активные аккаунты»: тот же вид, та же подсказка при наведении.
  let dockSig='';
  function dockExtras(){
   const panel=document.getElementById('dockPanel');if(!panel||typeof col!=='function'||typeof tone!=='function')return;
@@ -1247,8 +1251,8 @@ JS = r'''
    if(pf.textContent!==short)pf.textContent=short;if(pf.title!==ttl)pf.title=ttl}};
   new MutationObserver(()=>{clearTimeout(tp);tp=setTimeout(()=>{try{paintProfiles()}catch(e){}},60)}).observe(liveRows,{childList:true,subtree:true,characterData:true});paintProfiles()}
  liveCollapse.addEventListener('click',()=>{liveFold.open=false;liveSummary.focus({preventScroll:true})});
- liveFold.addEventListener('toggle',()=>{if(!liveFold.open)liveFold.open=true});  // [notion-ai] общий «Свернуть» убран: сворачивается каждая строка (аккордеон ниже)
- // [notion-ai] полоса активных моделей — под консолью и на компьютере, и на телефоне
+ liveFold.addEventListener('toggle',()=>{if(!liveFold.open)liveFold.open=true});  // общий «Свернуть» убран: сворачивается каждая строка (аккордеон ниже)
+ // полоса активных моделей — под консолью и на компьютере, и на телефоне
  function placeActiveAccounts(){term.after(liveStrip);liveFold.open=true}
  placeActiveAccounts();mobileConsole.addEventListener('change',placeActiveAccounts);
  hdr.querySelector('.hdrctl').append(document.getElementById('cxInst'));
@@ -1293,10 +1297,10 @@ JS = r'''
   putText(compact.querySelector('.fleet-compact-effort b'),effort||'—');
  }
  for(const engine of ['claude','codex']){const source=engine==='claude'?claudeModel:codexModel;new MutationObserver(()=>syncCompactModel(engine)).observe(source,{childList:true,characterData:true,subtree:true});syncCompactModel(engine)}
- // [notion-ai] Аккордеон: у каждой модели своя строка; щелчок по строке раскрывает её плитку на том же месте,
+ // Аккордеон: у каждой модели своя строка; щелчок по строке раскрывает её плитку на том же месте,
  // щелчок по имени в плитке (⌃) сворачивает обратно. Общие «Развернуть/Свернуть» убраны; что раскрыто — localStorage cc_acc_open.
- // Строку и плитку Notion AI cc_notion_ai добавляет позже — их раскладывает MutationObserver.
- const ACC_ORDER=['claude','prod','codex','notion'];let accOpen={};
+ // Строки и плитки, добавленные позже (Claude PROD — cc_remote_ui), раскладывает MutationObserver.
+ const ACC_ORDER=['claude','prod','codex'];let accOpen={};
  try{accOpen=JSON.parse(localStorage.getItem('cc_acc_open')||'{}')||{}}catch(e){accOpen={}}
  liveStrip.classList.add('fleet-acc-mode');liveFold.open=true;
  function accWrap(engine){
@@ -1327,7 +1331,7 @@ JS = r'''
   const wrap=liveRows.querySelector(':scope>.fleet-acc[data-engine="'+engine+'"]');if(!wrap)return;accPaint(wrap);
   if(focus)(open?wrap.querySelector('.fleet-live-identity'):wrap.querySelector('.fleet-compact-account'))?.focus({preventScroll:true});
  }
- // capture: щелчок по имени плитки только сворачивает — прежние переходы (к карточке, на вкладку Notion AI) не срабатывают
+ // capture: щелчок по имени плитки только сворачивает — прежние переходы (к карточке) не срабатывают
  liveRows.addEventListener('click',event=>{
   const compact=event.target.closest('.fleet-compact-account[data-acc]');if(compact){accSet(compact.dataset.engine,true,event.detail===0);return}
   const identity=event.target.closest('.fleet-live-identity'),tile=identity&&identity.closest('.fleet-acc>.fleet-live-account');
@@ -1414,7 +1418,7 @@ JS = r'''
  const claudeTitle=document.getElementById('modalTitle'),modalHeader=el('div','cxphead'),modalClose=el('button','hdrgear fleet-panel-close');modalClose.id='fleetClaudeSettingsClose';modalClose.type='button';modalClose.setAttribute('aria-label','Закрыть настройки');modalClose.innerHTML=document.getElementById('cxPopX').innerHTML;modalHeader.append(claudeTitle,modalClose);
  const modalBody=el('div','cxpbody');while(modal.firstChild)modalBody.append(modal.firstChild);modal.replaceChildren(modalHeader,modalBody);
  function group(label,nodes,cls){const section=el('section','fleet-settings-group '+(cls||''));if(label)section.append(el('div','fleet-settings-group-title',label));for(const node of nodes)if(node)section.append(node);return section}
- // [notion-ai] Одна схема у Claude, Codex и Notion AI: 1) переключение и лимиты, 2) модели в быстром меню, 3) свои настройки агента.
+ // Одна схема у Claude и Codex: 1) переключение и лимиты, 2) модели в быстром меню, 3) свои настройки агента.
  const autoTitle=document.getElementById('autoHdr'),autoRow=document.getElementById('autoWrap').closest('.switchrow'),weekly=document.getElementById('wkPause').closest('label');
  autoTitle.hidden=true;document.getElementById('modelsHdr').hidden=true;for(const id of ['thrMinus','thrPlus'])document.getElementById(id).hidden=true;  // заголовки — у групп, пороги — полями
  const LIMIT_HINT='Сессия — с какого % окна 5 часов переключать аккаунт. Неделя — потолок недели: выше него аккаунт не берётся в работу.';
@@ -1511,7 +1515,7 @@ JS = r'''
  const catalogCxRender=cxRender;cxRender=function(){catalogCxRender();paintCodexCatalog()};
  const catalogRotation=renderRotation;renderRotation=function(data){catalogRotation(data);paintCodexCatalog()};
  const catalogOpen=cxPopOpen;cxPopOpen=function(){catalogOpen();paintCodexCatalog();paintOwnAccounts();loadCodexCatalog()};
- // [notion-ai] Модели Claude: те же строки, что у Codex — галочка «в быстром меню», имя, id, «Новая»/«Выбрана»
+ // Модели Claude: те же строки, что у Codex — галочка «в быстром меню», имя, id, «Новая»/«Выбрана»
  function escText(value){return String(value==null?'':value).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
  renderPool=function(){
   const m=typeof lastModel!=='undefined'?lastModel:null,current=m&&(m.default||m.session),rows=unifiedRows(m,lastCandidates).filter(r=>poolScanned||!r.hidden);
@@ -1624,7 +1628,7 @@ JS = r'''
   putText(xh.querySelector('.fleet-count'),countText(accounts.length));
   const add=document.querySelector('#cx .cxhead .hdrgear');if(add){xh.querySelector('.fleet-add-codex')?.remove();add.classList.add('fleet-add-codex');xh.append(add)}
  }
- window.addEventListener('nai-state',()=>refreshVisuals()); // состояние паузы меняется независимо от данных аккаунтов
+ window.addEventListener('wk-state',()=>refreshVisuals()); // состояние паузы меняется независимо от данных аккаунтов
  const originalCards=renderCards;renderCards=function(d){originalCards(d);refreshVisuals(d)};
  const previousCodexRender=cxRender;cxRender=function(){previousCodexRender();refreshVisuals()};
  document.addEventListener('click',event=>{document.querySelectorAll('.fleet-card-details[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
@@ -1645,7 +1649,7 @@ JS = r'''
   const summary=el('summary','fleet-pause-summary');summary.setAttribute('aria-controls','fleetPauseContent');
   const brief=el('span','ccp-title');brief.title=title.textContent;
   const pause=ccpData?.pause,english=typeof LANG!=='undefined'&&LANG==='en';
-  brief.textContent=pause?.active&&pause.kind!=='reserve'?(english?'Claude paused · auto resume':'Claude на паузе · автовозобновление'):title.textContent;
+  brief.textContent=pause?.active?(english?'Claude paused · auto resume':'Claude на паузе · автовозобновление'):title.textContent;
   if(dot)summary.append(dot);summary.append(brief);if(timer)summary.append(timer);
   const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('viewBox','0 0 24 24');arrow.setAttribute('class','fleet-pause-chevron');arrow.setAttribute('aria-hidden','true');
   const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','m6 9 6 6 6-6');path.setAttribute('fill','none');path.setAttribute('stroke','currentColor');path.setAttribute('stroke-width','2');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');arrow.append(path);summary.append(arrow);
@@ -1795,7 +1799,7 @@ JS = r'''
   }
   const summary=el('span','mirror-pair-summary');summary.id='mirrorPairSummary';liveHead.append(summary);const taskButton=el('button','mirror-task-button');taskButton.id='mirrorTaskButton';taskButton.type='button';taskButton.hidden=true;taskButton.onclick=mirrorShowTask;liveHead.append(taskButton);
   const savedCxbRender=cxbRender;cxbRender=function(force){savedCxbRender(force);if(cxbData?.profile_system)mirrorAccept(cxbData.profile_system)};
-  /* [notion-ai] 06.11: кнопку профиля Codex рисовали двое: cxHdr() — профилем моста Codex («Codex Full · самостоятельно»), paintMirrorWorkplace() — профилем системы («Codex · на паузе (работает Notion AI)»); строка скакала. Подпись одна — из системы профилей. */
+  /* 06.11: кнопку профиля Codex рисовали двое: cxHdr() — профилем моста Codex («Codex Full · самостоятельно»), paintMirrorWorkplace() — профилем системы («Codex · на паузе»); строка скакала. Подпись одна — из системы профилей. */
   const savedCxHdr=cxHdr;cxHdr=function(){savedCxHdr();paintMirrorWorkplace()};
   cxMenuOpen=function(){mirrorEngine='codex';mirrorTheme();nativeMirrorOpen()};
   cxMenuPlace=function(){placeProfilePalette(mirrorButtons[mirrorEngine])};
@@ -1817,19 +1821,16 @@ JS = r'''
  function paintMirrorPalette(){
   if(!mirrorState)return;mirrorTheme();const scroll=profileBody.scrollTop,state=mirrorState.engines[mirrorEngine],e=mirrorEngine,focus=document.activeElement,focusCard=focus?.closest('[data-profile-id]'),focusId=focusCard?.dataset.profileId,focusAction=focus?.dataset.mirrorAction,focusSetting=focus?.dataset.mirrorSetting;menu.dataset.compare=String(compareProfiles);
   putText(paletteCurrent,'Сейчас: '+state.label);paletteCurrent.title=state.label;compareButton.setAttribute('aria-pressed',String(compareProfiles));putText(compareButton,compareProfiles?'Краткий вид':'Сравнить');
-  const normal=state.profiles.filter(p=>!['reserve','emergency'].includes(p.kind)).sort((a,b)=>Number(b.id===state.base_selected)-Number(a.id===state.base_selected));
+  const normal=state.profiles.slice().sort((a,b)=>Number(b.id===state.base_selected)-Number(a.id===state.base_selected));
   const cards=normal.map(p=>{const selected=p.id===state.base_selected,expanded=compareProfiles||mirrorInfo[e].has(p.id),status=selected?(state.applied===false?'Текущие права':!['solo','leader'].includes(state.role)?'Базовый профиль':'Выбран'):(p.builtin?'Встроенный':'Свой профиль');return '<div class="cxprof fleet-profile-card'+(selected?' act':'')+'" role="radio" tabindex="0" aria-checked="'+selected+'" data-id="'+acctEsc(p.id)+'" data-profile-id="'+acctEsc(p.id)+'" data-kind="'+(p.kind==='orchestrator'?'team':'solo')+'" data-info-open="'+expanded+'"><div class="fleet-profile-card-head"><span class="cxpr" aria-hidden="true"></span><span class="fleet-profile-status">'+status+'</span>'+(p.builtin?'':'<button type="button" class="cxpx" data-mirror-action="delete" aria-label="Удалить профиль">×</button>')+'</div><span class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(p.title)+'</span></span><span class="cxps">'+acctEsc(p.description)+'</span><span class="fleet-profile-index" hidden>'+acctEsc(p.can+' '+p.cannot+' '+p.when+' '+(p.kind==='orchestrator'?'Оркестратор':''))+'</span><span class="fleet-profile-meta"><span>'+(p.kind==='orchestrator'?'Ведущий → исполнитель':'Самостоятельно')+'</span><span>'+({read:'С подтверждением шагов',write:'Рабочая папка',full:'Полный доступ'}[p.access]||'')+'</span></span>'+(expanded?mirrorDetails(p):'')+'</span><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected&&['solo','leader'].includes(state.role)&&state.applied!==false?'Работает сейчас':'Выбрать →')+'</span><button type="button" class="cxpi fleet-profile-more" data-mirror-action="info" aria-expanded="'+expanded+'" '+(compareProfiles?'hidden':'')+'>Подробнее ⌄</button></div></div>'}).join('');
-  const services=state.profiles.filter(p=>['reserve','emergency'].includes(p.kind));
-  const serviceHtml=services.map(p=>{const active=state.role===p.kind,expanded=compareProfiles||mirrorInfo[e].has(p.id);return '<section class="mirror-service '+(p.kind==='emergency'?'cxemg':'cxprof rsv fleet-profile-service')+'" '+(p.kind==='reserve'?'data-auto="1"':'')+' data-profile-id="'+p.id+'"><div class="mirror-service-copy"><strong>'+acctEsc(p.title)+'</strong><div class="cxps">'+acctEsc(p.description)+'</div>'+(active?'<span class="mirror-service-state">Включён'+(mirrorState.service.source==='auto'?' автоматически':' вручную')+'</span>':'')+(active&&state.until?'<small>До отключения: '+new Date(state.until*1000).toLocaleTimeString('ru-RU')+'</small>':'')+(expanded?mirrorDetails(p):'')+'</div><div class="mirror-service-actions"><button type="button" data-mirror-action="'+(active?'stop':'apply')+'">'+(active?'Выключить':'Включить…')+'</button><button type="button" data-mirror-action="info" aria-expanded="'+expanded+'">Подробнее ⌄</button></div></section>'}).join('');
-  profileRoot.innerHTML='<div class="cxplist">'+cards+'</div>'+(serviceHtml?'<div class="fleet-profile-service-heading">Служебные режимы '+mirrorNames[e]+'</div>'+serviceHtml:'');
+  profileRoot.innerHTML='<div class="cxplist">'+cards+'</div>';
   filterProfiles();repaintProfileResults();profileBody.scrollTop=scroll;paintMirrorWorkplace();if(!menu.hidden){cxMenuPlace();if(focusId){const card=profileRoot.querySelector('[data-profile-id="'+focusId+'"]'),target=focusAction?card?.querySelector('[data-mirror-action="'+focusAction+'"]'):focusSetting?card?.querySelector('[data-mirror-setting="'+focusSetting+'"]'):card;target?.focus({preventScroll:true})}}
  }
  function mirrorProfileClick(event){
   const card=event.target.closest('[data-profile-id]');if(!card)return;event.stopImmediatePropagation();if(event.target.closest('.mirror-auto-settings label'))return;const action=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction,id=card.dataset.profileId;
   if(action==='info'){mirrorInfo[mirrorEngine].has(id)?mirrorInfo[mirrorEngine].delete(id):mirrorInfo[mirrorEngine].add(id);cxpRender();return}
   if(action==='delete'){if(confirm('Удалить этот свой профиль?'))mirrorRequest(mirrorEngine,'delete',{id});return}
-  if(action==='stop'){mirrorStop(mirrorEngine);return}
-  if(action==='apply'||(!card.classList.contains('mirror-service')&&!event.target.closest('.cxpinfo')))mirrorApply(mirrorEngine,id);
+  if(action==='apply'||!event.target.closest('.cxpinfo'))mirrorApply(mirrorEngine,id);
  }
  async function mirrorRequest(engine,action,body,revision=mirrorState.revision){
   if(mirrorBusy)return;
@@ -1837,13 +1838,12 @@ JS = r'''
   try{const send=b=>fetch(API+'profiles/'+engine+'/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({...b,revision})}).then(r=>r.json());let result=await send(body);if(result.confirmation_required&&(action==='apply'||action==='config')&&result.word)result=await send({...body,confirm:result.word});if(result.state)mirrorAccept(result.state);if(result.confirmation_required){cxMenuClose();mirrorConfirm(engine,body.id,result.word,action,body,revision);return}if(!result.ok){toast(result.message||'Не удалось применить профиль');if(result.conflict)await mirrorLoad();return}if(action==='apply'||action==='stop')cxMenuClose();toast(result.message||'Действие выполнено');cxbLoad(true)}catch(_){toast('Не удалось обновить профиль. Повтори после обновления данных.')}finally{mirrorBusy=false;menu.removeAttribute('aria-busy')}
  }
  function mirrorApply(engine,id,confirmation=''){return mirrorRequest(engine,'apply',{id,confirm:confirmation})}
- function mirrorStop(engine){if(mirrorState.service?.kind==='emergency'&&!confirm('Выключить аварийный режим '+mirrorNames[engine]+' и восстановить прежний сценарий?'))return;return mirrorRequest(engine,'stop',{})}
  function mirrorShowTask(){const task=mirrorState.task;if(!task)return;cxMenuClose();acctShow('<h3>'+acctEsc(mirrorNames[task.leader]+' → '+mirrorNames[task.follower])+'</h3><p>Права шага: '+acctEsc({read:'чтение',dev:'дев',full:'полные'}[task.rights]||task.rights)+'</p><pre class="mirror-task-text">'+acctEsc(task.text)+'</pre>'+(task.result?'<h4>Результат</h4><pre class="mirror-task-text">'+acctEsc(task.result)+'</pre>':'')+(task.error?'<p>'+acctEsc(task.error)+'</p>':'')+(task.status==='pending'?(task.rights==='full'?'<label>Для полных прав введи «подтверждаю»<input id="mirrorTaskWord" class="dlginp" autocomplete="off"></label>':'')+'<div class="modalfoot"><button id="mirrorTaskReject" class="ghostbtn">Отклонить</button><button id="mirrorTaskApprove">Отправить исполнителю</button></div>':'<div class="modalfoot"><button id="mirrorTaskClose">Закрыть</button></div>'));document.getElementById('mirrorTaskClose')?.addEventListener('click',acctClose);for(const [id,approve] of [['mirrorTaskReject',false],['mirrorTaskApprove',true]])document.getElementById(id)?.addEventListener('click',async()=>{try{const response=await fetch(API+'profiles/task/confirm',{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify({id:task.id,approve,confirm:document.getElementById('mirrorTaskWord')?.value||''})}),result=await response.json();if(result.state)mirrorAccept(result.state);toast(result.message);if(result.ok)acctClose()}catch(_){toast('Не удалось подтвердить шаг. Обнови данные перед повтором.')}})}
  function mirrorConfirm(engine,id,word,action='apply',body={id},revision=mirrorState.revision){
   const p=mirrorState.engines[engine].profiles.find(p=>p.id===id),impact='Full работает самостоятельно со всеми доступными инструментами, командами и файлами.';acctShow('<div class="mirror-confirm" data-engine="'+engine+'"><h3>'+acctEsc(p.title)+(action==='config'?' · автоматически':'')+'</h3><p>'+impact+'</p><p>Введи <b>'+acctEsc(word)+'</b>, чтобы подтвердить изменение сценария для '+mirrorNames[engine]+'.</p><input id="mirrorConfirmWord" class="dlginp" autocomplete="off" spellcheck="false" aria-label="Слово подтверждения"><div class="modalfoot"><button type="button" id="mirrorConfirmCancel" class="ghostbtn">Отмена</button><button type="button" id="mirrorConfirmApply" disabled>Применить</button></div></div>');
   const input=document.getElementById('mirrorConfirmWord'),apply=document.getElementById('mirrorConfirmApply');input.addEventListener('input',()=>apply.disabled=input.value.trim().toLocaleLowerCase('ru')!==word);input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!apply.disabled)apply.click()});document.getElementById('mirrorConfirmCancel').onclick=()=>{acctClose();mirrorButtons[engine].focus()};apply.onclick=()=>{const text=input.value;acctClose();mirrorRequest(engine,action,{...body,confirm:text},revision)};setTimeout(()=>input.focus(),30);
  }
- // Единое центральное окно двух исполнителей. [notion-ai] Настроек резерва больше нет.
+ // Единое центральное окно двух исполнителей.
  let monoView='profiles',monoSignature='';
  const monoRawOpen=cxMenuOpen;let monoPendingOpen=null;
  cxMenuOpen=function(){if(!mirrorMounted){monoPendingOpen=['codex'];mirrorLoad();return}mirrorOpen('codex')};
@@ -1853,20 +1853,20 @@ JS = r'''
   if(!mirrorMounted)return monoOriginalFilter();if(search.value!==profileQuery)search.value=profileQuery;
   if(monoView!=='profiles')return;
   const query=profileQuery.trim().toLocaleLowerCase('ru');
-  profileRoot.querySelectorAll('.fleet-profile-card,.mono-reserve').forEach(node=>node.hidden=!!query&&!node.textContent.toLocaleLowerCase('ru').includes(query));
-  for(const section of profileRoot.querySelectorAll('.mono-provider'))section.hidden=![...section.querySelectorAll('.fleet-profile-card,.mono-reserve')].some(node=>!node.hidden);if(!menu.hidden)monoCenter();
+  profileRoot.querySelectorAll('.fleet-profile-card').forEach(node=>node.hidden=!!query&&!node.textContent.toLocaleLowerCase('ru').includes(query));
+  for(const section of profileRoot.querySelectorAll('.mono-provider'))section.hidden=![...section.querySelectorAll('.fleet-profile-card')].some(node=>!node.hidden);if(!menu.hidden)monoCenter();
  }
  repaintProfileResults=function(){
   if(!mirrorMounted)return monoOriginalResults();
   if(monoView!=='profiles'){paletteEmpty.hidden=true;return}
-  const cards=[...profileRoot.querySelectorAll('.fleet-profile-card')],reserves=[...profileRoot.querySelectorAll('.mono-reserve')],visible=cards.filter(node=>!node.hidden).length,services=reserves.filter(node=>!node.hidden).length;
-  paletteEmpty.hidden=visible+services>0;putText(paletteCount,profileQuery.trim()?'Найдено: '+visible+' из '+cards.length:cards.length+' рабочих профиля');
+  const cards=[...profileRoot.querySelectorAll('.fleet-profile-card')],visible=cards.filter(node=>!node.hidden).length;
+  paletteEmpty.hidden=visible>0;putText(paletteCount,profileQuery.trim()?'Найдено: '+visible+' из '+cards.length:cards.length+' рабочих профиля');
  }
 
  function monoCenter(){
   menu.classList.toggle('fleet-profile-desktop',!mobileConsole.matches);
   if(mobileConsole.matches){menu.style.top='var(--fleet-visual-top,0px)';menu.style.left='0';menu.style.right='0';menu.style.bottom='auto';menu.style.width='100%';menu.style.height=menu.style.maxHeight='var(--fleet-visual-height,100dvh)';return}
-  const w=innerWidth,h=innerHeight,width=Math.min(monoView==='reserve'?960:880,w-24);
+  const w=innerWidth,h=innerHeight,width=Math.min(880,w-24);
   menu.style.height='';menu.style.width=width+'px';menu.style.maxHeight=(h-24)+'px';menu.style.left=Math.round((w-width)/2)+'px';menu.style.right='auto';menu.style.bottom='auto';menu.style.top=Math.max(12,Math.round((h-menu.getBoundingClientRect().height)/2))+'px';
  }
  cxMenuPlace=monoCenter;
@@ -1912,10 +1912,9 @@ JS = r'''
   paintMirrorWorkplace();monoCenter();
  }
  mirrorProfileClick=function(event){
-  const card=event.target.closest('[data-profile-id]');if(!card)return;event.stopImmediatePropagation();if(event.target.closest('.mono-auto'))return;
+  const card=event.target.closest('[data-profile-id]');if(!card)return;event.stopImmediatePropagation();
   const engine=card.dataset.engine||mirrorEngine,action=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction,id=card.dataset.profileId;
   if(action==='info'){mirrorInfo[engine].has(id)?mirrorInfo[engine].delete(id):mirrorInfo[engine].add(id);monoSignature='';cxpRender();return}
-  if(action==='stop'){mirrorStop(engine);return}
   if(action==='apply'||card.matches('.fleet-profile-card')&&!event.target.closest('.cxpinfo'))mirrorApply(engine,id);
  }
  const monoMount=mountMirrorProfiles;mountMirrorProfiles=function(){
@@ -2020,12 +2019,89 @@ JS = r'''
   finally{mirrorBusy=false;menu.removeAttribute('aria-busy');monoSignature='';if(!menu.hidden)cxpRender()}
  }
 
+ // Меню профиля на плитках «Активных аккаунтов» (07.11): кнопка профиля на плитке Claude DEV или Codex открывает компактное
+ // меню только этого аккаунта (как у PROD). Общее окно — кнопка «Профили» в шапке. Применение — тем же manualApplyScenario.
+ (function(){
+  try{
+   const TPN={claude:'Claude DEV',codex:'Codex'},TPC={claude:'var(--fleet-claude)',codex:'var(--fleet-accent)'},TPBTN='.fleet-live-account .mirror-profile-button';
+   const SOLO='Понадобится слово подтверждения';
+   const TPO={
+    claude:[
+     {id:'full',name:'Claude Full · самостоятельно',desc:'Планирует, выполняет и проверяет задачу сам. Полные доступные права.',draft:{claude:'full',codex:null},steps:['Claude работает один','Codex не участвует',SOLO]},
+     {id:'orch',name:'Claude → Codex',desc:'Claude планирует и проверяет, Codex выполняет шаги после твоего подтверждения.',draft:{claude:'orchestrator',codex:'executor'},steps:['Claude — оркестратор, Codex — исполнитель','Шаги Codex выполняются после твоего подтверждения']}],
+    codex:[
+     {id:'full',name:'Codex Full · самостоятельно',desc:'Планирует, выполняет и проверяет задачу сам. Полные доступные права.',draft:{claude:null,codex:'full'},steps:['Codex работает один','Claude не участвует',SOLO]},
+     {id:'orch',name:'Codex → Claude',desc:'Codex планирует и проверяет, Claude выполняет шаги после твоего подтверждения.',draft:{claude:'executor',codex:'orchestrator'},steps:['Codex — оркестратор, Claude — исполнитель','Шаги Claude выполняются после твоего подтверждения']}]
+   };
+   let tp=null,tpAnchor=null,tpEng='',tpSel='',tpBusy=false;
+   const tpOpts=()=>{const cur=manualCurrent();return TPO[tpEng].map(o=>({...o,cur:manualSame(o.draft,cur),why:''}))};
+   function tpPaint(note){
+    if(!tp)return;const opts=tpOpts(),sel=opts.find(x=>x.id===tpSel),name=TPN[tpEng];
+    let h='<h3>Профиль '+acctEsc(name)+'</h3><p>Выбери, как работает '+acctEsc(name)+'.</p><div class="tp-opts" role="radiogroup" aria-label="Профиль '+acctEsc(name)+'">'
+     +opts.map(x=>{const dis=x.cur||!!x.why;return '<button type="button" class="tp-opt'+(x.cur?' on':'')+(x.id===tpSel?' sel':'')+'" role="radio" aria-checked="'+(x.cur||x.id===tpSel)+'" data-id="'+x.id+'"'+(dis?' disabled':'')+'><i></i><b>'+acctEsc(x.name)+'</b><em>'+(x.cur?'Действующий':'')+'</em><span>'+acctEsc(x.why||x.desc)+'</span></button>'}).join('')+'</div>';
+    if(sel)h+='<ul>'+sel.steps.map(s=>'<li>'+acctEsc(s)+'</li>').join('')+'</ul>';
+    const msg=note||(mirrorState?.updating?'Завершается обновление панели. Профиль можно применить после проверки.':'');
+    if(msg)h+='<p class="tp-note bad">'+acctEsc(msg)+'</p>';
+    else if(sel)h+='<p class="tp-note">До нажатия «Применить» ничего не меняется.</p>';
+    h+='<div class="tp-btns"><button type="button" class="tp-no">Отмена</button><button type="button" class="tp-yes"'+(sel&&!tpBusy&&!mirrorBusy&&!mirrorState?.updating?'':' disabled')+'>Применить</button></div>';
+    tp.querySelector('.cxpbody').innerHTML=h;
+   }
+   function tpPlace(){
+    if(!tp)return;const a=tpAnchor;
+    if(a&&a.isConnected&&a.offsetParent!==null&&window.fleetPlace){window.fleetPlace(tp,a,380);return}
+    const w=Math.min(380,innerWidth-24);tp.style.width=w+'px';tp.style.left=Math.max(12,Math.round((innerWidth-w)/2))+'px';tp.style.top=Math.max(12,Math.round(innerHeight/5))+'px';tp.style.right='auto';tp.style.bottom='auto';
+   }
+   function tpClose(back){
+    if(!tp||tp.hidden)return;tp.hidden=true;
+    if(tpAnchor){tpAnchor.setAttribute('aria-expanded','false');if(back&&tpAnchor.isConnected)tpAnchor.focus({preventScroll:true})}
+   }
+   function tpOpen(eng,anchor){
+    if(!mirrorState){toast('Профили ещё загружаются');return}
+    if(tp&&!tp.hidden&&tpAnchor===anchor){tpClose(true);return}
+    tpClose();
+    for(const f of [()=>cxMenuClose(),()=>cxPopClose(),()=>cxQClose(),()=>closeClaudeQ()])try{f()}catch(_){}
+    if(!tp){
+     tp=document.createElement('div');tp.className='cxpop tp-pop';tp.setAttribute('role','dialog');tp.hidden=true;tp.innerHTML='<div class="cxpbody"></div>';document.body.appendChild(tp);
+     tp.addEventListener('click',e=>{
+      const o=e.target.closest('.tp-opt');
+      if(o){if(o.disabled)return;tpSel=o.dataset.id;tpPaint('');tpPlace();tp.querySelector('.tp-opt.sel')?.focus({preventScroll:true});return}
+      if(e.target.closest('.tp-no'))tpClose(true);else if(e.target.closest('.tp-yes'))tpGo();
+     });
+     document.addEventListener('pointerdown',e=>{if(tp&&!tp.hidden&&!tp.contains(e.target)&&!e.target.closest(TPBTN))tpClose()});
+     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&tp&&!tp.hidden)tpClose(true)});
+     addEventListener('resize',()=>{if(tp&&!tp.hidden)tpPlace()});
+    }
+    tpEng=eng;tpAnchor=anchor;tpSel='';tpBusy=false;tp.setAttribute('aria-label','Профиль '+TPN[eng]);tp.style.setProperty('--tp-c',TPC[eng]);
+    tpPaint('');tp.hidden=false;anchor.setAttribute('aria-expanded','true');tpPlace();tpPlace();
+    tp.querySelector('.tp-opt:not([disabled])')?.focus({preventScroll:true});
+   }
+   async function tpApply(eng,choices,revision,confirmation){
+    manualDraft={...choices};manualRevision=mirrorState.revision;manualDirty=true;monoSignature='';
+    try{await manualApplyScenario(confirmation,{...choices},revision)}
+    finally{manualDraft=null;manualDirty=false;monoSignature=''}
+   }
+   async function tpGo(){
+    const o=tpOpts().find(x=>x.id===tpSel);if(!o||tpBusy||o.cur||o.why)return;
+    if(mirrorBusy){tpPaint('Сейчас применяется другой профиль. Подожди.');tpPlace();return}
+    if(mirrorState.updating){tpPaint();tpPlace();return}
+    const eng=tpEng;tpClose();
+    await tpApply(eng,{claude:o.draft.claude,codex:o.draft.codex},mirrorState.revision,'');
+   }
+   document.addEventListener('click',e=>{
+    const b=e.target.closest&&e.target.closest(TPBTN);if(!b||b.classList.contains('rm-prof'))return;
+    const t=b.closest('.fleet-live-account'),eng=['claude','codex'].find(k=>t&&t.classList.contains(k));
+    if(!eng)return;
+    e.preventDefault();e.stopPropagation();tpOpen(eng,b);
+   },true);
+  }catch(e){console.warn('tile profile menu',e)}
+ })();
+
  mirrorLoad();
 
  loadRotation();setInterval(()=>{if(!document.hidden)loadRotation()},5000);
 })();
 
-// Шкала лимита на плитках активных аккаунтов Claude и Codex («Затухание и пульс»): переменные считаются из процентов в самих плитках, Notion AI не трогаем
+// Шкала лимита на плитках активных аккаунтов Claude и Codex («Затухание и пульс»): переменные считаются из процентов в самих плитках
 (()=>{
  function limitBarVars(u5,uw){
   const c=v=>Math.max(0,Math.min(1,isFinite(v)?v:0)),hsl=(h,a,l,s)=>'hsla('+Math.round(h)+','+s+'%,'+l+'%,'+a+')';
@@ -2033,7 +2109,7 @@ JS = r'''
   return {'--r5':r5,'--uw':uw,'--c5':hsl(150*r5,.10,56,76),'--cwu':hsl(170*(1-uw),.95,60,88),'--cwg':hsl(170*(1-uw),.35,60,88)};
  }
  function paintLimitBars(){
-  document.querySelectorAll('#fleetActiveAccounts .fleet-compact-account:not(.notion)').forEach(t=>{
+  document.querySelectorAll('#fleetActiveAccounts .fleet-compact-account').forEach(t=>{
    const g=k=>{const e=t.querySelector('.fleet-compact-window[data-window='+k+'] .fleet-compact-used'),v=e?parseFloat(e.textContent):NaN;return isFinite(v)?v/100:null};
    const a=g('session'),b=g('week');
    if(a===null&&b===null){t.removeAttribute('data-lb');t.removeAttribute('data-crit');return;}

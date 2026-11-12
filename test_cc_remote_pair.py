@@ -44,14 +44,10 @@ class FakeProfiles:
         return self.scenario_result
 
 
-class FakeNai:
+class FakeWorkers:
     def __init__(self):
         self.profiles = FakeProfiles()
-        self._active = False
         self.running = True
-
-    def active(self):
-        return self._active
 
     def claude_running(self):
         return self.running
@@ -68,9 +64,9 @@ class Base(unittest.TestCase):
         M.MODE_FILE = os.path.join(self.tmp, 'mode.json')
         with open(cc_remote.MEMBERS_FILE, 'w') as f:
             json.dump({'prod': {'label': 'Аккаунт PROD', 'host': '192.0.2.1', 'tmux': 'friend', 'back_host': '192.0.2.2'}}, f)
-        self.nai = FakeNai()
+        self.wk = FakeWorkers()
         M._NS.clear()
-        M._NS.update(NOTION_AI=self.nai, tg_notify=lambda t: None)
+        M._NS.update(WORKERS=self.wk, tg_notify=lambda t: None)
         M._wcache.update(ts=0.0, val='dev', key=None)
         M._pbusy.update(ts=0.0, val=False)
         self.calls = []
@@ -110,16 +106,16 @@ class Base(unittest.TestCase):
         return res
 
     def choices(self):
-        return [s['choices'] for s in self.nai.profiles.scenarios]
+        return [s['choices'] for s in self.wk.profiles.scenarios]
 
     def set_pair(self, claude, codex, tg=True):
-        self.nai.profiles.state.manual_choices = {'claude': claude, 'codex': codex}
+        self.wk.profiles.state.manual_choices = {'claude': claude, 'codex': codex}
         M._save(active=True, member='prod', tg=tg)
 
 
 class PairState(Base):
     def test_pair_kind_requires_active(self):
-        self.nai.profiles.state.manual_choices = {'claude': 'orchestrator', 'codex': 'executor'}
+        self.wk.profiles.state.manual_choices = {'claude': 'orchestrator', 'codex': 'executor'}
         self.assertEqual(M.pair_kind(), '')
         M._save(active=True, member='prod')
         self.assertEqual(M.pair_kind(), 'prod_codex')
@@ -131,7 +127,7 @@ class PairState(Base):
         self.assertEqual(M.pair_kind(), '')
         self.set_pair('orchestrator', None)
         self.assertEqual(M.pair_kind(), '')
-        self.nai.profiles.state.manual_choices = None
+        self.wk.profiles.state.manual_choices = None
         self.assertEqual(M.pair_kind(), '')
 
     def test_public_has_pair_and_tg(self):
@@ -147,7 +143,7 @@ class PairState(Base):
         self.set_pair('orchestrator', 'executor')
         self.assertEqual(M.worker(), 'prod')
         self.set_pair('executor', 'orchestrator', tg=False)
-        self.nai.profiles.state.leader = 'codex'
+        self.wk.profiles.state.leader = 'codex'
         M._wcache['ts'] = 0.0
         self.assertEqual(M.worker(), 'codex')
 
@@ -194,11 +190,6 @@ class PairFlows(Base):
         self.assertTrue(res['ok'])
         self.assertNotIn('started', res)
 
-    def test_notion_active_refused(self):
-        self.nai._active = True
-        self.assertFalse(M.pair('prod_codex')['ok'])
-        self.assertEqual(self.calls, [])
-
     def test_prod_codex_from_dev(self):
         res = self.run_pair('prod_codex')
         self.assertTrue(res['started'])
@@ -209,7 +200,7 @@ class PairFlows(Base):
         self.assertEqual(M.mode().get('to'), '')
 
     def test_prod_codex_from_dev_scenario_fails_keeps_prod(self):
-        self.nai.profiles.scenario_result = {'ok': False, 'message': 'отказ'}
+        self.wk.profiles.scenario_result = {'ok': False, 'message': 'отказ'}
         self.run_pair('prod_codex')
         self.assertTrue(M.active())
         self.assertIn('Работа осталась у Claude PROD', M.mode()['error'])
@@ -247,7 +238,7 @@ class PairFlows(Base):
         self.assertEqual(M.pair_kind(), 'codex_prod')
 
     def test_codex_prod_scenario_fails_stops_prod(self):
-        self.nai.profiles.scenario_result = {'ok': False, 'message': 'отказ'}
+        self.wk.profiles.scenario_result = {'ok': False, 'message': 'отказ'}
         self.run_pair('codex_prod')
         self.assertEqual(self.calls, [('on', False, True), ('off', True)])
         self.assertFalse(M.active())

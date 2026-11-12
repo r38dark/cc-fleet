@@ -13,8 +13,8 @@ BASE = os.environ.get("CC_LIMITS_BASE") or os.path.dirname(os.path.abspath(__fil
 DEFAULTS = {"main": "DEV", "remote": "PROD"}
 NEW_INSTALL = {"main": "A", "remote": "B"}
 _NAME = re.compile(r"[A-Za-z0-9_-]{1,12}")
-# содержимое консолей и чатов — чужой текст (код, логи, переписка): подмене не подлежит
-SKIP_PATHS = ("/api/console", "/api/remote/console", "/api/notion-ai/view", "/api/notion-ai/agents/view")
+# содержимое консолей — чужой текст (код, логи, переписка): подмене не подлежит
+SKIP_PATHS = ("/api/console", "/api/remote/console")
 _DEV = re.compile(r"\bDEV\b")
 _PROD = re.compile(r"\bPROD\b")
 _cache = {"mtime": None, "names": dict(DEFAULTS)}

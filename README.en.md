@@ -195,11 +195,6 @@ gear, a "Delete" button on every card and the windows for both flows
   card — no need to switch to the terminal: compact the context or start
   `/clear` with one click (same `screen`-session injection the model buttons
   use).
-- 🗂 **Notion agent and the "Codex + Notion" reserve** (v1.25.21) — a header block: the N icon shows whether your
-  Notion agent is connected, and the "Reserve" switch moves to reserve mode by hand (after a confirmation). In the
-  reserve — the limits ran out, or you pressed the switch — Claude really goes on pause and Codex works together with
-  the agent, every change waiting for your "yes". Turning it on and off is instant, the block frame shows the mode by itself. A from-scratch guide is in the "Notion agent and the
-  reserve" section.
 - 🔐 No OAuth tokens ever leave your machine — everything lives on your own
   server, under your own root.
 - 🧩 One install script, no web wizards or dependencies on someone else's
@@ -216,7 +211,7 @@ gear, a "Delete" button on every card and the windows for both flows
 
 ## Installation
 
-> A complete step-by-step guide (Claude accounts, Telegram, Codex, Notion AI and agents, a second server, voice) with a check after every step is in [docs/INSTALL.md](docs/INSTALL.md) (Russian). The installer has 14 steps and checks each one; `sudo ./install.sh --check` shows what is done.
+> A complete step-by-step guide (Claude accounts, Telegram, Codex, a second server, voice) with a check after every step is in [docs/INSTALL.md](docs/INSTALL.md) (Russian). The installer has 13 steps and checks each one; `sudo ./install.sh --check` shows what is done.
 
 ```bash
 git clone https://github.com/r38dark/cc-fleet.git
@@ -231,7 +226,7 @@ notifications. Then it will, on its own:
 
 1. install `python3-pyte python3-pexpect screen` (+ `nginx apache2-utils` if
    you chose a web domain),
-2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
+2. copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py`, `tg_queue.py` and
    `hooks/queue_on_limits.py` → `/opt/cc-limits`,
    `cc-switch` → `/usr/local/bin/cc-switch`,
 3. create N empty profile slots in `/root/.claude-profiles/accN`,
@@ -696,70 +691,6 @@ Configure it with the `"codex_emergency"` key in `config.json`:
 
 Tests: `python3 -m unittest test_cc_codex_emergency` (no real mount, sudo or systemctl — all stubbed).
 
-## Notion agent and the "Codex + Notion" reserve (v1.25.21)
-
-What it is for: you have an agent in Notion (it gathers, searches and drafts text from your pages) and you want the panel to show it next to the Claude accounts. And when Claude is unavailable — its limits ran out, or you stopped it yourself — **Codex can keep working together with that agent**: you give Codex the task, it sends the agent the text it needs, the agent returns a result, and Codex applies it to the project and checks it. Every change waits for your "yes".
-
-Until Notion is connected, **the panel has no such block at all** — that is by design. The whole path from scratch is four steps, about fifteen minutes. Steps 1–3 are needed for the header card, step 4 only for the reserve.
-
-1. **Create an agent in Notion.** You need a Notion account with your own agent in it. The agent has a name and a link like `agent://…`: copy both, step 3 needs them.
-2. **Connect Notion in Claude Code.** In a terminal on the server: `claude mcp add --transport http notion https://mcp.notion.com/mcp`. Then, inside Claude Code, open `/mcp`, pick `notion` and sign in to your Notion account (a link opens; on a server without a browser open it on your own machine and bring back the address it redirected you to). The sign-in lands in Claude Code's login file; the panel reads it to know Notion is connected. Reload the page — a Notion block with the N icon, a "Reserve" switch and a ⚙ appears in the header, left of the orchestrator.
-3. **Tell the panel which agent is yours.** ⚙ in the Notion block → paste the name and the `agent://…` link → "Save". Tokens are never shown on the page — only "connected / not", the agent name and the sign-in expiry.
-4. **Reserve only — sign in to Notion from Codex.** Claude and Codex keep their sign-ins apart, so Codex signs in on its own. You need Codex installed and a ChatGPT account added (see "Connecting Codex from scratch"). On the account card press "Launch command" (⚙ next to `>_` → "ChatGPT accounts and limits"): the copied command already carries the right OS user and the profile folder `CODEX_HOME`. Append this to the end of it:
-
-   ```
-   mcp login notion --no-browser -c 'mcp_servers.notion.url="https://mcp.notion.com/mcp"'
-   ```
-
-   The command prints a link. Open it in a browser, sign in to Notion and allow access. The browser then redirects to a `localhost…` address — the page will not open, that is normal: copy the **whole address from the address bar**, paste it into the terminal when asked and press Enter. Check: the same command with `mcp list -c '…'` instead of `mcp login …` — the `Auth` column should no longer say `Not logged in`. On a server without a system keyring (the usual case) the sign-in lives in the profile folder `CODEX_HOME`, so step 4 is done separately for every ChatGPT account.
-
-Signing Codex in to Notion gives it access to your Notion workspace. That is why in the reserve the panel starts Codex with an allow-list of **four** tools: find the agent (`notion-search-agents`), give it a task (`notion-spawn-session`), wait for its answer (`notion-wait-session`) and write to it (`notion-send-message-to-session`). Codex does not see anything else in Notion at all. Outside the reserve the panel does not connect any Notion tools to Codex.
-
-### Reading the block in the header
-
-On the left, the **N** icon is only an indicator — there is nothing to press: a green dot means Notion is connected, red means you need to sign in again. Next to it is the **"Reserve"** switch — it is the manual move to reserve mode and nothing else. The icon, the switch and the ⚙ share one frame:
-
-| Frame | Meaning |
-|---|---|
-| Gray (regular, like the Codex block) | No reserve: Claude is working |
-| Green | Reserve is on: Claude is paused, Codex + agent are working |
-| Red | No connection: the Notion sign-in is gone (`/mcp` → `notion` → sign in again) |
-
-The switch is greyed out until the agent link is saved: a reserve without an agent makes no sense.
-
-### Two reserve scenarios
-
-The reserve turns on in two ways. By hand — with the "Reserve" switch in the header; by itself — with a tick in the ⚙ of the Notion block, "Reserve" section. The settings are stored in `config.json` → `notion_agent.reserve` as `manual` (the switch), `auto` and `auto_emergency` (the two ticks in the ⚙), all off by default:
-
-- **The "Reserve" switch (manual).** You decided to do without Claude: the accounts are not spent. Before it turns on, the panel asks "Really switch to reserve mode?" and explains what happens: Claude gets paused, Codex and the agent work instead, the Codex profile switches to the service profile "Reserve", and turning the switch off brings everything back at once. Once you agree, Claude **really goes on pause** (as with limits, but with no alarm clock), incoming Telegram messages wait in the queue, and the sender gets a reply "queued; reserve mode is on" (the text is the `queue_ack_reserve_message` key in `config.json`). Claude gets **two minutes** to finish what it started: the banner shows a countdown, then Claude's tools are blocked. The Codex profile switches by itself to the service profile "Reserve" (last in the menu, not selectable by hand) and Codex gets the Notion allow-list. Turn the switch off and everything returns **instantly**: the pause is lifted, the Codex profile is the previous one, and the Claude session gets a message "reserve is off, N waiting in the queue" and carries on from where it stopped. If Claude's limits are still used up at that moment, the panel says so: reserve off, Claude stays paused until the window resets.
-- **The "Turn on by itself" tick (automatic).** When the limits of **all** Claude accounts are used up (session, or week if the weekly pause is on) and it holds for two minutes — so a single polling hiccup does not trigger it — the reserve turns on by itself and a Telegram message arrives. When limits are back and that holds for two minutes, the reserve turns itself off and the Codex profile goes back to the previous one. If the limits data is stale (older than 15 minutes) the panel changes nothing.
-- **The "…and also turn on Codex emergency mode" tick.** Available only together with "Turn on by itself". It needs a configured emergency mode (see "Codex emergency mode"): then, in the automatic case, the reserve also turns on Codex's full access to the project so it can apply the agent's result. If the mode is not set up, a note under the tick says so and the reserve runs without full access. The emergency mode turns off together with the reserve.
-
-Worth knowing: while the reserve is on manually, **Claude cannot work** — that is the point of the switch. The emergency way out is the "Turn off pause" button on the pause banner: Claude continues at once and the reserve stays on.
-
-**The "Agent" profile and the delegate command (v1.25.28).** If you have a command of your own that sends text to the agent and returns its answer, put it into `config.json` → `notion_agent.delegate_cmd` (letters, digits and `_ . / -` only, up to 80 characters). Then:
-
-- an **"Agent"** entry appears in the profile menu: Claude and Codex do not make big edits themselves but hand the task to the agent with `command "text"` (a long task: `command -f file`), check the answer independently with tests and apply it after your "yes";
-- Claude learns about the mode from the `delegate_note.txt` file in the balancer folder and a `UserPromptSubmit` hook, Codex from the working folder's `AGENTS.md` and a note in every message;
-- during the reserve this command becomes the main path to the agent and the Notion tools the fallback.
-
-While `delegate_cmd` is not set the "Agent" profile stays hidden and nothing changes.
-
-### If something went wrong
-
-| What you see | Cause and what to do |
-|---|---|
-| No Notion block in the header | Notion is not connected in Claude Code: step 2 (`/mcp` → `notion` → sign in) |
-| Red frame, red dot on the N icon | The Notion sign-in is gone: step 2 |
-| The "Reserve" switch is grey, tooltip "Reserve is unavailable" | The `agent://…` link is not saved or Notion is not connected: step 2 or 3 |
-| `Auth` shows `Not logged in` for Codex | Codex never signed in to Notion: step 4 |
-| In the reserve Codex says it has no Notion tools | Codex was signed in under a different profile (another ChatGPT account) or the sign-in expired — repeat step 4 for the active account |
-| The emergency tick is greyed out | It only works together with "Turn on by itself" |
-| A note "Emergency mode is not set up" under it | The reserve runs without full access; set up `codex_emergency` and `codex_user` — see "Codex emergency mode" |
-| Claude does not wake up after the reserve is lifted | If the console is busy, input into `screen` is silently dropped — type any message into the session |
-
-Tests: `python3 -m unittest test_cc_notion test_cc_reserve_pause` (no real Notion or Codex there — everything is stubbed).
-
 ## Console commands cl, cla, cln, clw, cxw (v1.25.24)
 
 What they are for: get into the Claude or Codex console on a server with one short command, on any server where the balancer runs. The commands are part of the panel: `install.sh` sets them up, they update with every release, and when the service starts it puts the links into `/usr/local/bin` itself. Nothing has to be added to `.bashrc` by hand; if you already have your own functions with those names, they stay in charge, and the panel never touches someone else's file with such a name.
@@ -869,7 +800,7 @@ A repeat run is idempotent: the `hook_token` and the keys already in
 `config.json` are preserved, account profiles are left alone. What gets
 updated is the files in `/opt/cc-limits`, the systemd unit, the cron alarm
 and the nginx config (if you chose nginx). If you'd rather not run the
-installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_notion.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py`,
+installer again — copy `cc_limits.py`, `cc_update.py`, `cc_avail.py`, `cc_poll.py`, `cc_lock.py`, `cc_codex.py`, `cc_codex_bridge.py`, `cc_codex_console.py`, `cc_codex_emergency.py`, `cc_backup.py`, `limits_gate.py`, `pause_ctl.py`,
 `tg_queue.py`, `hooks/queue_on_limits.py` and `hooks/pause_tool_gate.py` into `/opt/cc-limits`, add the
 cron line from `install.sh`, and restart the service.
 
@@ -935,19 +866,21 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 ## Version history
 
-- **v2.0.7** — The second server's console finds its session by the name in the pair record (with a non-default name it used to show "not running"); in the split console Codex and Claude DEV no longer shrink their font but wrap long lines, so the text matches the other parts; on page reload the Codex and Notion AI tabs no longer flash and the PROD tab no longer briefly falls back to DEV.
-- **v2.0.6** — Phone: the model tabs (Claude DEV, PROD, Codex, Notion AI) share the whole row instead of running off the edge; tapping "Notion AI ▾" opens a dropdown with Notion AI and its agents, and the tab shows the chosen agent's name.
+- **v2.0.7** — The second server's console finds its session by the name in the pair record (with a non-default name it used to show "not running"); in the split console Codex and Claude DEV no longer shrink their font but wrap long lines, so the text matches the other parts; on page reload the Codex tab no longer flashes and the PROD tab no longer briefly falls back to DEV.
+- **v2.0.6** — Phone: the model tabs (Claude DEV, PROD, Codex) share the whole row instead of running off the edge.
 - **v2.0.5** — Split console: every part has an expand icon (the other parts are hidden, not closed), Compact context and New session moved into each part header right of the model name, and the zoom + and - change the font in every part by the same ratio.
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
-- **v2.0.3** — The split console and its part menus do not list Codex and Notion AI until they are connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
-- **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex, Notion AI and Telegram).
+- **v2.0.3** — The split console and its part menus do not list Codex until it is connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
+- **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex and Telegram).
+- **v2.0.34** — Removed the third agent, its profiles and reserve mode while preserving shared handoff and conversation recovery. The console uses the freed space. Pause and exhausted limits appear as badges on active account borders. An exhausted agent has a translucent cross in its console; pause takes priority. Failed Claude Code and Codex updates offer Retry. The update window now polls Codex installation progress.
+
 - **v2.0.33** — Pause and limits of Claude on the second server: The "limits not updated · 429" label for Claude on the second server: near the threshold both the panel and the limit guard polled Anthropic every 30 seconds (two requests each time). The limits script now has a shared 60-second cache, asks for the profile once per 6 hours, and after a 429 pauses polling for a while (Retry-After) and shows the last known numbers. The pause on limits is one text now: the detailed message ("until …, … left, Telegram messages are queued") moved to the top banner, and the console window shows a big gray translucent pause icon in the center instead. On the "Active accounts" tile, Claude on the second server shows "⏸ paused on limits until …" during a pause instead of an error.
 
 - **v2.0.32** — Telegram messages: when the model and/or effort is changed in the panel (Claude on this server, on the second server, Codex) — one message "what it was → what it is" (model and effort in a row are merged, Codex also Fast); when a new Claude Code or Codex version is out and when an update from the panel succeeded or failed. Switches in config.json: model_change_notify, cli_update_notify.
 
 - **v2.0.31** — Your own sentence about other executors for Codex and extra folders it may write to can be set in config.json (keys codex_team_note and codex_writable_roots; without them everything is as before). Codex AGENTS.md is refreshed before every start; the hint about "voice .ogg" is gone from the text for Claude on the second server.
 
-- **v2.0.30** — A limit gauge on the active Claude and Codex account tiles: a transparent fill shows what is left of the five-hour limit (it shrinks with a soft edge, green to red, pulses when less than 15% is left), the weekly limit is a bright glowing line on top; Notion AI is not affected. While Claude on PROD or Codex is paused on limits, a strip at the top of its console window explains it (until when, messages wait in the queue). The "limits not received" label became "limits not updated · error code" with a hint; the version label in the console corner is just the number, smaller; on a phone the console input has no grey scrollbar.
+- **v2.0.30** — A limit gauge on the active Claude and Codex account tiles: a transparent fill shows what is left of the five-hour limit (it shrinks with a soft edge, green to red, pulses when less than 15% is left), the weekly limit is a bright glowing line on top. While Claude on PROD or Codex is paused on limits, a strip at the top of its console window explains it (until when, messages wait in the queue). The "limits not received" label became "limits not updated · error code" with a hint; the version label in the console corner is just the number, smaller; on a phone the console input has no grey scrollbar.
 
 - **v2.0.29** — In the split console the version label is below the part header (it used to be under it); the "what next" hint after an update tells a running program from a stopped one.
 
@@ -973,14 +906,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 
 - **v2.0.18** — The five-hour and weekly Codex limit banner now also works with a single account. Full access and message queue behavior stay unchanged.
 
-- **v2.0.17** — Disconnect Claude, Codex and Notion AI accounts while keeping programs, history and files; combined server limits; remote Claude profile restoration; optional Codex Telegram voice replies.
+- **v2.0.17** — Disconnect Claude and Codex accounts while keeping programs, history and files; combined server limits; remote Claude profile restoration; optional Codex Telegram voice replies.
 
-- **v2.0.16** — Notion sign-in and sending after a Notion change: the chat field hint is now "Chat with ..." (the service only knew "Ask Notion AI"). Notion login code is 6 letters or digits: Notion started emailing a letter code while the service accepted only 6 digits, so
-  the code sign-in failed. The service and the panel and wizard fields now accept letters and digits. On servers that are already
-  installed the service file (`/root/notion_web/server.py`) is refreshed by running `sudo bash /opt/cc-limits/notion_ai/install.sh` (safe: previous files are kept next to the new ones).
-- **v2.0.15** — A "Set up Notion AI" wizard in the panel: the grey tile (or ⚙ → Notion AI → "Step-by-step wizard") walks through 7 steps with a
-  check after each — services (installed by the panel itself, no terminal), permanent chat link, email-code sign-in, Notion API token,
-  access key with the instruction, connection check, your own agent. The service files (`notion_ai/`) now live on every server and update with the button.
 - **v2.0.14** — Read-only polls of the second server (screen, limits, status) go over one persistent ssh connection (`ControlMaster`,
   120 s idle) instead of a fresh handshake every 2 s: on a less than perfect link a new connection sometimes hung for 5 s and showed
   "no connection". A read is retried once after a drop; input, writes and setup are never repeated and use a separate connection as before.
@@ -993,21 +920,19 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
   versions see `needs_install`), later only if the installer changed since your version. Claude DEV and PROD tiles match: "Subscription
   until" and "Sign-in until", the sign-in button in one place, and the account count includes the second-server tile. A brief drop of the
   link to PROD (seconds) is no longer shown as "no connection": the window keeps the last screen for 20 s, the tile for 90 s.
-- **v2.0.1** — Unconnected Codex and Notion AI no longer say "working": while Codex has no accounts and Notion AI is not installed,
-  their header tiles and rows in "Active accounts" are ghosts (faded, dashed) with an offer to connect or install, and their console
-  tabs are hidden. A lone Claude row (no second server) spans the full width of "Active accounts"; once a second server appears the
+- **v2.0.1** — An unconnected Codex no longer says "working": while Codex has no accounts,
+  its header tile and row in "Active accounts" are ghosts (faded, dashed) with an offer to connect, and its console
+  tab is hidden. A lone Claude row (no second server) spans the full width of "Active accounts"; once a second server appears the
   two rows sit side by side.
 - **v2.0.0** — Turnkey install: the 14-step `install.sh` checks every step and follows `docs/INSTALL.md` (preparation, Claude
-  accounts, Telegram, Codex, Notion AI, second server, voice; every section has "Step N of M", a check and an "if it failed" table).
+  accounts, Telegram, Codex, second server, voice; every section has "Step N of M", a check and an "if it failed" table).
   No personal data in the code: name, addresses, chat id and paths come from `config.json`. The "Second server" wizard in General
   settings connects a second server without editing files; the server names "Claude A/B" can be renamed. Optional voice (local
-  text-to-speech and speech-to-text) with its own installer. Notion agents: a time progress bar on creation, a persistent SSH key and
-  an own Telegram chat per agent. The console splits into 2-3 parts and follows the worker, replacing the previous worker's part.
+  text-to-speech and speech-to-text) with its own installer. The console splits into 2-3 parts and follows the worker, replacing the previous worker's part.
   While work moves to the second server the banner says "Looking for a free account" and the "nowhere to switch" Telegram message
   is not sent. Forced switch when the second server keeps answering. **Upgrading from versions before 1.28:** run `sudo ./install.sh`
   from the release archive once (the manifest has `needs_install`).
-- **v1.25.28** — "Agent" profile: Claude and Codex hand tasks to the agent with the command from `notion_agent.delegate_cmd`
-  instead of editing themselves; without the command the profile stays hidden. Emergency profile: a red frame around the whole
+- **v1.25.28** — Emergency profile: a red frame around the whole
   block with a stripe on the left, the blinking button and dot are green, the Codex console tab hides after "Remove Codex
   entirely". The bridge returns PNG/JPEG screenshots from Codex to Telegram as original files: image lines in the final reply
   become attachments from the working folder's `outbox`, with format, size, count and path checks; an attachment error does not lose the text.
@@ -1046,41 +971,12 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
   and writes the path into `config.json`. Node.js 16+ is required; without it the window tells you what to install. The
   "Connecting Codex from scratch" section is updated. Fixed a race in the Telegram→Codex bridge: two quick messages in a
   row no longer start two Codex worker processes.
-- **v1.25.21** — Gray frame on the Notion block. While the reserve is off, the N icon, the "Reserve" switch and the ⚙ are
-  outlined with the regular gray skin frame — the same as the Codex block (version 1.25.19 removed the frame of an off
-  block completely). The green frame in reserve and the red one on lost connection are unchanged. The frame table in the
-  "Notion agent and reserve" section is updated.
-- **v1.25.20** — The reserve is its own switch, the Notion icon is only an indicator. The N icon in the header now just
-  shows the connection (green dot — Notion is connected, red — sign in again) and turns nothing on. The manual reserve
-  is the "Reserve" switch next to it: press it and the panel asks "Really move to reserve mode?" and explains what
-  will happen (Claude goes on pause, Codex and the agent work, the Codex profile changes to the service "Reserve" one,
-  turning it off brings everything back at once). Without a yes nothing changes; without a Notion login or an agent link
-  the switch is grey. The "manual" tick in ⚙ is gone — two are left: "turn on by itself" and "emergency mode". On a narrow
-  screen the Codex buttons in the header no longer overlap: if they do not fit next to the Notion block, they take their own row.
-- **v1.25.19** — Notion block frame, console tabs and the manual reserve. The frame around the switch and the ⚙ is now
-  green only while the reserve is on; an off block and an on block without reserve have no frame (red — "on but no
-  connection" — stays, yellow is gone). An inactive Claude/Codex console tab is an outline only, no fill (the console
-  text shows through), an active one is filled completely. Switch the block off and the "manual" tick in the ⚙ clears
-  itself and the reserve turns off at once; switch it back on and Claude works, the reserve turns on separately. The
-  "automatic" tick is left alone. Tests: three for the tick reset, plus tabs and frame.
-- **v1.25.18** — "Codex + Notion instead of Claude" reserve. The ⚙ of the Notion block has three ticks: "work with the
-  agent only" (manual), "turn on by itself when the limits of every Claude account are used up" and "…and also turn on
-  Codex emergency mode". A manually enabled reserve really pauses Claude: the accounts are not spent, incoming messages
-  wait in the queue, Claude gets two minutes to finish what it started (a countdown on the banner), then its tools are
-  blocked. The Codex profile switches to the service profile "Reserve" by itself and switches back; Codex sees exactly
-  four Notion tools for working with the agent, and every project change waits for a "yes". Lifting the reserve is
-  instant (pause, profile, header — under a second); Claude gets a message and carries on from where it stopped. The
-  switch and the ⚙ share one frame: green — on, yellow — reserve, red — no connection, off — no frame. A new README
-  section "Notion agent and the reserve": what to do from scratch, including Codex signing in to Notion
-  (`codex mcp login notion --no-browser`); a new test file `test_cc_reserve_pause.py`.
 - **v1.25.17** — Codex understands pictures from Telegram: a photo (with or without a caption) or a picture sent as a file
   is saved by the bridge and handed to Codex; an album of several photos (up to 10) becomes one request. A "yes" in
   a caption does not confirm a task. The console tabs are coloured: Claude a calm orange, Codex blue. On a computer the
   Codex profile list slides in from the right as a drawer (everything on one screen, no scroll bar); on a phone it is
   still a drop-down, only more compact: no round switches or pills, a tick marks the chosen profile. The Telegram bot
-  switch is gone from this menu: "Bridge on" lives in ⚙ → "Telegram bridge". Next to the accounts there is a Notion agent
-  card (whether it is connected; the name comes from `config.json` → `notion_agent`), no tokens are shown on the page;
-  a new file `cc_notion.py`. The Codex profile name no longer overflows its button on a 360 px wide screen. A new section
+  switch is gone from this menu: "Bridge on" lives in ⚙ → "Telegram bridge". The Codex profile name no longer overflows its button on a 360 px wide screen. A new section
   "Connecting Codex from scratch": installation, device-code sign-in (it must be turned on in ChatGPT → Settings →
   Security), the bot, chat_id, the profile, typical errors; the same in short is in the add-account window.
 - **v1.25.16** — the RU·EN language switch is gone from the header (on a phone it took a whole row). The default is still

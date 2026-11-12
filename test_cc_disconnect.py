@@ -11,7 +11,6 @@ from unittest.mock import patch, Mock
 import cc_disconnect as D
 import cc_codex as C
 import cc_codex_bridge as B
-import cc_notion_ai as N
 import cc_backup
 
 
@@ -172,90 +171,6 @@ class ClaudeDisconnect(Fixture):
         self.assertTrue(self.L.delete_account('acc1', 'confirm')[0])
         self.assertNotIn('claudeAiOauth', D.read(self.L.LIVE_CREDS))
         self.assertEqual(D.read(self.L.LIVE_CFG), {'theme':'dark'})
-
-
-class NotionDisconnect(Fixture):
-    def setUp(self):
-        super().setUp()
-        self.web = self.root / 'web'
-        self.web.mkdir()
-        for key, rel in {'DTOKEN':'web/api_token', 'DELEGATE_TOKEN':'web/api_token',
-                         'DISCONNECTED':'web/DISCONNECTED', 'CFG_FILE':'base/notion_ai.json',
-                         'AUTH_KEYS':'ssh/authorized_keys', 'PAT_FILE':'web/notion_pat'}.items():
-            self.swap(N, key, str(self.root / rel))
-        put(N.DTOKEN, 'local transport secret')
-        put(N.CFG_FILE, dict(N.CFG_DEFAULTS, notion_email='one@example.invalid', owner='test owner', chat_url='old chat'))
-        put(N.AUTH_KEYS, 'ssh-ed25519 OTHER admin\nssh-ed25519 OWN ccfleet-notion-ai\n')
-        put(self.web / 'state.json', {'cookies':[{'value':'test-cookie'}]})
-        put(self.web / 'state.new.json', {'cookies':[]})
-        put(self.web / 'code.txt', '123456')
-        put(N.PAT_FILE, 'test-only-notion-api-token')
-        self.history = put(self.web / 'history.jsonl', 'retained conversation')
-        self.program = put(self.web / 'server.py', '# installed program')
-        self.creds = put(self.root / 'live/credentials.json', {'claudeAiOauth':{'accessToken':'claude-test'}, 'mcpOAuth':{'notion|a':{'accessToken':'notion-test'}, 'other':{'accessToken':'other-test'}}})
-        profiles = SimpleNamespace(state=SimpleNamespace(public=lambda: {'engines':{}}), avail={})
-        self.nai = N.NotionAI({'BASE':str(self.root/'base'), 'PROFILES':str(self.root/'profiles'), 'LIVE_CREDS':str(self.creds)}, profiles)
-        def run(args, timeout=30):
-            return (3, 'inactive') if 'is-active' in args else (0, '')
-        self.run = Mock(side_effect=run)
-        self.swap(N, '_run', self.run)
-        self.delegate = Mock(side_effect=AssertionError('no cloud calls on disconnect'))
-        self.swap(N, '_delegate', self.delegate)
-
-    def test_disconnect_preserves_data_but_removes_all_local_provider_authorization(self):
-        result = self.nai.disconnect('confirm')
-        self.assertTrue(result['ok'], result)
-        for name in ('state.json', 'state.new.json', 'code.txt', 'notion_pat'):
-            self.assertFalse((self.web / name).exists(), name)
-        self.assertEqual(self.history.read_text(), 'retained conversation')
-        self.assertEqual(self.program.read_text(), '# installed program')
-        self.assertTrue(Path(N.DTOKEN).exists())  # internal transport, not a Notion login
-        self.assertTrue(Path(N.DISCONNECTED).exists())
-        self.assertEqual(Path(N.AUTH_KEYS).read_text(), 'ssh-ed25519 OTHER admin\n')
-        self.assertEqual(D.read(self.creds), {'claudeAiOauth':{'accessToken':'claude-test'}, 'mcpOAuth':{'other':{'accessToken':'other-test'}}})
-        self.assertEqual(N.load_cfg()['notion_email'], '')
-        self.assertEqual(self.nai.public()['agents']['notion']['state'], 'unlinked')
-        self.assertEqual(N.agents_public()['agents'], [])
-        self.assertEqual(N.view_public()['rows'], [])
-        self.assertFalse(self.nai.on()['ok'])
-        self.assertTrue(self.nai.disconnect('confirm')['ok'])  # retry is safe
-        self.delegate.assert_not_called()
-
-    def test_cancel_changes_nothing(self):
-        self.assertFalse(self.nai.disconnect('no')['ok'])
-        self.run.assert_not_called()
-        self.assertTrue((self.web / 'state.json').exists())
-
-    def test_failed_service_stop_preserves_authorization(self):
-        self.run.side_effect = None
-        self.run.return_value = (1, 'failed')
-        self.assertFalse(self.nai.disconnect('confirm')['ok'])
-        self.assertTrue((self.web / 'state.json').exists())
-        self.assertFalse(Path(N.DISCONNECTED).exists())
-
-    def test_active_step_is_not_interrupted(self):
-        self.nai.step = {'status':'running'}
-        self.assertFalse(self.nai.disconnect('confirm')['ok'])
-        self.run.assert_not_called()
-
-    def test_auth_symlink_rejected_before_stopping_services(self):
-        p = self.web / 'state.json'
-        p.rename(self.root / 'outside')
-        p.symlink_to(self.root / 'outside')
-        self.assertFalse(self.nai.disconnect('confirm')['ok'])
-        self.run.assert_not_called()
-
-    def test_reconnect_requires_explicit_email_and_starts_fresh_login(self):
-        self.assertTrue(self.nai.disconnect('confirm')['ok'])
-        self.assertFalse(N.login_start()['ok'])
-        self.assertTrue(N.save_cfg({'notion_email':'new@example.invalid'})[0])
-        self.swap(N, 'delegate_health', Mock(return_value={'auth':'lost'}))
-        self.delegate.side_effect = None
-        self.delegate.return_value = {'ok':True}
-        self.assertTrue(N.login_start()['ok'])
-        self.assertFalse(Path(N.DISCONNECTED).exists())
-        self.assertFalse((self.web / 'state.json').exists())  # old cookies never restored
-        self.delegate.assert_called_once_with('/relogin', {})
 
 
 if __name__ == '__main__':

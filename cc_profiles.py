@@ -17,10 +17,7 @@ from cc_profile_state import ProfileScenarios, ProfileState, ENGINES
 class NativeProfiles:
     def __init__(self, ns):
         self.ns = ns;self.base = Path(ns['BASE']);self.claude = ClaudeProfile(ns);self.manager = None
-        self.bridge = ns['cc_codex_bridge'];self.codex = ns['cc_codex_console'];self.notion = ns['cc_notion'];self.emergency = ns['cc_codex_emergency']
-        self.original_notion_public = self.notion.public
-        self.original_notion_args = self.notion.codex_args
-        self.original_notion_note = self.notion.codex_note
+        self.bridge = ns['cc_codex_bridge'];self.codex = ns['cc_codex_console'];self.emergency = ns['cc_codex_emergency']
         initial_settings=self.bridge.load()
         self.initial_codex = {k:initial_settings.get(k) for k in ('mode','access','task_rights','profile','workdir','project')}
         self.claude_cwd = ns['_session_cwd']() or os.path.expanduser('~')
@@ -34,7 +31,6 @@ class NativeProfiles:
             state.selected['codex'] = 'orchestrator'
             state.leader = 'codex'
         # Только принимаем существующую сессию; права применяются по явному выбору.
-        # [notion-ai] автоматического резерва нет: старые галочки из config.json не читаем
         return state
 
     def _remote(self):
@@ -74,13 +70,13 @@ class NativeProfiles:
             out=self.manager.exchange(e)/'outbox/task.md'
             return prefix+f'Ты ведущий, {op} исполнитель. Проект самостоятельно не изменяй. Один проверяемый шаг запиши в {out}; первая строка права: чтение / дев / полные. Шаг уходит исполнителю только после подтверждения человека в балансере. Не вызывай второго исполнителя самостоятельно и не создавай встречные связки. После получения результата проверь его относительно цели и подготовь следующий шаг либо сообщи итог.'
         if data['role']=='executor':return prefix+f'Ты исполнитель {op}. Выполняй только подтверждённый шаг и его ограничения. Не делегируй задачу ведущему или другим агентам. Верни проверенный результат и проверки.'
-        return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. '+self.bridge.team_note('Другой исполнитель и Notion-агент не используются.')+' Согласование изменений с человеком сохраняется; секреты не выводи.'
+        return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. '+self.bridge.team_note('Другой исполнитель не используется.')+' Согласование изменений с человеком сохраняется; секреты не выводи.'
 
     def claude_policy(self, state):
         plan=self.plan(state,'claude');cwd=self.claude_cwd if plan['access']=='full' else str(self.manager.exchange('claude')) if plan['role']=='leader' else self.claude_work
         project=self.bridge.project_dir()
         workspace=cwd
-        return dict(expires=0,access=plan['access'],paused=plan['role']=='paused',reserve=plan['role']=='reserve',cwd=self.claude_cwd,workspace=workspace,
+        return dict(expires=0,access=plan['access'],paused=plan['role']=='paused',cwd=self.claude_cwd,workspace=workspace,
                     write_roots=[workspace],read_roots=list(dict.fromkeys([workspace,str(self.manager.exchange('claude')),str(self.manager.exchange('codex'))]+([project] if project else []))))
 
     def capture(self, changed):
@@ -247,12 +243,22 @@ class NativeProfiles:
             subprocess.run(['/usr/bin/screen','-S',self.claude.screen(),'-p','0','-X','stuff','\x1b'],capture_output=True,timeout=5)
 
     def availability(self):
-        claude=self.notion.claude_status(self.ns['pause_state']())
+        claude=claude_status(self.ns['pause_state']())
         rotation=self.ns['FLEET_ROTATION'];rows=rotation.snapshot().get('accounts') or [];now=time.time();good=[]
         for row in rows:
             if row.get('loading') or row.get('stale') or row.get('error') or now-float(row.get('ts') or 0)>180:return dict(claude=claude,codex='unknown')
             good.append(not(row.get('login_required') or row.get('lapsed') or row.get('reached') or row.get('usage_allowed') is False or any(float(w.get('pct') or 0)>=100 for w in row.get('windows') or [])))
         return dict(claude=claude,codex=('up' if any(good) else 'down') if good else 'unknown')
+
+def claude_status(lv):
+    """down — лимиты всех аккаунтов кончились и Claude стоит на паузе; up — работает; unknown — снимку не верим.
+    «Кончились» — ровно то, что ставит паузу (pause_ctl.level_state): hard (сессии) или week (недельный потолок,
+    если пауза по неделе включена). Не считаем: ручной выбор аккаунта, отключённую вручную паузу, старый снимок."""
+    if not isinstance(lv, dict) or lv.get("ok") is False or lv.get("stale") or "level" not in lv:
+        return "unknown"
+    if (lv.get("pause") or {}).get("override") or lv.get("manual"):
+        return "up"
+    return "down" if lv.get("level") in ("hard", "week") else "up"
 
 SIDE_IDLE = 90    # побочная беседа: сколько секунд тишины после ответа держать вкладку проснувшейся
 SIDE_MAX = 1800   # жёсткий потолок окна, даже если консоль всё ещё отвечает
@@ -309,7 +315,7 @@ class Profiles:
                 if e=='codex':self.native._codex_pause(False)
                 else:
                     path=self._claude_policy_file()
-                    if path:atomic(path,dict(self.native.claude_policy(self.state),paused=False,reserve=False,access='read',write_roots=[]))
+                    if path:atomic(path,dict(self.native.claude_policy(self.state),paused=False,access='read',write_roots=[]))
             except Exception as exc:
                 return False,'Не удалось разбудить: '+type(exc).__name__
             self.side[e]=dict(since=now,until=now+SIDE_IDLE)
@@ -399,7 +405,7 @@ class Profiles:
                 code=str(exc)
                 failed['failure']=dict(type=type(exc).__name__,code=code if re.fullmatch(r'[a-z_]+',code) else None)
                 atomic(self.pending,failed)
-            reasons={'codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели, затем включи резерв.','reserve_not_ready':'Сначала подключи Notion и укажи агента в настройках резерва.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.','claude_prod_not_ready':'Claude на PROD не отвечает или не запущен. Проверь вкладку «Claude PROD» и повтори выбор.','claude_prod_role_failed':'Не удалось сообщить роль Claude на PROD. Проверь связь с PROD и повтори выбор.'}
+            reasons={'codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.','claude_prod_not_ready':'Claude на PROD не отвечает или не запущен. Проверь вкладку «Claude PROD» и повтори выбор.','claude_prod_role_failed':'Не удалось сообщить роль Claude на PROD. Проверь связь с PROD и повтори выбор.'}
             self.error='Переключение отменено. '+reasons.get(str(exc),'Консоль не подтвердила применение профиля; проверь её экран перед повтором.')
             revoked=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active() and self.pending.exists())
             if revoked:
@@ -494,7 +500,7 @@ class Profiles:
             for e in ENGINES:
                 if self.avail[e]['status']!=statuses[e]:self.avail[e]=dict(status=statuses[e],since=now)
             candidate=ProfileState.from_data(self.state.export(),self.clock)
-            # Unknown/stale snapshots cannot activate or remove a reserve.
+            # Unknown/stale snapshots cannot change the availability-driven scenario.
             if all(v['status']!='unknown' and now-v['since']>=120 for v in self.avail.values()):
                 candidate.availability={e:self.avail[e]['status']=='up' for e in ENGINES}
                 candidate.reconcile_availability()
@@ -516,7 +522,7 @@ class Profiles:
 def bind(ns, inputs):
     from cc_profile_tasks import ProfileTasks, completed_claude_answer
     native=NativeProfiles(ns);profiles=Profiles(ns['BASE'],native)
-    bridge,console,notion=native.bridge,native.codex,native.notion
+    bridge,console=native.bridge,native.codex
     original_mcp=console.MCP
     def codex_mcp():
         if not profiles.managed['codex']:return original_mcp()
@@ -531,16 +537,7 @@ def bind(ns, inputs):
     profiles.side_busy=dict(codex=console.busy,claude=lambda:ns['session_busy']())
     bridge.DISPATCH_ALLOWED=lambda:profiles.input_allowed('codex')
     bridge.TAKE_DRAFT_ALLOWED=lambda:not profiles.managed['codex']
-    bridge.RESERVE_NOTE=lambda:native.prompt(profiles.state,'codex') if profiles.managed['codex'] else native.original_notion_note()
-    # One scheduler owns both directions. The legacy service remains the connector/UI adapter.
-    notion.active=lambda:bool(profiles.state.service and profiles.state.service['engine']=='codex' and profiles.state.service['kind']=='reserve')
-    bridge.RESERVE_ACTIVE=notion.active
-    notion.SOLO_PROFILE=lambda:bridge.active_profile(bridge.load())=='codex_solo_full' and not notion.active()
-    def notion_public(lv=None):
-        data=native.original_notion_public(lv)
-        if not data.get('available'):data=dict(available=True,connected=False,agent=dict(name='',set=False))
-        return data
-    notion.public=notion_public;notion.tick=profiles.tick;notion.start=profiles.start
+    bridge.PROFILE_NOTE=lambda:native.prompt(profiles.state,'codex') if profiles.managed['codex'] else bridge.solo_note()
     # Native emergency changes are coordinated synchronously by a profile transaction.
     native.emergency._restart_console=lambda:None
     bridge.PROFILE_APPLIED=console.apply_plan

@@ -40,7 +40,7 @@ def _iso_ts(iso):
 
 
 def real_limit(account):
-    """[notion-ai] Настоящий лимит исчерпан (окно 100% или сервис сказал «лимит»)
+    """Настоящий лимит исчерпан (окно 100% или сервис сказал «лимит»)
     → (да/нет, когда освободится — ts или None, длины исчерпанных окон в минутах)."""
     wins = [w for w in account.get('windows') or [] if w.get('pct') is not None]
     full = [w for w in wins if w['pct'] >= 100]
@@ -53,7 +53,7 @@ def real_limit(account):
 
 
 def limit_pause_state(accounts, active, has_candidate, now=None, grace=120):
-    """[notion-ai] Пауза Codex по лимитам — как у Claude: у выбранного аккаунта исчерпан настоящий лимит,
+    """Пауза Codex по лимитам — как у Claude: у выбранного аккаунта исчерпан настоящий лимит,
     а ротации переключиться не на кого. Входящие ждут в очереди моста и уходят сами, когда окно освободилось:
     по свежим цифрам или через grace секунд после времени сброса (если цифры не обновились)."""
     now = time.time() if now is None else now
@@ -113,10 +113,12 @@ def limit_notice_state(accounts, active, pause=None, now=None, grace=120):
     mins = sorted({w['mins'] for w, _ in full if isinstance(w.get('mins'), int) and w['mins'] > 0})
     # An unspecified service limit has no known window/reset; do not guess 5 h.
     until = max(t for _, t in full) if full and all(t is not None for _, t in full) else None
+    # сброс каждого исчерпанного окна (минуты → ts): панель пишет на плитке «лимит недели / 5 ч исчерпан до …» о том, что кончается позже
+    resets = {str(w['mins']): t for w, t in full if isinstance(w.get('mins'), int) and w['mins'] > 0 and t is not None}
     lab = lambda a: a.get('label') or a.get('email') or a.get('slot') or ''
     pct = lambda m: next((w.get('pct') for w in cur.get('windows') or [] if w.get('mins') == m), None)
     notice = dict(active=True, paused=bool((pause or {}).get('active')), single=len(accounts) == 1,
-                  slot=active, label=lab(cur), windows=mins, multi=len(accounts) > 1,
+                  slot=active, label=lab(cur), windows=mins, resets=resets, multi=len(accounts) > 1,
                   window_names=[WIN_NAMES.get(m, f'{round(m / 60)} ч') for m in mins],
                   resume_at=until, resume_slot=active, resume_label=lab(cur),
                   accounts=[dict(label=lab(cur), active=True, ses=pct(300), week=pct(10080))])

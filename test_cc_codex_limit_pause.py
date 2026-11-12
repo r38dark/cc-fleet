@@ -1,4 +1,4 @@
-# [notion-ai] Пауза Codex по лимитам (как у Claude): python3 -m unittest test_cc_codex_limit_pause -v
+# Пауза Codex по лимитам (как у Claude): python3 -m unittest test_cc_codex_limit_pause -v
 import datetime, os, sys, time, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

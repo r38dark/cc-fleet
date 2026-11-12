@@ -23,6 +23,14 @@ class LimitNotice(unittest.TestCase):
  def test_two_full_windows_wait_for_both(self):
   n=notice([account(session=100,week=100)])
   self.assertEqual(n['windows'],[300,10080]);self.assertAlmostEqual(n['resume_at'],NOW+86400)
+ def test_each_used_up_window_carries_its_reset_for_the_tile_badge(self):
+  # бейдж плитки пишет «лимит недели / 5 ч исчерпан до …» о том окне, что кончается позже: нужен сброс каждого окна
+  n=notice([account(session=100,week=100)])
+  self.assertEqual(set(n['resets']),{'300','10080'});self.assertAlmostEqual(n['resets']['300'],NOW+3600);self.assertAlmostEqual(n['resets']['10080'],NOW+86400)
+  self.assertEqual(notice([account(week=100)])['resets'].keys(),{'10080'})
+  a=account(session=100,week=100);a['windows'][1]['resets_at']=None
+  self.assertEqual(set(notice([a])['resets']),{'300'})          # неизвестный сброс не выдумываем
+  self.assertEqual(notice([account(reached=True)])['resets'],{})
  def test_below_real_limit_is_not_exhaustion(self):
   for pct in (0,85,90,99,99.9):self.assertFalse(notice([account(session=pct,week=pct)])['active'])
  def test_notices_clear_when_fresh_usage_is_available(self):

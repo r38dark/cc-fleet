@@ -23,7 +23,7 @@ class ManualPolicy(unittest.TestCase):
 
     def test_full_reserve_and_explicit_orchestrator_pair_are_accepted(self):
         valid=[]
-        for a,b in itertools.product((None,'full','reserve','orchestrator','executor'),repeat=2):  # [notion-ai] reserve больше не принимается
+        for a,b in itertools.product((None,'full','reserve','orchestrator','executor'),repeat=2):  # reserve больше не принимается
             if validate_choices(dict(claude=a,codex=b))[0]:valid.append((a,b))
         self.assertCountEqual(valid,[(None,'full'),('full',None),('orchestrator','executor'),('executor','orchestrator')])
 

@@ -80,15 +80,14 @@ class ConsoleActionButtons(unittest.TestCase):
         self.assertIn("k==='codex'?'cxcNewTip':'newSessionTitle'", body)
 
 class SingleClaudeRow(unittest.TestCase):
-    """Второй сервер не подключён (Claude PROD скрыт) — строка Claude на всю ширину, как Codex и Notion AI (правка владельца)."""
+    """Второй сервер не подключён (Claude PROD скрыт) — строка Claude на всю ширину, как Codex (правка владельца)."""
 
     def test_lone_claude_row_spans_the_full_width(self):
         css = cc_overview.CSS
         rule = 'html.no-prod:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{grid-column:1/-1}'
         self.assertIn(rule, css)
-        # Codex и Notion AI на всю ширину были и раньше: правило для Claude не должно их менять
-        self.assertIn('.fleet-acc:has(>.fleet-compact-account.codex),', css)
-        self.assertIn('.fleet-acc:has(>.fleet-compact-account.notion){grid-column:1/-1}', css)
+        # Codex на всю ширину был и раньше: правило для Claude не должно его менять
+        self.assertIn('.fleet-acc:has(>.fleet-compact-account.codex){grid-column:1/-1}', css)
         self.assertNotIn('html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{grid-column:1/-1}', css)  # без no-prod две строки Claude остаются рядом
 
 

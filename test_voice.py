@@ -253,26 +253,10 @@ class Installer(unittest.TestCase):
         r, _, _ = self.run_preload(fail_times=2)
         self.assertIn("rc=1", r.stdout)
 
-    def test_installer_turns_the_voice_checkbox_on_in_the_panel(self):
-        d = tempfile.mkdtemp(prefix="vcfg_"); self.addCleanup(shutil.rmtree, d, True)
-        cfg = os.path.join(d, "notion_ai.json")
-        json.dump({"owner": "Аня", "voice": False}, open(cfg, "w"))
-        r = subprocess.run(["bash", "-c", 'source <(sed -n "/^info()/p;/^enable_in_panel()/,/^}/p" "$0"); CC_LIMITS_BASE="$1"; enable_in_panel; echo rc=$?', self.INSTALL, d],
-                           capture_output=True, text=True, timeout=30)
-        self.assertIn("rc=0", r.stdout)
-        self.assertEqual(json.load(open(cfg)), {"owner": "Аня", "voice": True})  # остальные настройки не тронуты
-        empty = tempfile.mkdtemp(prefix="vcfg2_"); self.addCleanup(shutil.rmtree, empty, True)
-        r = subprocess.run(["bash", "-c", 'source <(sed -n "/^info()/p;/^enable_in_panel()/,/^}/p" "$0"); CC_LIMITS_BASE="$1"; enable_in_panel; echo rc=$?', self.INSTALL, empty],
-                           capture_output=True, text=True, timeout=30)
-        self.assertIn("rc=0", r.stdout)                     # панели нет — ничего не создаём и не падаем
-        self.assertEqual(os.listdir(empty), [])
-
-    def test_clean_install_has_voice_off_until_it_is_installed(self):
-        main = open(os.path.join(HERE, "install.sh"), encoding="utf-8").read()
-        self.assertIn('"voice": os.environ.get("NAI_VOICE") == "1"', main)
-        self.assertIn('NAI_VOICE="$(yes_ "$WANT_VOICE"', main)
-        nai = open(os.path.join(HERE, "notion_ai", "install.sh"), encoding="utf-8").read()
-        self.assertIn('"voice": False', nai)
+    def test_installer_does_not_touch_panel_settings(self):
+        inst = open(self.INSTALL, encoding="utf-8").read()
+        self.assertNotIn("enable_in_panel", inst)   # галки в настройках панели больше нет: голос включается в codex_bridge.json
+        self.assertIn("voice_enabled", inst)
 
     def test_problems_of_the_server_are_reported_with_what_to_do(self):
         d = tempfile.mkdtemp(prefix="vinst_"); self.addCleanup(shutil.rmtree, d, True)
@@ -286,30 +270,6 @@ class Installer(unittest.TestCase):
 
 
 class Wiring(unittest.TestCase):
-    def test_notion_reply_prefers_the_installer_command_and_falls_back_to_the_old_path(self):
-        from importlib.machinery import SourceFileLoader
-        m = SourceFileLoader("nai_reply_voice", os.path.join(HERE, "notion_ai", "bin", "notion-ai-reply")).load_module()
-        with mock.patch.object(m.os.path, "exists", side_effect=lambda p: p == "/usr/local/bin/ccfleet-say"):
-            self.assertEqual(m.say_tool(), "/usr/local/bin/ccfleet-say")
-        with mock.patch.object(m.os.path, "exists", side_effect=lambda p: p == "/root/tts/say.sh"):
-            self.assertEqual(m.say_tool(), "/root/tts/say.sh")
-        with mock.patch.object(m.os.path, "exists", return_value=False):
-            self.assertEqual(m.say_tool(), "/usr/local/bin/ccfleet-say")
-
-    def test_bridge_transcribes_with_the_installer_command_first(self):
-        src = open(os.path.join(HERE, "notion_ai", "web", "notion_ai_tg.py"), encoding="utf-8").read()
-        self.assertIn('"/usr/local/bin/ccfleet-transcribe", "/root/tts/transcribe.sh"', src)
-        self.assertIn("subprocess.run([transcribe_tool(), path]", src)
-
-    def test_panel_uses_the_installer_command_and_checks_it_when_asked(self):
-        import cc_notion_ai as M
-        self.assertEqual(M.TTS, "/usr/local/bin/ccfleet-say")
-        with mock.patch("cc_notion_ai.Path") as P:
-            P.side_effect = lambda p: types.SimpleNamespace(exists=lambda: p == M.TTS_LEGACY)
-            self.assertEqual(M.tts_path(), M.TTS_LEGACY)  # голос поставлен вручную по-старому — панель его видит
-            P.side_effect = lambda p: types.SimpleNamespace(exists=lambda: p == M.TTS)
-            self.assertEqual(M.tts_path(), M.TTS)
-
     def test_voice_files_are_in_the_repository_and_not_ignored(self):
         need = ["install.sh", "server.py", "README.md", "ccfleet-tts.service", "dict/hard_e.json", "bin/ccfleet-say", "bin/ccfleet-say-long", "bin/ccfleet-transcribe"]
         for rel in need:

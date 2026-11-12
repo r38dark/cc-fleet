@@ -1,6 +1,6 @@
 """[remote] Автопереключение работы между Claude-аккаунтами (DEV ↔ PROD): когда лимит заканчивается у того, где идёт работа,
 а на другом он есть, работа переключается на другой. Вручную переключённая работа остаётся там, куда её переключили.
-Codex и агент Notion сюда не входят: на них переключает человек.
+Codex сюда не входит: на него переключает человек.
 
 Решение принимает чистая функция decide(): ей даётся снимок (Claude DEV, PROD, режим передачи, память тиков),
 она возвращает действие. tick() собирает снимок, вызывает decide() и выполняет действие через cc_remote_mode.
@@ -77,7 +77,7 @@ def prod_state(row, thr, cap, now=None):
 
 def decide(now, cfg, native, prod, mode, memo):
     """(действие, причина). Действия: None | 'to_prod' | 'to_native' | 'notify_both'.
-    native: level, stale, role, notion_active; prod: usable, why; mode: active, busy, since.
+    native: level, stale, role; prod: usable, why; mode: active, busy, since.
     memo (меняется): to_prod, to_native — подряд идущие тики с одним и тем же решением; both_notified, last_return."""
     if not cfg.get("enabled") or mode.get("busy") or native.get("stale"):
         memo.update(to_prod=0, to_native=0)
@@ -87,7 +87,7 @@ def decide(now, cfg, native, prod, mode, memo):
     if not mode.get("active"):
         memo["to_native"] = 0
         memo["both_notified"] = False
-        works = native.get("role") == "solo" and not native.get("notion_active")
+        works = native.get("role") == "solo"
         if (native_blocked and works and prod.get("usable")
                 and now - max(float(memo.get("last_return") or 0), float(mode.get("returned") or 0)) >= float(cfg.get("cooldown") or 0)):
             memo["to_prod"] += 1
@@ -159,8 +159,7 @@ def _snapshot(ns, mid):
     except Exception:
         pass
     acc = (ls.get("accounts") or {}).get(ls.get("active")) or {}
-    native = dict(level=ls.get("level") or "none", stale=bool(ls.get("stale")), role=role,
-                  notion_active=bool(pause_ctl._notion_ai_active()), line=ls.get("line") or "",
+    native = dict(level=ls.get("level") or "none", stale=bool(ls.get("stale")), role=role, line=ls.get("line") or "",
                   pct=acc.get("pct"), wpct=acc.get("wpct"))
     sim = str(load().get("sim_level") or "")
     if sim:
@@ -186,7 +185,7 @@ def _pause():
 
 def handoff_ready(now=None):
     """(можно ли вместо паузы передать работу на PROD, причина). Только файлы: зовут хуки паузы в отдельном процессе.
-    Условия: автопередача включена, поток панели жив (свежий пульс), Claude DEV не на PROD, нет профиля Notion AI,
+    Условия: автопередача включена, поток панели жив (свежий пульс), Claude DEV не на PROD,
     у DEV нет лимита, остыл кулдаун, у PROD свежие цифры и он пригоден. Передачу всё равно решает панель (tick), хук только просит."""
     now = now or time.time()
     cfg = load()
@@ -201,8 +200,6 @@ def handoff_ready(now=None):
     if md.get("stage") and now - float(md.get("since_ts") or 0) < 300:
         return True, "передача на PROD уже идёт"
     pc = _pause()
-    if pc._notion_ai_active():
-        return False, "включён профиль Notion AI"
     if now - max(float(hb.get("last_return") or 0), 0.0) < float(cfg.get("cooldown") or 0):
         return False, "рано после переключения с PROD"
     ls = pc.level_state()
@@ -383,7 +380,7 @@ def _tick(ns, kicked=False):
         else:
             print("remote-auto: переключение не началось: %s" % res.get("message"), flush=True)
     elif action == "notify_both":
-        _notify(ns, "⚠️ Лимиты закончились и у Claude DEV, и на Claude PROD. Переключи работу вручную: Codex или агент Notion AI.")
+        _notify(ns, "⚠️ Лимиты закончились и у Claude DEV, и на Claude PROD. Переключи работу вручную на Codex.")
     return action, False
 
 

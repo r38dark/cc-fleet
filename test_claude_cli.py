@@ -667,8 +667,8 @@ class VersionLabel(unittest.TestCase):
         self.assertIn("ccliStaleNote", r[2]["title"])
         self.assertIn("ccliStaleClaude", r[3]["title"])
 
-    def test_nothing_for_notion_missing_data_or_unavailable_second_server(self):
-        r = pv([{"s": "notion", "x": row()}, {"s": "notion:abc", "x": row()}, {"s": "claude", "x": None}, {"s": "prod", "x": {"ok": False}},
+    def test_nothing_for_unknown_part_missing_data_or_unavailable_second_server(self):
+        r = pv([{"s": "other", "x": row()}, {"s": "other:abc", "x": row()}, {"s": "claude", "x": None}, {"s": "prod", "x": {"ok": False}},
                 {"s": "claude", "x": row(version=None)}])
         self.assertEqual(r, [None, None, None, None, None])
 
@@ -697,14 +697,14 @@ class ClaudeRestart(unittest.TestCase):
         import cc_limits as L
         cls.L = L
 
-    def local(self, alive=True, remote=False, notion=False, side=False, stop=True, start=True):
+    def local(self, alive=True, remote=False, side=False, stop=True, start=True):
         L = self.L
-        nai = mock.Mock()
-        nai.side_running.return_value, nai.stop_claude.return_value, nai.start_claude.return_value = side, stop, start
-        with mock.patch.object(L, "NOTION_AI", nai, create=True), mock.patch.object(L.cc_fleet, "claude_alive", return_value=alive), \
-                mock.patch("pause_ctl._remote_active", return_value=remote), mock.patch.object(L, "jload", return_value={"active": notion}):
+        wk = mock.Mock()
+        wk.side_running.return_value, wk.stop_claude.return_value, wk.start_claude.return_value = side, stop, start
+        with mock.patch.object(L, "WORKERS", wk, create=True), mock.patch.object(L.cc_fleet, "claude_alive", return_value=alive), \
+                mock.patch("pause_ctl._remote_active", return_value=remote):
             r = L.claude_restart_local()
-        return r, [c[0] for c in nai.mock_calls]
+        return r, [c[0] for c in wk.mock_calls]
 
     def test_local_stop_then_start(self):
         r, calls = self.local()
@@ -713,7 +713,6 @@ class ClaudeRestart(unittest.TestCase):
     def test_local_not_touched_when_not_running_or_the_start_script_would_refuse(self):
         self.assertEqual(self.local(alive=False), ({"ok": False, "error": "not_running"}, []))
         self.assertEqual(self.local(remote=True), ({"ok": False, "error": "other_worker"}, []))     # работа на PROD: start_claude.sh не стартует, DEV остался бы выключен
-        self.assertEqual(self.local(notion=True), ({"ok": False, "error": "other_worker"}, []))     # профиль Notion AI — то же
         r, calls = self.local(side=True)
         self.assertEqual((r["error"], calls), ("side_session", ["side_running"]))
 

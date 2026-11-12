@@ -77,8 +77,8 @@ console.log(JSON.stringify(tiles.map(t=>({lb:t.attrs['data-lb']||null,crit:t.att
         near(r[4]["r5"], 0.1)
         self.assertEqual((r[5]["lb"], r[5]["crit"], r[5]["r5"]), ("1", "0", 1))   # нет пятичасового, есть недельный: пульса нет
 
-    def test_notion_ai_is_excluded_and_styles_are_in_place(self):
-        self.assertIn("#fleetActiveAccounts .fleet-compact-account:not(.notion)", SRC)
+    def test_every_tile_gets_the_bar_and_styles_are_in_place(self):
+        self.assertIn("document.querySelectorAll('#fleetActiveAccounts .fleet-compact-account').forEach(t=>{", SRC)
         for part in ("[data-lb]::before", "[data-lb]::after", "calc(var(--r5,0)*100%)", "calc(var(--uw,0)*100%)", "max(0px,calc(100% - 46px))", "isolation:isolate",
                      "fleetLbBreath", '[data-crit="1"]::before', "prefers-reduced-motion:reduce", "new MutationObserver(",
                      "[data-lb]::after{inset:-1px;", "2px no-repeat", "9px no-repeat"):

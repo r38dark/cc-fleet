@@ -9,7 +9,6 @@ import time
 READ_TOOLS = {'Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'}
 WRITE_TOOLS = {'Edit', 'Write', 'NotebookEdit'}
 AGENT_TOOLS = {'Agent', 'Task', 'SendMessage', 'TeamCreate', 'TeamDelete'}
-NOTION = ('notion-search-agents', 'notion-spawn-session', 'notion-wait-session', 'notion-send-message-to-session')
 
 def inside(path, roots):
     path = os.path.realpath(path)
@@ -25,10 +24,6 @@ def decide(policy, event):
         return 'Этот профиль использует только подтверждённые шаги через балансер.'
     if name.startswith(('mcp__plugin_telegram','mcp__telegram')) and name.rsplit('__',1)[-1] in ('reply','react','download_attachment'):
         return ''
-    if name.startswith('mcp__notion'):
-        if policy.get('reserve') and any(name.endswith(x.replace('-', '_')) or name.endswith(x) for x in NOTION):
-            return ''
-        return 'Notion-агент доступен только в профиле резерва.'
     if policy.get('access') == 'full':
         return ''
     if name not in READ_TOOLS | WRITE_TOOLS:

@@ -250,7 +250,7 @@ class Enable(Base):
 
 
 class AutoOn(Base):
-    """Включение резервом (лимиты Claude кончились): слово не нужно, отдельного сообщения нет — одно общее шлёт резерв."""
+    """Автовключение (подтверждено в профилях): слово не нужно, отдельного сообщения нет — одно общее шлёт смена профиля."""
     def test_auto_on_needs_no_word_and_sends_no_own_message(self):
         ok, msg = em.on("", auto="лимиты Claude кончились")
         self.assertTrue(ok, msg)

@@ -20,7 +20,7 @@ class SimpleProfiles(unittest.TestCase):
     def test_exact_symmetric_catalog(self):
         for engine in ['claude','codex']:
             profiles=self.state.definitions(engine)
-            self.assertEqual([p['id'] for p in profiles],[engine+'_solo_full','orchestrator'])  # [notion-ai] резерва больше нет
+            self.assertEqual([p['id'] for p in profiles],[engine+'_solo_full','orchestrator'])  # резерва больше нет
             self.assertEqual([p['kind'] for p in profiles],['full','orchestrator'])
             self.assertEqual(profiles[0]['access'],'full');self.assertEqual(profiles[1]['access'],'read')
             self.assertEqual(profiles[1]['task_rights'],'dev')
@@ -77,24 +77,6 @@ class SimpleProfiles(unittest.TestCase):
     def test_no_expiry_watcher_is_started(self):
         with mock.patch.object(emergency,'reconcile'),mock.patch.object(emergency.threading,'Thread') as thread:
             emergency.start();thread.assert_not_called()
-
-    def test_legacy_notion_reserve_settings_cannot_bypass_new_registry(self):
-        from test_cc_fleet_overview import Routes
-        route=Routes();self.addCleanup(route.doCleanups)
-        handler,_=route.fixture('/api/notion/save',{'reserve':{'auto_emergency':True}})
-        status,data=handler.do_POST();self.assertEqual(status,200);self.assertFalse(data['ok'])
-        handler,_=route.fixture('/api/notion/save',{'reserve':{'manual':True}},authed=False)
-        self.assertEqual(handler.do_POST()[0],403);self.assertEqual(handler.rfile.tell(),0)
-
-    def test_original_shared_agent_save_preserves_other_configuration(self):
-        from test_cc_fleet_overview import Routes
-        from types import SimpleNamespace
-        route=Routes();self.addCleanup(route.doCleanups)
-        handler,ns=route.fixture('/api/notion/save',{'name':'changed'})
-        config=dict(keep='unchanged',notion_agent={'name':'before'})
-        ns.update(cfg=lambda:config,CONFIG='test-config',jsave=mock.Mock(),cc_notion=SimpleNamespace(save=mock.Mock(return_value=(True,{'name':'changed'},'')),public=lambda:dict(available=True)))
-        status,data=handler.do_POST();self.assertEqual(status,200);self.assertTrue(data['ok']);self.assertEqual(config['keep'],'unchanged')
-        ns['jsave'].assert_called_once_with('test-config',dict(keep='unchanged',notion_agent={'name':'changed'}))
 
     def test_legacy_manual_mode_save_cannot_reenable_removed_scenario(self):
         from test_cc_fleet_overview import Routes
