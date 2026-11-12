@@ -1,11 +1,13 @@
 """Remote quota protection and pause notifications, independent of auto handoff."""
 import time
+import threading
 
 import cc_remote as R
 import cc_avail
 
 STATE_FILE = R.BASE + "/remote_limit_guard.json"
 _deployed = {}
+_policy_lock=threading.Lock()
 
 
 def public():
@@ -35,7 +37,7 @@ def agent_limits(local, snapshot, remote, remote_pause=None, now=None):
         pct = chosen.get("wpct" if week else "pct")
         hard = all((a.get("wpct" if week else "pct") or 0) >= 100 for a in summary["accounts"].values())
         manual = engine == "claude" and local.get("level") == "manual"
-        waiting = not pause.get("override") and not manual and (not week or local.get("weekly_pause") or hard)
+        waiting = hard or (not pause.get("override") and not manual and (not week or local.get("weekly_pause")))
         active_row = accounts.get(local.get('active')) if engine == 'claude' else None
         can_override = not cc_avail.dead(active_row) if active_row else not hard
         result[engine] = dict(window="week" if week else "5h", pct=pct,
@@ -88,7 +90,8 @@ def tick(ns):
             _deployed[mid] = True
         row = R.cached().get(mid) or {}
         import json
-        result = R.ctl(mid, "guard-config", inp=json.dumps(policy(ns, row, enabled)))
+        with _policy_lock:
+            result = R.ctl(mid, "guard-config", inp=json.dumps(policy(ns, row, enabled)))
         if not result or not result.get("ok"):
             continue
         info = R.ctl(mid, "guard-status") or {}
@@ -118,3 +121,13 @@ def tick(ns):
         if not enabled:
             current["notified_blocked"] = False
     R.jsave(STATE_FILE, state)
+
+
+def sync_policy(ns):
+    """Apply a panel toggle to an already active remote guard without waking local Claude."""
+    import cc_remote_mode as M
+    import json
+    mode=M.mode();mid=mode.get('member')
+    if not mode.get('active') or mid not in R.members():return
+    with _policy_lock:
+        R.ctl(mid,'guard-config',inp=json.dumps(policy(ns,R.cached().get(mid) or {},True)))

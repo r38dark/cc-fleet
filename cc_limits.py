@@ -3440,6 +3440,9 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 ok, out = False, str(e)[:200]
             d = pause_state()
+            if ok:
+                import cc_remote_limits
+                threading.Thread(target=cc_remote_limits.sync_policy,args=(globals(),),daemon=True,name='remote-pause-toggle').start()
             d.update(ok=ok, out=out)
             return self._send(200 if ok else 500, d)
         if u.path == "/api/update/check":
@@ -4596,6 +4599,13 @@ const I18N={
   cxlpBrief:at=>`Codex на паузе · сброс в ${at}`,
   cxlpBriefNoAt:'Codex на паузе · ждём сброса лимита',
   cxlpTitle:'⏸ Codex на <b>паузе по лимитам</b> — подъём автоматический',
+  cxqpTitle:'Codex · настроенный порог лимита',
+  cxqpBrief:(w,o)=>`Codex · ${w} · ${o?'автопауза отключена':'пауза по порогу'}`,
+  cxqpLimitBrief:w=>`Codex · ${w} · 100%`,
+  cxqpHardHint:n=>`Настоящий лимит исчерпан. Ожидает заданий: ${n}. Работа и очередь продолжатся после сброса; отключение паузы не обходит100%.`,
+  cxqpSub:(s,w)=>`Порог 5 часов — ${s}%, недели — ${w}%. Беседа и Full сохранены. Задания ждут в очереди до сброса.`,
+  cxqpOff:'Автопауза отключена вручную: можно использовать остаток до настоящих100%. Нажми «Включить паузу», чтобы вернуть защиту.',
+  cxqpHint:n=>`Ожидает заданий: ${n}. Очередь сохраняется при перезапуске панели. /stop очищает ожидающие задания.`,
   cxlpSub:(n,why,at,nl)=>`Лимит Codex${n?` <b>${n}</b>`:''} исчерпан: ${why}. Переключаться некуда — сообщения из Telegram ждут в очереди и уйдут сами`+(at?` после сброса в <span class="num">${at}</span>`:' после сброса')+(nl?` (раньше всех освободится <b>${nl}</b>)`:'')+'.',
   cxlpWin:m=>m===300?'окно 5 ч':m===10080?'окно неделя':`окно ${Math.round(m/60)} ч`,
   cxlpWinAny:'сервис сообщил о лимите',
@@ -5119,6 +5129,13 @@ const I18N={
   cxlpBrief:at=>`Codex paused · resets at ${at}`,
   cxlpBriefNoAt:'Codex paused · waiting for the limit reset',
   cxlpTitle:'⏸ Codex is <b>paused on limits</b> — it resumes on its own',
+  cxqpTitle:'Codex · configured quota threshold',
+  cxqpBrief:(w,o)=>`Codex · ${w} · ${o?'automatic pause disabled':'paused at threshold'}`,
+  cxqpLimitBrief:w=>`Codex · ${w} · 100%`,
+  cxqpHardHint:n=>`The real quota is exhausted. Waiting tasks: ${n}. Work and the queue resume after reset; disabling pause cannot bypass100%.`,
+  cxqpSub:(s,w)=>`5-hour threshold: ${s}%; weekly threshold: ${w}%. The conversation and Full access are kept. Tasks wait for reset.`,
+  cxqpOff:'Automatic pause is disabled manually: use the remaining quota up to the real100%. Enable pause to restore protection.',
+  cxqpHint:n=>`Waiting tasks: ${n}. The queue survives panel restarts. /stop clears waiting tasks.`,
   cxlpSub:(n,why,at,nl)=>`Codex limit${n?` <b>${n}</b>`:''} is used up: ${why}. Nowhere to switch — Telegram messages wait in the queue and go out by themselves`+(at?` after the reset at <span class="num">${at}</span>`:' after the reset')+(nl?` (first to free up: <b>${nl}</b>)`:'')+'.',
   cxlpWin:m=>m===300?'5 h window':m===10080?'weekly window':`${Math.round(m/60)} h window`,
   cxlpWinAny:'the service reported the limit',
@@ -7383,8 +7400,8 @@ function ccpAgents(d){
   const at=until?new Date(until).toLocaleString(LANG==='en'?'en-GB':'ru',{timeZone:window.FLEET_TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
   const title=tr(s.window==='pause'?'ccpaPause':s.window==='week'?'ccpaWeek':'ccpaSession',name,s.pct==null?'?':Math.round(s.pct),at);
   const sub=s.override?tr('ccpaOverride'):s.manual?tr('ccpaManual'):s.window==='pause'?tr('ccpaKnownPause'):tr(s.waiting?'ccpaWait':'ccpaWarn',s.threshold);
-  const action=key==='claude'&&!s.override&&!s.manual&&s.waiting&&s.can_override
-   ?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\'off\',this)">'+tr('ccpBtnOff')+'</button></div>':'';
+  const toggle=s.override?'on':!s.manual&&s.waiting&&s.can_override?'off':'';
+  const action=toggle?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+toggle+'\',this)">'+tr(toggle==='on'?'ccpBtnOn':'ccpBtnOff')+'</button></div>':'';
   el.className='ccpause lvl-'+(s.waiting?'pause':'hard');el.hidden=false;
   el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+ccpEsc(title)+'</div><div class="ccp-sub">'+ccpEsc(sub)+'</div>'+action+'</div>'
    +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)+'</div><div class="l">'+tr('ccpTillReset')+'</div></div>':'');
@@ -7397,7 +7414,7 @@ function ccpRender(){
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
  // Два Claude показываются независимо: работа на PROD/Codex не скрывает лимиты DEV.
  const agentCount=ccpAgents(d);
- if(agentCount&&!pause.override&&!d.handoff&&!d.manual){el.hidden=true;el.innerHTML='';return;}
+ if(agentCount&&!d.handoff&&!d.manual){el.hidden=true;el.innerHTML='';return;}
  // Локальная пауза и активный PROD не скрывают исчерпание всей пары.
  const rp=d&&d.remote_pause;
  if(rp&&rp.enabled&&rp.applied&&rp.blocked){
@@ -7538,7 +7555,8 @@ function cxlpRender(){
  const el=$('#cxPause');if(!el)return;
  const p=cxlpData;
  if(!p||!p.active){el.hidden=true;el.innerHTML='';return;}
- const paused=p.paused===undefined?true:!!p.paused;
+ const paused=p.hard?false:p.paused===undefined?true:!!p.paused;
+ const policy=!!p.policy,override=!!p.override;
  const prev=el.querySelector(':scope > details');if(prev)cxlpOpen=prev.open;
  const upMs=(p.resume_at||0)*1000;
  const sessionOnly=(p.windows||[]).length===1&&p.windows[0]===300;
@@ -7549,13 +7567,21 @@ function cxlpRender(){
  const timer=upMs?'<div class="ccp-timer" data-until="'+upMs+'"><div class="t">'+ccpLeft(upMs)+'</div><div class="l">'+tr('cxlpTill')+'</div></div>':'';
  el.className='ccpause '+(paused?'lvl-pause':'lvl-hard');el.hidden=false;
  el.innerHTML='<details class="fleet-pause-fold"'+(cxlpOpen?' open':'')+'><summary class="fleet-pause-summary"><span class="ccp-dot"></span>'
-  +'<span class="ccp-title">'+(paused?(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt')):ccpEsc(tr('cxlnBrief',why,at)))+'</span>'+timer
+  +'<span class="ccp-title">'+(policy?ccpEsc(tr('cxqpBrief',why,override)):p.hard&&(p.windows||[]).length?ccpEsc(tr('cxqpLimitBrief',why)):paused?(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt')):ccpEsc(tr('cxlnBrief',why,at)))+'</span>'+timer
   +'<svg viewBox="0 0 24 24" class="fleet-pause-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>'
-  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr(paused?'cxlpTitle':'cxlnTitle')+'</div>'
-  +'<div class="ccp-sub">'+(paused?tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):''):tr('cxlnSub',p.multi?ccpEsc(p.label):'',why,at,upMs?ccpLeft(upMs):''))+'</div>'
+  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr(policy?'cxqpTitle':paused?'cxlpTitle':'cxlnTitle')+'</div>'
+  +'<div class="ccp-sub">'+(policy?ccpEsc(tr(override?'cxqpOff':'cxqpSub',p.threshold,p.weekly_cap)):paused?tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):''):tr('cxlnSub',p.multi?ccpEsc(p.label):'',why,at,upMs?ccpLeft(upMs):''))+'</div>'
   +'<div class="ccp-meta">'+chips+'</div>'
-  +'<div class="ccp-actions"><span class="ccp-hint">'+ccpEsc(tr(paused?'cxlpHint':p.multi?'cxlnHintMulti':'cxlnHint'))+'</span></div></div></div></details>';
+  +'<div class="ccp-actions">'+(override||p.can_override?'<button type="button" class="ccp-btn" onclick="cxlpToggle('+(!override)+',this)">'+tr(override?'ccpBtnOn':'ccpBtnOff')+'</button>':'')+'<span class="ccp-hint">'+ccpEsc(tr(policy?'cxqpHint':p.hard?'cxqpHardHint':paused?'cxlpHint':p.multi?'cxlnHintMulti':'cxlnHint',p.queued||0))+'</span></div></div></div></details>';
  el.querySelector('details').addEventListener('toggle',e=>{cxlpOpen=e.target.open});
+}
+async function cxlpToggle(off,btn){
+ if(btn)btn.disabled=true;
+ try{
+  const r=await fetch(API+'chatgpt/rotation/config',{method:'POST',headers:{'X-CC-Token':TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pause_override:off})}),d=await r.json();
+  if(!r.ok||d.ok===false)throw new Error(d.message||'HTTP '+r.status);
+  await cxlpLoad();
+ }catch(e){if(btn)btn.disabled=false;toast(tr('ccpErr',e.message));}
 }
 function cxlpTick(){
  const t=$('#cxPause .ccp-timer');if(!t)return;
@@ -7565,7 +7591,7 @@ function cxlpTick(){
 async function cxlpLoad(){
  if(document.hidden&&cxlpData!==null)return;
  cxlpLoadedAt=Date.now();
- try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_notice||d.limit_pause||{active:false};}catch(e){return;}
+ try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_notice||d.limit_pause||{active:false};cxlpData.queued=(d.quota||{}).queued||0;}catch(e){return;}
  cxlpRender();
 }
 
@@ -7983,7 +8009,7 @@ function ccpsHtml(k){
  }
  if(k==='prod'){const rp=ccpData&&ccpData.remote_pause;if(!(rp&&rp.enabled&&rp.applied&&rp.blocked))return '';
   return at((rp.resume_at||0)*1000,(rp.reasons||[]).join('; '),'ccpsTitle')+'. '+tr('ccpsBody');}
- if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;if(!(p&&p.active&&p.paused))return '';
+ if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;if(!(p&&p.active&&p.paused)||p.hard)return '';
   return at((p.resume_at||0)*1000,(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', '),'ccpsTitleCx')+'. '+tr('ccpsBodyCx');}
  // Claude DEV: пауза балансера этого сервера (та же, что в верхнем баннере); отключена вручную или снимок устарел — паузы нет
  if(k==='claude'){const p=ccpData&&!ccpData.stale&&ccpData.pause;if(!(p&&p.active&&!p.override))return '';
@@ -8021,7 +8047,7 @@ function limxState(k){
   if(k==='claude'){const a=snap&&snap.accounts&&snap.accounts[snap.active];if(a)wins=[limxWinOf(a.five_hour,'5h'),limxWinOf(a.seven_day,'week')];}
   else if(k==='prod'){const r=snap&&snap.remote,m=r&&r[Object.keys(r)[0]];if(m)wins=[limxWinOf(m.five_hour,'5h'),limxWinOf(m.seven_day,'week')];}
   else if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;
-   if(p&&p.active){wins=(p.windows||[]).map(m=>({win:m===300?'5h':m===10080?'week':'',pct:100,until:(+((p.resets||{})[m]||p.resume_at)||0)*1000}));reported=!wins.length;}}
+   if(p&&p.active){wins=(p.windows||[]).map(m=>({win:m===300?'5h':m===10080?'week':'',pct:p.policy?+(p.percentages||{})[m]:100,until:(+((p.resets||{})[m]||p.resume_at)||0)*1000}));reported=!p.policy&&!wins.length;}}
  }catch(e){return null;}
  return limxPick(pause,wins,reported,Date.now());
 }

@@ -38,6 +38,8 @@ APPROVAL = "never"  # никаких запросов подтверждения
 PRESERVE_THREAD = lambda: False
 INPUT_ALLOWED = lambda: True
 PAUSED = lambda: False  # cc_profiles.bind подставляет: роль Codex в профиле балансера «пауза»
+QUOTA_PAUSE = lambda: {}
+QUOTA_ENQUEUE = None
 MCP = lambda: []  # cc_profiles: ключи `-c` профиля (папки записи, инструкция профиля); сменились — консоль перезапускается
 PROMPT_WAIT = 25  # после старта ждём, пока консоль нарисует поле ввода, секунд
 START_WAIT = 40  # консоль должна принять сообщение (начать ход), секунд
@@ -128,12 +130,12 @@ def _meta():
     return cc_codex.jload(_meta_path(), {}) or {}
 
 
-def frozen():
+def _frozen_by(filename):
     """Процесс Codex заморожен паузой профиля: cc_profiles._codex_pause шлёт SIGSTOP и пишет pid и время старта
     в profile_runtime/codex-paused.json. Верим только живому процессу: состояние T и то же время старта
     (файл после остановки консоли остаётся со старым pid, pid мог достаться другому процессу)."""
     try:
-        with open(os.path.join(BASE, "profile_runtime", "codex-paused.json")) as f:
+        with open(os.path.join(BASE, "profile_runtime", filename)) as f:
             rows = json.load(f)
     except (OSError, ValueError):
         return False
@@ -146,6 +148,14 @@ def frozen():
         except (OSError, ValueError, KeyError, IndexError, TypeError):
             continue
     return False
+
+
+def frozen():
+    return _frozen_by('codex-paused.json') or _frozen_by('codex-quota-paused.json')
+
+
+def quota_paused():
+    return bool((QUOTA_PAUSE() or {}).get('active') or _frozen_by('codex-quota-paused.json'))
 
 
 def status():
@@ -219,6 +229,7 @@ def request_settings(values, lang='ru'):
     meta['pending_settings'] = desired
     cc_codex._jsave(_meta_path(), meta)
     cc_codex.own(_meta_path())
+    if quota_paused():return True,'Модель сохранена; будет применена после снятия паузы по лимитам.',True
     if not _ask_lock.acquire(blocking=False):
         return True, 'Модель сохранена; будет применена после текущего ответа.', True
     try:
@@ -239,6 +250,8 @@ def send_input(text, lang='ru'):
     text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]', '', text.replace('\r\n', '\n').replace('\r', '\n')).strip()
     if not INPUT_ALLOWED():
         return False, 'Codex на паузе: активен служебный режим другой стороны.'
+    if quota_paused():
+        return QUOTA_ENQUEUE(text) if QUOTA_ENQUEUE else (False,'Codex на паузе по лимитам; ввод не отправлен.')
     is_command = bool(re.fullmatch(r'/[A-Za-z][A-Za-z0-9_-]{0,79}(?:[ \t]+.*)?', text, re.S))
     # обычное сообщение можно отправлять, пока Codex отвечает: он поставит его в очередь. Не пускаем только пока консоль
     # занята запросом моста (его ответ читается из файла сессии) и слэш-команды в ходе ответа.
@@ -549,7 +562,13 @@ def recover(point, sent, abort=None, timeout=None, lang='ru'):
     path, off, turn = point.get('path'), point.get('off') or 0, point.get('turn')
     last_say, quiet, switched = '', time.time(), False
     deadline = None if timeout is None else time.time() + timeout
+    previous=time.time()
     while True:
+        current=time.time();held=quota_paused()
+        if held:
+            quiet+=current-previous
+            if deadline is not None:deadline+=current-previous
+        previous=current
         if abort is not None and abort.is_set():
             raise Aborted()
         if path is None:
@@ -575,7 +594,7 @@ def recover(point, sent, abort=None, timeout=None, lang='ru'):
                 if kind == 'turn_aborted':  # уточнение могло оборвать ход и начать новый: ждём ещё START_WAIT
                     turn, last_say, quiet = None, '', time.time()
         now = time.time()
-        if not turn and now > quiet + START_WAIT:
+        if not held and not turn and now > quiet + START_WAIT:
             if not switched and path:  # сообщение могло открыть новый файл сессии
                 switched = True
                 found = _new_rollout(slot, cwd, sent - 2, exclude=path)
@@ -585,7 +604,7 @@ def recover(point, sent, abort=None, timeout=None, lang='ru'):
             return None, _tid_of(path) if path else None
         if not _pid():
             raise ConsoleError('Консоль Codex закрылась, не ответив.')
-        if deadline is not None and now > deadline:
+        if not held and deadline is not None and now > deadline:
             raise ConsoleError('Codex не ответил за отведённое время.')
         time.sleep(POLL)
 
@@ -753,6 +772,7 @@ def compact(lang="ru"):
     """Кнопка «Сжать контекст»: /compact вводится в консоль, как это сделал бы человек (команда, затем Enter —
     вставкой она не сработала бы, см. _paste_text). Посреди хода или без консоли не вводим. → (ok, сообщение)."""
     t = lambda ru, en: cc_codex._t(lang, ru, en)
+    if quota_paused():return False,t('Сжатие доступно после снятия паузы по лимитам.','Compaction is available after the quota pause is lifted.')
     if not _pid():
         return False, t("Консоль Codex не запущена.", "The Codex console is not running.")
     busy = (False, t("Codex сейчас отвечает: дождись ответа или останови его.", "Codex is replying right now: wait for the reply or stop it."))
@@ -834,10 +854,17 @@ def _ask_live(prompt, abort=None, timeout=None, lang='ru', pull=None):
         with _live_lock:
             _live_request = request
         try:
+            previous=time.time()
             while True:
                 if aborted():
                     raise Aborted()
-                if pull:
+                current=time.time();held=quota_paused()
+                if held:
+                    elapsed=current-previous;last_input+=elapsed
+                    if deadline is not None:deadline+=elapsed
+                    with _live_lock:request['awaiting']=[(value,at+elapsed) for value,at in request['awaiting']]
+                previous=current
+                if pull and not held:
                     with _live_lock:
                         # Забираем по одному: ещё не отправленные сообщения остаются у моста.
                         capacity = 1 if not request['queue'] and len(request['awaiting']) < 20 else 0
@@ -845,7 +872,7 @@ def _ask_live(prompt, abort=None, timeout=None, lang='ru', pull=None):
                     with _live_lock:
                         request['queue'].extend(_paste_text(value) for value in incoming)
                 with _live_lock:
-                    queued = request['queue'].pop(0) if request['queue'] else None
+                    queued = request['queue'].pop(0) if request['queue'] and not held else None
                     if queued is not None:
                         last_input = time.time()
                         request['awaiting'].append((queued, last_input))
@@ -906,11 +933,11 @@ def _ask_live(prompt, abort=None, timeout=None, lang='ru', pull=None):
                 if not _pid():
                     raise ConsoleError('Консоль Codex закрылась, не ответив.')
                 now = time.time()
-                if oldest and now-oldest > START_WAIT:
+                if not held and oldest and now-oldest > START_WAIT:
                     raise ConsoleError('Не получил подтверждение приёма сообщения. Оно могло попасть в консоль; проверь вкладку Codex перед повтором.')
-                if (not turn or finished and not last_say) and now-last_input > START_WAIT and not oldest:
+                if not held and (not turn or finished and not last_say) and now-last_input > START_WAIT and not oldest:
                     raise ConsoleError('Консоль приняла сообщение, но новый ответ не подтверждён. Проверь вкладку Codex.')
-                if deadline is not None and now > deadline:
+                if not held and deadline is not None and now > deadline:
                     interrupt()
                     raise ConsoleError('Codex не ответил за отведённое время, запрос прерван.')
                 time.sleep(POLL)

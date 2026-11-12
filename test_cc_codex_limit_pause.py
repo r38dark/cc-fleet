@@ -19,10 +19,10 @@ class TestState(unittest.TestCase):
     def test_free_account_no_pause(self):
         self.assertFalse(R.limit_pause_state([acc('a', 50, 50)], 'a', False, NOW)['active'])
 
-    def test_single_account_never_pauses(self):
-        # один аккаунт Codex — ротации нет, пауза по лимитам не имеет смысла (просьба владельца)
-        for a in (acc('a', 0, 100), acc('a', 100, 10), acc('a', 70, 10, reached=True), acc('a', 100, 10, ses_reset=NOW - 300)):
-            self.assertFalse(R.limit_pause_state([a], 'a', False, NOW)['active'])
+    def test_single_account_pauses_on_its_own_threshold(self):
+        for a in (acc('a',0,99),acc('a',90,10),acc('a',70,10,reached=True)):
+            self.assertTrue(R.limit_pause_state([a],'a',False,NOW)['active'])
+        self.assertFalse(R.limit_pause_state([acc('a',100,10,ses_reset=NOW-300)],'a',False,NOW)['active'])
 
     def test_week_full_all_accounts(self):
         p = R.limit_pause_state([acc('a', 0, 100), acc('b', 0, 100, week_reset=NOW + 90000)], 'a', False, NOW)
@@ -38,7 +38,7 @@ class TestState(unittest.TestCase):
 
     def test_reached_flag_without_pct(self):
         p = R.limit_pause_state([acc('a', 70, 10, reached=True), acc('b', 100, 10)], 'a', False, NOW)
-        self.assertTrue(p['active']); self.assertEqual(p['windows'], [300])
+        self.assertTrue(p['active']); self.assertEqual(p['windows'], [])
 
     def test_nearest_free_account_and_grace(self):
         p = R.limit_pause_state([acc('a', 100, 10, ses_reset=NOW + 7200), acc('b', 10, 100, week_reset=NOW + 600)], 'a', False, NOW)

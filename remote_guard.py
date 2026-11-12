@@ -66,11 +66,11 @@ def reset_at(value):
 def budget(policy, row, now=None):
     now = time.time() if now is None else now
     reasons, until = [], []
-    if not policy.get("enabled") or policy.get("override"):
+    if not policy.get("enabled"):
         return dict(blocked=False, reasons=[], resume_at=0)
     for key, name, threshold in (
-        ("five_hour", "5 ч", float(policy.get("threshold", 90))),
-        ("seven_day", "неделя", float(policy.get("weekly_cap", 99)) if policy.get("weekly_pause") else 100),
+        ("five_hour", "5 ч", 100 if policy.get('override') else float(policy.get("threshold", 90))),
+        ("seven_day", "неделя", float(policy.get("weekly_cap", 99)) if policy.get("weekly_pause") and not policy.get('override') else 100),
     ):
         win = row.get(key) or {}
         pct = win.get("pct")

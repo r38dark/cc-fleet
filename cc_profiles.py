@@ -142,8 +142,10 @@ class NativeProfiles:
             for row in rows:
                 try:
                     start=Path('/proc/'+str(row['pid'])+'/stat').read_text().rsplit(')',1)[1].split()[19]
-                    if start==row['start']:os.kill(row['pid'],signal.SIGCONT)
-                except (OSError,KeyError):pass
+                    quota=json.loads((self.base/'profile_runtime/codex-quota-paused.json').read_text()) if (self.base/'profile_runtime/codex-quota-paused.json').exists() else []
+                    held=any(q.get('pid')==row['pid'] and str(q.get('start'))==str(row['start']) for q in quota)
+                    if start==row['start'] and not held:os.kill(row['pid'],signal.SIGCONT)
+                except (OSError,ValueError,KeyError):pass
             path.unlink(missing_ok=True);return
         if path.exists():return
         level=[str(self.codex._pid() or '')];rows=[]

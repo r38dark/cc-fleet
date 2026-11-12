@@ -44,6 +44,7 @@ class States(unittest.TestCase):
         self.assertFalse(self.states(remote={'r': row(99)}, weekly_pause=False)['prod']['waiting'])
         self.assertTrue(self.states(remote={'r': row(100)}, weekly_pause=False)['prod']['waiting'])
         self.assertFalse(self.states({'a': row(99)}, level='manual')['claude']['waiting'])
+        self.assertTrue(self.states(remote={'r':row(100)},pause={'override':True})['prod']['waiting'])
 
     def test_other_usable_local_account_does_not_report_an_engine_wait(self):
         result = self.states({'a': row(100), 'b': row(20)}, {'r': row(99)})
@@ -96,6 +97,25 @@ class States(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which('node'), 'node unavailable')
 class Render(unittest.TestCase):
+    def test_both_claude_controls_restore_pause_after_override_and_do_not_bypass_100(self):
+        source=(Path(__file__).parent/'cc_limits.py').read_text()
+        function=re.search(r'^function ccpAgents\(d\)\{.*?^\}',source,re.S|re.M).group()
+        program="""
+const nodes=Object.fromEntries(['ccPauseDev','ccPauseProd'].map(id=>[id,{hidden:true,innerHTML:''}]));
+const document={getElementById:id=>nodes[id]},window={FLEET_TZ:'Asia/Irkutsk'},LANG='ru';
+const tr=(k,...a)=>[k,...a].join('|'),ccpEsc=String,ccpLeft=()=> 'left';
+"""+function+"""
+const s={window:'week',pct:99,threshold:99,waiting:true,can_override:true};
+ccpAgents({claude_limits:{claude:{...s},prod:{...s}}});const off=JSON.parse(JSON.stringify(nodes));
+ccpAgents({claude_limits:{claude:{...s,override:true,waiting:false},prod:{...s,override:true,waiting:false}}});const on=JSON.parse(JSON.stringify(nodes));
+ccpAgents({claude_limits:{prod:{...s,pct:100,can_override:false}}});
+console.log(JSON.stringify({off,on,hard:nodes.ccPauseProd}));
+"""
+        result=json.loads(subprocess.run(['node','-e',program],check=True,capture_output=True,text=True,timeout=10).stdout)
+        for item in result['off'].values():self.assertIn('ccpBtnOff',item['innerHTML'])
+        for item in result['on'].values():self.assertIn('ccpBtnOn',item['innerHTML'])
+        self.assertNotIn('ccpBtnOff',result['hard']['innerHTML'])
+
     def test_both_banners_render_and_disappear_independently(self):
         source = (Path(__file__).parent / 'cc_limits.py').read_text()
         function = re.search(r'^function ccpAgents\(d\)\{.*?^\}', source, re.S | re.M).group()

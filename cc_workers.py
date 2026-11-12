@@ -139,6 +139,11 @@ class Workers:
                 label += ' · лимит исчерпан'
             if remote_on and e == 'claude':
                 st, label = 'pause', 'Claude DEV · на паузе (работает Claude PROD)'
+            if e=='codex':
+                rotation=self.ns.get('FLEET_ROTATION')
+                quota=rotation.limit_pause() if rotation and hasattr(rotation,'limit_pause') else {}
+                if quota.get('active'):
+                    st='limit' if quota.get('hard') else 'pause';label+=' · '+('лимит исчерпан' if st=='limit' else 'пауза по лимитам')
             out[e] = dict(state=st, text=AG_TEXT[st], label=label)
         pst = 'run' if remote_on else 'pause'
         out['prod'] = dict(state=pst, text=AG_TEXT[pst],

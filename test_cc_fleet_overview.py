@@ -274,6 +274,9 @@ class Routes(unittest.TestCase):
     def fixture(self,path,body=None,authed=True):
         import io
         rotation_obj,con,codex,bridge=Policy.fixture(self)
+        from cc_input_queue import InputQueue
+        rotation_obj.bridge.BRIDGE=types.SimpleNamespace(inputs=InputQueue(),_notice_async=mock.Mock(),enqueue_console=mock.Mock(return_value=(True,'queued')))
+        con.PAUSED=lambda:False;con.mark=lambda:None
         class H:
             def _authed(self):return self.authorized
             def _send(self,status,data):return status,data
@@ -315,6 +318,14 @@ class Routes(unittest.TestCase):
         h,ns=self.fixture('/api/console/input',{'session':'codex','text':'test','request_id':'nonce1234'})
         ns['cc_codex_console'].send_input=mock.Mock(return_value=(True,'sent'))
         self.assertEqual(h.do_POST(),(200,{'ok':True,'message':'sent'}));ns['cc_codex_console'].send_input.assert_called_once_with('test')
+
+    def test_quota_input_is_queued_once_and_not_sent_to_native_console(self):
+        h,ns=self.fixture('/api/console/input',{'session':'codex','text':'waiting task','request_id':'quota-req-1'})
+        ns['FLEET_ROTATION'].accounts=[account('gpt1',session=94)]
+        ns['cc_codex_console'].send_input=mock.Mock()
+        self.assertEqual(h.do_POST(),(200,{'ok':True,'message':'queued'}))
+        ns['cc_codex_bridge'].BRIDGE.enqueue_console.assert_called_once_with('waiting task','quota-req-1')
+        ns['cc_codex_console'].send_input.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

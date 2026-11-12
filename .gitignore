@@ -2,5 +2,7 @@ __pycache__/
 *.pyc
 *.bak_*
 remote_auto_hb.json
+codex_quota_runtime.json
+codex_input_queue.json
 PLAN_*.md
 REVIEW_*.md

@@ -32,6 +32,10 @@
       "mode": "644"
     },
     {
+      "src": "cc_codex_quota.py",
+      "mode": "644"
+    },
+    {
       "src": "cc_codex_bridge.py",
       "mode": "644"
     },
