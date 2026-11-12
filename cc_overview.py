@@ -141,7 +141,7 @@ html:root:root .hdr .cxmode{font-size:12px}
 }
 
 /* Состояние паузы: короткая строка с таймером, подробности — по раскрытию. */
-#ccPause:not([hidden]):has(>.fleet-pause-fold){display:block;padding:0;overflow:visible}
+.ccpause:not([hidden]):has(>.fleet-pause-fold){display:block;padding:0;overflow:visible}
 .fleet-pause-fold{width:100%;min-width:0}
 .fleet-pause-summary{display:grid;grid-template-columns:8px minmax(0,1fr) auto 16px;column-gap:11px;align-items:center;min-height:48px;padding:10px 14px;list-style:none;cursor:pointer;border-radius:10px;color:var(--txt);user-select:none;-webkit-tap-highlight-color:transparent}
 .fleet-pause-summary::-webkit-details-marker{display:none}
@@ -224,7 +224,7 @@ html:not(.conly) .hdr{margin-bottom:14px!important}
 .fleet-tools-panel .cxmodn{font-size:13px;overflow:hidden;text-overflow:ellipsis}
 html.conly .fleet-active-strip{display:none!important}
 /* Одна тонкая строка; исходный текст целиком доступен внутри. */
-#ccPause:not([hidden]):has(>.fleet-pause-fold){margin-bottom:8px}
+.ccpause:not([hidden]):has(>.fleet-pause-fold){margin-bottom:8px}
 .fleet-pause-summary{grid-template-columns:6px minmax(0,1fr) auto 12px;gap:9px;min-height:30px;padding:5px 11px;border-radius:7px}
 .fleet-pause-summary .ccp-dot{width:6px;height:6px;grid-column:1;grid-row:1;align-self:center;margin:0}
 .fleet-pause-summary .ccp-title{grid-column:2;grid-row:1;font-size:12px;font-weight:500;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1638,27 +1638,28 @@ JS = r'''
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshVisuals()});
 
  // Меняется только представление; исходные кнопки паузы и живой таймер сохраняются.
- let pauseFoldOpen=false;
- function foldPauseBanner(){
-  const root=document.getElementById('ccPause');
-  if(!root||root.hidden){pauseFoldOpen=false;return;}
+ const pauseFoldStates={};
+ function foldPauseBanner(root){
+  if(!root)return;
+  if(root.hidden){pauseFoldStates[root.id]=false;return;}
   if(root.querySelector(':scope > .fleet-pause-fold'))return;
   const title=root.querySelector('.ccp-title'),body=root.querySelector('.ccp-body');if(!title||!body)return;
   const dot=root.querySelector('.ccp-dot'),timer=root.querySelector('.ccp-timer');
-  const fold=el('details','fleet-pause-fold');fold.id='fleetPauseDetails';fold.open=pauseFoldOpen;
-  const summary=el('summary','fleet-pause-summary');summary.setAttribute('aria-controls','fleetPauseContent');
+  const fold=el('details','fleet-pause-fold');fold.id='fleetPauseDetails'+(root.id==='ccPause'?'':root.id);fold.open=!!pauseFoldStates[root.id];
+  const summary=el('summary','fleet-pause-summary');summary.setAttribute('aria-controls','fleetPauseContent'+root.id);
   const brief=el('span','ccp-title');brief.title=title.textContent;
   const pause=ccpData?.pause,english=typeof LANG!=='undefined'&&LANG==='en';
-  brief.textContent=pause?.active?(english?'Claude paused · auto resume':'Claude на паузе · автовозобновление'):title.textContent;
+  brief.textContent=root.id==='ccPause'&&pause?.active?(english?'Claude paused · auto resume':'Claude на паузе · автовозобновление'):title.textContent;
   if(dot)summary.append(dot);summary.append(brief);if(timer)summary.append(timer);
   const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('viewBox','0 0 24 24');arrow.setAttribute('class','fleet-pause-chevron');arrow.setAttribute('aria-hidden','true');
   const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','m6 9 6 6 6-6');path.setAttribute('fill','none');path.setAttribute('stroke','currentColor');path.setAttribute('stroke-width','2');path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');arrow.append(path);summary.append(arrow);
-  const content=el('div','fleet-pause-content');content.id='fleetPauseContent';content.append(body);fold.append(summary,content);
-  fold.addEventListener('toggle',()=>{if(fold.isConnected)pauseFoldOpen=fold.open});root.replaceChildren(fold);
+  const content=el('div','fleet-pause-content');content.id='fleetPauseContent'+root.id;content.append(body);fold.append(summary,content);
+  fold.addEventListener('toggle',()=>{if(fold.isConnected)pauseFoldStates[root.id]=fold.open});root.replaceChildren(fold);
  }
  const previousPauseRender=ccpRender;
- ccpRender=function(){const root=document.getElementById('ccPause'),previous=root&&!root.hidden?root.querySelector(':scope > .fleet-pause-fold'):null;if(previous)pauseFoldOpen=previous.open;previousPauseRender();foldPauseBanner()};
- foldPauseBanner();
+ const pauseRoots=()=>['ccPause','ccPauseDev','ccPauseProd'].map(id=>document.getElementById(id)).filter(Boolean);
+ ccpRender=function(){for(const root of pauseRoots()){const previous=!root.hidden&&root.querySelector(':scope > .fleet-pause-fold');if(previous)pauseFoldStates[root.id]=previous.open;}previousPauseRender();pauseRoots().forEach(foldPauseBanner)};
+ pauseRoots().forEach(foldPauseBanner);
 
  // Заголовок начинаетcя с реальных ролей: ведущий, затем исполнитель.
  Object.assign(I18N.ru,{cxpN_orchestrator:'Codex → Claude',cxpN_codex:'Codex · самостоятельно',cxpN_codex_solo_full:'Codex Full · самостоятельно',cxeN:'Codex · самостоятельно · аварийный',cxeHdr:'Codex · самостоятельно · аварийный',cxeOnT:'Codex · самостоятельно · аварийный включён'});
@@ -1934,7 +1935,13 @@ JS = r'''
  const manualEngines=['claude','codex'];
  const manualOther=engine=>engine==='claude'?'codex':'claude';
  const manualSame=(a,b)=>manualEngines.every(engine=>a?.[engine]===b?.[engine]);
- const manualCurrent=()=>mirrorState?.manual_scenario?.choices||{claude:null,codex:null};
+ const manualCurrent=()=>{
+  const scenario=mirrorState?.manual_scenario;
+  if(scenario&&!scenario.legacy)return scenario.choices;
+  const choices={claude:null,codex:null};
+  for(const engine of manualEngines){const e=mirrorState?.engines?.[engine];if(e?.applied)choices[engine]={solo:'full',leader:'orchestrator',executor:'executor'}[e.role]||null;}
+  return choices;
+ };
  const manualProdNote=()=>{try{return window.fleetRemote&&window.fleetRemote.mode().active?' · Claude работает на PROD':''}catch(_){return ''}};
  paletteTools.remove();paletteFooter.remove();
  const manualThemeBefore=mirrorTheme;
@@ -1953,6 +1960,7 @@ JS = r'''
   const leader=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
   if(leader){const other=manualOther(leader);return manualDraft[other]==='executor'?{valid:true,text:mirrorNames[leader]+' → '+mirrorNames[other]+' · выполнение шагов подключено'+manualProdNote()}:{valid:false,text:mirrorNames[leader]+' — оркестратор. Подключи '+mirrorNames[other]+' для выполнения подтверждённых шагов.'}}
   if(full&&roles.length===1)return {valid:true,text:mirrorNames[full]+' Full · самостоятельно; '+mirrorNames[manualOther(full)]+' не участвует'};
+  if(roles.length===2&&manualEngines.every(e=>manualDraft[e]==='full'))return {valid:false,text:'Claude и Codex работают самостоятельно в отдельных консолях. Текущий профиль уже действует.'};
   return {valid:false,text:'Выбери Full или Оркестратор. До применения текущая работа продолжается.'};
  }
  function manualSelect(engine,role){
@@ -2034,7 +2042,7 @@ JS = r'''
      {id:'orch',name:'Codex → Claude',desc:'Codex планирует и проверяет, Claude выполняет шаги после твоего подтверждения.',draft:{claude:'executor',codex:'orchestrator'},steps:['Codex — оркестратор, Claude — исполнитель','Шаги Claude выполняются после твоего подтверждения']}]
    };
    let tp=null,tpAnchor=null,tpEng='',tpSel='',tpBusy=false;
-   const tpOpts=()=>{const cur=manualCurrent();return TPO[tpEng].map(o=>({...o,cur:manualSame(o.draft,cur),why:''}))};
+   const tpOpts=()=>{const cur=manualCurrent();return TPO[tpEng].map(o=>({...o,cur:o.id==='full'?cur[tpEng]==='full':manualSame(o.draft,cur),why:''}))};
    function tpPaint(note){
     if(!tp)return;const opts=tpOpts(),sel=opts.find(x=>x.id===tpSel),name=TPN[tpEng];
     let h='<h3>Профиль '+acctEsc(name)+'</h3><p>Выбери, как работает '+acctEsc(name)+'.</p><div class="tp-opts" role="radiogroup" aria-label="Профиль '+acctEsc(name)+'">'

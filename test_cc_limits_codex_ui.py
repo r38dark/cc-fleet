@@ -870,6 +870,7 @@ class ConsoleColors(unittest.TestCase):
 
 BANNER_JS = """
 const LANG='ru';
+const document={getElementById:()=>null};
 let T=1000000000000;Date.now=()=>T;
 const tr=(k,...a)=>a.length?k+'('+a.join(',')+')':k;
 const el={hidden:true,className:'',innerHTML:''};

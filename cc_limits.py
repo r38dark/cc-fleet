@@ -2870,6 +2870,7 @@ def pause_state():
         snapshot = jload(SNAPSHOT) or {}
         d["fleet"] = cc_avail.fleet_summary(snapshot.get("accounts") or {}, cc_remote.cached(),
                                              d.get("threshold", 90), d.get("weekly_cap", 99))
+        d["claude_limits"] = cc_remote_limits.agent_limits(d, snapshot, cc_remote.cached(), d["remote_pause"])
         # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
         d["handoff"] = ""
         if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
@@ -3975,7 +3976,7 @@ html.conly #verTag{display:none}
 #fsBtn .fsx{display:none}
 html.conly #fsBtn .fsi{display:none}
 html.conly #fsBtn .fsx{display:block}
-html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause,html.conly #cxPause{display:none!important}
+html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause,html.conly #ccPauseDev,html.conly #ccPauseProd,html.conly #cxPause{display:none!important}
 #cxPause:not([hidden]){display:block;padding:0;overflow:visible;margin:0 0 8px}
 html:root:root.conly body{height:100vh;height:100dvh;display:flex;flex-direction:column;padding:0}
 html:root:root.conly .termwrap{flex:1 1 0;min-height:0;margin:0}
@@ -4321,6 +4322,8 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
 <div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><button type="button" class="ccli-badge" id="ccliBadge" hidden aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg><b>0</b></button><div class="ccli-pop" id="ccliPop" role="dialog" hidden></div><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
+<div class="ccpause" id="ccPauseDev" hidden></div>
+<div class="ccpause" id="ccPauseProd" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
  <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
@@ -4621,6 +4624,9 @@ const I18N={
   ccpsBodyCx:'Переключаться некуда. Сообщения из Telegram ждут в очереди и уйдут сами после сброса.',
   limxPause:at=>'пауза по лимитам'+(at?' до '+at:''),limxOutWeek:at=>'лимит недели исчерпан'+(at?' до '+at:''),limxOut5h:at=>'лимит 5 ч исчерпан'+(at?' до '+at:''),limxOut:at=>'лимит исчерпан'+(at?' до '+at:''),
   limxTipPause:'Новые действия ждут сброса, беседа сохранена.',limxTipOut:'Настоящий лимит исчерпан: новые запросы не пройдут до сброса, беседа сохранена.',
+  ccpaWeek:(n,p,a)=>`${n} · неделя ${p}%${a?' до '+a:''}`,ccpaSession:(n,p,a)=>`${n} · 5 ч ${p}%${a?' до '+a:''}`,
+  ccpaPause:(n,p,a)=>`${n} · пауза по лимитам${a?' до '+a:''}`,ccpaKnownPause:'Пауза подтверждена, точные проценты сейчас не получены. Состояние обновится автоматически.',
+  ccpaWait:c=>`Достигнут порог ${c}%. Доступность обновится после сброса.`,ccpaOverride:'Автопауза отключена вручную; ограничение провайдера сохраняется.',ccpaManual:'Аккаунт выбран вручную; автоматическая пауза не применена.',ccpaWarn:c=>`Достигнут порог ${c}%; автоматическая пауза выключена.`,
   ccpTillNearest:'до ближайшего окна',
   ccpTillFree:n=>'до освобождения '+n,
   ccpTillReset:'до сброса окна',
@@ -5140,6 +5146,9 @@ const I18N={
   ccpsBodyCx:'Nowhere to switch. Telegram messages wait in the queue and go out by themselves after the reset.',
   limxPause:at=>'paused on limits'+(at?' until '+at:''),limxOutWeek:at=>'weekly limit used up'+(at?' until '+at:''),limxOut5h:at=>'5 h limit used up'+(at?' until '+at:''),limxOut:at=>'limit used up'+(at?' until '+at:''),
   limxTipPause:'New actions wait for the reset; the conversation is kept.',limxTipOut:'The real limit is used up: new requests fail until the reset; the conversation is kept.',
+  ccpaWeek:(n,p,a)=>`${n} · week ${p}%${a?' until '+a:''}`,ccpaSession:(n,p,a)=>`${n} · 5 h ${p}%${a?' until '+a:''}`,
+  ccpaPause:(n,p,a)=>`${n} · paused on limits${a?' until '+a:''}`,ccpaKnownPause:'The pause is confirmed; exact percentages are unavailable. Status updates automatically.',
+  ccpaWait:c=>`The ${c}% threshold was reached. Availability updates after reset.`,ccpaOverride:'Automatic pause was disabled manually; provider limits still apply.',ccpaManual:'The account was selected manually; automatic pause is not applied.',ccpaWarn:c=>`The ${c}% threshold was reached; automatic pause is disabled.`,
   ccpTillNearest:'until nearest window',
   ccpTillFree:n=>'until '+n+' frees up',
   ccpTillReset:'until window reset',
@@ -7360,9 +7369,30 @@ function ccpHeld(a){
  if(h.includes('неделя'))out.push(tr('ccpHeldWeek',a.wpct==null?'?':Math.round(a.wpct)+'%'));
  return out.join(', ')||'?';
 }
+function ccpAgents(d){
+ const states=(d&&d.claude_limits)||{};let count=0;
+ for(const [key,id,name] of [['claude','ccPauseDev','Claude DEV'],['prod','ccPauseProd','Claude PROD']]){
+  const el=document.getElementById(id);if(!el)continue;
+  const s=states[key];if(!s){el.hidden=true;el.innerHTML='';continue;}
+  const until=(s.resume_at||0)*1000;
+  const at=until?new Date(until).toLocaleString(LANG==='en'?'en-GB':'ru',{timeZone:window.FLEET_TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+  const title=tr(s.window==='pause'?'ccpaPause':s.window==='week'?'ccpaWeek':'ccpaSession',name,s.pct==null?'?':Math.round(s.pct),at);
+  const sub=s.override?tr('ccpaOverride'):s.manual?tr('ccpaManual'):s.window==='pause'?tr('ccpaKnownPause'):tr(s.waiting?'ccpaWait':'ccpaWarn',s.threshold);
+  const action=key==='claude'&&!s.override&&!s.manual&&s.waiting&&s.can_override
+   ?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\'off\',this)">'+tr('ccpBtnOff')+'</button></div>':'';
+  el.className='ccpause lvl-'+(s.waiting?'pause':'hard');el.hidden=false;
+  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+ccpEsc(title)+'</div><div class="ccp-sub">'+ccpEsc(sub)+'</div>'+action+'</div>'
+   +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)+'</div><div class="l">'+tr('ccpTillReset')+'</div></div>':'');
+  count++;
+ }
+ return count;
+}
 function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
+ // Два Claude показываются независимо: работа на PROD/Codex не скрывает лимиты DEV.
+ const agentCount=ccpAgents(d);
+ if(agentCount&&!pause.override&&!d.handoff&&!d.manual){el.hidden=true;el.innerHTML='';return;}
  // Локальная пауза и активный PROD не скрывают исчерпание всей пары.
  const rp=d&&d.remote_pause;
  if(rp&&rp.enabled&&rp.applied&&rp.blocked){
@@ -7472,11 +7502,13 @@ function ccpRender(){
     +'<div class="l">'+tlabel+'</div></div>':'');
 }
 function ccpTick(){
- document.querySelectorAll('#ccPause .ccp-left').forEach(e=>{e.textContent=ccpLeft(+e.dataset.until)});   // «осталось …» в тексте паузы тикает
- const t=$('#ccPause .ccp-timer');if(!t)return;
- const until=+t.dataset.until;
- t.querySelector('.t').textContent=ccpLeft(until);
- if(Date.now()>until+60000)ccpLoad();  // окно должно было отпустить — перечитаем
+ document.querySelectorAll('#ccPause .ccp-left,#ccPauseDev .ccp-left,#ccPauseProd .ccp-left').forEach(e=>{e.textContent=ccpLeft(+e.dataset.until)});
+ let expired=false;
+ document.querySelectorAll('#ccPause .ccp-timer,#ccPauseDev .ccp-timer,#ccPauseProd .ccp-timer').forEach(t=>{
+  const until=+t.dataset.until;t.querySelector('.t').textContent=ccpLeft(until);
+  if(Date.now()>until+60000)expired=true;
+ });
+ if(expired)ccpLoad();  // один запрос на все истёкшие окна
 }
 async function ccpToggle(act,btn){
  if(act==='settings'){$('#gear').click();return;}

@@ -904,7 +904,7 @@ class Page(unittest.TestCase):
         import cc_overview
         js = cc_overview.JS
         self.assertIn("const TPN={claude:'Claude DEV',codex:'Codex'}", js)
-        self.assertIn("const tpOpts=()=>{const cur=manualCurrent();return TPO[tpEng].map(o=>({...o,cur:manualSame(o.draft,cur),why:''}))};", js)
+        self.assertIn("const tpOpts=()=>{const cur=manualCurrent();return TPO[tpEng].map(o=>({...o,cur:o.id==='full'?cur[tpEng]==='full':manualSame(o.draft,cur),why:''}))};", js)
         self.assertIn("await tpApply(eng,{claude:o.draft.claude,codex:o.draft.codex},mirrorState.revision,'');", js)
         self.assertIn('.tp-pop{--tp-c:var(--fleet-claude)}', cc_overview.CSS)
         self.assertFalse(hasattr(M, 'PICKER_JS'))
