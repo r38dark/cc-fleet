@@ -230,7 +230,7 @@ def install(ns):
     models = cc_codex_models.Discovery(codex, rotation, ns['codex_bin'])
     inputs = ConsoleInput(ns)
     ns['FLEET_ROTATION'] = rotation
-    bridge.LIMIT_PAUSE = rotation.limit_pause  # [notion-ai] очередь моста ждёт сброса, если лимит исчерпан и переключаться некуда
+    bridge.LIMIT_PAUSE = rotation.limit_pause  # очередь моста ждёт сброса, если лимит исчерпан и переключаться некуда
     import cc_profiles
     profiles = cc_profiles.bind(ns, inputs)
     try:   # Codex раньше стоял на паузе (SIGSTOP), а теперь по правилу выше не должен: снимаем заморозку при старте панели
@@ -264,7 +264,7 @@ def install(ns):
             if path in ('/api/model','/api/effort') and not profiles.input_allowed('claude'):
                 if not self._authed():return self._send(403, {'ok':False})
                 return self._send(200, {'ok':False,'message':'Claude на паузе или меняется профиль. Повтори выбор модели после завершения переключения.'})
-            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch', '/api/chatgpt/models/check', '/api/notion/save'):
+            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch', '/api/chatgpt/models/check'):
                 return original.do_POST(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
@@ -278,16 +278,6 @@ def install(ns):
             except (ValueError, UnicodeDecodeError):
                 return self._send(400, {'ok': False, 'message': 'Неверный JSON.'})
             try:
-                if path == '/api/notion/save':
-                    if 'reserve' in body:
-                        return self._send(200, dict(ok=False, message='Резерв убран из панели.'))
-                    config = ns['cfg']()
-                    ok, conf, error = ns['cc_notion'].save(config.get('notion_agent') or {}, body)
-                    if not ok:
-                        return self._send(400, dict(ok=False, message='Не принято поле настроек агента.', field=error))
-                    config['notion_agent'] = conf
-                    ns['jsave'](ns['CONFIG'], config)
-                    return self._send(200, dict(ok=True, notion=ns['cc_notion'].public()))
                 if path == '/api/chatgpt/models/check':
                     return self._send(200, models.start())
                 if path.startswith('/api/profiles/'):
@@ -321,7 +311,7 @@ def install(ns):
                             return self._send(200, dict(ok=False, message=message_side))
                     claude_side = False
                     if session == 'claude' and not claude_alive(ns):
-                        # Основной Claude остановлен (работа на PROD или режим Notion AI): писать некуда. Побочная сессия
+                        # Основной Claude остановлен (работа на PROD): писать некуда. Побочная сессия
                         # (без Telegram, только чтение) запускается только после «Да» на странице.
                         if not body.get('side'):
                             return self._send(200, dict(ok=False, ask='side', message='Claude DEV сейчас остановлен: основная работа идёт в другом месте. Запустить побочную сессию Claude здесь? Она работает без Telegram и только читает, основную работу не трогает. Перед возвратом работы её остановят.'))
@@ -398,11 +388,11 @@ def install(ns):
         cc_labels.install(ns)
     except Exception as exc:
         print('labels: названия серверов не подключены: %r' % (exc,), flush=True)
-    try:  # [notion-ai] профиль «Notion AI · только он» + уведомления о смене профилей в Telegram
-        import cc_notion_ai
-        cc_notion_ai.install(ns, profiles)
+    try:  # общая механика исполнителей: шапка Claude DEV/PROD/Codex, передача работы, уведомления о смене профилей в Telegram
+        import cc_workers
+        cc_workers.install(ns, profiles)
     except Exception as exc:
-        print('notion-ai: модуль не подключён: %r' % (exc,), flush=True)
+        print('workers: модуль не подключён: %r' % (exc,), flush=True)
     try:  # [remote] удалённый аккаунт Claude (PROD): строка, плитка, лимиты
         import cc_remote_ui
         ns['PAGE'] = cc_remote_ui.inject(ns['PAGE'])

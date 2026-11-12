@@ -9,7 +9,7 @@ The existing nodes and handlers are moved rather than replaced.
 
 On mobile, the active account tiles are always expanded directly below the console.
 The compact summary and Expand/Collapse controls are hidden. The same live nodes
-are moved, retaining both providers' model, settings, profile and reserve controls.
+are moved, retaining both providers' model, settings and profile controls.
 Desktop placement above the console and its open state are restored when changing
 back to a desktop layout. Fullscreen hides the account tiles; normal mode restores
 them below the console. The lower account list remains accessible.

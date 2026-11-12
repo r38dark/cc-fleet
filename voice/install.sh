@@ -161,19 +161,6 @@ s8() {
   okm "ccfleet-transcribe услышал: «$(tr '\n' ' ' < "$VOICE_DIR/test.txt" | head -c 100)»"
 }
 
-# enable_in_panel: после успешной установки включает «Голосовые ответы в Telegram» в настройках Notion AI (если панель уже стоит)
-enable_in_panel() {
-  local cfg="${CC_LIMITS_BASE:-/opt/cc-limits}/notion_ai.json"
-  [ -f "$cfg" ] || return 0
-  python3 - "$cfg" <<'PY' && info "в настройках Notion AI включены «Голосовые ответы в Telegram»"
-import json, sys
-p = sys.argv[1]
-d = json.load(open(p)); d["voice"] = True
-json.dump(d, open(p, "w"), ensure_ascii=False, indent=1)
-PY
-  return 0
-}
-
 # ---------- удаление ----------
 if [ "$REMOVE" = 1 ]; then
   [ "$(id -u)" = 0 ] || { echo "нужен root" >&2; exit 1; }
@@ -200,7 +187,6 @@ for n in 1 2 3 4 5 6 7 8; do
   header "$n"
   if "${checks[$((n-1))]}"; then okm "уже готово"; else "s$n"; fi
 done
-enable_in_panel
 echo
 echo -e "${CG}Голос установлен.${C0} Озвучка: ${CB}ccfleet-say \"текст\" файл.ogg${C0} · расшифровка: ${CB}ccfleet-transcribe файл.oga${C0} · служба: systemctl status ccfleet-tts"
-echo "Панель и агенты Notion подхватят голос сами (проверка: curl http://127.0.0.1:$PORT/health → ok). Убрать: sudo bash voice/install.sh --remove"
+echo "Мост Codex подхватит голос сам, если в codex_bridge.json включён voice_enabled (проверка: curl http://127.0.0.1:$PORT/health → ok). Убрать: sudo bash voice/install.sh --remove"

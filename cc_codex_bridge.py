@@ -44,11 +44,12 @@ RESERVED_TOKENS = lambda: []  # токены, которые мосту брат
 NOW = time.time  # в тестах подменяется
 ENTER_DELAY = 0.6  # пауза между текстом и Enter при печати в консоль Claude
 CONSOLE = None  # cc_limits подставляет cc_codex_console: разговор идёт в консоли Codex; None — отдельный `codex exec`
-MCP_ARGS = lambda: []  # cc_limits: ключи `-c` с инструментами Notion-агента (пусто вне резерва)
-RESERVE_NOTE = lambda: ""  # cc_limits: строка-напоминание Codex про резерв и агента (пусто вне резерва)
+MCP_ARGS = lambda: []  # cc_profiles: ключи `-c` профиля (папки записи, инструкция профиля) для запуска `codex exec`
+PROFILE_NOTE = lambda: ""  # cc_limits/cc_profiles: строка-напоминание Codex про текущий профиль (в AGENTS.md)
+SOLO_PROFILE = lambda: False  # cc_limits: выбран самостоятельный профиль Codex Full
 TAKE_DRAFT_ALLOWED = lambda: True
 DISPATCH_ALLOWED = lambda: True  # profile coordinator: hold incoming work while the engine is paused
-LIMIT_PAUSE = lambda: {}  # [notion-ai] пауза Codex по лимитам (cc_codex_rotation.Rotation.limit_pause, ставит cc_fleet)
+LIMIT_PAUSE = lambda: {}  # пауза Codex по лимитам (cc_codex_rotation.Rotation.limit_pause, ставит cc_fleet)
 PROFILE_APPLIED = lambda: None  # cc_limits: обновить права и MCP-инструменты работающей консоли
 EMERGENCY = None  # cc_limits подставляет cc_codex_emergency: пока аварийный режим включён, права и папка заморожены
 TG_API = "https://api.telegram.org"  # на стенде — локальная заглушка Bot API
@@ -65,17 +66,13 @@ MEDIA_PREP_TIMEOUT = 30  # предел подготовки вложения; �
 
 MODES = ("mediator", "orchestrator", "self")
 # Профили — наборы настроек, которые применяются одним кликом; доступ (access) важен только в «self».
-# Встроенные: «Оркестратор», «Codex» и самостоятельный «Codex Full» без Claude и Notion-агента.
+# Встроенные: «Оркестратор», «Codex» и самостоятельный «Codex Full» без Claude.
 # Полный доступ требует отдельного подтверждения и действует только в пределах прав пользователя ОС.
 # Свои профили прежних версий остаются: применяются и удаляются, новые не собираются.
 BUILTIN_PROFILES = (
     ("orchestrator", {"mode": "orchestrator", "access": "read", "task_rights": "dev"}),
     ("codex_solo_full", {"mode": "self", "access": "full", "task_rights": "dev"}),
 )
-# «Резерв» — служебный профиль: его включает и снимает сам резерв Notion (cc_notion), вручную он не выбирается.
-# Codex работает сам вместе с агентом (не раздаёт задания Claude, который в это время недоступен или отложен).
-RESERVE_ID = "reserve"
-RESERVE_DEF = {"mode": "self", "access": "write"}
 # профили прежних версий → нынешние (где состав совпадал); остальные выбором не считаются — настройки остаются как были
 LEGACY_PROFILES = {"standby": "codex"}
 ACCESS = ("read", "write", "full")
@@ -310,9 +307,7 @@ def _profiles(s):
 
 def active_profile(s):
     """Выбранный профиль, если настройки всё ещё ему соответствуют; иначе \"\" (набор правили вручную)."""
-    cur = s.get("profile") or ""
-    if cur == RESERVE_ID:
-        return cur if s['mode']=='self' and s['access'] in ('write','full') else ''
+    cur = s.get("profile") or ""   # профиль, убранный из панели (например, прежний служебный), читается как «не выбран»
     if cur == 'executor':
         return cur if (s['mode'],s['access'],s['task_rights']) == ('self','write','dev') else ''
     for pid, d in BUILTIN_PROFILES:
@@ -328,9 +323,6 @@ def apply_profile(pid, confirm="", lang="ru"):
     """Применить профиль одним действием. Полный доступ в профиле включается тем же словом-подтверждением.
     Выключатель бота (enabled) профиль не трогает. → (ok, сообщение)."""
     s = load()
-    if pid == RESERVE_ID:
-        return False, _t(lang, "Профиль «Резерв» включается сам вместе с резервом Notion — вручную его не выбрать.",
-                         "The Reserve profile turns on by itself with the Notion reserve — it cannot be picked by hand.")
     found = [d for i, d, _ in _profiles(s) if i == pid]
     if not found:
         return False, _t(lang, "Такого профиля нет.", "No such profile.")
@@ -354,45 +346,6 @@ def apply_profile(pid, confirm="", lang="ru"):
         except Exception as e:
             log(f"profile console refresh: {type(e).__name__} {e}")
     return ok, msg
-
-
-def reserve_profile(active, flipped=False):
-    """Профиль Codex следует за резервом Notion, чтобы в меню не было путаницы, какой режим сейчас.
-    Резерв включился (flipped) → «Резерв» (Codex работает сам вместе с агентом), прежние режим, доступ, права и профиль
-    запоминаются. Кончился → всё возвращается; если человек за это время выбрал другой профиль — его выбор не трогаем.
-    Пока включён аварийный режим, права заморожены: ничего не меняем, возврат повторится на следующем такте.
-    → True, если настройки поменялись."""
-    with _lock:
-        s = load()
-        cur = s.get("profile") or ""
-        frozen = EMERGENCY is not None and EMERGENCY.active()
-        if active:
-            if cur == "codex_solo_full":
-                return False  # самостоятельный полный профиль всегда выключает резервный маршрут к Notion
-            if not flipped or cur == RESERVE_ID or frozen:
-                return False
-            prev = {k: s.get(k) for k in ("mode", "access", "task_rights", "profile")}
-            ok, _ = save(dict(RESERVE_DEF))
-            if not ok:
-                return False
-            s = load()
-            s.update(reserve_prev=prev, profile=RESERVE_ID)
-            _save(s)
-            return True
-        if cur == RESERVE_ID and frozen:
-            return False
-        prev = s.pop("reserve_prev", None)
-        if cur != RESERVE_ID or not prev:
-            if prev is not None or cur == RESERVE_ID:
-                if cur == RESERVE_ID:
-                    s["profile"] = ""  # возвращать нечего (запись потерялась) — настройки остаются, профиль не выбран
-                _save(s)
-            return False
-        s.update({k: prev.get(k, s.get(k)) for k in ("mode", "access", "task_rights", "profile")})
-        _save(s)
-    ensure_exchange()
-    BRIDGE.sync()
-    return True
 
 
 def delete_profile(pid, lang="ru"):
@@ -878,7 +831,7 @@ def ensure_exchange():
         except PermissionError:  # папка чужая (мост без root, не наша) — режим уже выставлен тем, кто её создал
             pass
     agents = (AGENTS_ORCH_TEXT if s["mode"] == "orchestrator" else AGENTS_TEXT).format(workdir=project_dir(s) or "(не задан)")
-    agents += "\n" + RESERVE_NOTE() + "\n" + image_output_note(s) + "\n"
+    agents += "\n" + PROFILE_NOTE() + "\n" + image_output_note(s) + "\n"
     path = os.path.join(ex, "AGENTS.md")
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -899,11 +852,9 @@ def ensure_workspace(s=None):
     path = os.path.join(ws, "AGENTS.md")
     current = s or load()
     template = AGENTS_SELF_FULL_TEXT if active_profile(current) == "codex_solo_full" else AGENTS_SELF_TEXT
-    if current['access']=='full' and (active_profile(current) == RESERVE_ID or RESERVE_ACTIVE()):
-        template = AGENTS_RESERVE_FULL_TEXT
     text = AGENTS_MARK + "\n" + template.format(project=project_dir(current) or "(не задан)",
-                                                 team=team_note("Claude и Notion-агент не используются."))
-    text += "\n" + RESERVE_NOTE() + "\n" + image_output_note(current) + "\n"
+                                                 team=team_note(SOLO_TEAM))
+    text += "\n" + PROFILE_NOTE() + "\n" + image_output_note(current) + "\n"
     try:
         old = None
         if os.path.exists(path):
@@ -920,7 +871,16 @@ def ensure_workspace(s=None):
 
 
 AGENTS_MARK = "<!-- создано мостом cc-limits: пока эта строка на месте, файл обновляется сам; правишь — удали её -->"
-RESERVE_ACTIVE = lambda: False  # Native manager owns the workflow independently of Full.
+SOLO_TEAM = "Claude не используется."   # фраза про второго исполнителя по умолчанию (config.json «codex_team_note» её заменяет)
+
+
+def solo_note():
+    """Строка в начало сообщений Codex: только для самостоятельного профиля Codex Full."""
+    if SOLO_PROFILE():
+        return "[Профиль Codex Full: работаешь самостоятельно. " + team_note(SOLO_TEAM) + "]"
+    return ""
+
+
 AGENTS_SELF_TEXT = """# Codex — работает сам (профиль «Codex»)
 
 Ты общаешься с человеком через Telegram и консоль. Эта папка — твоя рабочая: здесь читай, пиши и запускай.
@@ -942,17 +902,6 @@ AGENTS_SELF_FULL_TEXT = """# Codex Full — работает самостоят�
 Секреты не выводи в ответы, код и журналы; пароли и ключи в чате не запрашивай.
 Отвечай коротко и по делу; сделал — скажи что и как проверил.
 """
-
-AGENTS_RESERVE_FULL_TEXT = """# Codex Full + Notion — резерв
-
-Ты общаешься с человеком через Telegram и консоль. Проект: {project}
-Сохраняются права Full: читай, изменяй файлы и запускай команды в пределах прав пользователя ОС и подтверждённой задачи.
-Claude на паузе. Работай с выбранным Notion-агентом по инструкции резерва ниже, проверяй его результат самостоятельно.
-Полный доступ не выдаёт дополнительных прав ОС и не отменяет согласование выхода за рамки задачи.
-Секреты не передавай агенту и не выводи в ответы, код и журналы; пароли и ключи в чате не запрашивай.
-Отвечай коротко и по делу; сообщай, что и как проверено.
-"""
-
 
 AGENTS_TEXT = """# Codex — секретарь (режим «Посредник»)
 
@@ -1184,7 +1133,7 @@ def _local_ts(ts):
 
 
 def limit_hold_text(lp, queued):
-    """[notion-ai] Одно сообщение на эпизод паузы Codex по лимитам: что исчерпано, когда сброс, что с очередью."""
+    """Одно сообщение на эпизод паузы Codex по лимитам: что исчерпано, когда сброс, что с очередью."""
     wins = ", ".join("окно " + n for n in lp.get("window_names") or []) or "сервис сообщил о лимите"
     who = f" ({lp.get('label')})" if lp.get("multi") and lp.get("label") else ""
     at = _local_ts(lp["resume_at"]) if lp.get("resume_at") else ""
@@ -1375,7 +1324,7 @@ class Bridge:
                     with self.start_lock:self.worker = None
                     return
                 continue
-            if self._limit_hold():  # [notion-ai] лимит исчерпан, переключаться некуда — ждём сброса, очередь цела
+            if self._limit_hold():  # лимит исчерпан, переключаться некуда — ждём сброса, очередь цела
                 self._end_media_action()
                 if self.stop_ev.wait(1):
                     with self.start_lock:self.worker = None
@@ -1583,7 +1532,7 @@ class Bridge:
                 pass
 
     def _limit_hold(self):
-        """[notion-ai] Пауза Codex по лимитам (как у Claude): → True, пока держим очередь.
+        """Пауза Codex по лимитам (как у Claude): → True, пока держим очередь.
         Одно сообщение на эпизод паузы и одно — когда очередь пошла после сброса."""
         try:
             lp = LIMIT_PAUSE() or {}
@@ -1644,8 +1593,6 @@ class Bridge:
             s = load()
             sb, cwd = plan(s)
             mode = {"mediator": "Посредник", "orchestrator": "Оркестратор"}.get(s["mode"], "Самостоятельно")
-            if RESERVE_ACTIVE() or active_profile(s) == RESERVE_ID:
-                mode = "Full · задачи через резерв Notion" if s['access']=='full' else "Резерв (Codex вместе с Notion-агентом)"
             emg = EMERGENCY.status_line() if EMERGENCY is not None else ""
             with self.start_lock:
                 queued = len(self.work_queue)
@@ -1653,7 +1600,7 @@ class Bridge:
                 lp = LIMIT_PAUSE() or {}
             except Exception:
                 lp = {}
-            if lp.get("active"):  # [notion-ai]
+            if lp.get("active"):
                 emg = (emg + "\n" if emg else "") + "⏸ Пауза по лимитам" + (f" до {_local_ts(lp['resume_at'])}" if lp.get("resume_at") else "") + " — сообщения ждут в очереди."
             return self.send((emg + "\n" if emg else "") + f"Режим: {mode}\nПесочница: {sb}\nПапка: {cwd}\nВ очереди: {queued}\nПрава заданий Claude (потолок): "
                              f"{RIGHTS_RU[s['task_rights']]}")

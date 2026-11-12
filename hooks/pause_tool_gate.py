@@ -97,25 +97,6 @@ def main():
         st = pause_ctl.load()
         if not st.get("active"):
             passthrough()
-    if st.get("kind") == "reserve":  # пауза резерва: будильника нет, снимает только человек
-        since = float(st.get("since") or 0)
-        try:
-            mark = json.load(open(MARK))
-        except Exception:
-            mark = {}
-        if mark.get("since") != since:
-            tmp = MARK + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump({"since": since, "notice_ts": now}, f)
-            os.replace(tmp, MARK)
-            deny("Включён резерв: вместо Claude работают Codex + Notion-агент, лимиты не тратим. Новых шагов не начинай. "
-                 "У тебя %d с: если начатое действие оставляет систему в сломанном состоянии — доведи его до целостного "
-                 "и запиши, что сделано и что осталось (memory проекта доступна). Потом заверши ход без дальнейших действий. "
-                 "Вернуть Claude — снять галочку «Работать только с агентом» в окне Notion на панели." % GRACE)
-        if now - float(mark.get("notice_ts") or 0) <= GRACE:
-            passthrough()
-        deny("Включён резерв (Codex + Notion-агент): инструменты заблокированы, пока человек не снимет галочку на панели. "
-             "Заверши ход без действий (memory и pause_ctl доступны).")
     resume = float(st.get("resume_at") or 0)
     if resume and resume < now:
         passthrough()  # будильник просрочен — не держим сессию, пусть крон разбирается

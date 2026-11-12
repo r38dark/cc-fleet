@@ -192,7 +192,7 @@ class Handler(Base):
 
     def test_console_screens_and_chats_are_not_rewritten(self):
         self.put({"main": "A", "remote": "B"})
-        for path in ("/api/console?s=prod", "/api/remote/console", "/api/notion-ai/view", "/api/notion-ai/agents/view/ag1"):
+        for path in ("/api/console?s=prod", "/api/remote/console"):
             self.h.path = path
             self.h._send(200, {"current": "git push to PROD, DEV ok"})
             self.assertEqual(FakeBase.sent[-1][1], {"current": "git push to PROD, DEV ok"}, path)

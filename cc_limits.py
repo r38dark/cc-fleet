@@ -13,7 +13,6 @@ import cc_codex_console
 import cc_codex_emergency
 import cc_cli_notice
 import cc_model_notice
-import cc_notion
 import cc_remote
 import cc_lock
 import cc_disconnect
@@ -21,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.33"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.34"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -176,7 +175,7 @@ cc_codex.INSTALL_PREFIX = lambda: os.path.join(BASE, "codex-cli")  # кнопк�
 
 
 def _codex_installed(path):
-    c = cfg()  # без lock — как /api/notion/save и /api/config
+    c = cfg()  # без lock — как /api/config
     c["codex_bin"] = path
     jsave(CONFIG, c)
 
@@ -206,15 +205,10 @@ cc_codex_emergency.BASE = BASE
 cc_codex_emergency.CONFIG = lambda: cfg().get("codex_emergency") or {}
 cc_codex_emergency.NOTIFY = tg_notify
 cc_codex.EXTRA_ENV = cc_codex_emergency.env_extra
-# Notion-агент: карточка на странице; вход берём из файла входа Claude Code, имя агента — из config.json
-cc_notion.CREDS = lambda: LIVE_CREDS
-cc_notion.CONFIG = lambda: cfg().get("notion_agent") or {}
-# [notion-ai] резерв (Codex + Notion-агент вместо Claude) убран: сторожа, паузы и служебного профиля больше нет
-cc_notion.SOLO_PROFILE = lambda: cc_codex_bridge.active_profile(cc_codex_bridge.load()) == "codex_solo_full"
-cc_codex_bridge.MCP_ARGS = cc_notion.codex_args
-cc_codex_bridge.RESERVE_NOTE = cc_notion.codex_note
+# строка про самостоятельный профиль Codex Full в AGENTS.md (cc_profiles подменяет PROFILE_NOTE, когда профилями ведает панель)
+cc_codex_bridge.SOLO_PROFILE = lambda: cc_codex_bridge.active_profile(cc_codex_bridge.load()) == "codex_solo_full"
+cc_codex_bridge.PROFILE_NOTE = cc_codex_bridge.solo_note
 cc_codex_bridge.PROFILE_APPLIED = cc_codex_emergency._restart_console
-cc_codex_console.MCP = cc_notion.codex_args
 cc_codex_bridge.EMERGENCY = cc_codex_emergency
 
 
@@ -1546,7 +1540,7 @@ def _console_feed():
 
 
 def console_idle_reason():
-    """Подпись в пустой консоли Claude (сессии нет). cc_notion_ai подменяет: «включён профиль Notion AI…»."""
+    """Подпись в пустой консоли Claude (сессии нет). cc_remote_mode подменяет: «работа сейчас на PROD…»."""
     return "Claude сейчас не запущен — консоль появится, когда сессию Claude запустят."
 
 
@@ -2402,7 +2396,7 @@ def _nowhere_text(accs, act, act_free=False):
     elif lvl == "week" and not override:
         head = (f"⏸ Claude: неделя {act} — {w}% (потолок {cap:.0f}%), переключаться некуда — Claude встаёт на паузу. "
                 "Поднимется сам, когда освободится другой аккаунт или сбросится неделя"
-                # [notion-ai] на 100% недели настоящий лимит исчерпан — отключать паузу бесполезно
+                # на 100% недели настоящий лимит исчерпан — отключать паузу бесполезно
                 + ("." if w >= 100 else "; продолжить сразу — «Отключить паузу» на панели."))
     elif lvl in WEEK_LEVELS:
         head = (f"⚠️ Claude: неделя {act} — {w}%, переключаться некуда. Балансер не остановит заполнение "
@@ -2727,7 +2721,7 @@ def optimize_check(snap):
         tg_notify("⚠️ Claude (оптимизация): переключение на %s не удалось: %s" % (target, out))
 
 
-LIM_WARN, LIM_CLEAR = 90, 80  # [notion-ai] как у Codex (cc_codex_bridge): «подходит» с 90%, порог взводится снова ниже 80%
+LIM_WARN, LIM_CLEAR = 90, 80  # как у Codex (cc_codex_bridge): «подходит» с 90%, порог взводится снова ниже 80%
 
 
 def _lim_at(iso):
@@ -2747,7 +2741,7 @@ def _lim_at(iso):
 
 
 def claude_limit_alerts(accs, prev):
-    """[notion-ai] Сообщения о лимитах Claude в том же виде, что у Codex: на каждом пороге одно —
+    """Сообщения о лимитах Claude в том же виде, что у Codex: на каждом пороге одно —
     «израсходовано на 90%», «исчерпан» (100%) и «снова доступен». По каждому аккаунту и окну
     (5 ч, неделя); имя аккаунта — только если аккаунтов больше одного. Ошибка чтения или Free —
     состояние аккаунта не меняется. → (сообщения, новое состояние)."""
@@ -2916,20 +2910,20 @@ def claude_restart_info_remote(r):
 
 def claude_restart_local():
     """Перезапуск Claude на этом сервере: остановить и запустить штатно (start_claude.sh) — НОВАЯ сессия. Не трогаем, если скрипт всё равно не запустит Claude
-    (работа на PROD или профиль Notion AI): иначе после остановки он так и остался бы выключенным."""
-    nai = globals().get("NOTION_AI")
-    if nai is None:
+    (работа на PROD): иначе после остановки он так и остался бы выключенным."""
+    wk = globals().get("WORKERS")
+    if wk is None:
         return {"ok": False, "error": "not_supported"}
     if not cc_fleet.claude_alive(globals()):
         return {"ok": False, "error": "not_running"}
     import pause_ctl
-    if pause_ctl._remote_active() or (jload(os.path.join(BASE, "notion_ai_mode.json"), {}) or {}).get("active"):
+    if pause_ctl._remote_active():
         return {"ok": False, "error": "other_worker"}
-    if nai.side_running():
+    if wk.side_running():
         return {"ok": False, "error": "side_session"}
-    if not nai.stop_claude():
+    if not wk.stop_claude():
         return {"ok": False, "error": "stop_failed"}
-    if not nai.start_claude():
+    if not wk.start_claude():
         return {"ok": False, "error": "start_failed"}
     return {"ok": True}
 
@@ -3121,9 +3115,8 @@ class H(BaseHTTPRequestHandler):
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
             snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
             snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
-            snap["config"]["codex_hidden"] = list(cfg().get("codex_hidden") or [])  # [notion-ai] модели Codex, убранные из быстрого меню
+            snap["config"]["codex_hidden"] = list(cfg().get("codex_hidden") or [])  # модели Codex, убранные из быстрого меню
             snap["model"] = model_info()
-            snap["notion"] = cc_notion.public()
             snap["remote"] = cc_remote.cached()
             try:
                 import cc_remote_mode
@@ -3139,10 +3132,6 @@ class H(BaseHTTPRequestHandler):
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
             return self._send(200, claude_cli_view(bool(parse_qs(u.query).get("check"))))
-        if u.path == "/api/notion":  # лёгкий опрос блока Notion (резерв включается сам — не ждать минутного обновления всей страницы)
-            if not self._authed():
-                return self._send(403, {"error": "forbidden"})
-            return self._send(200, cc_notion.public())
         if u.path == "/api/update":
             if not self._authed():
                 return self._send(403, {"error": "forbidden"})
@@ -3471,15 +3460,6 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, dict(backup_status(), ok=True, restored=res["restored"]))
         if u.path in ("/api/claude-cli/update", "/api/claude-cli/rollback", "/api/claude-cli/restart"):  # «Обновить» / «Вернуть» Claude Code (⚙ Настройки Claude)
             return self._send(200, claude_cli_action(u.path.rsplit("/", 1)[1], body))
-        if u.path == "/api/notion/save":  # имя и ссылка Notion-агента ([notion-ai] резерва больше нет)
-            c = cfg()  # без lock — как /api/config: он не реентерабельный и занят на время опроса
-            ok, conf, err = cc_notion.save(c.get("notion_agent") or {}, body)
-            if not ok:
-                return self._send(400, {"ok": False, "field": err, "message": _t(
-                    body.get("lang"), "Не принято поле «%s»." % err, "Field “%s” was not accepted." % err)})
-            c["notion_agent"] = conf
-            jsave(CONFIG, c)
-            return self._send(200, {"ok": True, "notion": cc_notion.public()})
         if u.path == "/api/config":
             c = cfg()
             for k in ("autoswitch", "threshold", "optimize"):
@@ -3493,7 +3473,7 @@ class H(BaseHTTPRequestHandler):
                 c["weekly_pause"] = body["weekly_pause"]
             if isinstance(body.get("profile_backup"), bool):
                 c["profile_backup"] = body["profile_backup"]
-            if "weekly_cap" in body:  # [notion-ai] «Неделя, %» в «⚙ Настройки Claude» → «Переключение и лимиты»
+            if "weekly_cap" in body:  # «Неделя, %» в «⚙ Настройки Claude» → «Переключение и лимиты»
                 try:
                     cap = int(body["weekly_cap"])
                 except (TypeError, ValueError):
@@ -3501,7 +3481,7 @@ class H(BaseHTTPRequestHandler):
                 if not 50 <= cap <= 100:
                     return self._send(200, {"ok": False, "message": "Неделя: число от 50 до 100 %"})
                 c["weekly_cap"] = cap
-            if isinstance(body.get("codex_hidden"), list):  # [notion-ai] галочки «в быстром меню» в «⚙ Настройки Codex»
+            if isinstance(body.get("codex_hidden"), list):  # галочки «в быстром меню» в «⚙ Настройки Codex»
                 c["codex_hidden"] = sorted({m.strip()[:80] for m in body["codex_hidden"] if isinstance(m, str) and m.strip()})[:200]
             if "enabled_models" in body:
                 # неизвестные id молча отбрасываем; пустой список игнорируем целиком —
@@ -3667,7 +3647,7 @@ button:disabled{opacity:.35;cursor:default}
 /* вкладки консолей Claude | Codex: слева над консолью, без своей плашки; показываются, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:transparent}
 .ctabs[hidden],.ctstop[hidden],.ctab[hidden]{display:none}
-html.no-prod #ctProd,html.no-prod .nai-seg[data-ag="prod"],html.no-prod .fleet-live-account.prod,html.no-prod .fleet-compact-account.prod,html.no-prod .fleet-acc[data-engine="prod"],html.no-prod .nai-h3.t-prod,html.no-prod .rm-hand[data-target="prod"],html.no-prod .tpmi[data-k="prod"]{display:none!important}
+html.no-prod #ctProd,html.no-prod .wk-seg[data-ag="prod"],html.no-prod .fleet-live-account.prod,html.no-prod .fleet-compact-account.prod,html.no-prod .fleet-acc[data-engine="prod"],html.no-prod .wk-h3.t-prod,html.no-prod .rm-hand[data-target="prod"],html.no-prod .tpmi[data-k="prod"]{display:none!important}
 @media(max-width:520px){.ctab .ctlong{display:none}}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
 .iconbtn.ctab{width:auto;padding:0 11px;font:600 12px/1 system-ui,sans-serif;letter-spacing:.01em}
@@ -3704,8 +3684,8 @@ html:root:root .iconbtn.ctab[data-s].on{background:rgb(var(--tc));border-color:r
 html:root:root #splitBtn[hidden]{display:none!important}  /* у кнопок блока масштаба display задаётся классом и перебивает hidden */
 .termwrap.tsplit .fleet-console-viewport{position:relative;display:flex!important;flex-direction:row;min-width:0;background:var(--fleet-terminal,#0b0d10)}
 /* общее окно ввода со строкой статуса выше окон частей на 39px: добавляем их к экрану, чтобы консоль и активные аккаунты занимали столько же места, как при одной консоли */
-html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(360px,41dvh,510px) + 39px)}
-@media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(340px,calc(100dvh - 430px),640px) + 39px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(320px,calc(100dvh - 470px),610px) + 39px)}}
+html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(408px,calc(41dvh + 48px),558px) + 39px)}
+@media(min-width:1100px) and (min-height:700px){html:not(.conly) .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(388px,calc(100dvh - 382px),688px) + 39px)}html:not(.conly) body.fleet-mirror .termwrap.tsplit .fleet-console-viewport{height:calc(clamp(368px,calc(100dvh - 422px),658px) + 39px)}}
 html.conly .termwrap.tsplit .fleet-console-viewport{flex:1 1 0;min-height:0}
 html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{border-left:1px solid #263140}
 html:root:root .termwrap.tsplit .fleet-console-viewport>#termBox,html:root:root .termwrap.tsplit .fleet-console-viewport>.tpextra{flex:1 1 0!important;min-width:0!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;border:0;border-radius:0;padding:36px 12px 14px!important;overflow:auto;box-sizing:border-box;font-size:calc(12px*var(--tz,1)*var(--pz,1))!important}
@@ -3728,7 +3708,7 @@ html:root:root .termwrap.tsplit .tcwrap{white-space:pre-wrap!important;overflow-
 .tpmi:hover,.tpmi:focus-visible{background:rgba(255,255,255,.07);outline:0}
 .tpmi.cur{color:#e7f3ee}
 .tpmd{width:7px;height:7px;border-radius:50%;flex:none;background:#e0905a}
-.tpmd[data-m=codex]{background:#4cdbb0}.tpmd[data-m=notion]{background:#a78bfa}
+.tpmd[data-m=codex]{background:#4cdbb0}
 .tpmn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tpmw{flex:none;font-size:11px;color:#6d7f94}
 .tpmc{flex:none;color:#68ac92}
@@ -3738,7 +3718,7 @@ html:root:root .termwrap.tsplit .tcwrap{white-space:pre-wrap!important;overflow-
 .tphd .tpab{flex:none;display:grid;place-items:center;width:22px;height:22px;margin:0;padding:0;min-height:0;background:none;border:0;border-radius:5px;color:#7d8ea3;cursor:pointer}
 .tphd .tpab:hover{color:#eaf2fb;background:rgba(255,255,255,.07)}
 .tphd .tpab svg{display:block;width:14px;height:14px;pointer-events:none}
-html:root:root .termwrap.tsplit:not(.nai-on) .fleet-console-toolbar .ctacts{display:none!important}
+html:root:root .termwrap.tsplit .fleet-console-toolbar .ctacts{display:none!important}
 .tphd .tpfs{flex:none;display:grid;place-items:center;width:22px;height:22px;margin:0 0 0 auto;padding:0;min-height:0;background:none;border:0;border-radius:5px;color:#7d8ea3;cursor:pointer}
 .tphd .tpfs:hover{color:#eaf2fb;background:rgba(255,255,255,.07)}
 .tphd .tpfs svg{display:block;width:14px;height:14px;pointer-events:none}
@@ -3749,11 +3729,10 @@ html:root:root .termwrap.tsplit:not(.nai-on) .fleet-console-toolbar .ctacts{disp
 .termwrap.tpmax .fleet-console-viewport>.tphide,.termwrap.tpmax .tpheads .tphide,.termwrap.tpmax .tpcomps .tphide{display:none!important}
 body.tpdraging .tpadd{display:flex;position:fixed;z-index:60;align-items:center;justify-content:center;text-align:center;padding:14px;font:600 13px system-ui,sans-serif;color:#cfe9e0;background:rgba(25,60,52,.78);border:2px dashed var(--fleet-accent,#73dbb7);box-sizing:border-box}
 body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
-.termwrap.nai-on .tpextra,.termwrap.nai-on .tpheads{display:none!important}
 /* --- у каждой части разделённой консоли своё окно ввода (форма — как общее окно, отправка — его же код) --- */
 .tpcomps{display:none}
-.termwrap.tsplit.tpcomps-on:not(.nai-on)>.tpcomps{display:flex;flex:none;min-width:0}
-.termwrap.tsplit.tpcomps-on:not(.nai-on)>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on:not(.nai-on)>.fleet-input-status{display:none!important}
+.termwrap.tsplit.tpcomps-on>.tpcomps{display:flex;flex:none;min-width:0}
+.termwrap.tsplit.tpcomps-on>#fleetConsoleForm,.termwrap.tsplit.tpcomps-on>.fleet-input-status{display:none!important}
 .tpcw{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
 .tpcw+.tpcw{border-left:1px solid #263140}
 .tpcomp{display:flex;align-items:center;gap:8px;margin:0;padding:8px 10px;border-top:1px solid #263140;background:#101620;color:#dbe3ed}
@@ -3765,15 +3744,9 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .tpcomp .tpsend{display:grid;place-items:center;width:28px;height:28px;background:#1a342d;color:#a5c6bb;border:0;border-radius:6px;box-shadow:none}
 .tpcomp .tpsend svg{display:block;width:16px;height:16px;pointer-events:none}
 .tpcomp .tpkey{background:transparent;color:#73869d;border:1px solid #2a3644;padding:2px 5px;border-radius:4px;font:10px ui-monospace,monospace;min-width:20px;text-align:center}
-/* --- чат Notion AI в части разделённой консоли --- */
-.termbox.tpchat{display:flex!important;flex-direction:column;overflow:hidden!important}
-html:root:root #termBox.tpchat,html:root:root .tpextra.tpchat{white-space:normal!important;font-family:ui-monospace,"SFMono-Regular",Consolas,monospace}
-.termbox.tpchat>span,.termbox.tpchat>.termidle{display:none!important}
-html:root:root .termbox.tpchat>.tpnai{display:block;position:static;flex:1 1 auto;min-height:0;width:auto;height:auto;margin:0;padding:0;overflow-x:hidden;overflow-y:auto;font:inherit;color:inherit;white-space:normal}
 .tpfr{display:none;position:absolute;z-index:6;pointer-events:none;box-sizing:border-box;border:1px solid transparent}
 .tpfr.on{z-index:7;border-color:rgba(104,172,146,.62)}
-.termwrap.tsplit:not(.nai-on) .tpfr{display:block}
-.termwrap.nai-on .tpcomps{display:none!important}
+.termwrap.tsplit .tpfr{display:block}
 /* верхнее меню (ПК): открытая консоль — аккуратная прозрачная серая рамка вокруг вкладки, активная — такая же мягкого приглушённого зелёного */
 @media(min-width:1100px) and (pointer:fine){
  html:root:root .fleet-console-toolbar .iconbtn.ctab[data-s]{align-self:center;height:30px!important;padding:0 12px!important;border-radius:8px}
@@ -4332,7 +4305,7 @@ html:root:root .hdrgear.cxbtn{padding:0 7px 0 6px;gap:4px}
 html:root:root .cxbtnname{max-width:84px}
 /* с счётчиками кнопка профиля не помещается в одну строку с остальными кнопками — занимает свою строку на всю ширину */
 html:root:root .hdrctl{flex:1 1 100%;min-width:0;flex-wrap:wrap;justify-content:flex-end}
-html:root:root .cxgrp{flex:1 1 280px;min-width:0}  /* меньше 280 px группе Codex не отдаём: не помещается рядом с группой Notion — уходит на свою строку */
+html:root:root .cxgrp{flex:1 1 280px;min-width:0}  /* меньше 280 px группе Codex не отдаём: не помещается рядом с соседней группой — уходит на свою строку */
 html:root:root .cxgrp .hdrgear.cxbtn{flex:1 1 auto;min-width:0;justify-content:flex-start}
 html:root:root .cxlim{margin-left:auto}
 html:root:root .hdrgear.cxmodbtn{flex:0 1 auto;min-width:0;padding:0 6px;gap:5px}
@@ -4597,13 +4570,6 @@ const I18N={
   updE_systemd:'нужен systemd и юнит службы',
   updToastSkipped:'Версия пропущена',
   ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
-  ccpResTitle:'⏸ Claude на паузе: <b>работает резерв</b> (Codex + Notion-агент)',
-  ccpResSub:'Резерв включён вручную: Claude не тратит аккаунты, входящие сообщения ждут в очереди. Выключи переключатель «Резерв» вверху — Claude вернётся сразу и продолжит с места остановки.',
-  ccpResGrace:'Если Claude сейчас в работе, на следующем шаге он получит отказ и доделает начатое — не дольше 2 минут, потом инструменты блокируются.',
-  ccpResGraceNow:'Claude получил отказ и доделывает начатое; после отсчёта его инструменты блокируются.',
-  ccpResGraceL:'Claude доделывает начатое',
-  ccpResLocked:'Инструменты Claude заблокированы.',
-  ccpHintResOff:'аварийный выход: Claude продолжит сразу, резерв останется включённым',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
   ccpHardTitle:'⛔ Уперлись в лимиты — <b>переключаться некуда</b>',
@@ -4653,6 +4619,8 @@ const I18N={
   ccpsTitle:'Claude на паузе по лимитам',ccpsTitleCx:'Codex на паузе по лимитам',ccpsUntil:(at,left)=>` до ${at} (осталось ${left})`,
   ccpsBody:'Новые действия ждут сброса. Сообщения в Telegram встают в очередь, беседа сохранена — после сброса работа продолжится сама.',
   ccpsBodyCx:'Переключаться некуда. Сообщения из Telegram ждут в очереди и уйдут сами после сброса.',
+  limxPause:at=>'пауза по лимитам'+(at?' до '+at:''),limxOutWeek:at=>'лимит недели исчерпан'+(at?' до '+at:''),limxOut5h:at=>'лимит 5 ч исчерпан'+(at?' до '+at:''),limxOut:at=>'лимит исчерпан'+(at?' до '+at:''),
+  limxTipPause:'Новые действия ждут сброса, беседа сохранена.',limxTipOut:'Настоящий лимит исчерпан: новые запросы не пройдут до сброса, беседа сохранена.',
   ccpTillNearest:'до ближайшего окна',
   ccpTillFree:n=>'до освобождения '+n,
   ccpTillReset:'до сброса окна',
@@ -4787,7 +4755,7 @@ const I18N={
   cxpRoute_codex_solo_full:['Codex','Самостоятельно'],
   cxpS_orchestrator:'Codex — главный: ведёт цель к результату и принимает работу. Claude выполняет шаги, но каждый — только после твоего «да».',
   cxpS_codex:'Работает сам, без Claude: отвечает на твои сообщения, читает и пишет в своей рабочей папке. Проект только читает.',
-  cxpS_codex_solo_full:'Работает один, без Claude и Notion-агента. Полная песочница Codex действует с правами настроенного пользователя ОС; root и SSH-доступ профиль не выдаёт.',
+  cxpS_codex_solo_full:'Работает один, без Claude. Полная песочница Codex действует с правами настроенного пользователя ОС; root и SSH-доступ профиль не выдаёт.',
   cxpF_orchestrator:['Codex ведёт цель','Шаг — по твоему «да»','Claude исполняет','«Стоп» снимает всё'],
   cxpF_codex:['Работает сам','Пишет в своей папке','Проект — только чтение'],
   cxpF_codex_solo_full:['Без Claude и агента','Полная песочница Codex','Права пользователя ОС','Нужно подтверждение'],
@@ -5118,13 +5086,6 @@ const I18N={
   updE_systemd:'systemd and the service unit are required',
   updToastSkipped:'Version skipped',
   ccpPauseTitle:'⏸ Claude is <b>paused on limits</b> — it resumes on its own',
-  ccpResTitle:'⏸ Claude is paused: <b>the reserve is working</b> (Codex + Notion agent)',
-  ccpResSub:'The reserve was turned on by hand: Claude does not spend accounts, incoming messages wait in the queue. Switch the “Reserve” toggle off at the top — Claude comes back at once and continues where it stopped.',
-  ccpResGrace:'If Claude is working right now, it gets a refusal on its next step and finishes what it started — 2 minutes at most, then its tools are blocked.',
-  ccpResGraceNow:'Claude got the refusal and is finishing what it started; its tools are blocked when the countdown ends.',
-  ccpResGraceL:'Claude is finishing up',
-  ccpResLocked:'Claude’s tools are blocked.',
-  ccpHintResOff:'emergency exit: Claude continues right away, the reserve stays on',
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
   ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
@@ -5177,6 +5138,8 @@ const I18N={
   ccpsTitle:'Claude paused on limits',ccpsTitleCx:'Codex paused on limits',ccpsUntil:(at,left)=>` until ${at} (${left} left)`,
   ccpsBody:'New actions wait for the reset. Telegram messages are queued, the conversation is kept — work resumes by itself after the reset.',
   ccpsBodyCx:'Nowhere to switch. Telegram messages wait in the queue and go out by themselves after the reset.',
+  limxPause:at=>'paused on limits'+(at?' until '+at:''),limxOutWeek:at=>'weekly limit used up'+(at?' until '+at:''),limxOut5h:at=>'5 h limit used up'+(at?' until '+at:''),limxOut:at=>'limit used up'+(at?' until '+at:''),
+  limxTipPause:'New actions wait for the reset; the conversation is kept.',limxTipOut:'The real limit is used up: new requests fail until the reset; the conversation is kept.',
   ccpTillNearest:'until nearest window',
   ccpTillFree:n=>'until '+n+' frees up',
   ccpTillReset:'until window reset',
@@ -5311,7 +5274,7 @@ const I18N={
   cxpRoute_codex_solo_full:['Codex','Standalone'],
   cxpS_orchestrator:'Codex is in charge: it drives the goal and accepts the work. Claude runs the steps, but each one only after your "yes".',
   cxpS_codex:'Works on its own, without Claude: answers your messages, reads and writes in its own working folder. Only reads the project.',
-  cxpS_codex_solo_full:'Works alone, without Claude or the Notion agent. Codex gets its full sandbox under the configured OS user; this profile does not grant root or SSH access.',
+  cxpS_codex_solo_full:'Works alone, without Claude. Codex gets its full sandbox under the configured OS user; this profile does not grant root or SSH access.',
   cxpF_orchestrator:['Codex drives the goal','Step — on your "yes"','Claude executes','"Stop" cancels all'],
   cxpF_codex:['Works on its own','Writes in its folder','Project — read only'],
   cxpF_codex_solo_full:['No Claude or agent','Full Codex sandbox','OS user permissions','Confirmation required'],
@@ -5513,9 +5476,7 @@ function splitPick(keys,act,k){const j=keys.indexOf(k);if(j>=0)return {keys:keys
 function splitFollow(keys,act,oldK,newK){const j=keys.indexOf(newK);if(j>=0)return {keys:keys,act:j};const i=oldK?keys.indexOf(oldK):-1;if(i<0)return splitPick(keys,act,newK);const ks=keys.slice();ks[i]=newK;return {keys:ks,act:i};}
 /*SPLIT-PURE-END*/
 let SPLIT={keys:[],act:0};  // keys — модели по панелям при разделении; пусто — одна панель (вкладки как раньше)
-function isKey(k){return typeof k==='string'&&/^(claude|prod|codex|notion(:\S+)?)$/.test(k);}
-function isNai(k){return typeof k==='string'&&k.indexOf('notion')===0;}
-function naiAid(k){return k.length>6?k.slice(7):'';}
+function isKey(k){return typeof k==='string'&&/^(claude|prod|codex)$/.test(k);}
 try{const _sp=JSON.parse(localStorage.getItem('cc_split')||'null');if(_sp&&Array.isArray(_sp.keys))SPLIT={keys:_sp.keys.filter((k,i,a)=>isKey(k)&&a.indexOf(k)===i).slice(0,SPLIT_MAX),act:Math.max(0,+_sp.act||0)};}catch(e){}
 function splitSave(){try{localStorage.setItem('cc_split',JSON.stringify(SPLIT));}catch(e){}}
 const splitMq=matchMedia('(min-width:1100px) and (pointer:fine)');
@@ -5539,9 +5500,8 @@ function prodAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_prod')
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
 // запомненная вкладка Codex не выбирается, пока Codex не подключён (призрачная плитка), и консоль Codex сама не стартует без входа в ChatGPT — иначе при каждой загрузке страницы «Нет входа в ChatGPT» (владелец 62657)
 function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}
-function naiList(){try{return window.naiKeys?window.naiKeys():[]}catch(e){return []}}
-// не подключённые Codex и Notion AI (призрачные плитки, html.ag-unlinked-*) в разделение консоли не предлагаются (правка владельца 62622)
-function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[],R.contains('ag-unlinked-notion')?[]:naiList().map(x=>x.key));}
+// не подключённый Codex (призрачная плитка, html.ag-unlinked-codex) в разделение консоли не предлагается (правка владельца 62622)
+function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]);}
 // модели по панелям при разделении (только доступные); null — разделения нет (узкий экран, одна модель, не включено)
 function splitEff(){
  if(!splitMq.matches)return null;
@@ -5558,7 +5518,6 @@ function consQuery(s,P){return s==='codex'?'&s=codex':s==='prod'?'&s=prod&cols='
 function dotOf(P){return {set className(v){P.dotCls=v;if(P.chipDot)P.chipDot.className=v+' tpdot';if(P===activePane())$('#termDot').className=v;}};}
 async function ccConsoleHistory(P){
  P=P||PANES[0];
- if(isNai(P.k))return;
  const s=P.k;
  try{
   const r=await fetch(API+'console?token='+TOKEN+'&history=1'+consQuery(s,P));const d=await r.json();
@@ -5582,7 +5541,6 @@ function cxConsUi(d){
 }
 async function ccConsole(P){
  if(!P)return tickAll();
- if(isNai(P.k))return;
  const box=P.box,dot=dotOf(P),s=P.k,requestSeq=++P.seq;
  ctActsSync();
  try{
@@ -5614,7 +5572,7 @@ async function ccConsole(P){
    }else{
     if(!d.ok||d.current==null){dot.className='termdot err';return;}
     dot.className='termdot';
-    // сессии Claude нет (напр. профиль «Notion AI · только он»): сервер отдаёт последний экран остановленной
+    // сессии Claude нет (напр. работа на PROD): сервер отдаёт последний экран остановленной
     // сессии (не обновляется) — показываем его и плашку «почему»; при переходе туда/обратно подтягиваем прокрутку заново
     idleUi(P,d,dot,d.idle||'Claude сейчас не запущен.','Claude',null);
    }
@@ -5625,7 +5583,7 @@ async function ccConsole(P){
   if(atBottom)box.scrollTop=box.scrollHeight;
  }catch(e){dot.className='termdot err';}
 }
-// [notion-ai] Скины убраны: панель всегда в классическом оформлении (без атрибута data-skin).
+// Скины убраны: панель всегда в классическом оформлении (без атрибута data-skin).
 // ---- масштаб шрифта консоли: процент от базового размера, запоминается в браузере ----
 const TZ_STEPS=[50,60,70,80,90,100,110,125,150,175,200,250,300];
 let TZ=100;
@@ -5655,7 +5613,6 @@ function wirePane(P){
 function fitPane(P){
  const b=P.box;
  b.classList.remove('tcwrap');
- if(isNai(P.k)){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  if(!b.closest('.termwrap.tsplit')){if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
  // Codex, Claude DEV и PROD рисуют экран шире окна части: сжимать шрифт нельзя (при тех же 100% он выходил мельче соседних, владелец 62811/62838, 63297), поэтому строки переносятся
  if(P.k==='codex'||P.k==='claude'||P.k==='prod'){b.classList.add('tcwrap');if(b.style.getPropertyValue('--pz'))b.style.removeProperty('--pz');return;}
@@ -5720,21 +5677,18 @@ document.addEventListener('keydown',e=>{
 document.documentElement.removeAttribute('data-skin');{const box=$('#termBox');box.scrollTop=box.scrollHeight;}
 function consTabs(){
  const av=cxAvail(),pv=prodAvail(),cur=consCur(),ks=splitEff()||[];
- $('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;
+ $('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;$('#ctCodex').hidden=!av;  // Codex недоступен — его вкладки нет
  [['claude','#ctClaude'],['prod','#ctProd'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
   b.classList.toggle('on',on);b.classList.toggle('tshown',!on&&ks.includes(k));b.setAttribute('aria-selected',on);
   b.title=on?'':tr('cxcSw')+b.textContent;
   b.draggable=splitMq.matches&&(av||pv);
  });
- // вкладки Notion AI: при разделении подсвечиваются так же; вне разделения ими ведает cc_notion_ai.py
- document.querySelectorAll('#cTabs .ctab[data-s="notion"]').forEach(b=>{const k=tabKey(b),on=ks.length>0&&k===cur;b.draggable=splitMq.matches&&isKey(k);b.classList.toggle('tshown',ks.length>0&&!on&&ks.includes(k));if(ks.length>0&&b.classList.contains('on')!==on){b.classList.toggle('on',on);b.setAttribute('aria-selected',on);}});
  splitBtnSync();
  ctActsSync();  // подсказки кнопок — по текущей вкладке (раньше здесь жёстко стояли подсказки Codex)
  syncPanes();
 }
 function consPick(k){
- if(isNai(k)&&!splitEff())return;  // вне разделения чат Notion AI открывает его собственная вкладка (окно поверх консоли)
  const ks=splitEff();
  if(ks){const r=splitPick(ks,splitActIdx(ks),k);SPLIT={keys:r.keys,act:r.act};splitSave();}
  CONS=k;try{localStorage.setItem('cc_contab',k);}catch(e){}
@@ -5742,17 +5696,11 @@ function consPick(k){
 }
 $('#cTabs').addEventListener('click',e=>{const b=e.target.closest('.ctab');if(!b)return;const k=tabKey(b);if(isKey(k)&&k!==consCur())consPick(k);});
 // ---- разделение: панели, заголовки, перетаскивание
-function tabKey(b){const s=b.dataset.s;return s==='notion'?(b.dataset.aid?'notion:'+b.dataset.aid:'notion'):s;}
+function tabKey(b){return b.dataset.s;}
 function tabName(k){const b=[...document.querySelectorAll('#cTabs .ctab')].find(x=>tabKey(x)===k);return b?b.textContent.trim():k;}
-function paneClean(P){if(P.chat){P.chat.stop();P.chat=null;}if(P.nv){P.nv.remove();P.nv=null;}P.box.classList.remove('tpchat');}
 function resetPane(P,k){
- paneClean(P);
  P.k=k;P.cxRun=null;P.prodRun=false;P.idleKey='';P.stick=true;P.dotCls='';
  P.hist.innerHTML='';P.cur.innerHTML='';P.idle.hidden=true;P.box.classList.remove('termempty');
- if(isNai(k)){  // чат Notion AI: своя прокручиваемая область внутри части, опрос — у чата
-  P.box.classList.add('tpchat');P.nv=document.createElement('div');P.nv.className='nai-view tpnai';P.box.appendChild(P.nv);
-  P.chat=typeof window.naiChat==='function'?window.naiChat(P.nv,naiAid(k)):null;P.dotCls='termdot';if(P.chipDot)P.chipDot.className='termdot tpdot';return;
- }
  ccConsoleHistory(P);ccConsole(P);
 }
 function newPane(){
@@ -5771,14 +5719,12 @@ function compMake(P){
  input.addEventListener('input',()=>{DRAFTS[P.k]=input.value;});
  w.addEventListener('pointerdown',()=>{const i=PANES.indexOf(P);if(splitEff()&&i>=0)splitActivate(i);},true);
  window.fleetBindComposer(form,input,send,stat,()=>P.k);
- form.addEventListener('submit',e=>{if(!isNai(P.k)||!P.chat)return;e.preventDefault();e.stopImmediatePropagation();const text=input.value;if(!text.trim())return;P.chat.send(text,ok=>{if(ok&&input.value===text){input.value='';DRAFTS[P.k]='';}});},true);  // у части с чатом Notion AI сообщение идёт в чат (capture — раньше отправки в консоль)
  return w;
 }
 function compSync(P,on){
  const c=P.comp;if(!c)return;
  const n=tabName(P.k);
  c.w.classList.toggle('on',on);
- c.form.querySelectorAll('.tpkey').forEach(b=>{b.hidden=isNai(P.k);});  // ↑ ↓ ⏎ Esc — только для консолей
  if(c.model!==P.k){
   c.model=P.k;c.input.value=DRAFTS[P.k]||'';
   c.input.placeholder=(LANG==='en'?'Message to ':'Сообщение в ')+n+'…';c.input.setAttribute('aria-label',c.input.placeholder);
@@ -5821,7 +5767,6 @@ function syncPanes(){
  const ks=splitEff(),keys=ks||[baseCur()],vp=PANES[0].box.parentNode;
  if(!ks)MAXED=false;
  $('.termwrap').classList.toggle('tsplit',!!ks);
- if(ks&&window.naiClose)window.naiClose();  // окно чата Notion AI поверх консоли при разделении не нужно: чат живёт в своей части
  if(ks)CONS=ks[splitActIdx(ks)];
  while(PANES.length<keys.length){const P=newPane();vp.appendChild(P.box);PANES.push(P);wirePane(P);}
  while(PANES.length>keys.length){const P=PANES.pop();P.box.remove();if(P.comp){P.comp.w.remove();P.comp=null;}}
@@ -5846,7 +5791,7 @@ function openModelMenu(i){
  const m=document.createElement('div');m.id='tpMenu';m.className='tpmenu';m.dataset.i=i;m.setAttribute('role','menu');
  m.innerHTML='<div class="tpmt">'+(LANG==='en'?'Model in this part':'Модель в этой части')+'</div>'+splitKeysAvail().map(k=>{
   const j=ks.indexOf(k),cur=j===i;
-  return '<button type="button" role="menuitem" class="tpmi'+(cur?' cur':'')+'" data-k="'+acctEsc(k)+'"><span class="tpmd" data-m="'+(isNai(k)?'notion':k)+'"></span><span class="tpmn">'+acctEsc(tabName(k))+'</span>'
+  return '<button type="button" role="menuitem" class="tpmi'+(cur?' cur':'')+'" data-k="'+acctEsc(k)+'"><span class="tpmd" data-m="'+k+'"></span><span class="tpmn">'+acctEsc(tabName(k))+'</span>'
    +(j>=0&&!cur?'<span class="tpmw">'+(LANG==='en'?'part ':'часть ')+(j+1)+'</span>':'')+(cur?'<span class="tpmc">✓</span>':'')+'</button>';}).join('');
  document.body.appendChild(m);
  const r=chip.getBoundingClientRect();m.style.left=Math.max(8,Math.min(r.left,innerWidth-m.offsetWidth-8))+'px';m.style.top=(r.bottom+4)+'px';
@@ -5970,7 +5915,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)tickAll();
 window.fleetSplitOn=function(){try{return !!splitEff()}catch(e){return false}};
 window.fleetSplitWanted=function(){return splitMq.matches&&SPLIT.keys.length>1};
 window.fleetSplitShow=function(k){if(isKey(k))consPick(k);};
-// консоль идёт за исполнителем: панель знает, кто сейчас работает (remote_mode.worker: dev/prod/codex/notion).
+// консоль идёт за исполнителем: панель знает, кто сейчас работает (remote_mode.worker: dev/prod/codex).
 // Сменился — вкладка консоли переключается сама. Пока исполнитель тот же, ручной выбор вкладки не трогаем.
 let consFollowed='',consFollowWait=0;
 // сохранённая раскладка ещё не собралась: модели частей приходят в панель позже страницы — следом за исполнителем идём, когда она готова
@@ -5980,18 +5925,18 @@ function consFollow(d){
   const w=d&&d.remote_mode&&d.remote_mode.worker;if(!w)return;
   let seen=consFollowed;if(!seen){try{seen=localStorage.getItem('cc_conworker')||'';}catch(e){}}
   if(seen===w)return;
-  const b=document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[w]||'ctClaude');
+  const b=document.getElementById({prod:'ctProd',codex:'ctCodex'}[w]||'ctClaude');
   if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())||splitPending()){
-   // страница только открылась: вкладка Notion и данные Codex приходят чуть позже — ждём до 30 с, потом отстаём до следующего опроса
+   // страница только открылась: данные Codex и PROD приходят чуть позже — ждём до 30 с, потом отстаём до следующего опроса
    const t=Date.now();if(!consFollowWait||t-consFollowWait>30000)consFollowWait=t;
    if(t-consFollowWait<30000)setTimeout(()=>consFollow(lastSnap),700);
    return;
   }
   consFollowed=w;try{localStorage.setItem('cc_conworker',w);}catch(e){}  // запоминаем до клика: сам клик зовёт consTabs
-  // разделённая консоль: окно нового исполнителя встаёт на место окна прежнего, выбранная рукой часть (например, Notion) остаётся (владелец 62577)
+  // разделённая консоль: окно нового исполнителя встаёт на место окна прежнего, выбранная рукой часть остаётся (владелец 62577)
   const ks=splitEff();
-  if(ks&&splitKeysAvail().includes(tabKey(b))){const ob=seen?document.getElementById({prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[seen]||'ctClaude'):null;splitCommit(splitFollow(ks,splitActIdx(ks),ob?tabKey(ob):'',tabKey(b)),tabKey(b));return;}
-  b.click();  // обычный клик: вкладка Notion открывает его чат, остальные закрывают чат Notion и зовут consPick
+  if(ks&&splitKeysAvail().includes(tabKey(b))){const ob=seen?document.getElementById({prod:'ctProd',codex:'ctCodex'}[seen]||'ctClaude'):null;splitCommit(splitFollow(ks,splitActIdx(ks),ob?tabKey(ob):'',tabKey(b)),tabKey(b));return;}
+  b.click();  // обычный клик: обработчик вкладки зовёт consPick
  }catch(e){}
 }
 async function cxConsAct(path,quiet,P){
@@ -6895,7 +6840,7 @@ function ciSync(st){
  ciRender();
 }
 // у не подключённого Codex кнопки «Codex +» в шапке нет (её роль у призрачной плитки): окно мастера встаёт под плитку
-function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#naiAgents .nai-seg[data-ag="codex"]')||b)}
+function ciAnchor(){const b=$('#cxInst');return b&&b.offsetParent!==null?b:(document.querySelector('#wkAgents .wk-seg[data-ag="codex"]')||b)}
 function ciPlace(){
  const pop=$('#cxInstPop'),r=ciAnchor().getBoundingClientRect();
  const top=Math.round(r.bottom+8);
@@ -7102,7 +7047,7 @@ function cxQRender(){
  const mrow=(id,name,on)=>`<button type="button" class="cxqm${on?' on':''}" role="radio" aria-checked="${on}" data-m="${acctEsc(id)}"><i class="cxqr"></i><span>${acctEsc(name)}</span></button>`;
  let ml=mrow('',tr('cxDefault')+' · '+c.def.name,!a.model);
  if(a.model&&!c.known)ml+=mrow(a.model,a.model,true);
- const hid=(typeof lastSnap!=='undefined'&&lastSnap&&lastSnap.config&&lastSnap.config.codex_hidden)||[];  // [notion-ai] без галочки «в быстром меню» — не показываем (кроме выбранной)
+ const hid=(typeof lastSnap!=='undefined'&&lastSnap&&lastSnap.config&&lastSnap.config.codex_hidden)||[];  // без галочки «в быстром меню» — не показываем (кроме выбранной)
  ml+=c.ms.filter(m=>!hid.includes(m.id)||(c.known&&m.id===a.model)).map(m=>mrow(m.id,m.name,c.known&&m.id===a.model)).join('');
  const erow=(e,label,on)=>`<button type="button" class="cxqe${on?' on':''}" role="radio" aria-checked="${on}" data-e="${acctEsc(e)}">${acctEsc(label)}</button>`;
  const el=c.efs.length?erow('',tr('cxDefault')+(c.mod.default_effort?' · '+c.mod.default_effort:''),!c.ef)+c.efs.map(e=>erow(e,e,e===c.ef)).join(''):'';
@@ -7387,8 +7332,7 @@ function cxDel(slot){
 // ---- баннер лимитов/паузы ----
 // Данные тянем раз в 20 с, а обратный отсчёт тикает локально каждую секунду —
 // чтобы цифра жила, но сервер не дёргался лишний раз.
-let ccpData=null,ccpLoadedAt=0;
-const CCP_GRACE=120;  // = GRACE в hooks/pause_tool_gate.py: столько секунд Claude доделывает начатое после первого отказа
+let ccpData=null;
 const ccpEsc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function ccpLeft(untilMs){
  const s=Math.max(0,Math.round((untilMs-Date.now())/1000));
@@ -7433,7 +7377,7 @@ function ccpRender(){
   return;
  }
  const fleet=d&&d.fleet;
- if(fleet&&fleet.remote_count&&fleet.all_blocked&&pause.kind!=='reserve'){
+ if(fleet&&fleet.remote_count&&fleet.all_blocked){
   const next=fleet.nearest||{},until=next.resets_at?new Date(next.resets_at).getTime():0;
   const chips=Object.values(fleet.accounts||{}).map(a=>'<span class="ccp-chip hot">'+ccpEsc(a.label)
    +' <b>'+(a.pct==null?'?':Math.round(a.pct)+'%')+'</b>'
@@ -7451,8 +7395,8 @@ function ccpRender(){
  // переключаться некуда > активный забит
  const mode=pause.override?'off':pause.active?'pause':lvl;
  // [remote] работа на Claude PROD: лимиты DEV не значат «переключаться некуда» — переключились туда
- // пауза по лимитам, «пауза отключена» и ручной выбор тоже относятся к этому серверу: работа идёт на PROD, на плитке аккаунта они видны; резервную паузу не прячем
- if(d.remote&&['hard','week','weekrisk','gate','pause','off','manual'].includes(mode)&&!(mode==='pause'&&pause.kind==='reserve')){el.hidden=true;return;}
+ // пауза по лимитам, «пауза отключена» и ручной выбор тоже относятся к этому серверу: работа идёт на PROD, на плитке аккаунта они видны
+ if(d.remote&&['hard','week','weekrisk','gate','pause','off','manual'].includes(mode)){el.hidden=true;return;}
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);
  let title,sub,timer=null,tlabel='',action=null;
@@ -7475,14 +7419,6 @@ function ccpRender(){
     +(pause.note?'<br>'+ccpEsc(pause.note):'');
   if(upMs){timer=upMs;tlabel=tr('ccpTillWake');}
   action={act:'off',label:tr('ccpBtnOff'),hint:wk?tr('ccpHintWeekOff'):tr('ccpHintOff',thr)};
-  if(pause.kind==='reserve'){
-   title=tr('ccpResTitle');sub=tr('ccpResSub');action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintResOff')};
-   // сколько Claude ещё доделывает начатое: отсчёт идёт с первого отказа инструмента (его ставит хук), не раньше
-   const gEnd=pause.notice_ts?(pause.notice_ts+(pause.grace||CCP_GRACE))*1000:0;
-   if(!gEnd)sub+='<br>'+tr('ccpResGrace');
-   else if(Date.now()<gEnd){sub+='<br>'+tr('ccpResGraceNow');timer=gEnd;tlabel=tr('ccpResGraceL');}
-   else sub+='<br>'+tr('ccpResLocked');
-  }
  }else if(mode==='week'||mode==='weekrisk'){
   const na=d.nearest&&d.nearest.acc,a=(d.accounts||{})[d.active]||{};
   const n=ccpEsc(d.active||'?'),w=a.wpct==null?'?':Math.round(a.wpct)+'%';
@@ -7517,7 +7453,7 @@ function ccpRender(){
   // без таймера: сброс окна активного тут ни при чём — балансер уходит на свободный сразу
   sub=tr('ccpGateSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),d.autoswitch!==false,ses);
  }
- // [notion-ai] у активного исчерпан настоящий лимит (сессия или неделя 100%) — «Отключить паузу» ничего не даст: кнопку прячем
+ // у активного исчерпан настоящий лимит (сессия или неделя 100%) — «Отключить паузу» ничего не даст: кнопку прячем
  const aa=(d.accounts||{})[d.active]||{};
  if(action&&action.act==='off'&&(aa.pct>=100||aa.wpct>=100))action={act:'',label:'',hint:tr('ccpHintLimitOut')};
  const chips=Object.entries(d.accounts||{}).map(([n,a])=>
@@ -7532,18 +7468,14 @@ function ccpRender(){
   +(action?'<div class="ccp-actions">'+(action.act?'<button type="button" class="ccp-btn" onclick="ccpToggle(\''+action.act+'\',this)">'
     +action.label+'</button>':'')+'<span class="ccp-hint">'+ccpEsc(action.hint)+'</span></div>':'')
   +'</div>'
-  +(timer?'<div class="ccp-timer" data-until="'+timer+'"'+(mode==='pause'&&pause.kind==='reserve'?' data-grace="1"':'')+'><div class="t">'+ccpLeft(timer)+'</div>'
+  +(timer?'<div class="ccp-timer" data-until="'+timer+'"><div class="t">'+ccpLeft(timer)+'</div>'
     +'<div class="l">'+tlabel+'</div></div>':'');
 }
 function ccpTick(){
  document.querySelectorAll('#ccPause .ccp-left').forEach(e=>{e.textContent=ccpLeft(+e.dataset.until)});   // «осталось …» в тексте паузы тикает
- const pz=ccpData&&ccpData.pause;
- // пауза резерва, отказа инструмента ещё не было: опрашиваем чаще, чтобы отсчёт «доделывает» появился сразу
- if(pz&&pz.active&&pz.kind==='reserve'&&!pz.notice_ts&&Date.now()-ccpLoadedAt>4000)ccpLoad();
  const t=$('#ccPause .ccp-timer');if(!t)return;
  const until=+t.dataset.until;
  t.querySelector('.t').textContent=ccpLeft(until);
- if(t.dataset.grace){if(Date.now()>=until)ccpRender();return;}  // отсчёт доделывания кончился — меняем надпись, таймер уходит
  if(Date.now()>until+60000)ccpLoad();  // окно должно было отпустить — перечитаем
 }
 async function ccpToggle(act,btn){
@@ -7559,7 +7491,6 @@ async function ccpToggle(act,btn){
  }
 }
 async function ccpLoad(){
- ccpLoadedAt=Date.now();
  try{const r=await fetch(API+'pause?token='+TOKEN);ccpData=await r.json();}catch(e){ccpData=null;}
  ccpRender();
 }
@@ -7866,7 +7797,7 @@ async function ccliLoad(check){
  try{const r=await fetch(API+'claude-cli?token='+TOKEN+(check?'&check=1':''));if(!r.ok)throw new Error(r.status);ccliData=await r.json();}catch(e){return;}
  ccliRender();ccliBadgeRender();
  clearTimeout(ccliTimer);
- const busy=['local','remote'].some(k=>ccliData[k]&&ccliData[k].state==='running');
+ const busy=['local','remote','codex'].some(k=>ccliData[k]&&ccliData[k].state==='running');
  if(busy&&(!$('#scrim').hidden||ccliPopOpen))ccliTimer=setTimeout(()=>ccliLoad(false),3000);
 }
 function ccliRow(k,d){
@@ -7938,7 +7869,10 @@ function ccliPopRender(){
    sub=d.op==='rollback'?tr('ccliDoneRb',d.from_version,d.version_after||d.version):tr('ccliOkTitle',nm,d.from_version,d.version_after||d.version);cls=' ok';
    sub+=' '+tr(r&&r.running===false?(k==='codex'?'ccliNextCodexStopped':'ccliNextClaudeStopped'):(k==='codex'?'ccliNextCodex':'ccliNextClaude'));
   }
-  else if(d.state==='failed'){sub=tr('ccliFailed',d.err||'');cls=' bad';}
+  else if(d.state==='failed'){
+   sub=tr('ccliFailed',d.err||'');cls=' bad';
+   if(d.can_update)btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="latest">'+tr('ccliBtnRetry')+'</button>';
+  }
   else if(d.update_available&&d.can_update){sub=tr('ccliPopSub',d.version||'',d.latest||'');btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest||'latest')+'">'+tr('ccliPopUpdate')+'</button>';}
   else if(r&&r.stale)sub=tr(k==='codex'?'ccliStaleNote':'ccliStaleClaude');
   if(r&&r.running&&(r.stale||(d.state==='done'&&fresh)))btn='<button type="button" class="ghostbtn" data-ccli-pop="restart" data-k="'+k+'"'+(r.busy?' disabled':'')+'>'+tr(k==='codex'?'ccliRestartBtn':'ccliRestartClaude')+'</button>';
@@ -7999,31 +7933,99 @@ function ccliPartVers(){
  });
 }
 setInterval(ccliPartVers,2000);addEventListener('resize',ccliPartVers);setTimeout(()=>{ccliLoad(false);},1500);
-// Полоса паузы сверху окна консоли Claude PROD и Codex: пока работа стоит на лимитах, видно, что это пауза, до какого часа и что сообщения встают в очередь
+// Пауза по лимитам в окне консоли Claude DEV, Claude PROD и Codex: пока работа стоит на лимитах, видно, что это пауза, до какого часа и что сообщения встают в очередь
 function ccpsHtml(k){
- const at=(ms,r,lead)=>'<b>\u23f8 '+tr(lead)+'</b>'+(ms?tr('ccpsUntil',ccpAt(ms),ccpLeft(ms)):'')+(r?' · '+ccpEsc(r):'');
+ const at=(ms,r,lead)=>'<b>⏸ '+tr(lead)+'</b>'+(ms?tr('ccpsUntil',ccpAt(ms),ccpLeft(ms)):'')+(r?' · '+ccpEsc(r):'');
  if(k==='prod'){const rp=ccpData&&ccpData.remote_pause;if(!(rp&&rp.enabled&&rp.applied&&rp.blocked))return '';
   return at((rp.resume_at||0)*1000,(rp.reasons||[]).join('; '),'ccpsTitle')+'. '+tr('ccpsBody');}
  if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;if(!(p&&p.active&&p.paused))return '';
   return at((p.resume_at||0)*1000,(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', '),'ccpsTitleCx')+'. '+tr('ccpsBodyCx');}
+ // Claude DEV: пауза балансера этого сервера (та же, что в верхнем баннере); отключена вручную или снимок устарел — паузы нет
+ if(k==='claude'){const p=ccpData&&!ccpData.stale&&ccpData.pause;if(!(p&&p.active&&!p.override))return '';
+  return at((p.resume_at||0)*1000,p.reason||'','ccpsTitle')+'. '+tr('ccpsBody');}
  return '';
 }
+// ---- Лимит агента: бейдж на верхней рамке строки «Активных аккаунтов» и большая иконка в окне консоли — ОДНО правило на оба места.
+// Пауза по лимитам (та же, что у ccpsHtml) важнее исчерпания. Исчерпан — настоящий лимит: окно 5 ч или недели на 100 % и его сброс ещё не прошёл
+// (Claude DEV и PROD — по снимку лимитов; Codex — limit_notice сервера, там же «сервис сказал: лимит», в том числе при единственном аккаунте, когда паузы нет).
+/*LIMX-PURE-START*/
+// pause: null | {until: мс}; wins: [{win:'5h'|'week'|'', pct, until: мс | 0}]; reported — лимит назван сервисом без окна
+// → null | {kind:'pause'|'out', win, until}
+function limxPick(pause,wins,reported,now){
+ if(pause)return {kind:'pause',win:'',until:pause.until||0};
+ const full=(wins||[]).filter(w=>w&&typeof w.pct==='number'&&w.pct>=100&&!(w.until&&now>w.until+120000));  // сброс прошёл (2 мин запаса) — окно уже свободно, цифры просто старые
+ if(!full.length)return reported?{kind:'out',win:'',until:0}:null;
+ // исчерпаны оба окна — показываем то, что кончается позже: реально ждать до него; одинаково — неделю
+ const w=full.reduce((a,b)=>(b.until||0)>(a.until||0)||((b.until||0)===(a.until||0)&&b.win==='week')?b:a);
+ return {kind:'out',win:w.win||'',until:w.until||0};
+}
+/*LIMX-PURE-END*/
+function limxWinOf(w,name){const t=w&&w.resets_at?Date.parse(w.resets_at):NaN;return {win:name,pct:w&&typeof w.pct==='number'?w.pct:null,until:isNaN(t)?0:t};}
+function limxState(k){
+ let pause=null,wins=[],reported=false;
+ try{
+  if(ccpsHtml(k)){const d=ccpData||{},u=k==='prod'?(d.remote_pause||{}).resume_at:k==='codex'?(cxlpData||{}).resume_at:(d.pause||{}).resume_at;pause={until:(+u||0)*1000};}
+  const snap=typeof lastSnap!=='undefined'?lastSnap:null;
+  if(k==='claude'){const a=snap&&snap.accounts&&snap.accounts[snap.active];if(a)wins=[limxWinOf(a.five_hour,'5h'),limxWinOf(a.seven_day,'week')];}
+  else if(k==='prod'){const r=snap&&snap.remote,m=r&&r[Object.keys(r)[0]];if(m)wins=[limxWinOf(m.five_hour,'5h'),limxWinOf(m.seven_day,'week')];}
+  else if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;
+   if(p&&p.active){wins=(p.windows||[]).map(m=>({win:m===300?'5h':m===10080?'week':'',pct:100,until:(+((p.resets||{})[m]||p.resume_at)||0)*1000}));reported=!wins.length;}}
+ }catch(e){return null;}
+ return limxPick(pause,wins,reported,Date.now());
+}
+// время в надписи (часовой пояс панели): у недели — с днём недели «Чт 12.11 17:59»; иначе как у «пауза по лимитам до»: сегодня — «02:29», другой день — «12.11 02:29»
+const LIMX_DF={};
+function limxDf(o){const loc=LANG==='en'?'en-GB':'ru',key=loc+JSON.stringify(o);return LIMX_DF[key]||(LIMX_DF[key]=new Intl.DateTimeFormat(loc,Object.assign({hourCycle:'h23',timeZone:window.FLEET_TZ},o)));}
+function limxAt(ms,week){
+ const d=new Date(ms),dm=x=>limxDf({day:'2-digit',month:'2-digit'}).format(x).replace(/\//g,'.'),hm=limxDf({hour:'2-digit',minute:'2-digit'}).format(d);
+ if(week){const wd=limxDf({weekday:'short'}).format(d).replace(/\.$/,'');return wd.charAt(0).toUpperCase()+wd.slice(1)+' '+dm(d)+' '+hm;}
+ return dm(d)===dm(new Date())?hm:dm(d)+' '+hm;
+}
+const LIMX_NAMES={claude:'Claude DEV',prod:'Claude PROD',codex:'Codex'};
+// short — узкий экран (телефон): без дня недели, чтобы бейдж уместился справа от названия строки
+function limxText(s,short){return tr(s.kind==='pause'?'limxPause':s.win==='week'?'limxOutWeek':s.win==='5h'?'limxOut5h':'limxOut',s.until?limxAt(s.until,s.kind==='out'&&s.win==='week'&&!short):'');}
+function limxTitle(k,s){return (LIMX_NAMES[k]||k)+': '+limxText(s)+'. '+tr(s.kind==='pause'?'limxTipPause':'limxTipOut');}
+// бейдж — «пилюля» на верхней рамке строки аккаунта (position:absolute в .fleet-acc): ничего не сдвигает и строки не занимает
+const LIMX_NARROW=matchMedia('(max-width:640px)');
+function limxBadges(){
+ const rows=document.getElementById('fleetLiveRows');if(!rows)return;
+ rows.querySelectorAll(':scope>.fleet-acc[data-engine]').forEach(acc=>{
+  const k=acc.dataset.engine,s=limxState(k);let b=acc.querySelector(':scope>.fleet-acc-badge');
+  if(!s){if(b)b.remove();return;}
+  if(!b){b=document.createElement('span');b.className='fleet-acc-badge';b.innerHTML='<i aria-hidden="true"></i><span></span>';acc.appendChild(b);}
+  const t=limxText(s,LIMX_NARROW.matches),tip=limxTitle(k,s);
+  if(b.dataset.kind!==s.kind)b.dataset.kind=s.kind;
+  if(b.lastChild.textContent!==t)b.lastChild.textContent=t;
+  if(b.title!==tip){b.title=tip;b.setAttribute('aria-label',tip);}
+  // на рамке ВИДИМОЙ строки (свёрнутой или раскрытой; на телефоне строка PROD и Codex ниже обёртки на 2 px) и не заходит на название:
+  // ширина — до места справа от названия, длиннее — многоточие (полный текст — в подсказке)
+  const row=[...acc.children].find(c=>c!==b&&c.offsetParent!==null),top=(row?row.offsetTop:0)+'px';
+  if(b.style.top!==top)b.style.top=top;
+  const nm=row&&row.querySelector('.fleet-compact-name,.fleet-live-name');let mw='';
+  if(nm&&nm.textContent.trim()){const g=document.createRange();g.selectNodeContents(nm);const nr=g.getBoundingClientRect(),rr=row.getBoundingClientRect();
+   if(nr.width&&nr.top<rr.top+9)mw=Math.max(56,Math.floor(acc.getBoundingClientRect().right-14-(nr.right+10)))+'px';}
+  if(b.style.maxWidth!==mw)b.style.maxWidth=mw;
+ });
+}
+setInterval(limxBadges,1000);
 const PAUSE_ICO='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5.2" y="3.6" width="5" height="16.8" rx="1.7"/><rect x="13.8" y="3.6" width="5" height="16.8" rx="1.7"/></svg>';
+// исчерпан настоящий лимит — крестик того же размера, цвета и прозрачности, что знак паузы
+const OUT_ICO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4.8" stroke-linecap="round" aria-hidden="true"><path d="M5.8 5.8l12.4 12.4M18.2 5.8L5.8 18.2"/></svg>';
 function ccpPlain(h){return String(h).replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');}
 function ccpPartStrip(){
  const wrap=document.querySelector('.termwrap');if(!wrap||typeof PANES==='undefined')return;
  let box=document.getElementById('ccps');
- const htmls=PANES.map(P=>ccpsHtml(P.k));
- if(!box){if(!htmls.some(Boolean))return;box=document.createElement('div');box.id='ccps';box.className='ccps-box';wrap.appendChild(box);}
+ const sts=PANES.map(P=>limxState(P.k));
+ if(!box){if(!sts.some(Boolean))return;box=document.createElement('div');box.id='ccps';box.className='ccps-box';wrap.appendChild(box);}
  const wr=wrap.getBoundingClientRect();
  PANES.forEach((P,i)=>{
   const id='ccps'+i;let el=document.getElementById(id);
-  const b=P.box,r=b&&b.getBoundingClientRect();
-  if(!htmls[i]||P.hid||!r||r.width<200||b.offsetParent===null){if(el)el.hidden=true;return;}
+  const s=sts[i],b=P.box,r=b&&b.getBoundingClientRect();
+  if(!s||P.hid||!r||r.width<200||b.offsetParent===null){if(el)el.hidden=true;return;}
   if(!el){el=document.createElement('div');el.id=id;el.className='ccps';box.appendChild(el);}
-  // (63532) в консоли — большая серая прозрачная иконка паузы по центру части; сам текст паузы показан в верхнем баннере (здесь — подсказка при наведении)
-  if(el.innerHTML!==PAUSE_ICO)el.innerHTML=PAUSE_ICO;
-  el.title=ccpPlain(htmls[i]);el.hidden=false;
+  // (63532) в консоли — большая серая прозрачная иконка по центру части: пауза или крестик «лимит исчерпан»; сам текст — в верхнем баннере, на плитке и в подсказке
+  if(el.dataset.kind!==s.kind){el.innerHTML=s.kind==='pause'?PAUSE_ICO:OUT_ICO;el.dataset.kind=s.kind;}
+  el.title=s.kind==='pause'?ccpPlain(ccpsHtml(P.k)):limxTitle(P.k,s);el.hidden=false;
   el.style.top=Math.round(r.top-wr.top)+'px';el.style.left=Math.round(r.left-wr.left)+'px';el.style.width=Math.round(r.width)+'px';el.style.height=Math.round(r.height)+'px';
  });
 }
@@ -8120,7 +8122,8 @@ if __name__ == "__main__":
     threading.Thread(target=_cli_notice_loop, daemon=True, name="cc-cli-notice").start()
     cc_codex_emergency.start()  # аварийный режим: после перезапуска довести до рабочего состояния или снять, запустить сторож срока
     cc_backup.start(lambda: PROFILES, BACKUP_DIR, lambda: cfg().get("profile_backup", True) is not False)  # копии профилей аккаунтов
-    cc_notion.start()  # такт профилей (cc_profiles подменяет start); [notion-ai] сторожа резерва больше нет
+    if globals().get("FLEET_PROFILES") is not None:  # такт профилей: доступность, автосценарий, восстановление прерванного переключения
+        FLEET_PROFILES.start()
     cc_codex_bridge.BRIDGE.sync()  # мост Telegram ↔ Codex: поднимется, только если включён в карточке
     port = cfg().get("port", 8877)
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)

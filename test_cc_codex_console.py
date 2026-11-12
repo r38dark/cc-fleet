@@ -246,7 +246,7 @@ class Start(unittest.TestCase):
         def run(argv, **kw):
             calls.append(argv)
             return mock.Mock(returncode=0, stdout="", stderr="")
-        keys = ["-c", 'mcp_servers.notion.url="https://x/mcp"', "-c", "mcp_servers.notion.enabled_tools=[\"a\"]"]
+        keys = ["-c", 'sandbox_workspace_write.writable_roots=["/x"]', "-c", 'developer_instructions="профиль"']
         pids = iter([None, "77"])
         with mock.patch.object(C, "MCP", lambda: keys), mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), \
                 mock.patch.object(C.subprocess, "run", run):
@@ -254,7 +254,7 @@ class Start(unittest.TestCase):
         self.assertTrue(ok, msg)
         argv = calls[0]
         self.assertEqual(argv[-4:], keys)  # ключи в самом конце: не сбивают -s/-a/-C
-        self.assertLess(argv.index("--cd"), argv.index("mcp_servers.notion.enabled_tools=[\"a\"]"))
+        self.assertLess(argv.index("--cd"), argv.index('developer_instructions="профиль"'))
         self.assertEqual(cc_codex.jload(C._meta_path(), {})["mcp"], keys)
 
     def test_private_transport_start_keeps_environment_rc_and_metadata_together(self):
@@ -276,7 +276,7 @@ class Start(unittest.TestCase):
         self.assertEqual({k: meta[k] for k in terminal}, terminal)
         self.assertEqual(os.stat(terminal['screen_dir']).st_mode & 0o777, 0o700)
 
-    def test_no_mcp_keys_outside_reserve(self):
+    def test_no_extra_keys_by_default(self):
         calls = []
         pids = iter([None, "77"])
         with mock.patch.object(C, "_pid", side_effect=lambda **kwargs: next(pids)), \
@@ -585,9 +585,9 @@ class Ask(Rollout):
             st.assert_called_once()
             self.meta(sandbox="workspace-write", cwd=self.work, approval="never")
 
-    def test_ensure_restarts_when_reserve_mcp_keys_appear_or_go(self):
-        # резерв включился/закончился → набор ключей Notion другой → консоль перезапускается; тот же набор — не трогаем
-        keys = ["-c", 'mcp_servers.notion.url="https://x/mcp"']
+    def test_ensure_restarts_when_profile_keys_appear_or_go(self):
+        # профиль сменился → набор ключей `-c` другой → консоль перезапускается; тот же набор — не трогаем
+        keys = ["-c", 'developer_instructions="профиль"']
         for was, now in (([], keys), (keys, [])):
             self.meta(mcp=was)
             with mock.patch.object(C, "MCP", lambda now=now: now), mock.patch.object(C, "start", return_value=(True, "ok")) as st, \
@@ -918,7 +918,7 @@ class Page(unittest.TestCase):
         # класс .acts уже занят карточкой аккаунта (flex, отступы, padding у button) — для панели берём свой
         self.assertNotRegex(L.PAGE, r"classList\.(toggle|add|remove)\('(has)?acts'")
         self.assertIn("$('#cTabs').classList.toggle('cacts',show)", L.PAGE)
-        # при смене вкладки состояние кнопок пересчитывается заново (Notion AI — кнопок нет)
+        # при смене вкладки состояние кнопок пересчитывается заново
         self.assertIn("P.idle.hidden=true;", L.PAGE)  # смена модели в панели сбрасывает плашку
         self.assertIn("splitBtnSync();\n ctActsSync();", L.PAGE)  # consTabs пересчитывает кнопки на каждой смене
 

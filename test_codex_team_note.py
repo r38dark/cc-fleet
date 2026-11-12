@@ -9,14 +9,13 @@ import unittest
 from pathlib import Path
 
 import cc_codex_bridge as B
-import cc_notion as N
 import cc_profiles as P
 
 HERE = Path(__file__).parent
 TEAM = ("Claude и Codex — одна команда. Они переписываются напрямую через почту в общей папке {без подтверждения}. "
         "Балансер задания между ними не передаёт.")
-OLD_BRIDGE = "Claude и Notion-агент не используются."
-OLD_PROFILE = "Другой исполнитель и Notion-агент не используются."
+OLD_BRIDGE = "Claude не используется."
+OLD_PROFILE = "Другой исполнитель не используется."
 
 
 class Base(unittest.TestCase):
@@ -71,26 +70,26 @@ class Places(Base):
             self.assertIn(keep, after)                                  # остальной текст профиля на месте
 
     def test_note_at_start_of_messages(self):
-        old = N.SOLO_PROFILE
-        N.SOLO_PROFILE = lambda: True
-        self.addCleanup(setattr, N, "SOLO_PROFILE", old)
-        self.assertIn(OLD_BRIDGE, N.codex_note())
+        old = B.SOLO_PROFILE
+        B.SOLO_PROFILE = lambda: True
+        self.addCleanup(setattr, B, "SOLO_PROFILE", old)
+        self.assertIn(OLD_BRIDGE, B.solo_note())
         self.config(codex_team_note=TEAM)
-        note = N.codex_note()
+        note = B.solo_note()
         self.assertTrue(note.startswith("[Профиль Codex Full: работаешь самостоятельно. ") and note.endswith("]"))
         self.assertIn(TEAM, note)
         self.assertNotIn(OLD_BRIDGE, note)
-        N.SOLO_PROFILE = lambda: False
-        self.assertEqual(N.codex_note(), "")                            # вне самостоятельного профиля строки нет, как раньше
+        B.SOLO_PROFILE = lambda: False
+        self.assertEqual(B.solo_note(), "")                            # вне самостоятельного профиля строки нет, как раньше
 
     def test_agents_md_is_rewritten_while_it_has_our_mark_and_left_alone_after_a_human_edit(self):
         ws = Path(self.tmp.name) / "work"
-        saved = {k: getattr(B, k) for k in ("workspace_dir", "active_profile", "project_dir", "image_output_note", "RESERVE_NOTE")}
+        saved = {k: getattr(B, k) for k in ("workspace_dir", "active_profile", "project_dir", "image_output_note", "PROFILE_NOTE")}
         B.workspace_dir = lambda: str(ws)
         B.active_profile = lambda s: "codex_solo_full"
         B.project_dir = lambda s: "/proj"
         B.image_output_note = lambda s: ""
-        B.RESERVE_NOTE = lambda: ""
+        B.PROFILE_NOTE = lambda: ""
         old_own = B.cc_codex.own
         B.cc_codex.own = lambda p: None
         self.addCleanup(lambda: [setattr(B, k, v) for k, v in saved.items()])

@@ -2,19 +2,7 @@
 import copy
 
 ENGINES = ('claude', 'codex')
-ROLES = (None, 'full', 'orchestrator', 'executor')  # [notion-ai] роли «резерв» больше нет
-
-
-def reserve_confirmed(value):
-    # Accept cached older clients, while the current UI sends a boolean Yes.
-    return value is True or (isinstance(value, str) and value.strip().casefold() == 'подтверждаю')
-
-
-def reserve_access(base, engine):
-    """Keep existing Full; entering reserve never grants it to a paired/paused role."""
-    choices = base.get('manual_choices')
-    full = choices is None or choices.get(engine) == 'full'
-    return 'full' if full and not base.get('leader') and base['selected'][engine] == engine+'_solo_full' else 'write'
+ROLES = (None, 'full', 'orchestrator', 'executor')
 
 
 def validate_choices(choices):
@@ -69,7 +57,7 @@ class ManualScenarioMixin:
         self.manual_choices = choices
 
     def reconcile_availability(self):
-        super()._reconcile()  # [notion-ai] резерв сам не включается: только снимаем устаревший служебный режим
+        super()._reconcile()  # служебный режим сам не включается: только снимаем устаревший
 
     def public(self):
         result = super().public()
@@ -90,7 +78,7 @@ class ManualScenarioMixin:
                     data['label'] = self.actor(engine)+' · исполнитель '+self.actor(self.leader)
         if self.service and self.service.get('access') == 'full':
             engine = self.service['engine']
-            # Reserve changes the workflow; Full remains the working profile.
+            # A service mode changes the workflow; Full remains the working profile.
             result['engines'][engine].update(selected=engine+'_solo_full', label=self.actor(engine)+' Full')
             result['manual_scenario']['choices'][engine] = 'full'
         return result

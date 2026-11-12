@@ -1,10 +1,10 @@
 #!/bin/bash
-# Побочная сессия Claude на основном сервере (вкладка консоли, пока основной Claude остановлен: работа на втором сервере или режим Notion AI).
+# Побочная сессия Claude на основном сервере (вкладка консоли, пока основной Claude остановлен: работа на втором сервере).
 # От start_claude.sh отличается тремя вещами:
 #   1) НЕТ --channels plugin:telegram: бот остаётся у ведущего;
 #   2) плагин Telegram отключён для этого запуска (--settings), иначе его процесс всё равно опрашивал бы бота;
 #   3) только чтение: Bash/Edit/Write/NotebookEdit запрещены, основную работу и файлы дела побочная сессия не меняет.
-# Запускает её панель (ConsoleInput), не человек. Гасит панель: nai.stop_claude() перед любым основным запуском или передачей.
+# Запускает её панель (ConsoleInput), не человек. Гасит панель: stop_claude() (cc_workers) перед любым основным запуском или передачей.
 BASE="${CC_LIMITS_BASE:-/opt/cc-limits}"
 cfg() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2]) or sys.argv[3])' "$BASE/config.json" "$1" "$2" 2>/dev/null || echo "$2"; }
 SCREEN="$(cfg screen_session claude)"

@@ -67,15 +67,15 @@ class GateTests(unittest.TestCase):
     def setUp(self):self.policy=dict(cwd='/safe/work',access='write',write_roots=['/safe/work'],read_roots=['/safe/work','/project'])
     def event(self,name,path):return dict(hook_event_name='PreToolUse',tool_name=name,tool_input=dict(file_path=path),cwd='/safe/work')
     def test_root_paths_bash_agents_and_mcp_blocked_in_workspace(self):
-        for name,path in [('Write','/project/a'),('Edit','/safe/work/../other'),('Bash','/safe/work'),('Agent','/safe/work'),('mcp__notion__notion_spawn_session','/safe/work')]:self.assertTrue(decide(self.policy,self.event(name,path)))
+        for name,path in [('Write','/project/a'),('Edit','/safe/work/../other'),('Bash','/safe/work'),('Agent','/safe/work'),('mcp__other__tool','/safe/work')]:self.assertTrue(decide(self.policy,self.event(name,path)))
         self.assertFalse(decide(self.policy,self.event('Write','/safe/work/a')));self.assertFalse(decide(self.policy,self.event('Read','/project/a')))
     def test_symlink_escape_is_blocked(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)/'work';root.mkdir();(root/'link').symlink_to('/etc');self.policy.update(cwd=str(root),write_roots=[str(root)]);self.assertTrue(decide(self.policy,self.event('Write',str(root/'link/passwd'))))
     def test_pause_and_expiry_block_tools_even_in_bypass(self):
         self.policy.update(access='full',paused=True);self.assertTrue(decide(self.policy,dict(hook_event_name='UserPromptSubmit')));self.policy.update(paused=False,expires=1);self.assertFalse(decide(self.policy,self.event('Bash','/root')))
-    def test_full_still_excludes_other_agents_but_reserve_allows_its_agent(self):
-        self.policy.update(access='full');self.assertFalse(decide(self.policy,self.event('Bash','/root')));self.assertTrue(decide(self.policy,self.event('Agent','/root')));self.policy['reserve']=True;self.assertFalse(decide(self.policy,self.event('mcp__notion__notion_spawn_session','/root')))
+    def test_full_still_excludes_other_agents(self):
+        self.policy.update(access='full');self.assertFalse(decide(self.policy,self.event('Bash','/root')));self.assertTrue(decide(self.policy,self.event('Agent','/root')));self.assertFalse(decide(self.policy,self.event('mcp__other__tool','/root')))
 
 class CommandTests(unittest.TestCase):
     def test_resumes_exact_thread_model_and_effort_without_fork_or_old_permissions(self):

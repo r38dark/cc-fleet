@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet — установка «под ключ»: панель для нескольких подписок Claude Code, Codex и Notion AI на ВАШЕМ сервере.
+# cc-fleet — установка «под ключ»: панель для нескольких подписок Claude Code и Codex на ВАШЕМ сервере.
 #
 #   sudo ./install.sh            установка (или продолжение прерванной / обновление)
 #   sudo ./install.sh --check    только проверить, какие шаги уже выполнены (ничего не меняет)
@@ -33,7 +33,6 @@ WANT_TG="${CC_FLEET_TG:-}"
 WANT_CODEX="${CC_FLEET_CODEX:-}"
 WANT_CLAUDE="${CC_FLEET_CLAUDE:-}"
 CODEX_USER="${CC_FLEET_CODEX_USER:-codex}"
-WANT_NOTION="${CC_FLEET_NOTION:-}"
 WANT_VOICE="${CC_FLEET_VOICE:-}"
 OWNER_NAME="${CC_FLEET_OWNER:-}"
 TZ_NAME="${CC_FLEET_TZ:-}"
@@ -96,7 +95,6 @@ STEP_TITLES=(
   "Адрес панели: домен, пароль, HTTPS"
   "Telegram"
   "Codex"
-  "Notion AI"
   "Голос"
   "Итог"
 )
@@ -206,7 +204,6 @@ s2() {
   fi
   ask_yn WANT_CLAUDE "Claude Code: установить, если его нет (Node.js 18+ и npm install -g @anthropic-ai/claude-code)" "y"
   ask_yn WANT_CODEX "Codex (ChatGPT): подготовить отдельного пользователя ОС для него" "y"
-  ask_yn WANT_NOTION "Notion AI: поставить службы (браузер Chromium ~300 МБ, нужен аккаунт Notion с Notion AI)" "n"
   ask_yn WANT_VOICE "Голос: озвучка ответов и расшифровка голосовых (нужно ~5 ГБ места и 2 ГБ памяти)" "n"
   ask_yn HOOK_QUEUE "Хук очереди входящих в settings.json Claude Code (рекомендуется)" "y"
   ask_yn HOOK_TOOLS "Стоп-кран инструментов на паузе в settings.json Claude Code (рекомендуется)" "y"
@@ -215,13 +212,13 @@ s2() {
   log "План:"
   info "панель: $BASE (порт $PORT), служба $SERVICE_NAME, аккаунтов: $N_ACCOUNTS, screen: $SCREEN_SESSION, пояс: $TZ_NAME"
   if yes_ "$WANT_NGINX"; then info "адрес: $(scheme)://$DOMAIN/cc/ (вход: $BASIC_USER)"; else info "адрес: только 127.0.0.1:$PORT (свой прокси или SSH-туннель)"; fi
-  info "Telegram: $(yes_ "$WANT_TG" && echo да || echo нет) · Codex: $(yes_ "$WANT_CODEX" && echo да || echo нет) · Notion AI: $(yes_ "$WANT_NOTION" && echo да || echo нет) · голос: $(yes_ "$WANT_VOICE" && echo да || echo нет)"
+  info "Telegram: $(yes_ "$WANT_TG" && echo да || echo нет) · Codex: $(yes_ "$WANT_CODEX" && echo да || echo нет) · голос: $(yes_ "$WANT_VOICE" && echo да || echo нет)"
   if [ "$NONINTERACTIVE" != "1" ]; then
     read -r -p "   Продолжить установку? [y/N]: " CONFIRM
     yes_ "$CONFIRM" || fail "отменено" "запусти установщик снова, когда будешь готов"
   fi
   mkdir -p "$BASE"
-  { for v in WANT_CLAUDE SCREEN_SESSION N_ACCOUNTS THRESHOLD OWNER_NAME TZ_NAME WORK_DIR WANT_NGINX DOMAIN BASIC_USER WANT_HTTPS CERT_EMAIL WANT_TG CHAT_ID WANT_CODEX CODEX_USER WANT_NOTION WANT_VOICE HOOK_QUEUE HOOK_TOOLS CLAUDE_SETTINGS; do printf '%s=%q\n' "$v" "${!v}"; done; } > "$STATE_FILE"
+  { for v in WANT_CLAUDE SCREEN_SESSION N_ACCOUNTS THRESHOLD OWNER_NAME TZ_NAME WORK_DIR WANT_NGINX DOMAIN BASIC_USER WANT_HTTPS CERT_EMAIL WANT_TG CHAT_ID WANT_CODEX CODEX_USER WANT_VOICE HOOK_QUEUE HOOK_TOOLS CLAUDE_SETTINGS; do printf '%s=%q\n' "$v" "${!v}"; done; } > "$STATE_FILE"
   chmod 600 "$STATE_FILE"
   okm "ответы записаны ($STATE_FILE, без паролей)"
 }
@@ -310,7 +307,7 @@ s6() {
   local old_isecret; old_isecret="$(json_get "$BASE/config.json" internal_secret)"
   if [ -n "$old_isecret" ]; then INTERNAL_SECRET="$old_isecret"
   else INTERNAL_SECRET="$(openssl rand -hex 24)"; fi
-  python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$PORT" "$SERVICE_NAME" "$TZ_NAME" "$WORK_DIR" "$BASE" "$BOT_TOKEN" "$CHAT_ID" "$([ "$WANT_NGINX" = y ] && echo "$DOMAIN")" "$([ "$WANT_HTTPS" = y ] && echo https || echo http)" "$INTERNAL_SECRET" <<'PYEOF'
+  CC_OWNER="$OWNER_NAME" python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$PORT" "$SERVICE_NAME" "$TZ_NAME" "$WORK_DIR" "$BASE" "$BOT_TOKEN" "$CHAT_ID" "$([ "$WANT_NGINX" = y ] && echo "$DOMAIN")" "$([ "$WANT_HTTPS" = y ] && echo https || echo http)" "$INTERNAL_SECRET" <<'PYEOF'
 import json, os, sys
 path, token, threshold, screen, port, service, tz, work, base, bot, chat, domain, scheme, isecret = sys.argv[1:15]
 cfg = {"hook_token": token, "internal_secret": isecret, "autoswitch": True, "threshold": int(threshold), "poll_sec": 120, "switch_cooldown_sec": 300,
@@ -333,21 +330,14 @@ cfg["work_dir"] = work                       # где стартует Claude Co
 cfg["start_claude"] = os.path.join(base, "start_claude.sh")
 cfg["start_claude_side"] = os.path.join(base, "start_claude_side.sh")
 if chat: cfg["chat_id"] = chat
+owner = os.environ.get("CC_OWNER", "").strip()
+if owner: cfg["owner"] = owner               # как обращаться к владельцу: подставляется в записку Claude на втором сервере
 if bot: cfg["bot_token"] = bot               # запасной путь, если файла телеграм-канала Claude Code нет
 if domain: cfg["public_url"] = scheme + "://" + domain   # база для кнопок «меню консоли → Telegram»
 with open(path, "w") as f:
     json.dump(cfg, f, indent=1, ensure_ascii=False)
 PYEOF
   chmod 600 "$BASE/config.json"
-  # настройки Notion AI (имя владельца для записок); существующие не трогаем
-  if [ ! -f "$BASE/notion_ai.json" ]; then
-    NAI_CFG="$BASE/notion_ai.json" NAI_OWNER="$OWNER_NAME" NAI_VOICE="$(yes_ "$WANT_VOICE" && echo 1 || echo 0)" python3 - <<'PY'
-import json, os
-d = {"chat_url": "", "owner": os.environ["NAI_OWNER"], "notion_email": "", "tg_chat_id": "", "voice": os.environ.get("NAI_VOICE") == "1", "console_tab": True}   # голосовые ответы включены, только если голос ставится
-fd = os.open(os.environ["NAI_CFG"], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-os.write(fd, json.dumps(d, ensure_ascii=False, indent=1).encode()); os.close(fd)
-PY
-  fi
   c6 || fail "config.json или профили не в порядке" "посмотри $BASE/config.json и $PROFILES_DIR"
   okm "config.json записан (права 600), токен панели создан"
 }
@@ -559,32 +549,19 @@ PY
 }
 
 # ---------- Шаг 12 ----------
-c12() { yes_ "$WANT_NOTION" || return 0; systemctl is-active -q notion-delegate; }
+c12() { yes_ "$WANT_VOICE" || return 0; [ -f "$SCRIPT_DIR/voice/install.sh" ] || return 0; [ -x /usr/local/bin/ccfleet-say ] && curl -fsS -m 5 http://127.0.0.1:8879/health 2>/dev/null | grep -q ok; }
 s12() {
   header 12
-  if ! yes_ "$WANT_NOTION"; then skip "пропущено. Подключишь позже: sudo bash notion_ai/install.sh и ⚙ → Notion AI."; return; fi
-  [ -f "$SCRIPT_DIR/notion_ai/install.sh" ] || fail "нет notion_ai/install.sh в архиве" "скачай релиз заново"
-  bash "$SCRIPT_DIR/notion_ai/install.sh" || fail "установка служб Notion AI не удалась" "посмотри вывод выше (чаще всего Playwright/Chromium не скачался — проверь сеть и место на диске)"
-  sleep 2
-  c12 || fail "служба notion-delegate не запустилась" "journalctl -u notion-delegate -n 50 --no-pager"
-  okm "службы Notion AI запущены (notion-delegate, notion-ai-view)"
-  info "Дальше в панели: ⚙ Общие настройки → Notion AI → «Как подключить с нуля» (ссылка на чат, вход по коду из письма, ключ, проверка связи)."
-}
-
-# ---------- Шаг 13 ----------
-c13() { yes_ "$WANT_VOICE" || return 0; [ -f "$SCRIPT_DIR/voice/install.sh" ] || return 0; [ -x /usr/local/bin/ccfleet-say ] && curl -fsS -m 5 http://127.0.0.1:8879/health 2>/dev/null | grep -q ok; }
-s13() {
-  header 13
   if ! yes_ "$WANT_VOICE"; then skip "пропущено. Подключишь позже: sudo bash voice/install.sh"; return; fi
   [ -f "$SCRIPT_DIR/voice/install.sh" ] || { skip "в этой версии голос не входит в пакет (код умеет пользоваться готовым /root/tts/say.sh, если он у тебя есть)"; return; }
   bash "$SCRIPT_DIR/voice/install.sh" || fail "установка голоса не удалась" "посмотри вывод выше; голос необязателен — можно подключить позже"
-  c13 || fail "служба голоса не отвечает" "journalctl -u ccfleet-tts -n 50 --no-pager"
+  c12 || fail "служба голоса не отвечает" "journalctl -u ccfleet-tts -n 50 --no-pager"
   okm "голос работает: озвучка (ccfleet-say) и расшифровка (ccfleet-transcribe)"
 }
 
-# ---------- Шаг 14 ----------
-s14() {
-  header 14
+# ---------- Шаг 13 ----------
+s13() {
+  header 13
   local url
   if yes_ "$WANT_NGINX"; then url="$(scheme)://$DOMAIN/cc/"; else url="http://127.0.0.1:$PORT/ (через SSH-туннель)"; fi
   echo
@@ -599,15 +576,14 @@ s14() {
   echo "  ☐ Запустить Claude Code в screen-сессии: $BASE/start_claude.sh (или кнопка «Запустить» в панели)"
   yes_ "$WANT_TG" || echo "  ☐ Подключить Telegram: docs/INSTALL.md, раздел 4"
   yes_ "$WANT_CODEX" && echo "  ☐ Codex: панель → «Codex +» → мастер (docs/INSTALL.md, раздел 5)" || echo "  ☐ Codex (по желанию): запусти установщик снова и ответь «y» на вопрос про Codex"
-  yes_ "$WANT_NOTION" && echo "  ☐ Notion AI: панель → ⚙ Общие настройки → Notion AI (docs/INSTALL.md, раздел 6)"
-  echo "  ☐ Второй сервер (по желанию): панель → ⚙ Общие настройки → «Второй сервер» (docs/INSTALL.md, раздел 7)"
+  echo "  ☐ Второй сервер (по желанию): панель → ⚙ Общие настройки → «Второй сервер» (docs/INSTALL.md, раздел 6)"
   echo
   echo "Проверить установку в любой момент: sudo ./install.sh --check"
   echo "Подробная инструкция со всеми подключениями: docs/INSTALL.md"
 }
 
-STEP_FUNCS=(s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11 s12 s13 s14)
-CHECK_FUNCS=(c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 true)
+STEP_FUNCS=(s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 s11 s12 s13)
+CHECK_FUNCS=(c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 true)
 
 # перепроверка пройденных шагов перед очередным (кроме шага 4: Claude Code необязателен для установки)
 recheck_before() {

@@ -53,21 +53,3 @@ def drop_keys(path, keys):
         for k in keys:
             doc.pop(k, None)
         write(path, doc)
-
-
-def notion_entry(key, value):
-    if not isinstance(value, dict):
-        return False
-    return (value.get('serverName') == 'notion'
-            or 'mcp.notion.com' in str(value.get('serverUrl') or '')
-            or key.startswith('notion|'))
-
-
-def drop_notion_mcp(path):
-    doc = read(path)
-    entries = (doc or {}).get('mcpOAuth')
-    if isinstance(entries, dict):
-        keep = {k: v for k, v in entries.items() if not notion_entry(k, v)}
-        if keep != entries:
-            doc['mcpOAuth'] = keep
-            write(path, doc)

@@ -55,19 +55,6 @@ launch() {
     screen -r "$SESS"
 }
 
-# [notion-ai] 06.11: clw поднял Claude при профиле Notion AI — бота Telegram слушали двое.
-# Пока профиль Notion AI включён, новую сессию Claude не создаём; подключиться к живой можно.
-notion_ai_on() {
-    python3 -c 'import json,sys
-try:
-    sys.exit(0 if json.load(open(sys.argv[1])).get("active") else 1)
-except Exception:
-    sys.exit(1)' "$(dirname "$CONF")/notion_ai_mode.json" 2>/dev/null || return 1
-    echo "Включён профиль «Notion AI» — Claude не запускаю: бот Telegram сейчас слушает Notion AI, второй слушатель отнимает сообщения."
-    echo "Сначала выключи профиль: кнопка «Notion AI» в шапке панели или команда notion-ai-mode off. Потом снова $name."
-    return 0
-}
-
 # [remote] 06.11: работа передана на PROD - бота слушает Claude там, здесь новую сессию не создаём.
 remote_on() {
     python3 -c 'import json,sys
@@ -92,7 +79,6 @@ case "$name" in
         if alive; then
             exec screen -DR "$SESS"
         fi
-        notion_ai_on && exit 1
         remote_on && exit 1
         launch "$CMD --continue || $CMD"
         ;;
@@ -106,7 +92,6 @@ case "$name" in
         ;;
     cln)
         need_screen
-        notion_ai_on && exit 1
         remote_on && exit 1
         if alive; then
             read -r -p "screen $SESS уже существует. Убить и создать новую? [y/N] " ans </dev/tty
@@ -125,7 +110,6 @@ case "$name" in
             echo "$SESS жив — переподключаюсь (пересоздать с нуля: clw -f)"
             exec screen -rd "$SESS"
         fi
-        notion_ai_on && exit 1
         remote_on && exit 1
         screen -S "$SESS" -X quit 2>/dev/null
         sleep 1

@@ -1,5 +1,5 @@
 {
-  "version": "2.0.33",
+  "version": "2.0.34",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -53,10 +53,6 @@
     },
     {
       "src": "cc_codex_emergency.py",
-      "mode": "644"
-    },
-    {
-      "src": "cc_notion.py",
       "mode": "644"
     },
     {
@@ -153,67 +149,7 @@
       "mode": "644"
     },
     {
-      "src": "cc_notion_ai.py",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/install.sh",
-      "mode": "755"
-    },
-    {
-      "src": "notion_ai/bin/notion-ai-mode",
-      "mode": "755"
-    },
-    {
-      "src": "notion_ai/bin/notion-ai-reply",
-      "mode": "755"
-    },
-    {
-      "src": "notion_ai/bin/notion-ai-step",
-      "mode": "755"
-    },
-    {
-      "src": "notion_ai/bin/notion-delegate",
-      "mode": "755"
-    },
-    {
-      "src": "notion_ai/systemd/notion-ai-tg.service",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/systemd/notion-ai-view.service",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/systemd/notion-delegate.service",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/web/agent_instructions.md",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/web/agent_ops.py",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/web/login2.py",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/web/nagents.py",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/web/notion_ai_tg.py",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/web/notion_ai_view.py",
-      "mode": "644"
-    },
-    {
-      "src": "notion_ai/web/server.py",
+      "src": "cc_workers.py",
       "mode": "644"
     },
     {

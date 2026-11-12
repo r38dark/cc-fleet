@@ -29,7 +29,7 @@ class SideNative(FakeNative):
 
     def claude_policy(self, state):
         role = state.public()['engines']['claude']['role']
-        return dict(expires=0, access='write', paused=role == 'paused', reserve=False, cwd='/test/work', workspace='/test/work',
+        return dict(expires=0, access='write', paused=role == 'paused', cwd='/test/work', workspace='/test/work',
                     write_roots=['/test/work'], read_roots=['/test/work'])
 
 
@@ -78,7 +78,7 @@ class SideChat(unittest.TestCase):
         self.assertEqual(self.native.pause_calls, [])
 
     def test_unknown_engine_is_rejected(self):
-        self.assertFalse(self.p.side_open('notion')[0])
+        self.assertFalse(self.p.side_open('other')[0])
 
     def test_window_stays_while_busy_and_closes_after_silence(self):
         self.pause('codex')
@@ -411,8 +411,8 @@ class SideTeardown(unittest.TestCase):
     """Побочная сессия Claude делит screen с основным: панель гасит её перед основным запуском, передачей и сменой режима (пункт 3)."""
 
     def setUp(self):
-        import cc_notion_ai
-        self.M = cc_notion_ai
+        import cc_workers
+        self.M = cc_workers
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.flag = Path(self.tmp.name) / 'side_claude.json'
@@ -434,13 +434,13 @@ class SideTeardown(unittest.TestCase):
                 self.screen[0] = self.plugin[0] = True      # start_claude.sh: основной Claude с Telegram
                 return 0, ''
             return 0, ''
-        patches = [mock.patch.object(cc_notion_ai, '_run', run), mock.patch.object(cc_notion_ai, 'SIDE_FLAG', str(self.flag)),
-                   mock.patch.object(cc_notion_ai.time, 'sleep')]
+        patches = [mock.patch.object(cc_workers, '_run', run), mock.patch.object(cc_workers, 'SIDE_FLAG', str(self.flag)),
+                   mock.patch.object(cc_workers.time, 'sleep')]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
-        self.nai = cc_notion_ai.NotionAI.__new__(cc_notion_ai.NotionAI)
-        self.nai.ns = {'cfg': lambda: {'screen_session': 'testscreen'}}
+        self.wk = cc_workers.Workers.__new__(cc_workers.Workers)
+        self.wk.ns = {'cfg': lambda: {'screen_session': 'testscreen'}}
 
     def start_side(self):
         self.screen[0], self.plugin[0] = True, False
@@ -448,39 +448,39 @@ class SideTeardown(unittest.TestCase):
 
     def test_side_session_is_not_counted_as_main_claude(self):
         self.start_side()
-        self.assertTrue(self.nai.screen_busy())
-        self.assertTrue(self.nai.side_running())
-        self.assertFalse(self.nai.claude_running())
+        self.assertTrue(self.wk.screen_busy())
+        self.assertTrue(self.wk.side_running())
+        self.assertFalse(self.wk.claude_running())
 
     def test_main_claude_with_telegram_ignores_stale_flag(self):
         self.screen[0], self.plugin[0] = True, True
         self.flag.write_text('{}')
-        self.assertFalse(self.nai.side_running())
-        self.assertTrue(self.nai.claude_running())
+        self.assertFalse(self.wk.side_running())
+        self.assertTrue(self.wk.claude_running())
 
     def test_stopped_claude_with_old_flag_is_not_side(self):
         self.flag.write_text('{}')
-        self.assertFalse(self.nai.side_running())
-        self.assertFalse(self.nai.claude_running())
+        self.assertFalse(self.wk.side_running())
+        self.assertFalse(self.wk.claude_running())
 
     def test_start_claude_stops_side_first_and_clears_flag(self):
         self.start_side()
-        self.assertTrue(self.nai.start_claude())
+        self.assertTrue(self.wk.start_claude())
         order = [r[0] for r in self.runs if r[0] in ('systemd-run',) or (r[:2] == ['screen', '-S'] and 'quit' in r)]
         self.assertEqual(order, ['screen', 'systemd-run'], 'сначала screen quit побочной, потом запуск основного')
         self.assertFalse(self.flag.exists())
-        self.assertTrue(self.nai.claude_running())
-        self.assertFalse(self.nai.side_running())
+        self.assertTrue(self.wk.claude_running())
+        self.assertFalse(self.wk.side_running())
 
     def test_start_claude_without_side_does_not_quit_anything(self):
-        self.assertTrue(self.nai.start_claude())
+        self.assertTrue(self.wk.start_claude())
         self.assertFalse([r for r in self.runs if 'quit' in r])
 
     def test_stop_claude_removes_flag_that_script_could_not_remove(self):
         self.start_side()
-        self.assertTrue(self.nai.stop_claude())
+        self.assertTrue(self.wk.stop_claude())
         self.assertFalse(self.flag.exists())
-        self.assertFalse(self.nai.screen_busy())
+        self.assertFalse(self.wk.screen_busy())
 
     def test_flag_constants_match_between_panel_modules_and_script(self):
         import re

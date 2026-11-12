@@ -28,17 +28,11 @@ class FakeProfiles:
         return self.scenario_result
 
 
-class FakeNai:
+class FakeWorkers:
     def __init__(self):
         self.profiles = FakeProfiles()
-        self._active = False
         self.running = True
         self.started = 0
-        self.on_calls = []
-        self.on_result = {'ok': True}
-
-    def active(self):
-        return self._active
 
     def claude_running(self):
         return self.running
@@ -51,10 +45,6 @@ class FakeNai:
         self.running = True
         return True
 
-    def on(self, **kw):
-        self.on_calls.append(kw)
-        return self.on_result
-
 
 class Handoff(unittest.TestCase):
     """Общая передача «любое место → любое»: цепочки шагов и состояние. Профили, ssh и PROD подменены."""
@@ -66,9 +56,9 @@ class Handoff(unittest.TestCase):
         M.MODE_FILE = os.path.join(self.tmp, 'mode.json')
         with open(cc_remote.MEMBERS_FILE, 'w') as f:
             json.dump({'prod': {'label': 'Аккаунт PROD', 'host': '192.0.2.1', 'tmux': 'friend'}}, f)
-        self.nai = FakeNai()
+        self.wk = FakeWorkers()
         M._NS.clear()
-        M._NS.update(NOTION_AI=self.nai, tg_notify=lambda t: None)
+        M._NS.update(WORKERS=self.wk, tg_notify=lambda t: None)
         M._wcache.update(ts=0.0, val='dev', key=None)
         self.calls = []
         self.prod_bad = ''
@@ -105,23 +95,19 @@ class Handoff(unittest.TestCase):
         return res
 
     def choices(self):
-        return [s['choices'] for s in self.nai.profiles.scenarios]
+        return [s['choices'] for s in self.wk.profiles.scenarios]
 
     def test_worker_detection(self):
         self.assertEqual(M.worker(), 'dev')
         M._wcache['ts'] = 0.0
-        self.nai.profiles.paused_for = {'claude'}
+        self.wk.profiles.paused_for = {'claude'}
         self.assertEqual(M.worker(), 'codex')
-        M._wcache['ts'] = 0.0
-        self.nai._active = True
-        self.assertEqual(M.worker(), 'notion')
-        self.nai._active = False
         M._save(active=True, member='prod')
         self.assertEqual(M.worker(), 'prod')
         M._save(active=False)
         M._wcache['ts'] = 0.0
-        self.nai.profiles.paused_for = set()
-        self.nai.profiles.state.leader = 'codex'
+        self.wk.profiles.paused_for = set()
+        self.wk.profiles.state.leader = 'codex'
         self.assertEqual(M.worker(), 'codex')
 
     def test_public_has_worker_and_to(self):
@@ -142,16 +128,11 @@ class Handoff(unittest.TestCase):
         res = self.run_handoff('codex')
         self.assertTrue(res['started'])
         self.assertEqual(self.choices(), [{'claude': None, 'codex': 'full'}])
-        self.assertEqual(self.nai.profiles.scenarios[0]['confirm'], 'подтверждаю')
-        self.assertEqual(self.nai.profiles.scenarios[0]['revision'], 7)
+        self.assertEqual(self.wk.profiles.scenarios[0]['confirm'], 'подтверждаю')
+        self.assertEqual(self.wk.profiles.scenarios[0]['revision'], 7)
         self.assertEqual(M.public()['error'], '')
         self.assertEqual(M.public()['to'], '')
         self.assertFalse(M.busy())
-
-    def test_dev_to_notion_turns_profile_on(self):
-        self.run_handoff('notion')
-        self.assertEqual(self.nai.on_calls, [{'kind': 'full', 'by': 'панель'}])
-        self.assertEqual(self.calls, [])
 
     def test_prod_to_dev_restores_claude(self):
         M._save(active=True, member='prod')
@@ -161,28 +142,20 @@ class Handoff(unittest.TestCase):
 
     def test_prod_to_codex_does_not_wake_native_claude(self):
         M._save(active=True, member='prod')
-        self.nai.running = False
+        self.wk.running = False
         self.run_handoff('codex')
         self.assertEqual(self.calls, [('off', False)])
         self.assertEqual(self.choices(), [{'claude': None, 'codex': 'full'}])
-        self.assertEqual(self.nai.started, 0)
-
-    def test_prod_to_notion_does_not_wake_native_claude(self):
-        M._save(active=True, member='prod')
-        self.nai.running = False
-        self.run_handoff('notion')
-        self.assertEqual(self.calls, [('off', False)])
-        self.assertEqual(len(self.nai.on_calls), 1)
-        self.assertEqual(self.nai.started, 0)
+        self.assertEqual(self.wk.started, 0)
 
     def test_codex_to_prod_goes_through_claude_dev(self):
-        self.nai.profiles.paused_for = {'claude'}
+        self.wk.profiles.paused_for = {'claude'}
         self.run_handoff('prod')
         self.assertEqual(self.choices(), [{'claude': 'full', 'codex': None}])
         self.assertEqual(self.calls, [('prod_on', 'prod')])
 
-    def test_notion_to_dev_uses_scenario(self):
-        self.nai._active = True
+    def test_codex_to_dev_uses_scenario(self):
+        self.wk.profiles.paused_for = {'claude'}
         self.run_handoff('dev')
         self.assertEqual(self.choices(), [{'claude': 'full', 'codex': None}])
         self.assertEqual(self.calls, [])
@@ -225,7 +198,7 @@ class Handoff(unittest.TestCase):
         self.assertTrue(res['started'])
 
     def test_scenario_failure_is_reported_and_state_cleared(self):
-        self.nai.profiles.scenario_result = {'ok': False, 'message': 'Дождись завершения работы.'}
+        self.wk.profiles.scenario_result = {'ok': False, 'message': 'Дождись завершения работы.'}
         res = self.run_handoff('codex')
         self.assertTrue(res['started'])
         d = M.public()
@@ -236,19 +209,19 @@ class Handoff(unittest.TestCase):
 
     def test_failure_after_prod_stop_returns_claude_dev(self):
         M._save(active=True, member='prod')
-        self.nai.running = False
-        self.nai.profiles.scenario_result = {'ok': False, 'message': 'Codex не готов.'}
+        self.wk.running = False
+        self.wk.profiles.scenario_result = {'ok': False, 'message': 'Codex не готов.'}
         self.run_handoff('codex')
-        self.assertEqual(self.nai.started, 1)
+        self.assertEqual(self.wk.started, 1)
         self.assertIn('Работа осталась у Claude DEV', M.public()['error'])
 
     def test_second_handoff_refused_while_busy(self):
         import threading
         gate = threading.Event()
-        self.nai.profiles.apply_scenario = lambda body: (gate.wait(5), {'ok': True})[1]
+        self.wk.profiles.apply_scenario = lambda body: (gate.wait(5), {'ok': True})[1]
         first = M.handoff('codex')
         self.assertTrue(first['started'])
-        second = M.handoff('notion')
+        second = M.handoff('dev')
         self.assertTrue(second.get('busy'))
         gate.set()
         M._job['t'].join(10)

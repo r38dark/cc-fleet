@@ -27,11 +27,6 @@ QUEUE = os.path.join(BASE, "tg_queue.jsonl")
 CONFIG = os.path.join(BASE, "config.json")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Ответ отправителю, пока включён резерв (Claude отключён вручную, работают Codex + Notion-агент).
-# Ключ "queue_ack_reserve_message" в config.json; подставляется {n}.
-RESERVE_ACK_MSG = ("Got it, queued ({n} waiting). Reserve mode is on: Codex + a Notion agent are working instead of "
-                   "Claude, so Claude is switched off to save the limits. I will work through the queue once it is turned off.")
-
 # Ответ отправителю, когда вместо паузы работа уходит на Claude PROD (автопередача): сообщение уедет туда вместе с передачей.
 HANDOFF_ACK_MSG = ("Принято. Лимит Claude DEV закончился, передаю работу на Claude PROD: сообщение ушло с передачей, "
                    "продолжит он (~1 минута).")
@@ -166,9 +161,7 @@ def cmd_enqueue(a):
     resume = (pc.load() or {}).get("resume_at") or 0
     if resume:
         when = _hm(resume)
-    if (pc.load() or {}).get("kind") == "reserve":
-        tmpl = _cfg().get("queue_ack_reserve_message") or RESERVE_ACK_MSG
-    elif not (pc.load() or {}).get("active") and pc.handoff_pending():
+    if not (pc.load() or {}).get("active") and pc.handoff_pending():
         tmpl = _cfg().get("queue_ack_handoff_message") or HANDOFF_ACK_MSG
     else:
         tmpl = _cfg().get("queue_ack_message") or ACK_MSG

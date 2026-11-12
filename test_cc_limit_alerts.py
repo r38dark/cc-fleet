@@ -1,4 +1,4 @@
-# [notion-ai] Сообщения о лимитах Claude в формате Codex: python3 -m unittest test_cc_limit_alerts -v
+# Сообщения о лимитах Claude в формате Codex: python3 -m unittest test_cc_limit_alerts -v
 import os, sys, tempfile, unittest
 from unittest import mock
 TMP0 = tempfile.mkdtemp(prefix="cclim0_")

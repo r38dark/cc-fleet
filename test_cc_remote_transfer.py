@@ -11,7 +11,7 @@ import time
 import unittest
 from pathlib import Path
 
-import cc_notion_ai as N
+import cc_workers as N
 import cc_remote
 import cc_remote_mode as M
 from test_cc_handoff_tail import reply, result, say, tg
@@ -19,14 +19,14 @@ from test_cc_handoff_tail import reply, result, say, tg
 FRIEND_MD = 'правила для Claude PROD'
 
 
-class Nai:
-    """Настоящие методы записки NotionAI на временных папках; остальное — заглушки."""
-    handoff_sync_dir = N.NotionAI.handoff_sync_dir
-    handoff_project_dir = N.NotionAI.handoff_project_dir
-    handoff_transcripts = N.NotionAI.handoff_transcripts
-    handoff_write = N.NotionAI.handoff_write
-    handoff_refresh_owner_last = N.NotionAI.handoff_refresh_owner_last
-    handoff_tail_state = N.NotionAI.handoff_tail_state
+class Wk:
+    """Настоящие методы записки cc_workers.Workers на временных папках; остальное — заглушки."""
+    handoff_sync_dir = N.Workers.handoff_sync_dir
+    handoff_project_dir = N.Workers.handoff_project_dir
+    handoff_transcripts = N.Workers.handoff_transcripts
+    handoff_write = N.Workers.handoff_write
+    handoff_refresh_owner_last = N.Workers.handoff_refresh_owner_last
+    handoff_tail_state = N.Workers.handoff_tail_state
 
     def __init__(self, base):
         self.ns = {'BASE': base}
@@ -82,7 +82,7 @@ class Transfer(unittest.TestCase):
         M.MODE_FILE = os.path.join(self.tmp, 'mode.json')
         with open(cc_remote.MEMBERS_FILE, 'w') as f:
             json.dump({'prod': {'label': 'Claude PROD', 'host': '192.0.2.1', 'tmux': 'friend'}}, f)
-        self.nai = Nai(self.base)
+        self.wk = Wk(self.base)
         self.notes = []
         self.events = []      # порядок действий: ('ctl', 'stop'), ('rsync', путь) ...
         self.ctl_args = []    # полные команды ctl.py
@@ -97,7 +97,7 @@ class Transfer(unittest.TestCase):
         M.PROJ = self.hist
         N.CLAUDE_HISTORY_DIR = self.hist
         M._NS.clear()
-        M._NS.update(NOTION_AI=self.nai, BASE=self.base, tg_notify=lambda t: None)
+        M._NS.update(WORKERS=self.wk, BASE=self.base, tg_notify=lambda t: None)
         M._wcache.update(ts=0.0, val='dev', key=None)
         M._notify = self.notes.append
         M.R.ssh_run = self.fake_ssh
@@ -189,11 +189,11 @@ class Transfer(unittest.TestCase):
         self.assertIn('Продолжи с последнего шага оттуда', brief)
         self.assertNotIn('Работу сам не начинай', brief)
         self.assertTrue(M.mode()['active'])
-        self.assertEqual(self.nai.stopped, 1)
+        self.assertEqual(self.wk.stopped, 1)
 
     def test_to_prod_resume_takes_snapshot_before_stop(self):
         sid = '11111111-2222-3333-4444-555555555555'
-        self.nai.thread_id = sid
+        self.wk.thread_id = sid
         self.write_conversation(self.hist, sid, self.unanswered())
         res = M._on_job('prod', 'с продолжением', '', True)
         self.assertTrue(res['ok'])
@@ -203,11 +203,11 @@ class Transfer(unittest.TestCase):
         self.assertTrue(M.mode()['resume'])
         self.assertTrue(M.mode()['delivery_ok'], M.mode().get('delivery'))   # размер беседы на PROD сверен
         self.assertIn('беседа', M.mode()['delivery'])
-        self.assertEqual(self.nai.stopped, 1)
+        self.assertEqual(self.wk.stopped, 1)
 
     def test_to_prod_resume_of_stopped_claude_starts_clean(self):
-        self.nai.thread_id = '11111111-2222-3333-4444-555555555555'
-        self.nai.running = False                                          # Claude уже остановлен: беседы не видно
+        self.wk.thread_id = '11111111-2222-3333-4444-555555555555'
+        self.wk.running = False                                          # Claude уже остановлен: беседы не видно
         self.write_conversation(self.hist, 'dev1', self.unanswered())
         res = M._on_job('prod', 'с продолжением', '', True)
         self.assertTrue(res['ok'])
@@ -215,7 +215,7 @@ class Transfer(unittest.TestCase):
         self.assertFalse(M.mode()['resume'])
 
     def test_to_prod_without_resume_ignores_snapshot(self):
-        self.nai.thread_id = '11111111-2222-3333-4444-555555555555'
+        self.wk.thread_id = '11111111-2222-3333-4444-555555555555'
         self.write_conversation(self.hist, 'dev1', self.unanswered())
         M._on_job('prod', 'по кнопке', '', False)
         self.assertEqual([a for a in self.ctl_args if a.startswith('start')], ['start - 1'])
@@ -239,8 +239,8 @@ class Transfer(unittest.TestCase):
         """R4-1: записка не ушла, когда Claude на PROD уже запущен: PROD гасим и Telegram там отключаем, иначе два слушателя бота."""
         self.write_conversation(self.hist, 'dev1', self.unanswered())
         self.fail_brief = True
-        orig = self.nai.start_claude
-        self.nai.start_claude = lambda: (self.events.append(('local_start',)), orig())[1]
+        orig = self.wk.start_claude
+        self.wk.start_claude = lambda: (self.events.append(('local_start',)), orig())[1]
         res = M._on_job('prod', 'по кнопке', '', False)
         self.assertFalse(res['ok'])
         self.assertFalse(M.mode()['active'])
@@ -250,7 +250,7 @@ class Transfer(unittest.TestCase):
         self.assertIn(('local_start',), ev)
         self.assertLess(ev.index(('ctl', 'stop')), ev.index(('local_start',)))   # сначала гасим PROD, потом будим Claude DEV
         self.assertLess(ev.index(('tg0',)), ev.index(('local_start',)))
-        self.assertEqual(self.nai.started, 1)
+        self.assertEqual(self.wk.started, 1)
 
     def test_to_prod_failed_start_does_not_stop_prod_again(self):
         self.write_conversation(self.hist, 'dev1', self.unanswered())
@@ -272,7 +272,7 @@ class Transfer(unittest.TestCase):
         self.assertTrue(res['ok'])
         self.assertTrue(M.mode()['active'])
         self.assertNotIn(('ctl', 'stop'), self.events)    # PROD продолжает работать
-        self.assertEqual(self.nai.started, 0)             # Claude DEV не будили
+        self.assertEqual(self.wk.started, 0)             # Claude DEV не будили
         self.assertFalse(M.mode()['delivery_ok'])
         self.assertIn('⚠️', self.last_note())
 
@@ -312,7 +312,7 @@ class Transfer(unittest.TestCase):
 
     # ── PROD -> dev ──────────────────────────────────────────────────────────
     def go_back(self, restore=True):
-        self.nai.running = False
+        self.wk.running = False
         M._save(active=True, member='prod', tg=True, since_ts=time.time() - 3600, since=time.time() - 3600)
         return M._off_job('автовозврат: тест', False, restore)
 
@@ -336,7 +336,7 @@ class Transfer(unittest.TestCase):
         self.write_conversation(self.prod, 'prod1', self.unanswered('закончи проверку на PROD'))
         self.prod_names = [os.path.join(self.hist, 'prod1.jsonl')]
         self.go_back()
-        self.assertEqual(self.nai.handoff_tail_state(), 'unfinished')
+        self.assertEqual(self.wk.handoff_tail_state(), 'unfinished')
         self.assertIn('закончи проверку на PROD', (self.project / 'handoff_tail.md').read_text())
 
     def test_back_copies_late_writes_after_prod_stops(self):
@@ -353,7 +353,7 @@ class Transfer(unittest.TestCase):
         stop_at = order.index(('ctl', 'stop'))
         self.assertTrue(any(e[0] == 'rsync' and e[1].endswith('prod1.jsonl') for e in order[stop_at:]), order)
         self.assertIn('поздняя запись при остановке', (self.project / 'owner_last.md').read_text())
-        self.assertEqual(self.nai.handoff_tail_state(), 'unfinished')
+        self.assertEqual(self.wk.handoff_tail_state(), 'unfinished')
 
     def test_back_success_message_and_delivery(self):
         self.write_conversation(self.prod, 'prod1', self.answered())
@@ -364,21 +364,21 @@ class Transfer(unittest.TestCase):
         self.assertIn('Claude DEV получил записку', note)
         self.assertNotIn('родн', note.lower())
         self.assertNotIn('возвращена', note)
-        self.assertEqual(self.nai.sync_calls, ['claude'])
-        self.assertEqual(self.nai.started, 1)
-        self.assertEqual(self.nai.later, [])
+        self.assertEqual(self.wk.sync_calls, ['claude'])
+        self.assertEqual(self.wk.started, 1)
+        self.assertEqual(self.wk.later, [])
         self.assertFalse(M.mode()['active'])
         self.assertTrue(M.mode()['delivery_ok'])
 
     def test_back_warns_and_retries_when_note_not_delivered(self):
         self.write_conversation(self.prod, 'prod1', self.answered())
         self.prod_names = [os.path.join(self.hist, 'prod1.jsonl')]
-        self.nai.sync_ok = False
+        self.wk.sync_ok = False
         self.go_back()
         note = self.last_note()
         self.assertTrue(note.startswith('⚠️ Переход на Claude DEV выполнен, но не всё подтверждено.'), note)
         self.assertIn('Claude DEV получил записку', note.split('Не подтверждено:')[-1])
-        self.assertEqual(self.nai.later, [('handoff_sync', ('claude',))])   # повтор позже, как и раньше
+        self.assertEqual(self.wk.later, [('handoff_sync', ('claude',))])   # повтор позже, как и раньше
 
     def test_back_warns_when_conversation_size_differs(self):
         self.write_conversation(self.prod, 'prod1', self.answered())
@@ -397,8 +397,8 @@ class Transfer(unittest.TestCase):
         self.go_back(restore=False)
         note = self.last_note()
         self.assertTrue(note.startswith('⏹ Claude PROD остановлен'), note)
-        self.assertEqual(self.nai.started, 0)
-        self.assertEqual(self.nai.sync_calls, [])
+        self.assertEqual(self.wk.started, 0)
+        self.assertEqual(self.wk.sync_calls, [])
 
 
 if __name__ == '__main__':

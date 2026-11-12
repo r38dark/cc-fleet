@@ -26,7 +26,7 @@ class Recovery(unittest.TestCase):
  def test_failed_transaction_does_not_enter_auto_relaunch_loop(self):
   self.n.fail=True
   with patch.object(self.n,'rollback',side_effect=ProfileError('locked')) as rollback:
-   result=self.p.action('codex','apply',dict(id='codex_solo_full',confirm='подтверждаю',revision=0))  # [notion-ai] был служебный резерв
+   result=self.p.action('codex','apply',dict(id='codex_solo_full',confirm='подтверждаю',revision=0))  # был служебный резерв
    self.assertFalse(result['ok']);self.assertTrue(self.p.public()['recovery']['blocked'])
    raw=json.loads(self.p.pending.read_text());self.assertEqual(raw['rollback_failure']['code'],'locked');self.assertIn('failure',raw)
    for _ in range(5):self.p.tick()

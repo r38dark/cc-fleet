@@ -551,6 +551,43 @@ class Badge(unittest.TestCase):
         self.assertIn("ccliOkTitle(Claude Code|2.1.319|2.1.322)", r[1]["html"])
         self.assertIn("ccliFailed(&lt;b&gt;boom&lt;/b&gt;)", r[2]["html"])      # текст из ответа экранирован
 
+    def test_failed_popup_offers_retry_for_each_updatable_tool(self):
+        for tool in ("local", "remote", "codex"):
+            data = {"local": None, "remote": None, "codex": None}
+            data[tool] = row(tool="codex" if tool == "codex" else "claude", state="failed", err="npm error E404")
+            html = badge([{"data": data, "open": True}])[0]["html"]
+            self.assertIn('data-ccli-pop="update" data-k="'+tool+'" data-v="latest"', html)
+            self.assertIn("ccliBtnRetry", html)
+            self.assertIn("ccliFailed(npm error E404)", html)
+
+    def test_failed_popup_without_update_support_does_not_offer_retry(self):
+        html = badge([{"data": {"local": None, "remote": None, "codex": row(state="failed", can_update=False)}, "open": True}])[0]["html"]
+        self.assertNotIn('data-ccli-pop="update"', html)
+
+    def test_running_codex_alone_schedules_status_poll(self):
+        function = cut(r"^async function ccliLoad\(check\)\{.*?^\}", "ccliLoad")
+        source = r"""
+const API='/api/', TOKEN='fixture';
+let ccliData=null,ccliTimer=null,ccliPopOpen=true;
+let polls=[];
+function $(s){return {hidden:true};}
+function ccliRender(){} function ccliBadgeRender(){}
+function clearTimeout(){} function setTimeout(callback,delay){polls.push(delay);return 1;}
+let data;
+async function fetch(){return {ok:true,json:async()=>data};}
+""" + function + r"""
+(async()=>{
+ data={local:{state:'idle'},remote:null,codex:{state:'running'}};
+ await ccliLoad(false);
+ const running=polls.slice();polls=[];
+ data={local:{state:'idle'},remote:null,codex:{state:'done'}};
+ await ccliLoad(false);
+ console.log(JSON.stringify({running,done:polls}));
+})();
+"""
+        result = subprocess.run(["node", "-e", source], capture_output=True, text=True, timeout=10, check=True)
+        self.assertEqual(json.loads(result.stdout), {"running": [3000], "done": []})
+
     def test_open_window_with_nothing_left_says_everything_is_up_to_date(self):
         r = badge([{"data": {"local": row(update_available=False), "remote": None, "codex": None}, "open": True}])
         self.assertFalse(r[0]["hidden"])                         # пока окно открыто, бейдж не пропадает из-под курсора
@@ -630,8 +667,8 @@ class VersionLabel(unittest.TestCase):
         self.assertIn("ccliStaleNote", r[2]["title"])
         self.assertIn("ccliStaleClaude", r[3]["title"])
 
-    def test_nothing_for_notion_missing_data_or_unavailable_second_server(self):
-        r = pv([{"s": "notion", "x": row()}, {"s": "notion:abc", "x": row()}, {"s": "claude", "x": None}, {"s": "prod", "x": {"ok": False}},
+    def test_nothing_for_unknown_part_missing_data_or_unavailable_second_server(self):
+        r = pv([{"s": "other", "x": row()}, {"s": "other:abc", "x": row()}, {"s": "claude", "x": None}, {"s": "prod", "x": {"ok": False}},
                 {"s": "claude", "x": row(version=None)}])
         self.assertEqual(r, [None, None, None, None, None])
 
@@ -660,14 +697,14 @@ class ClaudeRestart(unittest.TestCase):
         import cc_limits as L
         cls.L = L
 
-    def local(self, alive=True, remote=False, notion=False, side=False, stop=True, start=True):
+    def local(self, alive=True, remote=False, side=False, stop=True, start=True):
         L = self.L
-        nai = mock.Mock()
-        nai.side_running.return_value, nai.stop_claude.return_value, nai.start_claude.return_value = side, stop, start
-        with mock.patch.object(L, "NOTION_AI", nai, create=True), mock.patch.object(L.cc_fleet, "claude_alive", return_value=alive), \
-                mock.patch("pause_ctl._remote_active", return_value=remote), mock.patch.object(L, "jload", return_value={"active": notion}):
+        wk = mock.Mock()
+        wk.side_running.return_value, wk.stop_claude.return_value, wk.start_claude.return_value = side, stop, start
+        with mock.patch.object(L, "WORKERS", wk, create=True), mock.patch.object(L.cc_fleet, "claude_alive", return_value=alive), \
+                mock.patch("pause_ctl._remote_active", return_value=remote):
             r = L.claude_restart_local()
-        return r, [c[0] for c in nai.mock_calls]
+        return r, [c[0] for c in wk.mock_calls]
 
     def test_local_stop_then_start(self):
         r, calls = self.local()
@@ -676,7 +713,6 @@ class ClaudeRestart(unittest.TestCase):
     def test_local_not_touched_when_not_running_or_the_start_script_would_refuse(self):
         self.assertEqual(self.local(alive=False), ({"ok": False, "error": "not_running"}, []))
         self.assertEqual(self.local(remote=True), ({"ok": False, "error": "other_worker"}, []))     # работа на PROD: start_claude.sh не стартует, DEV остался бы выключен
-        self.assertEqual(self.local(notion=True), ({"ok": False, "error": "other_worker"}, []))     # профиль Notion AI — то же
         r, calls = self.local(side=True)
         self.assertEqual((r["error"], calls), ("side_session", ["side_running"]))
 

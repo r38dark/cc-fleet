@@ -270,15 +270,15 @@ class Chat(Base):
         self.say("вопрос 3")
         self.assertNotIn("resume", self.runs()[2]["argv"])
 
-    def test_reserve_mcp_keys_and_note_reach_exec_new_and_resume(self):
-        keys = ["-c", 'mcp_servers.notion.url="https://x/mcp"']
-        saved = (br.MCP_ARGS, br.RESERVE_NOTE)
-        br.MCP_ARGS, br.RESERVE_NOTE = (lambda: keys), (lambda: "[РЕЗЕРВ: тест]")
-        self.addCleanup(lambda: setattr(br, "MCP_ARGS", saved[0]) or setattr(br, "RESERVE_NOTE", saved[1]))
-        # С 02.11 (просьба владельца) напоминание лежит в AGENTS.md (его переписывает включение резерва через
-        # ensure_exchange), а в сообщение уходит только текст человека.
+    def test_profile_keys_and_note_reach_exec_new_and_resume(self):
+        keys = ["-c", 'developer_instructions="тест профиля"']
+        saved = (br.MCP_ARGS, br.PROFILE_NOTE)
+        br.MCP_ARGS, br.PROFILE_NOTE = (lambda: keys), (lambda: "[ПРОФИЛЬ: тест]")
+        self.addCleanup(lambda: setattr(br, "MCP_ARGS", saved[0]) or setattr(br, "PROFILE_NOTE", saved[1]))
+        # С 02.11 (просьба владельца) напоминание профиля лежит в AGENTS.md (его переписывает ensure_exchange),
+        # а в сообщение уходит только текст человека.
         br.ensure_exchange()
-        self.assertIn("[РЕЗЕРВ: тест]", get(os.path.join(self.ex, "AGENTS.md")))
+        self.assertIn("[ПРОФИЛЬ: тест]", get(os.path.join(self.ex, "AGENTS.md")))
         self.say("вопрос 1")
         self.say("вопрос 2")
         new, resume = self.runs()[0]["argv"], self.runs()[1]["argv"]
@@ -288,11 +288,11 @@ class Chat(Base):
             self.assertEqual(argv[i - 2:i], keys, argv)  # ключи до «--», иначе Codex принял бы их за текст сообщения
             self.assertEqual(argv[i + 1:], [text])
 
-    def test_no_reserve_means_clean_exec(self):
+    def test_no_profile_keys_means_clean_exec(self):
         self.say("вопрос")
         argv = self.runs()[0]["argv"]
-        self.assertFalse([x for x in argv if "mcp_servers" in x])
-        self.assertEqual(argv[-1], "вопрос")  # без напоминания про резерв
+        self.assertFalse([x for x in argv if "mcp_servers" in x or "developer_instructions" in x])
+        self.assertEqual(argv[-1], "вопрос")  # без напоминания профиля
 
     def test_self_mode_cwd_and_sandbox(self):
         br.save({"mode": "self", "access": "write", "workdir": self.proj})
@@ -720,108 +720,25 @@ class FakeEmergency:
         return ""
 
 
-class ReserveProfile(Base):
-    """Профиль «Резерв»: встаёт сам вместе с резервом Notion и сам возвращает прежний — чтобы не путать, какой режим выбран."""
-    def setUp(self):
-        super().setUp()
-        self.old_emg = br.EMERGENCY
-        self.emg = FakeEmergency()
-        br.EMERGENCY = self.emg
-        self.addCleanup(setattr, br, "EMERGENCY", self.old_emg)
+class OldProfile(Base):
+    """Профиль, убранный из панели (прежний служебный «reserve»): не выбирается и в настройках читается как «не выбран»."""
 
-    def test_on_switches_profile_and_remembers_previous(self):
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        self.assertTrue(br.reserve_profile(True, True))
-        s = br.load()
-        self.assertEqual((s["mode"], s["access"], s["profile"]), ("self", "write", "reserve"))
-        self.assertEqual(s["reserve_prev"]["mode"], "orchestrator")
-        self.assertEqual(s["reserve_prev"]["profile"], "orchestrator")
-        self.assertEqual(br.public()["profile"], "reserve")
-
-    def test_repeated_calls_change_nothing(self):
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        self.assertTrue(br.reserve_profile(True, True))
-        before = br.load()
-        self.assertFalse(br.reserve_profile(True, False))
-        self.assertFalse(br.reserve_profile(True, True))  # уже «Резерв»: запомненное прежнее не затирается
-        self.assertEqual(br.load(), before)
-
-    def test_active_without_flip_does_not_switch(self):
-        # резерв уже шёл до запуска панели или человек потом сам выбрал профиль — «включился» приходит только по флагу
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        self.assertFalse(br.reserve_profile(True, False))
-        self.assertEqual(br.load()["profile"], "orchestrator")
-
-    def test_off_restores_everything(self):
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        self.assertTrue(br.reserve_profile(True, True))
-        self.assertTrue(br.reserve_profile(False, True))
-        s = br.load()
-        self.assertEqual((s["mode"], s["task_rights"], s["profile"]), ("orchestrator", "dev", "orchestrator"))
-        self.assertNotIn("reserve_prev", s)
-        self.assertEqual(br.public()["profile"], "orchestrator")
-        self.assertFalse(br.reserve_profile(False, False))  # повтор каждый такт ничего не пишет
-
-    def test_off_restores_manual_settings_without_profile(self):
-        self.assertTrue(br.save({"mode": "mediator", "task_rights": "read"})[0])
-        self.assertEqual(br.load()["profile"], "")
-        self.assertTrue(br.reserve_profile(True, True))
-        self.assertTrue(br.reserve_profile(False, True))
-        s = br.load()
-        self.assertEqual((s["mode"], s["task_rights"], s["profile"]), ("mediator", "read", ""))
-
-    def test_humans_own_choice_during_reserve_is_not_touched(self):
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        self.assertTrue(br.reserve_profile(True, True))
-        self.assertTrue(br.apply_profile("codex_solo_full", "подтверждаю")[0])  # человек сам выбрал профиль посреди резерва
-        self.assertFalse(br.reserve_profile(False, True))
-        s = br.load()
-        self.assertEqual((s["profile"], s["mode"]), ("codex_solo_full", "self"))
-        self.assertNotIn("reserve_prev", s)
-
-    def test_emergency_freezes_both_directions(self):
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        self.emg.on = True
-        self.assertFalse(br.reserve_profile(True, True))  # аварийный режим держит права: профиль не трогаем
-        self.assertEqual(br.load()["profile"], "orchestrator")
-        self.emg.on = False
-        self.assertTrue(br.reserve_profile(True, True))
-        self.emg.on = True
-        self.assertFalse(br.reserve_profile(False, True))  # возврат откладывается, пока аварийный режим активен
-        self.assertEqual(br.load()["profile"], "reserve")
-        self.emg.on = False
-        self.assertTrue(br.reserve_profile(False, False))  # на следующем такте — возвращается
-        self.assertEqual(br.load()["profile"], "orchestrator")
-
-    def test_cannot_be_picked_by_hand(self):
+    def test_cannot_be_picked(self):
         self.assertTrue(br.apply_profile("codex_solo_full", "подтверждаю")[0])
         ok, msg = br.apply_profile("reserve")
         self.assertFalse(ok)
-        self.assertIn("сам", msg)
-        ok, msg = br.apply_profile("reserve", lang="en")
-        self.assertFalse(ok)
-        self.assertIn("by itself", msg)
+        self.assertIn("Такого профиля нет", msg)
         self.assertEqual(br.load()["profile"], "codex_solo_full")
 
-    def test_reserve_is_not_listed_among_profiles(self):
-        self.assertTrue(br.reserve_profile(True, True))
+    def test_old_record_reads_as_not_chosen(self):
+        self.assertTrue(br.save({"mode": "self", "access": "write"})[0])
+        s = br.load()
+        s.update(profile="reserve", reserve_prev={"mode": "orchestrator"})
+        br._save(s)
+        self.assertEqual(br.public()["profile"], "")
         self.assertEqual([p["id"] for p in br.public()["profiles"]], ["orchestrator", "codex_solo_full"])
-
-    def test_manual_edit_during_reserve_drops_mark_but_end_still_restores(self):
-        self.assertTrue(br.apply_profile("orchestrator")[0])
-        self.assertTrue(br.reserve_profile(True, True))
-        self.assertTrue(br.save({"access": "read"})[0])
-        self.assertEqual(br.public()["profile"], "")  # настройки уже не «Резерв» — метка снята
-        self.assertTrue(br.reserve_profile(False, True))
-        self.assertEqual(br.load()["profile"], "orchestrator")
-
-    def test_status_command_names_reserve(self):
-        self.assertTrue(br.reserve_profile(True, True))
         self.say("/status")
-        self.assertIn("Резерв", self.sent[-1])
-        self.assertTrue(br.reserve_profile(False, True))
-        self.say("/status")
-        self.assertNotIn("Резерв", self.sent[-1])
+        self.assertIn("Режим: Самостоятельно", self.sent[-1])
 
 
 class Orchestrator(Base):

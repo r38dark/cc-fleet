@@ -56,7 +56,7 @@ class Page(unittest.TestCase):
         # «Удалить Codex целиком» — в самом низу окна ⚙, после секции аккаунтов; подтверждение словом, как у удаления аккаунта
         page = L.PAGE
         self.assertLess(page.index('id="cxAccW"'), page.index('id="cxWipeW"'))
-        self.assertNotIn('id="ntPop"', page)  # [notion-ai] блока резерва Notion больше нет
+        self.assertNotIn('id="ntPop"', page)  # прежнего блока резерва больше нет
         m = re.search(r"function cxWipe\(\)\{(.*?)\n\}\n", page, re.S)
         self.assertTrue(m)
         self.assertIn("acctPost('chatgpt/wipe',{confirm:inp.value})", m.group(1))
@@ -203,12 +203,12 @@ class Page(unittest.TestCase):
         page = L.PAGE
         self.assertRegex(page, r"function consFollow\(d\)\{")
         self.assertIn("d.remote_mode.worker", page)
-        self.assertIn("{prod:'ctProd',codex:'ctCodex',notion:'ctNotion'}[w]||'ctClaude'", page)
+        self.assertIn("{prod:'ctProd',codex:'ctCodex'}[w]||'ctClaude'", page)
         self.assertRegex(page, r"lastSnap=d;(noProdSync\(\);)?consFollow\(d\);")
         # запоминаем, за кем уже последовали: и в памяти страницы (localStorage может быть закрыт), и в localStorage
         self.assertIn("let consFollowed='',consFollowWait=0;", page)
         self.assertIn("localStorage.setItem('cc_conworker',w)", page)
-        # пока нужной вкладки нет (PROD/Codex недоступны, вкладка Notion ещё не создана) — не запоминаем, ждём до 30 с и повторяем
+        # пока нужной вкладки нет (PROD/Codex недоступны) — не запоминаем, ждём до 30 с и повторяем
         self.assertIn("if(!b||(w==='prod'&&!prodAvail())||(w==='codex'&&!cxAvail())||splitPending()){", page)
         self.assertIn("setTimeout(()=>consFollow(lastSnap),700)", page)
         # запоминаем ДО клика: клик зовёт consPick -> consTabs, а запоминание после клика зациклило бы переключение
@@ -239,7 +239,7 @@ class Page(unittest.TestCase):
         self.assertNotRegex(css, r"\.ctabs\{[^}]*background:rgba")
 
     def test_skins_removed_panel_is_always_classic(self):
-        # [notion-ai] скины убраны: нет выбора «Оформление», правил html[data-skin=…] и чтения cc_skin
+        # скины убраны: нет выбора «Оформление», правил html[data-skin=…] и чтения cc_skin
         css = L.PAGE
         self.assertNotIn('id="skinGrid"', css)
         self.assertNotIn('id="skinTitle"', css)
@@ -868,60 +868,21 @@ class ConsoleColors(unittest.TestCase):
 
 
 
-NT_JS = """
-const classes={};
-const mk=id=>({id,hidden:false,title:'',textContent:'',className:'',attrs:{},setAttribute(k,v){this.attrs[k]=v;},classList:{toggle:(c,on)=>{const s=classes[id]||(classes[id]=new Set());on?s.add(c):s.delete(c);}}});
-const els={'#ntGrp':mk('g'),'#ntBtn':mk('b'),'#ntBtnName':mk('n'),'#ntGear':mk('gear'),'#ntInd':mk('ind'),'#ntDot':mk('dot'),'#ntPop':{hidden:true}};
-const $=s=>els[s];
-const tr=(k,...a)=>a.length?k+'('+a.join(',')+')':k;
-const toasts=[];const toast=t=>toasts.push(t);
-function ntClose(){}function ntResPaint(){}
-const calls=[],timers=[];const ccpLoad=()=>calls.push('load'),cxbLoad=f=>calls.push('cxb'+(f?'!':'')),ntRefresh=()=>calls.push('refresh'),setTimeout=(f,ms)=>timers.push([f,ms]);
-%s
-(()=>{
- const o={};
- const base={available:true,connected:true,reserve:{active:false,ready:true,manual:false,claude:'up'}};
- const res=(a,c)=>Object.assign({},base,{reserve:{active:a,ready:true,manual:false,claude:c||'up'}});
- const snap=()=>({g:[...(classes.g||[])].sort().join(','),b:[...(classes.b||[])].sort().join(','),checked:els['#ntBtn'].attrs['aria-checked'],disabled:els['#ntBtn'].attrs['aria-disabled'],dot:els['#ntDot'].className,tip:els['#ntBtn'].title});
- ntApply(base);o.idle=snap();
- ntApply(Object.assign({},base,{connected:false}));o.bad=snap();
- ntApply(Object.assign({},base,{reserve:{active:false,ready:false,manual:false,claude:'up'}}));o.notReady=snap();
- ntApply(Object.assign({},base,{reserve:{active:true,ready:true,manual:true,why:'manual',claude:'up'}}));o.manual=snap();
- ntApply(Object.assign({},base,{reserve:{active:true,ready:false,manual:true,why:'manual',claude:'up'}}));o.manualLost=snap();  // агент пропал, галочка осталась: выключить можно
- ntApply(res(true));o.res=snap();o.toastsWithoutClick=toasts.length;   // сам по себе (авто-случай) тост не нужен
- ntAfter();ntApply(res(false));o.toastOff=toasts.slice();                // человек нажал, резерв снялся
- ntAfter();ntApply(res(true));o.toastOn=toasts.slice(1);
- ntAfter();ntApply(res(false,'down'));o.toastDown=toasts.slice(2);
- ntApply(res(false,'down'));o.noRepeat=toasts.length;                    // тот же показ ещё раз — без повторного тоста
- ntSync();o.syncNow=calls.splice(0);o.timerMs=timers.map(t=>t[1]);   // сразу — один ccpLoad; позже — ntRefresh + ccpLoad
- timers.forEach(t=>t[0]());o.syncLater=calls.splice(0);
- console.log(JSON.stringify(o));
-})();
-"""
-
 BANNER_JS = """
 const LANG='ru';
 let T=1000000000000;Date.now=()=>T;
 const tr=(k,...a)=>a.length?k+'('+a.join(',')+')':k;
 const el={hidden:true,className:'',innerHTML:''};
 const $=s=>s==='#ccPause'?el:null;
-const CCP_GRACE_STUB=0;
 %s
-const out=(pause)=>{ccpData={stale:false,level:'none',threshold:90,weekly_cap:99,accounts:{},active:'a',pause:Object.assign({active:true,kind:'reserve',since:T/1000-5,resume_at:0,reason:'r',override:false},pause)};ccpRender();return el.innerHTML;};
-const o={};
-o.none=out({notice_ts:0,grace:120});
-o.mid=out({notice_ts:T/1000-30,grace:120});
-o.late=out({notice_ts:T/1000-500,grace:120});
-o.noGraceField=out({notice_ts:T/1000-30});   // старый ответ сервера без поля grace — берём константу страницы
-o.limits=(()=>{ccpData={stale:false,level:'none',threshold:90,weekly_cap:99,accounts:{},active:'a',pause:{active:true,kind:'session',since:T/1000-5,resume_at:T/1000+600,reason:'r',override:false}};ccpRender();return el.innerHTML;})();
-o.untilMid=T+90000;
-console.log(JSON.stringify(o));
+const out=(kind)=>{ccpData={stale:false,level:'none',threshold:90,weekly_cap:99,accounts:{},active:'a',pause:{active:true,kind:kind,since:T/1000-5,resume_at:T/1000+600,reason:'r',override:false}};ccpRender();return el.innerHTML;};
+console.log(JSON.stringify({limits:out('session'),old:out('reserve')}));
 """
 
 
 @unittest.skipUnless(__import__("shutil").which("node"), "нет node")
-class NotionInstantAndFrame(unittest.TestCase):
-    """Тумблер и галочки Notion действуют сразу, рамка блока одна на всю группу, баннер резерва показывает отсчёт «доделывает»."""
+class PauseBanner(unittest.TestCase):
+    """Баннер паузы по лимитам: обычный вид с будильником; запись прежнего служебного вида паузы показывается так же."""
 
     @classmethod
     def setUpClass(cls):
@@ -934,197 +895,21 @@ class NotionInstantAndFrame(unittest.TestCase):
         assert r.returncode == 0, r.stderr
         cls.b = json.loads(r.stdout)
 
-    # --- переключатель в шапке = ручной резерв; иконка N = только индикатор ---
-
-
-
-
-
-
-    # --- рамка блока ---
-
-
-
-
-    # --- тосты о смене режима ---
-
-
-
-    # --- баннер паузы резерва ---
-    def test_banner_before_first_refusal_explains_without_a_timer(self):
-        h = self.b["none"]
-        self.assertIn("ccpResGrace", h)
-        self.assertNotIn("ccp-timer", h)
-        self.assertIn("ccpResSub", h)
-
-    def test_banner_counts_down_from_the_first_refusal(self):
-        h = self.b["mid"]
-        self.assertIn("ccpResGraceNow", h)
-        self.assertIn('data-until="%d"' % self.o_until(), h)
-        self.assertIn('data-grace="1"', h)
-        self.assertIn("ccpResGraceL", h)
-
-    def o_until(self):
-        return self.b["untilMid"]
-
-    def test_banner_after_grace_says_tools_are_blocked_and_drops_the_timer(self):
-        h = self.b["late"]
-        self.assertIn("ccpResLocked", h)
-        self.assertNotIn("ccp-timer", h)
-
-    def test_banner_uses_page_constant_when_server_sends_no_grace(self):
-        h = self.b["noGraceField"]
-        self.assertIn('data-until="%d"' % self.b["untilMid"], h)  # 30 с прошло из 120: осталось 90 — по константе страницы
-
-    def test_limits_pause_banner_has_no_grace_texts_or_marker(self):
+    def test_limits_pause_has_title_and_alarm_timer(self):
         h = self.b["limits"]
-        self.assertNotIn("ccpResGrace", h)
+        self.assertIn("ccpPauseTitle", h)
+        self.assertIn("ccp-timer", h)
         self.assertNotIn("data-grace", h)
 
-    def test_page_grace_equals_hook_and_pause_ctl(self):
-        import pause_ctl
-        m = re.search(r"const CCP_GRACE=(\d+);", L.PAGE)
-        self.assertTrue(m)
-        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "hooks", "pause_tool_gate.py"), encoding="utf-8") as f:
-            hook = f.read()
-        self.assertEqual(int(m.group(1)), int(re.search(r"^GRACE = (\d+)", hook, re.M).group(1)))
-        self.assertEqual(int(m.group(1)), pause_ctl.RESERVE_GRACE)
+    def test_old_service_pause_record_is_an_ordinary_pause(self):
+        self.assertIn("ccpPauseTitle", self.b["old"])
+        self.assertNotIn("data-grace", self.b["old"])
 
-    def test_new_texts_exist_in_both_languages(self):
-        for lang in ("ru", "en"):
-            blk = i18n_block(lang)
-            for k in ("ccpResGrace", "ccpResGraceNow", "ccpResGraceL", "ccpResLocked"):
-                m = re.search(r"^\s*%s:(.+),?$" % k, blk, re.M)
-                self.assertTrue(m, "%s нет в %s" % (k, lang))
-                self.assertGreater(len(m.group(1)), 12, k)
-                self.assertNotRegex(m.group(1), r"(?i)\b(прод|дев|хаб|prod|dev|hub)\b", k)
-
-    def test_grace_banner_poll_is_faster_until_first_refusal(self):
+    def test_no_texts_of_the_removed_service_pause(self):
+        self.assertNotIn("ccpRes", L.PAGE)
+        self.assertNotIn("CCP_GRACE", L.PAGE)
         tick = re.search(r"function ccpTick\(\)\{(.*?)\n\}\n", L.PAGE, re.S).group(1)
-        self.assertIn("pz.kind==='reserve'&&!pz.notice_ts&&Date.now()-ccpLoadedAt>4000", tick)
-        self.assertIn("if(t.dataset.grace){if(Date.now()>=until)ccpRender();return;}", tick)  # конец отсчёта: надпись меняется, опроса нет
-
-
-class NotionRoute(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        import http.server
-        import threading
-        cls.dir = tempfile.mkdtemp(prefix="ccntr_", dir=TMP)
-        cls.creds = os.path.join(cls.dir, "c.json")
-        with open(cls.creds, "w") as f:
-            json.dump({"mcpOAuth": {"notion|h": {"serverName": "notion", "accessToken": "SECRET-N", "refreshToken": "SECRET-R"}}}, f)
-        cls.keep = (L.cc_notion.CREDS, L.cc_notion.CONFIG)
-        L.cc_notion.CREDS = lambda: cls.creds
-        cls.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), L.H)
-        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
-        cls.url = "http://127.0.0.1:%d" % cls.srv.server_port
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.srv.shutdown()
-        cls.srv.server_close()
-        L.cc_notion.CREDS, L.cc_notion.CONFIG = cls.keep
-
-    def setUp(self):
-        c = L.cfg()
-        c.pop("notion_agent", None)
-        c["hook_token"] = "t-secret"  # установщик всегда его создаёт; без него пустой токен «совпал» бы с пустым
-        L.jsave(L.CONFIG, c)
-
-    def post(self, body, auth=True):
-        import urllib.request
-        import urllib.error
-        # токен, не X-Auth-User: с 09.11.26 движок на отдельный заголовок без internal_secret
-        # (которого тут нет) больше не отвечает — см. cc_limits.H._authed
-        req = urllib.request.Request(self.url + "/api/notion/save", data=json.dumps(body).encode(), method="POST",
-                                     headers={"Content-Type": "application/json", **({"X-CC-Token": "t-secret"} if auth else {})})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                return r.status, json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read() or b"{}")
-
-
-    def test_save_returns_public_without_secrets_and_without_enabled(self):
-        code, out = self.post({"name": "Helper", "url": "agent://s/a"})
-        self.assertEqual(code, 200)
-        self.assertNotIn("enabled", out["notion"])
-        self.assertNotIn("enabled", L.cfg()["notion_agent"])
-        self.assertNotIn("SECRET", json.dumps(out))
-
-    def test_url_is_saved_but_never_returned(self):
-        code, out = self.post({"name": "Helper", "url": "agent://s/a"})
-        self.assertEqual(code, 200)
-        self.assertEqual(L.cfg()["notion_agent"], {"name": "Helper", "url": "agent://s/a"})
-        self.assertEqual(out["notion"]["agent"], {"name": "Helper", "set": True})
-        self.assertNotIn("agent://", json.dumps(out))
-        code, out = self.post({"clear_url": True})
-        self.assertEqual(code, 200)
-        self.assertEqual(out["notion"]["agent"]["set"], False)
-
-    def test_bad_field_is_400_with_message_and_config_untouched(self):
-        self.post({"name": "Helper", "url": "agent://s/a"})
-        code, out = self.post({"url": "http://evil", "lang": "en"})
-        self.assertEqual(code, 400)
-        self.assertEqual(out["field"], "url")
-        self.assertTrue(out["message"])  # текст общий («не принято поле настроек агента»), поле называет out["field"]
-        self.assertEqual(L.cfg()["notion_agent"]["url"], "agent://s/a")
-        code, out = self.post({"reserve": {"manual": "yes"}})  # резерв Notion убран: ключ молча отбрасывается, не ошибка
-        self.assertEqual(code, 200)
-        self.assertNotIn("reserve", L.cfg()["notion_agent"])
-
-    def test_needs_auth(self):
-        self.assertEqual(self.post({"enabled": False}, auth=False)[0], 403)
-        self.assertNotIn("notion_agent", L.cfg())
-
-    def get(self, auth=True):
-        import urllib.request
-        import urllib.error
-        req = urllib.request.Request(self.url + "/api/notion", headers={"X-CC-Token": "t-secret"} if auth else {})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                return r.status, json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read() or b"{}")
-
-
-
-    def test_old_enabled_key_in_config_is_dropped_on_next_save(self):
-        c = L.cfg()
-        c["notion_agent"] = {"name": "Helper", "url": "agent://s/a", "enabled": False}
-        L.jsave(L.CONFIG, c)
-        code, out = self.post({"name": "Helper"})
-        self.assertEqual(code, 200)
-        self.assertNotIn("enabled", L.cfg()["notion_agent"])
-
-
-
-    def test_light_get_returns_public_state_without_secrets(self):
-        self.post({"name": "Helper", "url": "agent://s/a"})
-        code, out = self.get()
-        self.assertEqual(code, 200)
-        self.assertNotIn("reserve", out)  # [notion-ai] резерва больше нет
-        self.assertEqual(out["agent"], {"name": "Helper", "set": True})
-        self.assertNotIn("agent://", json.dumps(out))
-        self.assertNotIn("SECRET", json.dumps(out))
-
-    def test_reserve_is_gone_key_rejected_and_old_flags_dropped(self):
-        # [notion-ai] резерв убран: ключ reserve не принимается, старые галочки из config.json уходят при сохранении
-        c = L.cfg()
-        c["notion_agent"] = {"name": "Helper", "url": "agent://s/a", "reserve": {"manual": True, "auto": True}}
-        L.jsave(L.CONFIG, c)
-        code, out = self.post({"reserve": {"manual": True}})
-        self.assertFalse(out.get("ok"))  # 200 «Резерв убран из панели.» (cc_fleet) или 400 field=reserve (cc_limits)
-        self.assertIn("reserve", L.cfg()["notion_agent"])  # отказ ничего не пишет
-        code, out = self.post({"name": "Helper2"})
-        self.assertEqual(code, 200)
-        self.assertNotIn("reserve", L.cfg()["notion_agent"])
-        self.assertNotIn("reserve", out["notion"])
-        self.assertEqual(out["notion"]["role"], "helper")
-
-    def test_light_get_needs_auth(self):
-        self.assertEqual(self.get(auth=False)[0], 403)
+        self.assertNotIn("dataset.grace", tick)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """[remote] Панель: удалённый Claude-аккаунт (прод друга) — строка и плитка в «Активных аккаунтах» (как у Claude DEV)
 и карточка в «Лимитах и переключениях». Данные приходят в /api/limits под ключом remote (cc_remote.cached);
-в автовыборе аккаунтов он не участвует. Состояние «работает/пауза» берёт шапка (cc_notion_ai, сегмент prod)."""
+в автовыборе аккаунтов он не участвует. Состояние «работает/пауза» берёт шапка (cc_workers, сегмент prod)."""
 
 CSS = r"""
 .fleet-live-account.prod{--live-accent:var(--fleet-claude)}
@@ -26,7 +26,6 @@ html:root:root.ag-pause-prod .fleet-live-account.prod .fleet-live-name::before,h
 .fleet-card-auto{display:flex;align-items:center;gap:8px;margin:10px 0 2px;font-size:12px;color:var(--fleet-muted);cursor:pointer}
 .fleet-card-auto input{accent-color:var(--fleet-claude);width:15px;height:15px;margin:0}
 .rm-hand{--rm-c:var(--live-accent,var(--fleet-claude));--rm-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8h14l-3.5-3.5M20 16H6l3.5 3.5'/%3E%3C/svg%3E");grid-area:hand;align-self:center;justify-self:end;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;width:252px;height:34px;margin:0 28px 0 0;padding:0 14px;border-radius:7px;border:1px solid color-mix(in srgb,var(--rm-c) 55%,var(--fleet-line));background:color-mix(in srgb,var(--rm-c) 10%,var(--bg));color:var(--txt);font:inherit;font-size:12px;font-weight:600;line-height:1;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:border-color .15s,background .15s,color .15s}
-.fleet-live-account.notion .rm-hand{--rm-c:#a78bfa}
 .rm-hand::before{content:"";flex:none;width:15px;height:15px;background:currentColor;-webkit-mask:var(--rm-ic) center/contain no-repeat;mask:var(--rm-ic) center/contain no-repeat}
 .rm-hand:hover:not([disabled]){border-color:var(--rm-c);background:color-mix(in srgb,var(--rm-c) 18%,var(--bg))}
 .rm-hand:focus-visible{outline:2px solid var(--rm-c);outline-offset:2px}
@@ -91,21 +90,21 @@ function statusHint(m){var c=httpCode(m);
  if(!c)return '';
  var why=c==='429'?'слишком частые запросы к Anthropic':c==='401'||c==='403'?'доступ отклонён, возможно, нужен новый вход':c.charAt(0)==='5'?'сбой на стороне Anthropic':'ответ сервера Anthropic с ошибкой';
  return 'Запрос лимитов вернул ошибку '+c+' ('+why+'). Показаны цифры последнего удачного опроса — они могли устареть. Опрос повторится сам; Claude на PROD от этого не останавливается.'}
-// (63531) пауза по лимитам Claude PROD (та же, что в верхнем баннере): на плитке показываем её, а не «лимиты не обновились»
+// (63531) пауза по лимитам Claude PROD (та же, что в верхнем баннере): пока она идёт, «лимиты не обновились» в строке не пишем.
+// Сама надпись «пауза по лимитам до …» — бейдж на верхней рамке строки (limxBadges в cc_limits): в строку не встаёт и дату не сдвигает
 function pauseInfo(){try{var d=typeof ccpData!=='undefined'?ccpData:null,rp=d&&d.remote_pause;return rp&&rp.enabled&&rp.applied&&rp.blocked?rp:null}catch(e){return null}}
-function pauseText(){var rp=pauseInfo();return rp?'\u23f8 пауза по лимитам'+(rp.resume_at?' до '+clk(new Date(rp.resume_at*1000)):''):''}
 function modelName(id){if(!id)return '—';var m=/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$)/.exec(id);if(!m)return id;return m[1].charAt(0).toUpperCase()+m[1].slice(1)+' '+m[2]+(m[3]?'.'+m[3]:'')}
 var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),tok=(typeof TOKEN!=='undefined'?TOKEN:''),pollT=0,note='';
 function rmode(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}return s&&s.remote_mode||{}}
 function post(path,body){return fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':tok},body:JSON.stringify(body||{})}).then(function(r){return r.json()})}
 function poll(){clearTimeout(pollT);pollT=setTimeout(function(){pollT=0;fetch(base+'remote',{headers:{'X-CC-Token':tok},cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
- try{if(lastSnap){lastSnap.remote_mode=j;if(j.limits)lastSnap.remote=j.limits}}catch(e){}paint();try{window.naiReload&&window.naiReload()}catch(e){}if(j.busy)poll()}).catch(function(){poll()})},2000)}
-var NM={dev:'Claude DEV',prod:'Claude PROD',codex:'Codex',notion:'Notion AI'},TG={claude:'dev',prod:'prod',codex:'codex',notion:'notion'},ACC={dev:'var(--fleet-claude)',prod:'var(--fleet-claude)',codex:'var(--fleet-accent)',notion:'#a78bfa'};
+ try{if(lastSnap){lastSnap.remote_mode=j;if(j.limits)lastSnap.remote=j.limits}}catch(e){}paint();try{window.wkReload&&window.wkReload()}catch(e){}if(j.busy)poll()}).catch(function(){poll()})},2000)}
+var NM={dev:'Claude DEV',prod:'Claude PROD',codex:'Codex'},TG={claude:'dev',prod:'prod',codex:'codex'},ACC={dev:'var(--fleet-claude)',prod:'var(--fleet-claude)',codex:'var(--fleet-accent)'};
 var hp=null,hAnchor=null,hTarget='',hForce=false,hMine=false,wasBusy=false,hRaf=0;
 function worker(){return rmode().worker||'dev'}
 function sToast(t){try{typeof toast==='function'&&toast(t)}catch(e){}}
 function hSteps(src,tg){
- var stop={dev:'Claude DEV остановится',prod:'Claude PROD остановится',codex:'Codex встанет на паузу',notion:'Notion AI выключится'},start={dev:'Claude DEV запустится заново',prod:'Claude PROD возьмёт работу (лимиты аккаунта друга)',codex:'Codex возьмёт работу',notion:'Notion AI возьмёт работу'};
+ var stop={dev:'Claude DEV остановится',prod:'Claude PROD остановится',codex:'Codex встанет на паузу'},start={dev:'Claude DEV запустится заново',prod:'Claude PROD возьмёт работу (лимиты аккаунта друга)',codex:'Codex возьмёт работу'};
  var l=[stop[src],start[tg],'Telegram перейдёт к '+NM[tg]];
  if(tg==='prod'&&src!=='dev')l.push('передача идёт через Claude DEV: он ненадолго запустится');
  if(src==='prod'&&tg!=='dev')l.push('Claude DEV при этом не запускается');
@@ -170,11 +169,10 @@ function pSteps(kind){var d=rmode(),k=pKind(),w=worker(),on=!!d.active,l=[];
   else{if(w==='dev')l.push('Claude DEV остановится');else l.push('передача идёт через Claude DEV: он ненадолго запустится');l.push('Claude PROD возьмёт работу (лимиты аккаунта друга)')}
   l.push('Claude PROD — оркестратор, Codex — исполнитель','Шаги Codex выполняются после твоего подтверждения','Telegram у Claude PROD');return l}
  return l}
-function pPaint(note){if(!pp)return;var d=rmode(),nt=worker()==='notion',opts=pOpts();
+function pPaint(note){if(!pp)return;var d=rmode(),opts=pOpts();
  var body='<h3>Профиль Claude PROD</h3><p>Выбери, как работают Claude PROD и Codex.</p><div class="rm-popts" role="radiogroup" aria-label="Профиль Claude PROD">'
-  +opts.map(function(o){var dis=o.dis||o.cur||nt;return '<button type="button" class="rm-popt'+(o.cur?' on':'')+(o.id===pSel?' sel':'')+'" role="radio" aria-checked="'+(o.cur||o.id===pSel)+'" data-kind="'+o.id+'"'+(dis?' disabled':'')+'><i></i><b>'+esc(o.name)+'</b><em>'+(o.cur?'Действующий':'')+'</em><span>'+esc(o.desc)+'</span></button>'}).join('')+'</div>';
- if(nt)body+='<p class="rm-hnote bad rm-hint">Сейчас включён профиль Notion AI: сначала передай работу в Claude или Codex.</p>';
- else if(pSel)body+='<ul>'+pSteps(pSel).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
+  +opts.map(function(o){var dis=o.dis||o.cur;return '<button type="button" class="rm-popt'+(o.cur?' on':'')+(o.id===pSel?' sel':'')+'" role="radio" aria-checked="'+(o.cur||o.id===pSel)+'" data-kind="'+o.id+'"'+(dis?' disabled':'')+'><i></i><b>'+esc(o.name)+'</b><em>'+(o.cur?'Действующий':'')+'</em><span>'+esc(o.desc)+'</span></button>'}).join('')+'</div>';
+ if(pSel)body+='<ul>'+pSteps(pSel).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
  if(note)body+='<p class="rm-hnote bad rm-hint">'+esc(note)+'</p>';
  else if(pSel&&pSel!=='off'&&!pKind())body+='<p class="rm-hnote rm-hint">Пока пара включена, передача работы между DEV и PROD закрыта. Занимает около минуты.</p>';
  else if(pSel)body+='<p class="rm-hnote rm-hint">Занимает около минуты.</p>';
@@ -207,9 +205,9 @@ document.addEventListener('click',function(e){var b=e.target.closest&&e.target.c
 // «Войти заново» на карточке Claude PROD: то же окно со ссылкой и кодом, что у обычных аккаунтов, но вход идёт на втором сервере
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-relogin');if(!b||b.disabled)return;e.stopPropagation();if(typeof reloginAsk==='function')reloginAsk('prod',b,true)});
 document.addEventListener('change',function(e){var c=e.target;if(c&&c.classList&&c.classList.contains('rm-auto')){var on=c.checked;c.checked=!on;window.fleetAsk(c,(on?'Включить':'Выключить')+' автопередачу работы на PROD при лимитах?',on?'Включить':'Выключить').then(function(ok){if(!ok)return;c.checked=on;c.disabled=true;setAuto(on).then(function(){c.disabled=false}).catch(function(){c.checked=!on;c.disabled=false})})}});
-// для шапки (cc_notion_ai): состояние и переключение передачи
+// для шапки (cc_workers): состояние и переключение передачи
 function autoState(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}return s&&s.remote_mode&&s.remote_mode.auto||{}}
-function setAuto(on){return post('remote/auto',{enabled:!!on}).then(function(j){try{if(lastSnap&&lastSnap.remote_mode&&j.auto)lastSnap.remote_mode.auto=j.auto}catch(e){}paint();try{window.naiReload&&window.naiReload()}catch(e){}return j})}
+function setAuto(on){return post('remote/auto',{enabled:!!on}).then(function(j){try{if(lastSnap&&lastSnap.remote_mode&&j.auto)lastSnap.remote_mode.auto=j.auto}catch(e){}paint();try{window.wkReload&&window.wkReload()}catch(e){}return j})}
 window.fleetRemote={mode:rmode,toggle:toggleHand,label:handLabel,handInfo:handInfo,hand:hOpen,auto:autoState,setAuto:setAuto,model:function(){var m=mem();return m?{id:m.model||'',name:modelName(m.model),effort:m.effort||''}:null},account:mem};
 function row(label,win,week){var p=pct(win),t=when(win,week);
  return '<div class="row" data-fleet-tone="'+tone(p)+'"><div class="lbl"><span>'+label+'</span><b style="color:'+color(p)+'">'+(p==null?'—':p+'%')+'</b><span title="'+esc(t)+'">'+esc(t)+'</span></div><div class="bar"><div class="fill" data-t="'+(p==null?'ok':p>=99?'bad':p>=85?'warn':'ok')+'" style="width:'+(p==null?0:Math.min(100,p))+'%"></div></div></div>'}
@@ -246,7 +244,7 @@ function paintStrip(m){
  compact.dataset.state=m&&m.online&&!m.error?'ready':'warning';compact.dataset.online=m&&m.online?'1':'0';
  compact.querySelector('.fleet-compact-name').title=name+(mail?' · '+mail:'')+(m&&m.plan?' · '+m.plan.toUpperCase():'');
  compact.querySelector('.rm-cmodel').textContent=mname;compact.querySelector('.rm-ceffort').textContent=eff;
- var cwn=compact.querySelector('.fleet-compact-warning');var pz=pauseText();cwn.textContent=pz||(m&&(!m.online||m.error)?st:'');cwn.title=pz?pz+'. Новые действия ждут сброса, беседа сохранена.':(m?statusHint(m):'');
+ var cwn=compact.querySelector('.fleet-compact-warning'),pz=!!pauseInfo();cwn.textContent=!pz&&m&&(!m.online||m.error)?st:'';cwn.title=!pz&&m?statusHint(m):'';
  var cw=compact.querySelectorAll('.fleet-compact-window'),lim=tile.querySelector('.cxlim'),lims='';
  wins.forEach(function(w,i){var p=pct(w);cw[i].dataset.tone=tone(p);cw[i].querySelector('.fleet-compact-used').textContent=p==null?'—':p+'%';cw[i].querySelector('.fleet-compact-range').textContent=(i===0&&w&&w.resets_at&&!isNaN(new Date(w.resets_at)))?(new Date(w.resets_at)>new Date()?clk(new Date(w.resets_at)):'сброс'):when(w,i===1);
   var mt=tile.querySelectorAll('.fleet-live-meter')[i];mt.dataset.tone=tone(p);mt.querySelector('b').textContent=p==null?'—':p+'%';mt.querySelector('.fleet-live-fill').style.width=(p==null?0:Math.min(100,p))+'%';mt.querySelector('.fleet-live-reset').textContent=when(w,i===1);
@@ -269,7 +267,7 @@ function paintCard(m){
  el.innerHTML='<div class="top"><div class="fleet-identity"><div class="fleet-titleline"><strong class="fleet-account-name" title="Claude PROD">Claude PROD</strong>'+(m.plan?'<span class="tag plan">'+esc(m.plan.toUpperCase())+'</span>':'')+'</div><span class="email" title="'+esc(m.email||'')+'">'+esc(m.email||'почта не получена')+'</span></div></div>'
   +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'" title="'+esc(statusHint(m))+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
   +row('Сессия 5ч',m.five_hour,false)+row('Неделя',m.seven_day,true)
-  +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD). Вручную переключённая работа остаётся там, куда её переключили. Codex и агент Notion переключаются вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
+  +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD). Вручную переключённая работа остаётся там, куда её переключили. Codex переключается вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
   +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: войди заново':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
   +'<button type="button" class="btn-relogin fleet-footer-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
   +'</div>';   // кнопки «Передать работу» в этой карточке нет: она живёт в плитке «Активные аккаунты»
@@ -317,7 +315,7 @@ function sBuild(){
   +'<div class="fleet-catalog-note fleet-limit-hint">Пороги общие с Claude DEV: PROD берётся в работу, пока окно 5 часов и неделя ниже них. Сессия — с какого % окна 5 часов аккаунт считается занятым. Неделя — потолок недели.</div>'
   +'<label class="fleet-card-auto" title="Если переключаться некуда, Claude останавливается на недельном потолке и не расходует остаток."><input type="checkbox" class="rm-wk"><span>Пауза на недельном потолке: остановить Claude на пороге недели, если переключаться некуда</span></label>'
   +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD)."><input type="checkbox" class="rm-auto"><span>Автопередача: когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой</span></label>'
-  +'<div class="fleet-catalog-note">Codex и агент Notion переключаются вручную.</div></section>'
+  +'<div class="fleet-catalog-note">Codex переключается вручную.</div></section>'
   +'<section class="fleet-settings-group"><div class="fleet-settings-group-title">Модели в быстром меню</div><div class="fleet-catalog-note">Отмеченные модели показываются в быстром меню Claude и PROD; список общий. Применяется сразу.</div><div class="rm-smbox"></div></section></div>';
  document.body.appendChild(sp);
  sp.addEventListener('click',function(e){

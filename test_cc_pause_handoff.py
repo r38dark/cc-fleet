@@ -39,7 +39,7 @@ class Files(unittest.TestCase):
         j = lambda n: os.path.join(self.d, n)
         self.saved = [(A, n, getattr(A, n)) for n in ('CFG_FILE', 'KICK_FILE', 'HB_FILE', 'MODE_FILE')]
         self.saved += [(R, n, getattr(R, n)) for n in ('MEMBERS_FILE', 'STATE_FILE')]
-        self.saved += [(pc, n, getattr(pc, n)) for n in ('STATE', 'level_state', '_notion_ai_active', '_threshold', '_weekly_cap',
+        self.saved += [(pc, n, getattr(pc, n)) for n in ('STATE', 'level_state', '_threshold', '_weekly_cap',
                                                            'nearest_reset', '_tg', '_log')]
         self.saved += [(Q, 'QUEUE', Q.QUEUE)]
         self.addCleanup(self.restore)
@@ -49,7 +49,6 @@ class Files(unittest.TestCase):
         Q.QUEUE = j('tg_queue.jsonl')
         self.ls = dict(level='hard', stale=False, line='acc3 90%', why='все выше порога', accounts={}, active='acc3')
         pc.level_state = lambda: self.ls
-        pc._notion_ai_active = lambda: False
         pc._threshold = lambda: 90
         pc._weekly_cap = lambda: 99
         pc.nearest_reset = lambda week=False: ('', '')
@@ -104,9 +103,6 @@ class Ready(Files):
         put(A.MODE_FILE, {'active': True})
         self.assertFalse(A.handoff_ready(self.now)[0])          # уже на PROD
         put(A.MODE_FILE, {'active': False, 'stage': ''})
-        pc._notion_ai_active = lambda: True
-        self.assertFalse(A.handoff_ready(self.now)[0])
-        pc._notion_ai_active = lambda: False
         self.ls['level'] = 'none'
         self.assertFalse(A.handoff_ready(self.now)[0])          # у DEV есть, где работать
         self.ls['level'] = 'gate'
@@ -237,7 +233,7 @@ class PauseSet(Files):
             sys.argv = old
         self.assertTrue(get(pc.STATE)['active'])
 
-    def test_release_keeps_reserve_and_clears_limits_pause(self):
+    def test_release_clears_limits_pause(self):
         self.assertFalse(pc.release_for_remote())                                  # паузы нет
         put(pc.STATE, {'active': True, 'kind': 'session', 'remote_hold': 5.0, 'since': 1})
         self.assertTrue(pc.release_for_remote())
@@ -245,8 +241,7 @@ class PauseSet(Files):
         self.assertFalse(st['active'])
         self.assertNotIn('remote_hold', st)
         put(pc.STATE, {'active': True, 'kind': 'reserve', 'since': 1})
-        self.assertFalse(pc.release_for_remote())
-        self.assertTrue(get(pc.STATE)['active'])                                   # резерв держится, пока человек не снимет галочку
+        self.assertTrue(pc.release_for_remote())                                   # запись прежней версии — обычная пауза
         put(pc.STATE, {'active': True, 'kind': 'week', 'since': 1})
         self.assertTrue(pc.release_for_remote())
 
@@ -258,7 +253,7 @@ class Tick(Files):
         for owner, name in ((A, '_snapshot'), (A, '_queue_text'), (A, '_queue_taken'), (M, 'mode'), (M, 'busy'), (M, 'active'),
                             (M, 'on'), (M, 'off'), (M, 'pair_kind'), (pc, 'release_for_remote'), (pc, 'cmd_set')):
             self.addCleanup(setattr, owner, name, getattr(owner, name))
-        self.state = dict(native=dict(level='hard', role='solo', stale=False, notion_active=False),
+        self.state = dict(native=dict(level='hard', role='solo', stale=False),
                           prod=dict(usable=True, why='', row={'five_hour': {'pct': 12.0}, 'seven_day': {'pct': 9.0}}))
         A._snapshot = lambda ns, mid: (self.state['native'], self.state['prod'])
         A._queue_text = lambda: ('1) 20:00 от Owner:\nпривет', [111.0])
