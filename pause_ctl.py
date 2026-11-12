@@ -505,13 +505,27 @@ def _remote_active():
         return False
 
 
+def _override_window_ready(local):
+    """A background DEV reset must not re-enable a pause while PROD uses its remainder."""
+    if not _remote_active():
+        return not local.get('stale') and local.get('level') not in ('hard','week')
+    try:
+        with open(os.path.join(BASE,'remote_mode.json'),encoding='utf-8') as f:member=json.load(f).get('member')
+        path=os.environ.get('CC_REMOTE_STATE') or os.path.join(BASE,'remote_state.json')
+        with open(path,encoding='utf-8') as f:row=json.load(f).get(member) or {}
+        if not row.get('online') or row.get('error') or not 0<=_now()-float(row.get('ts') or 0)<=900:return False
+        if not all(isinstance((row.get(k) or {}).get('pct'),(int,float)) for k in ('five_hour','seven_day')):return False
+        return cc_avail.availability(row,_threshold(),_weekly_cap() if _weekly_pause() else 100)[0]
+    except (OSError,ValueError,TypeError):return False
+
+
 def cmd_wake(a):
     st = load()
     if st.get("override"):
         # отключённая вручную пауза включается обратно сама, как только окно отпустило —
         # иначе следующий забитый лимит прошёл бы уже без неё
         ls = level_state()
-        if not ls.get("stale") and ls.get("level") not in ("hard", "week"):
+        if _override_window_ready(ls):
             st.update(override=False, override_cleared_at=_now(), override_cleared_by="окно отпустило")
             save(st)
             _log("пауза снова включена: окно отпустило (%s)" % (ls.get("line") or "?"))

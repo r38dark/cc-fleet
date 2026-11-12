@@ -37,8 +37,9 @@ class Budget(unittest.TestCase):
         self.assertTrue(G.budget(self.policy, row(0, 100), NOW)["blocked"])
 
     def test_disabled_and_override(self):
-        for key, value in (("enabled", False), ("override", True)):
-            self.assertFalse(G.budget(dict(self.policy, **{key: value}), row(100, 100), NOW)["blocked"])
+        self.assertFalse(G.budget(dict(self.policy,enabled=False),row(100,100),NOW)['blocked'])
+        self.assertFalse(G.budget(dict(self.policy,override=True),row(90,99),NOW)['blocked'])
+        self.assertTrue(G.budget(dict(self.policy,override=True),row(100,100),NOW)['blocked'])
 
     def test_all_windows_must_reset(self):
         data = row(100, 100)

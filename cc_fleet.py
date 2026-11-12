@@ -150,7 +150,10 @@ class ConsoleInput:
         uncertain = False
         try:
             if session == 'codex':
-                result = self.ns['cc_codex_console'].send_input(payload)
+                rotation=self.ns.get('FLEET_ROTATION')
+                if rotation and rotation.limit_pause().get('active'):
+                    result=self.ns['cc_codex_bridge'].BRIDGE.enqueue_console(payload,request_id)
+                else:result = self.ns['cc_codex_console'].send_input(payload)
             else:
                 result = self._claude(payload)
         except Exception as exc:
@@ -207,6 +210,9 @@ class ConsoleInput:
                 pass
 
     def key(self, session, key):
+        rotation=self.ns.get('FLEET_ROTATION')
+        if session=='codex' and key!='escape' and rotation and rotation.limit_pause().get('active'):
+            return False,'Codex на паузе по лимитам. Новые задания отправляй через поле сообщения: они сохранятся в очереди.'
         keys = {'escape': '\x1b', 'enter': '\r', 'up': '\x1b[A', 'down': '\x1b[B'}
         if session not in self.locks or key not in keys:
             return False, 'Неизвестная клавиша или консоль.'
@@ -230,7 +236,13 @@ def install(ns):
     models = cc_codex_models.Discovery(codex, rotation, ns['codex_bin'])
     inputs = ConsoleInput(ns)
     ns['FLEET_ROTATION'] = rotation
+    import cc_codex_quota
+    rotation.quota=cc_codex_quota.Guard(ns['BASE'],rotation,console,bridge.BRIDGE)
     bridge.LIMIT_PAUSE = rotation.limit_pause  # очередь моста ждёт сброса, если лимит исчерпан и переключаться некуда
+    bridge.INPUT_QUEUE_PATH=os.path.join(ns['BASE'],'codex_input_queue.json')
+    if hasattr(bridge.BRIDGE.inputs,'attach_journal'):bridge.BRIDGE.inputs.attach_journal(bridge.INPUT_QUEUE_PATH)
+    console.QUOTA_PAUSE=rotation.limit_pause
+    console.QUOTA_ENQUEUE=bridge.BRIDGE.enqueue_console
     import cc_profiles
     profiles = cc_profiles.bind(ns, inputs)
     try:   # Codex раньше стоял на паузе (SIGSTOP), а теперь по правилу выше не должен: снимаем заморозку при старте панели

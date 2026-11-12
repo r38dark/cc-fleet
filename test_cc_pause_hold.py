@@ -163,6 +163,19 @@ class RemoteWork(Base):
         self.assertEqual((st["active"], st["override"]), (False, True))
         self.assertEqual((self.wakes, self.tgs), ([], []))
 
+    def test_prod_override_waits_for_prod_window_not_background_dev_reset(self):
+        self.remote(True);put(pc.CONFIG,dict(threshold=90,weekly_cap=99,weekly_pause=True))
+        put(pc.STATE,dict(active=False,override=True));path=os.path.join(self.d,'remote_state.json')
+        row=dict(online=True,ts=time.time(),five_hour=dict(pct=0),seven_day=dict(pct=99))
+        put(path,dict(prod=row));pc.cmd_wake(argparse.Namespace(if_due=True))
+        self.assertTrue(pc.load()['override'])
+        row['seven_day']['pct']=0;put(path,dict(prod=row));pc.cmd_wake(argparse.Namespace(if_due=True))
+        self.assertFalse(pc.load()['override']);self.assertEqual((self.wakes,self.tgs),([],[]))
+
+    def test_unknown_prod_usage_does_not_clear_manual_override(self):
+        self.remote(True);put(pc.STATE,dict(active=False,override=True))
+        pc.cmd_wake(argparse.Namespace(if_due=True));self.assertTrue(pc.load()['override'])
+
     def test_broken_or_missing_mode_file_does_not_hold(self):
         put(pc.STATE, {"active": True, "since": 1, "reason": "лимиты", "kind": "session", "resume_at": time.time() - 60})
         with open(os.path.join(self.d, "remote_mode.json"), "w") as f:

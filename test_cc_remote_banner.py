@@ -35,11 +35,13 @@ JS = "\n".join([
     _cut(r"^function ccpAt\(ms\)\{.*?\}$", "ccpAt"),
     _cut(r"^function ccpWhy\(a,thr,wcap\)\{.*?^\}$", "ccpWhy"),
     _cut(r"^function ccpHeld\(a\)\{.*?^\}$", "ccpHeld"),
+    _cut(r"^function ccpAgents\(d\)\{.*?^\}$", "ccpAgents"),
     _cut(r"^function ccpRender\(\)\{.*?^\}$", "ccpRender"),
 ])
 
 HARNESS = r"""
 const LANG='ru';
+const document={getElementById:()=>null};
 function tr(k,...a){return k+'('+a.join('|')+')';}
 const el={hidden:true,className:'',innerHTML:''};
 function $(s){return s==='#ccPause'?el:null;}

@@ -104,10 +104,9 @@ var hp=null,hAnchor=null,hTarget='',hForce=false,hMine=false,wasBusy=false,hRaf=
 function worker(){return rmode().worker||'dev'}
 function sToast(t){try{typeof toast==='function'&&toast(t)}catch(e){}}
 function hSteps(src,tg){
- var stop={dev:'Claude DEV остановится',prod:'Claude PROD остановится',codex:'Codex встанет на паузу'},start={dev:'Claude DEV запустится заново',prod:'Claude PROD возьмёт работу (лимиты аккаунта друга)',codex:'Codex возьмёт работу'};
+ if(src==='codex'||tg==='codex')return ['Отправитель продолжит работать в своей консоли',NM[tg]+' получит контекст; если консоль не запущена — запустится','Чаты Claude и Codex остаются раздельными; паузы по собственным лимитам сохраняются'];
+ var stop={dev:'Claude DEV остановится',prod:'Claude PROD остановится'},start={dev:'Claude DEV запустится заново',prod:'Claude PROD возьмёт работу (лимиты аккаунта друга)'};
  var l=[stop[src],start[tg],'Telegram перейдёт к '+NM[tg]];
- if(tg==='prod'&&src!=='dev')l.push('передача идёт через Claude DEV: он ненадолго запустится');
- if(src==='prod'&&tg!=='dev')l.push('Claude DEV при этом не запускается');
  return l}
 function hPaint(warn){if(!hp)return;var src=worker();
  hp.style.setProperty('--rm-c',ACC[hTarget]||'var(--fleet-claude)');
@@ -119,7 +118,7 @@ function hPlace(){if(!hp)return;var a=hAnchor;
  if(a&&a.isConnected&&a.offsetParent!==null&&window.fleetPlace){window.fleetPlace(hp,a,360);return}
  var w=Math.min(360,innerWidth-24);hp.style.width=w+'px';hp.style.left=Math.max(12,Math.round((innerWidth-w)/2))+'px';hp.style.top=Math.max(12,Math.round(innerHeight/4))+'px';hp.style.right='auto';hp.style.bottom='auto'}
 function hClose(){if(hp&&!hp.hidden)hp.hidden=true}
-function locked(md){return !!((md||rmode()).pair&&(md||rmode()).pair.lock)}
+function locked(md){md=md||rmode();return !!(md.handoff_lock||md.pair&&md.pair.lock)}
 function hOpen(tg,anchor){var md=rmode();if(md.busy||tg===worker()||locked(md))return;
  ['cxQClose','cxPopClose','cxMenuClose'].forEach(function(f){try{typeof window[f]==='function'&&window[f]()}catch(_){}});qClose();sClose();pClose();
  if(hp&&!hp.hidden&&hAnchor===anchor&&hTarget===tg){hClose();return}
@@ -137,14 +136,14 @@ function hGo(){var tg=hTarget,y=hp.querySelector('.rm-hyes');if(y)y.disabled=tru
   hClose();hMine=false;sToast('⚠ '+(j.message||'Не получилось'))
  }).catch(function(){hClose();hMine=false;sToast('⚠ Панель не ответила')})}
 function handLabel(md){var w=(md||rmode()).worker||'dev';if(locked(md))return 'Передача закрыта: пара';return 'Передать работу в '+NM[w==='prod'?'dev':'prod']}
-function toggleHand(){if(locked()){sToast(rmode().pair.message);return}var tg=worker()==='prod'?'dev':'prod';hOpen(tg,document.querySelector('.rm-hand[data-target="'+tg+'"]'))}
+function toggleHand(){if(locked()){sToast(rmode().handoff_message||(rmode().pair||{}).message);return}var tg=worker()==='prod'?'dev':'prod';hOpen(tg,document.querySelector('.rm-hand[data-target="'+tg+'"]'))}
 function ensureHand(){document.querySelectorAll('#fleetLiveRows .fleet-live-account').forEach(function(t){var tg=null;for(var k in TG)if(t.classList.contains(k)){tg=TG[k];break}
  if(!tg||t.querySelector(':scope>.rm-hand'))return;var b=document.createElement('button');b.type='button';b.className='rm-hand';b.dataset.target=tg;t.appendChild(b)})}
 // Состояние кнопки передачи работы в tg: одно для кнопок плиток и для окон значков в шапке (текст, подсказка, доступность)
 function handInfo(tg,md){md=md||rmode();var w=md.worker||'dev',busy=!!md.busy,to=md.to||'',m=mem(),bad=!!(m&&(!m.online||m.error)),lk=locked(md);
  var here=tg===w&&!busy,going=busy&&tg===to,off=tg==='prod'&&bad&&w!=='prod'&&!busy,lock=lk&&!here&&!busy;
  var txt=here?'Работа здесь':going?'Идёт: '+(md.stage||'…'):'Передать работу в '+NM[tg];
- var tt=here?'Сейчас работает '+NM[tg]:going?'Передача в '+NM[tg]+' идёт':busy?'Идёт передача работы':lock?md.pair.message:off?'PROD сейчас недоступен: '+status(m):'Передать работу в '+NM[tg]+': Telegram перейдёт к '+NM[tg]+', '+NM[w]+' остановится';
+ var tt=here?'Сейчас работает '+NM[tg]:going?'Передача в '+NM[tg]+' идёт':busy?'Идёт передача работы':lock?md.handoff_message||(md.pair||{}).message:off?'PROD сейчас недоступен: '+status(m):w==='codex'||tg==='codex'?'Передать контекст в '+NM[tg]+': отправитель продолжит работать, чаты и лимиты раздельные':'Передать работу в '+NM[tg]+': Telegram перейдёт к '+NM[tg]+', '+NM[w]+' остановится';
  return {here:here,going:going,off:off,lock:lock,busy:busy,txt:txt,tt:tt,dis:here||busy||off||lock}}
 function paintHand(){var md=rmode(),w=md.worker||'dev',busy=!!md.busy;
  document.querySelectorAll('.rm-hand,.rm-act').forEach(function(b){var h=handInfo(b.dataset.target,md);

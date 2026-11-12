@@ -1,5 +1,5 @@
 {
-  "version": "2.0.34",
+  "version": "2.0.35",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -29,6 +29,10 @@
     },
     {
       "src": "cc_codex.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_codex_quota.py",
       "mode": "644"
     },
     {

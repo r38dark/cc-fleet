@@ -14,11 +14,11 @@ def notice(rows,active='gpt1',pause=None):return R.limit_notice_state(rows,activ
 class LimitNotice(unittest.TestCase):
  def test_single_five_hour_warning_without_queue_pause(self):
   rows=[account(session=100)];p=R.limit_pause_state(rows,'gpt1',False,NOW);n=notice(rows,pause=p)
-  self.assertFalse(p['active']);self.assertTrue(n['active']);self.assertFalse(n['paused']);self.assertTrue(n['single'])
+  self.assertTrue(p['active']);self.assertTrue(n['active']);self.assertTrue(n['paused']);self.assertTrue(n['single'])
   self.assertEqual(n['windows'],[300]);self.assertAlmostEqual(n['resume_at'],NOW+3600)
  def test_single_week_warning_without_queue_pause(self):
   rows=[account(week=100)];p=R.limit_pause_state(rows,'gpt1',False,NOW);n=notice(rows,pause=p)
-  self.assertFalse(p['active']);self.assertTrue(n['active']);self.assertFalse(n['paused'])
+  self.assertTrue(p['active']);self.assertTrue(n['active']);self.assertTrue(n['paused'])
   self.assertEqual(n['windows'],[10080]);self.assertAlmostEqual(n['resume_at'],NOW+86400)
  def test_two_full_windows_wait_for_both(self):
   n=notice([account(session=100,week=100)])
@@ -72,8 +72,8 @@ class LimitNotice(unittest.TestCase):
   rot.accounts=[account(session=100)];rot.state=dict(optimize=True,threshold=90,weekly_cap=99)
   rot.console=SimpleNamespace(_pid=lambda:False,_meta=lambda:{},stop=Mock(),apply_plan=Mock())
   rot.codex=SimpleNamespace(profile_slots=lambda:['gpt1']);rot.message='fixture';rot.last_error='';rot.updated=NOW;rot.save=Mock()
-  result=rot.public();self.assertFalse(result['limit_pause']['active']);self.assertTrue(result['limit_notice']['active'])
-  self.assertFalse(result['limit_notice']['paused']);rot.save.assert_not_called();rot.console.stop.assert_not_called();rot.console.apply_plan.assert_not_called()
+  result=rot.public();self.assertTrue(result['limit_pause']['active']);self.assertTrue(result['limit_notice']['active'])
+  self.assertTrue(result['limit_notice']['paused']);rot.save.assert_not_called();rot.console.stop.assert_not_called();rot.console.apply_plan.assert_not_called()
   rot.codex.profile_slots=lambda:[];self.assertFalse(rot.limit_notice(now=NOW)['active'])
  def test_existing_queue_hold_remains_visible_when_usage_sample_ages(self):
   rot=R.Rotation.__new__(R.Rotation);rot.lock=threading.RLock();rot.active=lambda:'gpt1'

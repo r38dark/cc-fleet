@@ -52,36 +52,50 @@ def real_limit(account):
     return True, (max(ts) if ts else None), [w.get('mins') for w in full if w.get('mins')]
 
 
-def limit_pause_state(accounts, active, has_candidate, now=None, grace=120):
-    """Пауза Codex по лимитам — как у Claude: у выбранного аккаунта исчерпан настоящий лимит,
-    а ротации переключиться не на кого. Входящие ждут в очереди моста и уходят сами, когда окно освободилось:
-    по свежим цифрам или через grace секунд после времени сброса (если цифры не обновились)."""
+def policy_limit(account, threshold=90, weekly_cap=99, override=False, now=None, grace=120):
+    """Окна, которые удерживают аккаунт по выбранным порогам; override не обходит100%."""
     now = time.time() if now is None else now
-    if len(accounts) <= 1:
-        # один аккаунт Codex: ротации нет, ждать «пока освободится другой» нечего — паузы по лимитам не держим
-        # (сообщения уходят как есть, при исчерпанном лимите Codex сам ответит ошибкой)
-        return {'active': False, 'single': True}
+    held=[];expired=False
+    for w in account.get('windows') or []:
+        m=w.get('mins');pct=w.get('pct');cap=100 if override else threshold if m==300 else weekly_cap if m==10080 else 100
+        if not isinstance(pct,(int,float)) or not math.isfinite(pct) or pct<cap:continue
+        until=_iso_ts(w.get('resets_at'))
+        if until is not None and now>until+grace:expired=True;continue
+        held.append((w,until))
+    reported=bool(account.get('reached') or account.get('usage_allowed') is False)
+    return held,reported,expired
+
+
+def limit_pause_state(accounts, active, has_candidate, now=None, grace=120, threshold=90, weekly_cap=99, override=False):
+    """Собственная квота Codex действует и при единственном аккаунте."""
+    now = time.time() if now is None else now
     cur = next((a for a in accounts if a.get('slot') == active), None)
-    if not cur or has_candidate or any(cur.get(k) for k in BAD):
-        return {'active': False}
-    full, until, mins = real_limit(cur)
-    if not full:
-        return {'active': False}
+    if not cur or any(cur.get(k) for k in BAD) or not cur.get('ts') or now-cur['ts']>180:
+        return {'active':False,'unknown':True}
+    if has_candidate:return {'active':False}
+    held,reported,expired=policy_limit(cur,threshold,weekly_cap,override,now,grace)
+    if not held and not reported:return {'active':False,'expired':expired,'override':override}
+    mins=sorted({w['mins'] for w,_ in held if isinstance(w.get('mins'),int) and w['mins']>0})
+    until=max(t for _,t in held) if held and all(t is not None for _,t in held) else None
     frees = []
     for a in accounts:
-        if any(a.get(k) for k in ('error', 'login_required', 'lapsed')):
+        if any(a.get(k) for k in BAD):
             continue
-        f, t, _ = real_limit(a)
-        if f and t:
-            frees.append((t, a))
+        windows,blocked,_=policy_limit(a,threshold,weekly_cap,override,now,grace)
+        if windows and all(t is not None for _,t in windows):frees.append((max(t for _,t in windows),a))
     t, who = min(frees, key=lambda x: x[0]) if frees else (until, cur)
     if t and now > t + grace:
         return {'active': False, 'expired': True}
     lab = lambda a: a.get('label') or a.get('email') or a.get('slot') or ''
     pct = lambda a, m: next((w.get('pct') for w in a.get('windows') or [] if w.get('mins') == m), None)
-    return {'active': True, 'slot': active, 'label': lab(cur), 'windows': mins,
+    hard=reported or any(w.get('pct',0)>=100 for w,_ in held)
+    return {'active': True, 'paused':True,'single':len(accounts)==1,'slot': active, 'label': lab(cur), 'windows': mins,
             'window_names': [WIN_NAMES.get(m, f"{round(m / 60)} ч") for m in mins],
             'resume_at': t, 'resume_slot': who.get('slot'), 'resume_label': lab(who), 'multi': len(accounts) > 1,
+            'resets':{str(w['mins']):u for w,u in held if w.get('mins') and u is not None},
+            'percentages':{str(w['mins']):w.get('pct') for w,u in held if w.get('mins')},
+            'policy':not hard,'hard':bool(hard),'override':override,'can_override':not hard,
+            'threshold':threshold,'weekly_cap':weekly_cap,
             'accounts': [{'label': lab(a), 'active': a.get('slot') == active, 'ses': pct(a, 300), 'week': pct(a, 10080)}
                          for a in accounts]}
 
@@ -172,6 +186,17 @@ class Rotation:
     def configure(self, body):
         with self.lock:
             changed = dict(self.state)
+            if 'pause_override' in body:
+                value=body['pause_override']
+                if not isinstance(value,bool):return False,'Отключение паузы должно быть включено или выключено.'
+                cur=next((a for a in self.accounts if a.get('slot')==self.active()),{})
+                hard,_,_=real_limit(cur)
+                if value and (hard or not cur or any(cur.get(k) for k in BAD) or not cur.get('ts') or time.time()-cur['ts']>180):
+                    return False,'Настоящий лимит уже исчерпан или нет свежих данных. Его нельзя отключить.'
+                changed.update(pause_override=value,override_slot=self.active() if value else '',override_until=0)
+                if value:
+                    wins,_,_=policy_limit(cur,changed['threshold'],changed['weekly_cap'])
+                    changed['override_until']=max((u for _,u in wins if u),default=0)
             if 'optimize' in body:
                 if not isinstance(body['optimize'], bool):
                     return False, 'Оптимизация должна быть включена или выключена.'
@@ -184,6 +209,7 @@ class Rotation:
                     changed[key] = value
             self.state = changed
             self.save()
+        if getattr(self,'quota',None):self.quota.tick()
         return True, 'Настройки оптимизации Codex сохранены.'
 
     def refresh(self, force=False):
@@ -249,16 +275,30 @@ class Rotation:
                     'message': message, 'last_error': self.last_error, 'updated': self.updated,
                     'model': settings.get('model'), 'effort': settings.get('effort'),
                     'pending_model': pending.get('model'), 'history': self.state.get('history', [])[-15:],
-                    'limit_pause': self.limit_pause(), 'limit_notice': self.limit_notice()}
+                    'limit_pause': self.limit_pause(), 'limit_notice': self.limit_notice(),
+                    'quota':self.quota.public() if getattr(self,'quota',None) else {}}
 
     def limit_pause(self, now=None):
         """Пауза очереди моста. Визуальное предупреждение вычисляется отдельно."""
         active = self.active()
         with self.lock:
             rows = [dict(a) for a in self.accounts]
+            if getattr(self,'codex',None) and hasattr(self.codex,'profile_slots'):
+                slots=set(self.codex.profile_slots())
+                if not slots:return dict(active=False,disconnected=True)
+                rows=[a for a in rows if a.get('slot') in slots]
             th, cap = self.state['threshold'], self.state['weekly_cap']
+            override=bool(self.state.get('pause_override'))
+            if override:
+                cur=next((a for a in rows if a.get('slot')==active),{})
+                wins,reported,_=policy_limit(cur,th,cap,now=now)
+                expired_override=self.state.get('override_until') and (time.time() if now is None else now)>self.state['override_until']+120
+                if self.state.get('override_slot')!=active or expired_override or (cur and not any(cur.get(k) for k in BAD) and not wins and not reported):
+                    self.state.update(pause_override=False,override_slot='',override_until=0);self.save();override=False
         cands = [a for a in rows if a.get('slot') != active and eligible(a, max_session=min(85, th), cap=cap, now=now)]
-        return limit_pause_state(rows, active, bool(cands), now)
+        value=limit_pause_state(rows,active,bool(cands),now,threshold=th,weekly_cap=cap,override=override)
+        guard=getattr(self,'quota',None)
+        return guard.fallback(value,override) if guard and value.get('unknown') else value
 
     def limit_notice(self, now=None):
         """UI-only warning; the bridge continues to use limit_pause unchanged."""
@@ -269,7 +309,11 @@ class Rotation:
         pause = self.limit_pause(now)
         notice = limit_notice_state(rows, active, pause, now)
         # A real queue hold must remain visible even if its last usage sample aged out.
-        return notice if notice['active'] or not pause.get('active') else dict(pause, paused=True)
+        if notice['active']:return dict(notice,hard=True,override=bool(self.state.get('pause_override')),can_override=False)
+        if pause.get('active'):return dict(pause,paused=True)
+        soft=limit_pause_state(rows,active,False,now,threshold=self.state['threshold'],weekly_cap=self.state['weekly_cap'])
+        if soft.get('active'):return dict(soft,paused=bool(pause.get('active')),override=bool(self.state.get('pause_override')))
+        return notice if not pause.get('active') else dict(pause,paused=True)
 
     def _store_slot(self, slot):
         with self.bridge._lock:
@@ -346,10 +390,11 @@ class Rotation:
                 self.console._ask_lock.release()
 
     def tick(self):
-        if self.suspended():return
         self.refresh()
+        if getattr(self,'quota',None):self.quota.tick()
+        if self.suspended():return
         # Профиль/папка/MCP, изменённые во время ответа, применяются и без нового сообщения.
-        if not self.console.busy():
+        if not self.console.busy() and not self.limit_pause().get('active'):
             self.console.apply_plan()
         with self.lock:
             if not self.state['optimize'] or self.refreshing or not self.console._pid():
@@ -371,6 +416,7 @@ class Rotation:
             forced = bool(current.get('reached') or current.get('usage_allowed') is False or current.get('login_required')
                           or current.get('lapsed') or session.get('pct', 0) >= self.state['threshold']
                           or week.get('pct', 0) >= self.state['weekly_cap'])
+            if self.state.get('pause_override') and not real_limit(current)[0]:forced=False
             planned = (time.time()-self.state.get('last_switch', 0) >= self.state['min_switch_sec']
                        and eligible(current, settings.get('model'), settings.get('effort'), max_session=100)
                        and score(best) > max(.001, score(current))*1.5)

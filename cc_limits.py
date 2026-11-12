@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.34"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.35"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2870,6 +2870,7 @@ def pause_state():
         snapshot = jload(SNAPSHOT) or {}
         d["fleet"] = cc_avail.fleet_summary(snapshot.get("accounts") or {}, cc_remote.cached(),
                                              d.get("threshold", 90), d.get("weekly_cap", 99))
+        d["claude_limits"] = cc_remote_limits.agent_limits(d, snapshot, cc_remote.cached(), d["remote_pause"])
         # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
         d["handoff"] = ""
         if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
@@ -3439,6 +3440,9 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 ok, out = False, str(e)[:200]
             d = pause_state()
+            if ok:
+                import cc_remote_limits
+                threading.Thread(target=cc_remote_limits.sync_policy,args=(globals(),),daemon=True,name='remote-pause-toggle').start()
             d.update(ok=ok, out=out)
             return self._send(200 if ok else 500, d)
         if u.path == "/api/update/check":
@@ -3792,10 +3796,13 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .ccli-pv[hidden]{display:none}.ccli-pv.new{color:var(--ok,#45d6ab)}.ccli-pv.old{color:var(--warn,#ecc277)}
 @media (max-width:640px){.ccli-pvbox{display:none}}
 .ccps-box{position:absolute;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none}
-.ccps{position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:rgba(165,172,190,.28);pointer-events:none}
-.ccps svg{display:block;width:min(30%,150px);height:auto;aspect-ratio:1}
+.ccps{position:absolute;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;color:rgba(185,194,212,.82);text-shadow:0 2px 16px #080b10;pointer-events:none;container-type:size}
+.ccps-clock{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:100%;text-align:center}
+.ccps-caption{font-size:clamp(16px,min(calc(130cqw / var(--ccps-caption-chars)),calc(12cqh / var(--ccps-count))),160px);line-height:1.2;font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.ccps-value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:clamp(22px,min(calc(152cqw / var(--ccps-chars)),calc(65cqh / var(--ccps-count))),400px);font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.04em;line-height:1.02;white-space:nowrap}
+.ccps-unknown{font-size:clamp(16px,min(calc(140cqw / var(--ccps-chars)),calc(38cqh / var(--ccps-count))),80px);white-space:normal}
 .ccps[hidden]{display:none}
-@media (max-width:640px){.ccps svg{width:min(34%,100px)}}
+@media (max-width:640px){.ccps{gap:16px;padding:10px}.ccps-clock{gap:9px}}
 #ccliBox pre{margin:6px 0 0;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Consolas,monospace;opacity:.85}
 .ccli-badge{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;margin:0 0 0 8px;border:1px solid rgba(69,214,171,.45);border-radius:99px;background:rgba(69,214,171,.12);color:var(--fleet-accent,#45d6ab);font:600 11px/1 Inter,system-ui,sans-serif;cursor:pointer;flex:none;animation:ccliGlow 2.6s ease-in-out infinite}
 .ccli-badge[hidden]{display:none}.ccli-badge svg{width:12px;height:12px;display:block}.ccli-badge b{font-weight:650}
@@ -3975,7 +3982,7 @@ html.conly #verTag{display:none}
 #fsBtn .fsx{display:none}
 html.conly #fsBtn .fsi{display:none}
 html.conly #fsBtn .fsx{display:block}
-html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause,html.conly #cxPause{display:none!important}
+html.conly .svnav,html.conly .svnav+div,html.conly .hdr,html.conly .toolrow,html.conly #cards,html.conly #updBanner,html.conly #ccPause,html.conly #ccPauseDev,html.conly #ccPauseProd,html.conly #cxPause{display:none!important}
 #cxPause:not([hidden]){display:block;padding:0;overflow:visible;margin:0 0 8px}
 html:root:root.conly body{height:100vh;height:100dvh;display:flex;flex-direction:column;padding:0}
 html:root:root.conly .termwrap{flex:1 1 0;min-height:0;margin:0}
@@ -4321,6 +4328,8 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
 <div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><button type="button" class="ccli-badge" id="ccliBadge" hidden aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg><b>0</b></button><div class="ccli-pop" id="ccliPop" role="dialog" hidden></div><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
+<div class="ccpause" id="ccPauseDev" hidden></div>
+<div class="ccpause" id="ccPauseProd" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
  <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
@@ -4590,6 +4599,13 @@ const I18N={
   cxlpBrief:at=>`Codex на паузе · сброс в ${at}`,
   cxlpBriefNoAt:'Codex на паузе · ждём сброса лимита',
   cxlpTitle:'⏸ Codex на <b>паузе по лимитам</b> — подъём автоматический',
+  cxqpTitle:'Codex · настроенный порог лимита',
+  cxqpBrief:(w,o)=>`Codex · ${w} · ${o?'автопауза отключена':'пауза по порогу'}`,
+  cxqpLimitBrief:w=>`Codex · ${w} · 100%`,
+  cxqpHardHint:n=>`Настоящий лимит исчерпан. Ожидает заданий: ${n}. Работа и очередь продолжатся после сброса; отключение паузы не обходит100%.`,
+  cxqpSub:(s,w)=>`Порог 5 часов — ${s}%, недели — ${w}%. Беседа и Full сохранены. Задания ждут в очереди до сброса.`,
+  cxqpOff:'Автопауза отключена вручную: можно использовать остаток до настоящих100%. Нажми «Включить паузу», чтобы вернуть защиту.',
+  cxqpHint:n=>`Ожидает заданий: ${n}. Очередь сохраняется при перезапуске панели. /stop очищает ожидающие задания.`,
   cxlpSub:(n,why,at,nl)=>`Лимит Codex${n?` <b>${n}</b>`:''} исчерпан: ${why}. Переключаться некуда — сообщения из Telegram ждут в очереди и уйдут сами`+(at?` после сброса в <span class="num">${at}</span>`:' после сброса')+(nl?` (раньше всех освободится <b>${nl}</b>)`:'')+'.',
   cxlpWin:m=>m===300?'окно 5 ч':m===10080?'окно неделя':`окно ${Math.round(m/60)} ч`,
   cxlpWinAny:'сервис сообщил о лимите',
@@ -4619,8 +4635,12 @@ const I18N={
   ccpsTitle:'Claude на паузе по лимитам',ccpsTitleCx:'Codex на паузе по лимитам',ccpsUntil:(at,left)=>` до ${at} (осталось ${left})`,
   ccpsBody:'Новые действия ждут сброса. Сообщения в Telegram встают в очередь, беседа сохранена — после сброса работа продолжится сама.',
   ccpsBodyCx:'Переключаться некуда. Сообщения из Telegram ждут в очереди и уйдут сами после сброса.',
+  ccpsReset5h:'5 часов · до сброса',ccpsResetWeek:'Неделя · до сброса',ccpsReset:'До сброса лимита',ccpsUnknown:'Время уточняется',ccpsDays:n=>`${n} д`,
   limxPause:at=>'пауза по лимитам'+(at?' до '+at:''),limxOutWeek:at=>'лимит недели исчерпан'+(at?' до '+at:''),limxOut5h:at=>'лимит 5 ч исчерпан'+(at?' до '+at:''),limxOut:at=>'лимит исчерпан'+(at?' до '+at:''),
   limxTipPause:'Новые действия ждут сброса, беседа сохранена.',limxTipOut:'Настоящий лимит исчерпан: новые запросы не пройдут до сброса, беседа сохранена.',
+  ccpaWeek:(n,p,a)=>`${n} · неделя ${p}%${a?' до '+a:''}`,ccpaSession:(n,p,a)=>`${n} · 5 ч ${p}%${a?' до '+a:''}`,
+  ccpaPause:(n,p,a)=>`${n} · пауза по лимитам${a?' до '+a:''}`,ccpaKnownPause:'Пауза подтверждена, точные проценты сейчас не получены. Состояние обновится автоматически.',
+  ccpaWait:c=>`Достигнут порог ${c}%. Доступность обновится после сброса.`,ccpaOverride:'Автопауза отключена вручную; ограничение провайдера сохраняется.',ccpaManual:'Аккаунт выбран вручную; автоматическая пауза не применена.',ccpaWarn:c=>`Достигнут порог ${c}%; автоматическая пауза выключена.`,
   ccpTillNearest:'до ближайшего окна',
   ccpTillFree:n=>'до освобождения '+n,
   ccpTillReset:'до сброса окна',
@@ -5109,6 +5129,13 @@ const I18N={
   cxlpBrief:at=>`Codex paused · resets at ${at}`,
   cxlpBriefNoAt:'Codex paused · waiting for the limit reset',
   cxlpTitle:'⏸ Codex is <b>paused on limits</b> — it resumes on its own',
+  cxqpTitle:'Codex · configured quota threshold',
+  cxqpBrief:(w,o)=>`Codex · ${w} · ${o?'automatic pause disabled':'paused at threshold'}`,
+  cxqpLimitBrief:w=>`Codex · ${w} · 100%`,
+  cxqpHardHint:n=>`The real quota is exhausted. Waiting tasks: ${n}. Work and the queue resume after reset; disabling pause cannot bypass100%.`,
+  cxqpSub:(s,w)=>`5-hour threshold: ${s}%; weekly threshold: ${w}%. The conversation and Full access are kept. Tasks wait for reset.`,
+  cxqpOff:'Automatic pause is disabled manually: use the remaining quota up to the real100%. Enable pause to restore protection.',
+  cxqpHint:n=>`Waiting tasks: ${n}. The queue survives panel restarts. /stop clears waiting tasks.`,
   cxlpSub:(n,why,at,nl)=>`Codex limit${n?` <b>${n}</b>`:''} is used up: ${why}. Nowhere to switch — Telegram messages wait in the queue and go out by themselves`+(at?` after the reset at <span class="num">${at}</span>`:' after the reset')+(nl?` (first to free up: <b>${nl}</b>)`:'')+'.',
   cxlpWin:m=>m===300?'5 h window':m===10080?'weekly window':`${Math.round(m/60)} h window`,
   cxlpWinAny:'the service reported the limit',
@@ -5138,8 +5165,12 @@ const I18N={
   ccpsTitle:'Claude paused on limits',ccpsTitleCx:'Codex paused on limits',ccpsUntil:(at,left)=>` until ${at} (${left} left)`,
   ccpsBody:'New actions wait for the reset. Telegram messages are queued, the conversation is kept — work resumes by itself after the reset.',
   ccpsBodyCx:'Nowhere to switch. Telegram messages wait in the queue and go out by themselves after the reset.',
+  ccpsReset5h:'5 hours · until reset',ccpsResetWeek:'Week · until reset',ccpsReset:'Until limit reset',ccpsUnknown:'Reset time unavailable',ccpsDays:n=>`${n} d`,
   limxPause:at=>'paused on limits'+(at?' until '+at:''),limxOutWeek:at=>'weekly limit used up'+(at?' until '+at:''),limxOut5h:at=>'5 h limit used up'+(at?' until '+at:''),limxOut:at=>'limit used up'+(at?' until '+at:''),
   limxTipPause:'New actions wait for the reset; the conversation is kept.',limxTipOut:'The real limit is used up: new requests fail until the reset; the conversation is kept.',
+  ccpaWeek:(n,p,a)=>`${n} · week ${p}%${a?' until '+a:''}`,ccpaSession:(n,p,a)=>`${n} · 5 h ${p}%${a?' until '+a:''}`,
+  ccpaPause:(n,p,a)=>`${n} · paused on limits${a?' until '+a:''}`,ccpaKnownPause:'The pause is confirmed; exact percentages are unavailable. Status updates automatically.',
+  ccpaWait:c=>`The ${c}% threshold was reached. Availability updates after reset.`,ccpaOverride:'Automatic pause was disabled manually; provider limits still apply.',ccpaManual:'The account was selected manually; automatic pause is not applied.',ccpaWarn:c=>`The ${c}% threshold was reached; automatic pause is disabled.`,
   ccpTillNearest:'until nearest window',
   ccpTillFree:n=>'until '+n+' frees up',
   ccpTillReset:'until window reset',
@@ -7360,9 +7391,30 @@ function ccpHeld(a){
  if(h.includes('неделя'))out.push(tr('ccpHeldWeek',a.wpct==null?'?':Math.round(a.wpct)+'%'));
  return out.join(', ')||'?';
 }
+function ccpAgents(d){
+ const states=(d&&d.claude_limits)||{};let count=0;
+ for(const [key,id,name] of [['claude','ccPauseDev','Claude DEV'],['prod','ccPauseProd','Claude PROD']]){
+  const el=document.getElementById(id);if(!el)continue;
+  const s=states[key];if(!s){el.hidden=true;el.innerHTML='';continue;}
+  const until=(s.resume_at||0)*1000;
+  const at=until?new Date(until).toLocaleString(LANG==='en'?'en-GB':'ru',{timeZone:window.FLEET_TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+  const title=tr(s.window==='pause'?'ccpaPause':s.window==='week'?'ccpaWeek':'ccpaSession',name,s.pct==null?'?':Math.round(s.pct),at);
+  const sub=s.override?tr('ccpaOverride'):s.manual?tr('ccpaManual'):s.window==='pause'?tr('ccpaKnownPause'):tr(s.waiting?'ccpaWait':'ccpaWarn',s.threshold);
+  const toggle=s.override?'on':!s.manual&&s.waiting&&s.can_override?'off':'';
+  const action=toggle?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+toggle+'\',this)">'+tr(toggle==='on'?'ccpBtnOn':'ccpBtnOff')+'</button></div>':'';
+  el.className='ccpause lvl-'+(s.waiting?'pause':'hard');el.hidden=false;
+  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+ccpEsc(title)+'</div><div class="ccp-sub">'+ccpEsc(sub)+'</div>'+action+'</div>'
+   +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)+'</div><div class="l">'+tr('ccpTillReset')+'</div></div>':'');
+  count++;
+ }
+ return count;
+}
 function ccpRender(){
  const el=$('#ccPause'),d=ccpData;if(!el)return;
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
+ // Два Claude показываются независимо: работа на PROD/Codex не скрывает лимиты DEV.
+ const agentCount=ccpAgents(d);
+ if(agentCount&&!d.handoff&&!d.manual){el.hidden=true;el.innerHTML='';return;}
  // Локальная пауза и активный PROD не скрывают исчерпание всей пары.
  const rp=d&&d.remote_pause;
  if(rp&&rp.enabled&&rp.applied&&rp.blocked){
@@ -7472,11 +7524,13 @@ function ccpRender(){
     +'<div class="l">'+tlabel+'</div></div>':'');
 }
 function ccpTick(){
- document.querySelectorAll('#ccPause .ccp-left').forEach(e=>{e.textContent=ccpLeft(+e.dataset.until)});   // «осталось …» в тексте паузы тикает
- const t=$('#ccPause .ccp-timer');if(!t)return;
- const until=+t.dataset.until;
- t.querySelector('.t').textContent=ccpLeft(until);
- if(Date.now()>until+60000)ccpLoad();  // окно должно было отпустить — перечитаем
+ document.querySelectorAll('#ccPause .ccp-left,#ccPauseDev .ccp-left,#ccPauseProd .ccp-left').forEach(e=>{e.textContent=ccpLeft(+e.dataset.until)});
+ let expired=false;
+ document.querySelectorAll('#ccPause .ccp-timer,#ccPauseDev .ccp-timer,#ccPauseProd .ccp-timer').forEach(t=>{
+  const until=+t.dataset.until;t.querySelector('.t').textContent=ccpLeft(until);
+  if(Date.now()>until+60000)expired=true;
+ });
+ if(expired)ccpLoad();  // один запрос на все истёкшие окна
 }
 async function ccpToggle(act,btn){
  if(act==='settings'){$('#gear').click();return;}
@@ -7501,7 +7555,8 @@ function cxlpRender(){
  const el=$('#cxPause');if(!el)return;
  const p=cxlpData;
  if(!p||!p.active){el.hidden=true;el.innerHTML='';return;}
- const paused=p.paused===undefined?true:!!p.paused;
+ const paused=p.hard?false:p.paused===undefined?true:!!p.paused;
+ const policy=!!p.policy,override=!!p.override;
  const prev=el.querySelector(':scope > details');if(prev)cxlpOpen=prev.open;
  const upMs=(p.resume_at||0)*1000;
  const sessionOnly=(p.windows||[]).length===1&&p.windows[0]===300;
@@ -7512,13 +7567,21 @@ function cxlpRender(){
  const timer=upMs?'<div class="ccp-timer" data-until="'+upMs+'"><div class="t">'+ccpLeft(upMs)+'</div><div class="l">'+tr('cxlpTill')+'</div></div>':'';
  el.className='ccpause '+(paused?'lvl-pause':'lvl-hard');el.hidden=false;
  el.innerHTML='<details class="fleet-pause-fold"'+(cxlpOpen?' open':'')+'><summary class="fleet-pause-summary"><span class="ccp-dot"></span>'
-  +'<span class="ccp-title">'+(paused?(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt')):ccpEsc(tr('cxlnBrief',why,at)))+'</span>'+timer
+  +'<span class="ccp-title">'+(policy?ccpEsc(tr('cxqpBrief',why,override)):p.hard&&(p.windows||[]).length?ccpEsc(tr('cxqpLimitBrief',why)):paused?(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt')):ccpEsc(tr('cxlnBrief',why,at)))+'</span>'+timer
   +'<svg viewBox="0 0 24 24" class="fleet-pause-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>'
-  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr(paused?'cxlpTitle':'cxlnTitle')+'</div>'
-  +'<div class="ccp-sub">'+(paused?tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):''):tr('cxlnSub',p.multi?ccpEsc(p.label):'',why,at,upMs?ccpLeft(upMs):''))+'</div>'
+  +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr(policy?'cxqpTitle':paused?'cxlpTitle':'cxlnTitle')+'</div>'
+  +'<div class="ccp-sub">'+(policy?ccpEsc(tr(override?'cxqpOff':'cxqpSub',p.threshold,p.weekly_cap)):paused?tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):''):tr('cxlnSub',p.multi?ccpEsc(p.label):'',why,at,upMs?ccpLeft(upMs):''))+'</div>'
   +'<div class="ccp-meta">'+chips+'</div>'
-  +'<div class="ccp-actions"><span class="ccp-hint">'+ccpEsc(tr(paused?'cxlpHint':p.multi?'cxlnHintMulti':'cxlnHint'))+'</span></div></div></div></details>';
+  +'<div class="ccp-actions">'+(override||p.can_override?'<button type="button" class="ccp-btn" onclick="cxlpToggle('+(!override)+',this)">'+tr(override?'ccpBtnOn':'ccpBtnOff')+'</button>':'')+'<span class="ccp-hint">'+ccpEsc(tr(policy?'cxqpHint':p.hard?'cxqpHardHint':paused?'cxlpHint':p.multi?'cxlnHintMulti':'cxlnHint',p.queued||0))+'</span></div></div></div></details>';
  el.querySelector('details').addEventListener('toggle',e=>{cxlpOpen=e.target.open});
+}
+async function cxlpToggle(off,btn){
+ if(btn)btn.disabled=true;
+ try{
+  const r=await fetch(API+'chatgpt/rotation/config',{method:'POST',headers:{'X-CC-Token':TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pause_override:off})}),d=await r.json();
+  if(!r.ok||d.ok===false)throw new Error(d.message||'HTTP '+r.status);
+  await cxlpLoad();
+ }catch(e){if(btn)btn.disabled=false;toast(tr('ccpErr',e.message));}
 }
 function cxlpTick(){
  const t=$('#cxPause .ccp-timer');if(!t)return;
@@ -7528,7 +7591,7 @@ function cxlpTick(){
 async function cxlpLoad(){
  if(document.hidden&&cxlpData!==null)return;
  cxlpLoadedAt=Date.now();
- try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_notice||d.limit_pause||{active:false};}catch(e){return;}
+ try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_notice||d.limit_pause||{active:false};cxlpData.queued=(d.quota||{}).queued||0;}catch(e){return;}
  cxlpRender();
 }
 
@@ -7936,9 +7999,17 @@ setInterval(ccliPartVers,2000);addEventListener('resize',ccliPartVers);setTimeou
 // Пауза по лимитам в окне консоли Claude DEV, Claude PROD и Codex: пока работа стоит на лимитах, видно, что это пауза, до какого часа и что сообщения встают в очередь
 function ccpsHtml(k){
  const at=(ms,r,lead)=>'<b>⏸ '+tr(lead)+'</b>'+(ms?tr('ccpsUntil',ccpAt(ms),ccpLeft(ms)):'')+(r?' · '+ccpEsc(r):'');
+ // Claude: тот же нормализованный бюджет, что в отдельных верхних плашках.
+ // Исчерпанные 100% обозначает крестик; ожидание настроенного порога — пауза.
+ if((k==='claude'||k==='prod')&&ccpData&&ccpData.claude_limits){
+  const s=ccpData.claude_limits[k];if(!s||!s.waiting||typeof s.pct==='number'&&s.pct>=100)return '';
+  const until=(+s.resume_at||0)*1000,name=k==='prod'?'Claude PROD':'Claude DEV';
+  const title=tr(s.window==='pause'?'ccpaPause':s.window==='week'?'ccpaWeek':'ccpaSession',name,s.pct==null?'?':Math.round(s.pct),until?ccpAt(until):'');
+  return '<b>⏸ '+ccpEsc(title)+'</b>. '+ccpEsc(tr(s.window==='pause'?'ccpaKnownPause':'ccpaWait',s.threshold));
+ }
  if(k==='prod'){const rp=ccpData&&ccpData.remote_pause;if(!(rp&&rp.enabled&&rp.applied&&rp.blocked))return '';
   return at((rp.resume_at||0)*1000,(rp.reasons||[]).join('; '),'ccpsTitle')+'. '+tr('ccpsBody');}
- if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;if(!(p&&p.active&&p.paused))return '';
+ if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;if(!(p&&p.active&&p.paused)||p.hard)return '';
   return at((p.resume_at||0)*1000,(p.windows||[]).map(m=>tr('cxlpWin',m)).join(', '),'ccpsTitleCx')+'. '+tr('ccpsBodyCx');}
  // Claude DEV: пауза балансера этого сервера (та же, что в верхнем баннере); отключена вручную или снимок устарел — паузы нет
  if(k==='claude'){const p=ccpData&&!ccpData.stale&&ccpData.pause;if(!(p&&p.active&&!p.override))return '';
@@ -7964,12 +8035,19 @@ function limxWinOf(w,name){const t=w&&w.resets_at?Date.parse(w.resets_at):NaN;re
 function limxState(k){
  let pause=null,wins=[],reported=false;
  try{
+  if((k==='claude'||k==='prod')&&ccpData&&ccpData.claude_limits){
+   const s=ccpData.claude_limits[k];if(!s)return null;
+   const until=(+s.resume_at||0)*1000,full=typeof s.pct==='number'&&s.pct>=100;
+   if(s.waiting&&!full)pause={until};
+   if(s.window==='week'||s.window==='5h')wins=[{win:s.window,pct:s.pct,until}];
+   return limxPick(pause,wins,false,Date.now());
+  }
   if(ccpsHtml(k)){const d=ccpData||{},u=k==='prod'?(d.remote_pause||{}).resume_at:k==='codex'?(cxlpData||{}).resume_at:(d.pause||{}).resume_at;pause={until:(+u||0)*1000};}
   const snap=typeof lastSnap!=='undefined'?lastSnap:null;
   if(k==='claude'){const a=snap&&snap.accounts&&snap.accounts[snap.active];if(a)wins=[limxWinOf(a.five_hour,'5h'),limxWinOf(a.seven_day,'week')];}
   else if(k==='prod'){const r=snap&&snap.remote,m=r&&r[Object.keys(r)[0]];if(m)wins=[limxWinOf(m.five_hour,'5h'),limxWinOf(m.seven_day,'week')];}
   else if(k==='codex'){const p=typeof cxlpData!=='undefined'?cxlpData:null;
-   if(p&&p.active){wins=(p.windows||[]).map(m=>({win:m===300?'5h':m===10080?'week':'',pct:100,until:(+((p.resets||{})[m]||p.resume_at)||0)*1000}));reported=!wins.length;}}
+   if(p&&p.active){wins=(p.windows||[]).map(m=>({win:m===300?'5h':m===10080?'week':'',pct:p.policy?+(p.percentages||{})[m]:100,until:(+((p.resets||{})[m]||p.resume_at)||0)*1000}));reported=!p.policy&&!wins.length;}}
  }catch(e){return null;}
  return limxPick(pause,wins,reported,Date.now());
 }
@@ -8008,9 +8086,36 @@ function limxBadges(){
  });
 }
 setInterval(limxBadges,1000);
-const PAUSE_ICO='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5.2" y="3.6" width="5" height="16.8" rx="1.7"/><rect x="13.8" y="3.6" width="5" height="16.8" rx="1.7"/></svg>';
-// исчерпан настоящий лимит — крестик того же размера, цвета и прозрачности, что знак паузы
-const OUT_ICO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4.8" stroke-linecap="round" aria-hidden="true"><path d="M5.8 5.8l12.4 12.4M18.2 5.8L5.8 18.2"/></svg>';
+function ccpsWindows(k,s){
+ let windows=[];
+ if(k==='codex'){
+  const p=typeof cxlpData!=='undefined'&&cxlpData||{},mins=p.windows||[];
+  windows=mins.map(m=>({window:m===300?'5h':m===10080?'week':'',resume_at:(p.resets||{})[m]||(mins.length===1?p.resume_at:0)||0}));
+ }else if(ccpData&&ccpData.claude_limits){
+  const q=ccpData.claude_limits[k];if(q)windows=q.windows||[{window:q.window==='pause'?'':q.window,resume_at:q.resume_at||0}];
+ }else{
+  const snap=typeof lastSnap!=='undefined'&&lastSnap||{},rows=snap.remote||{};
+  const a=k==='claude'?(snap.accounts||{})[snap.active]:rows[Object.keys(rows)[0]],d=ccpData||{};
+  for(const [key,window,threshold] of [['five_hour','5h',d.threshold||90],['seven_day','week',d.weekly_cap||99]]){
+   const w=a&&a[key];if(w&&typeof w.pct==='number'&&(w.pct>=100||s.kind==='pause'&&w.pct>=threshold))windows.push({window,resume_at:(limxWinOf(w,window).until||0)/1000});
+  }
+ }
+ if(!windows.length)windows=[{window:s.win||'',resume_at:(s.until||0)/1000}];
+ return [...new Map(windows.map(w=>[w.window,w])).values()].sort((a,b)=>['5h','week',''].indexOf(a.window)-['5h','week',''].indexOf(b.window));
+}
+function ccpsCountdown(until,now){
+ if(!Number.isFinite(until)||until<=0)return tr('ccpsUnknown');
+ let left=Math.max(0,Math.ceil((until-now)/1000));const days=Math.floor(left/86400);left%=86400;
+ const pad=n=>String(n).padStart(2,'0');
+ return (days?tr('ccpsDays',days)+' ':'')+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(left%60);
+}
+function ccpsTimerHtml(k,s,now){
+ const windows=ccpsWindows(k,s);
+ return windows.map(w=>{
+  const caption=tr(w.window==='5h'?'ccpsReset5h':w.window==='week'?'ccpsResetWeek':'ccpsReset'),value=ccpsCountdown((+w.resume_at||0)*1000,now);
+  return '<div class="ccps-clock" style="--ccps-count:'+windows.length+';--ccps-chars:'+value.length+';--ccps-caption-chars:'+caption.length+'"><div class="ccps-caption">'+ccpEsc(caption)+'</div><div class="ccps-value'+(!w.resume_at?' ccps-unknown':'')+'" role="timer" aria-live="off">'+ccpEsc(value)+'</div></div>';
+ }).join('');
+}
 function ccpPlain(h){return String(h).replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');}
 function ccpPartStrip(){
  const wrap=document.querySelector('.termwrap');if(!wrap||typeof PANES==='undefined')return;
@@ -8023,8 +8128,8 @@ function ccpPartStrip(){
   const s=sts[i],b=P.box,r=b&&b.getBoundingClientRect();
   if(!s||P.hid||!r||r.width<200||b.offsetParent===null){if(el)el.hidden=true;return;}
   if(!el){el=document.createElement('div');el.id=id;el.className='ccps';box.appendChild(el);}
-  // (63532) в консоли — большая серая прозрачная иконка по центру части: пауза или крестик «лимит исчерпан»; сам текст — в верхнем баннере, на плитке и в подсказке
-  if(el.dataset.kind!==s.kind){el.innerHTML=s.kind==='pause'?PAUSE_ICO:OUT_ICO;el.dataset.kind=s.kind;}
+  // Полупрозрачный обратный отсчёт по центру своей части, обновляется каждую секунду.
+  const html=ccpsTimerHtml(P.k,s,Date.now());if(el.innerHTML!==html)el.innerHTML=html;el.dataset.kind=s.kind;
   el.title=s.kind==='pause'?ccpPlain(ccpsHtml(P.k)):limxTitle(P.k,s);el.hidden=false;
   el.style.top=Math.round(r.top-wr.top)+'px';el.style.left=Math.round(r.left-wr.left)+'px';el.style.width=Math.round(r.width)+'px';el.style.height=Math.round(r.height)+'px';
  });

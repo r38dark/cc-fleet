@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.35",
+      "date": "2026-11-13",
+      "ru": {
+        "t": "Независимые Claude и Codex, таймеры сброса, квота Codex",
+        "p": [
+          "Передача работы Claude и Codex независима: у каждого агента свой баннер квоты и своя пауза.",
+          "У иконок квот в консоли — таймеры сброса по каждому окну (5 ч и неделя), крупнее и контрастнее.",
+          "Codex: пороги 90/99%, очередь заданий переживает перезапуск, ручное «Отключить паузу»; 100% не обходится."
+        ]
+      },
+      "en": {
+        "t": "Independent Claude and Codex, reset timers, Codex quota",
+        "p": [
+          "Handoff keeps Claude and Codex independent: each agent has its own quota banner and pause.",
+          "Console quota icons show a reset countdown per window (5 h and weekly), larger and with higher contrast.",
+          "Codex: 90/99% thresholds, queued tasks survive a restart, manual Pause off; a real 100% is never bypassed."
+        ]
+      }
+    },
+    {
       "v": "2.0.34",
       "date": "2026-11-12",
       "ru": {

@@ -81,6 +81,31 @@ class LiveInput(unittest.TestCase):
         self.wait(lambda:len(self.inputs)==1);C.ensure.assert_not_called()
         self.finish();self.bridge.worker.join(2);self.assertEqual(self.answers,['единый ответ'])
 
+    def test_quota_wait_excludes_timeout_and_keeps_next_task_until_current_finishes(self):
+        held=threading.Event()
+        with mock.patch.object(C,'QUOTA_PAUSE',side_effect=lambda:{'active':held.is_set()}),mock.patch.object(B,'LIMIT_PAUSE',side_effect=lambda:{'active':held.is_set()}),mock.patch.object(C,'START_WAIT',.04):
+            self.send('first task');self.wait(lambda:len(self.inputs)==1)
+            held.set();self.send('next task');time.sleep(.15)
+            self.assertEqual(len(self.inputs),1);self.assertTrue(self.bridge.worker.is_alive());self.assertFalse(self.errors)
+            held.clear();time.sleep(.03);self.assertEqual(len(self.inputs),1)
+            def next_turn(text):
+                self.turn='T2';self.append(dict(type='task_started',turn_id='T2'));return self.paste(text)
+            C._paste.side_effect=next_turn
+            self.finish('first answer',turn='T1');self.wait(lambda:len(self.inputs)==2)
+            self.finish('second answer',turn='T2');self.bridge.worker.join(2)
+            self.assertEqual(self.answers,['first answer','second answer'])
+
+    def test_recovery_waits_through_quota_pause_before_task_started(self):
+        held=threading.Event();held.set();result=[];abort=threading.Event()
+        def recover():result.append(C.recover(dict(path=str(self.path),off=0,turn=None),time.time(),abort=abort))
+        with mock.patch.object(C,'QUOTA_PAUSE',side_effect=lambda:{'active':held.is_set()}),mock.patch.object(C,'START_WAIT',.04):
+            worker=threading.Thread(target=recover);worker.start()
+            try:
+                time.sleep(.15);self.assertTrue(worker.is_alive())
+                self.append(dict(type='task_started',turn_id='T1'));self.finish('recovered')
+                held.clear();worker.join(1);self.assertFalse(worker.is_alive());self.assertEqual(result[0][0],'recovered')
+            finally:abort.set();worker.join(1)
+
     def test_messages_received_during_console_preparation_are_promoted(self):
         entered,release=threading.Event(),threading.Event()
         C.ensure.side_effect=lambda *args:(entered.set(),release.wait(1),(True,''))[-1]

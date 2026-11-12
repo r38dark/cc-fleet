@@ -3,6 +3,8 @@ from collections import deque
 from dataclasses import dataclass, field
 import threading
 import time
+from pathlib import Path
+from cc_codex_quota import atomic, read
 
 
 @dataclass(eq=False)
@@ -27,10 +29,31 @@ class InputQueue:
         self._condition = threading.Condition()
         self._jobs, self._threads = deque(), []
         self._workers, self.closed = workers, False
+        self.journal=None
+
+    def attach_journal(self, path):
+        with self._condition:
+            if self.journal==str(path):return
+            if self.items:raise RuntimeError('Cannot replace a queue journal while inputs are pending')
+            self.journal=str(path)
+            for row in read(path,[]) or []:
+                if not isinstance(row,dict):continue
+                entry=Input(str(row.get('kind') or 'text'),self.generation,time.monotonic(),dict(row.get('delivery') or {}))
+                entry.text=str(row.get('text') or '');entry.files=tuple(row.get('files') or ())
+                entry.state='ready' if row.get('state')=='ready' else 'failed'
+                entry.error=str(row.get('error') or '') if entry.state=='ready' else 'Подготовка сообщения была прервана перезапуском. Пришли вложение ещё раз.'
+                self.items.append(entry)
+
+    def _persist(self):
+        if self.journal:
+            atomic(self.journal,[dict(kind=e.kind,delivery=e.delivery,text=e.text,files=e.files,state=e.state,error=e.error) for e in self.items])
 
     def __len__(self):
         with self._condition:
             return len(self.items)
+
+    def peek(self):
+        with self._condition:return self.items[0] if self.items else None
 
     def reserve(self, kind, delivery=None, text=None):
         with self._condition:
@@ -43,6 +66,9 @@ class InputQueue:
             else:
                 entry.deadline = now + self.timeout
             self.items.append(entry)
+            try:self._persist()
+            except Exception:
+                self.items.remove(entry);raise
             self._condition.notify_all()
             return entry
 
@@ -97,22 +123,29 @@ class InputQueue:
                     entry.error, entry.state = error, 'failed'
                 else:
                     entry.text, entry.files, entry.state = text, files, 'ready'
+                if not discard:self._persist()
                 self._condition.notify_all()
             if discard or error:
                 self.cleanup(files)
 
-    def take_ready(self, limit=1):
+    def take_ready(self, limit=1, predicate=None):
         """Never wait for downloads. Failed entries also leave the head so later text can proceed."""
         ready = []
         with self._condition:
             while self.items and len(ready) < limit:
                 entry = self.items[0]
+                if predicate and not predicate(entry):break
                 self._expire(entry)
                 if entry.state not in ('ready', 'failed'):
                     break
                 self.items.pop(0)
                 entry.state = 'taken'
                 ready.append(entry)
+            if ready:
+                try:self._persist()
+                except Exception:
+                    for e in reversed(ready):e.state='failed' if e.error else 'ready';self.items.insert(0,e)
+                    raise
             self._condition.notify_all()
         return ready
 
@@ -131,13 +164,16 @@ class InputQueue:
                 files.extend(entry.files)
             self.items.clear()
             self._jobs.clear()
+            self._persist()
             self._condition.notify_all()
         self.cleanup(files)
         return count
 
-    def close(self):
+    def close(self, preserve=False):
         with self._condition:
             self.closed = True
-        self.clear()
+            if preserve and self.journal:
+                self._persist();self.items.clear();self._jobs.clear()
+            else:self.clear()
         with self._condition:
             self._condition.notify_all()

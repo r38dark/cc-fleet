@@ -50,6 +50,7 @@ SOLO_PROFILE = lambda: False  # cc_limits: выбран самостоятель
 TAKE_DRAFT_ALLOWED = lambda: True
 DISPATCH_ALLOWED = lambda: True  # profile coordinator: hold incoming work while the engine is paused
 LIMIT_PAUSE = lambda: {}  # пауза Codex по лимитам (cc_codex_rotation.Rotation.limit_pause, ставит cc_fleet)
+INPUT_QUEUE_PATH = None
 PROFILE_APPLIED = lambda: None  # cc_limits: обновить права и MCP-инструменты работающей консоли
 EMERGENCY = None  # cc_limits подставляет cc_codex_emergency: пока аварийный режим включён, права и папка заморожены
 TG_API = "https://api.telegram.org"  # на стенде — локальная заглушка Bot API
@@ -1240,6 +1241,10 @@ class Bridge:
 
     def _reserve_input(self, kind, text=None, delivery=None):
         with self.start_lock:
+            delivery=dict(delivery or {})
+            try:held=bool((LIMIT_PAUSE() or {}).get('active'))
+            except Exception:held=True
+            if held:delivery['quota_wait']=True
             entry = self.inputs.reserve(kind, delivery, text)
             if entry is None:
                 return None, 0
@@ -1247,7 +1252,9 @@ class Bridge:
             if kind == 'image' and not self.answer_active:
                 self._show_media_action()
             started = self._ensure_worker()
-            return entry, 0 if started else position
+        if held and entry is not None and delivery.get('source')!='console':
+            self._notice_async(f'📥 Codex: сообщение сохранено в очереди. Ожидает: {position}. Разберу после снятия паузы по лимитам.')
+        return entry, 0 if started else position
 
     def enqueue_work(self, item, delivery=None):
         """Reserve arrival order first; prepare media independently of the active model turn."""
@@ -1258,6 +1265,15 @@ class Bridge:
         else:
             entry, position = self._reserve_input('text', text=item[1], delivery=delivery)
         return entry is not None, position
+
+    def enqueue_console(self, text, request_id=None):
+        delivery={'source':'console','quota_wait':True}
+        if request_id:delivery['request_id']=request_id
+        with self.start_lock:
+            if request_id and any(e.delivery.get('request_id')==request_id for e in self.inputs.items):
+                return True,'Задание уже находится в очереди Codex.'
+        accepted,position=self._reserve_input('console',text=text,delivery=delivery)
+        return accepted is not None,('Задание сохранено в очереди Codex до снятия паузы.' if accepted is not None else 'Очередь Codex заполнена.')
 
     def _notice_async(self, message):
         # A Telegram API delay must not block the native input/result reader.
@@ -1297,10 +1313,10 @@ class Bridge:
 
     def take_live_texts(self, limit=20):
         """The same ready inputs feed an active turn; downloads never run inside this reader."""
-        if self.cancel.is_set() or not DISPATCH_ALLOWED():
+        if self.cancel.is_set() or not DISPATCH_ALLOWED() or (LIMIT_PAUSE() or {}).get('active'):
             return []
         texts = []
-        for entry in self.inputs.take_ready(limit):
+        for entry in self.inputs.take_ready(limit,predicate=lambda e:not e.delivery.get('quota_wait')):
             if entry.generation != self.inputs.generation:
                 continue
             if entry.error:
@@ -1330,6 +1346,10 @@ class Bridge:
                     with self.start_lock:self.worker = None
                     return
                 continue
+            head=self.inputs.peek()
+            if head and head.delivery.get('quota_wait') and CONSOLE is not None and hasattr(CONSOLE,'current_turn_open') and CONSOLE.current_turn_open() is True:
+                if self.stop_ev.wait(.2):return
+                continue
             ready = self.inputs.take_ready(1)
             if not ready:
                 self._show_media_action()
@@ -1348,6 +1368,11 @@ class Bridge:
                 self._notice_async('⚠️ '+entry.error)
                 continue
             text = entry.text
+            if entry.kind=='console':
+                ok,message=CONSOLE.send_input(text)
+                if not ok:log('console queue input failed: '+str(message)[:180])
+                with self.start_lock:self.answer_active=False
+                continue
             log(f"delivery stage=dispatch update={entry.delivery.get('update_id')} kind={entry.kind} queue_wait_ms={round((time.monotonic()-entry.queued_at)*1000)}")
             with _lock:
                 pending = bool(_state()["pending"])
@@ -1991,19 +2016,26 @@ class Bridge:
         if self.inputs.closed:
             self.inputs = InputQueue(WORK_QUEUE_MAX, timeout=MEDIA_PREP_TIMEOUT, cleanup=self._drop_files)
             self.work_queue = self.inputs.items
+        if INPUT_QUEUE_PATH:self.inputs.attach_journal(INPUT_QUEUE_PATH)
         ev = self.stop_ev = threading.Event()  # у каждого запуска своё событие: старые потоки гаснут сами, ждать их не нужно
         self.poll_t = threading.Thread(target=self.poll_loop, args=(ev,), daemon=True, name="codex-poll")
         self.watch_t = threading.Thread(target=self.watch_loop, args=(ev,), daemon=True, name="codex-watch")
         self.rec_t = threading.Thread(target=self.recover_loop, args=(ev,), daemon=True, name="codex-recover")
         self.poll_t.start()
         self.watch_t.start()
+        if len(self.inputs):
+            with self.start_lock:self._ensure_worker()
         self.rec_t.start()
 
     def stop(self):
         self.stop_ev.set()
         self.lim_ev.set()
-        self._cancel_inputs()
-        self.inputs.close()
+        self._end_media_action()
+        with self.album_lock:
+            for album in self.albums.values():
+                if album.get('timer'):album['timer'].cancel()
+            self.albums.clear()
+        self.inputs.close(preserve=True)
 
 
 BRIDGE = Bridge()

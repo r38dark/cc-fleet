@@ -139,6 +139,11 @@ class Workers:
                 label += ' · лимит исчерпан'
             if remote_on and e == 'claude':
                 st, label = 'pause', 'Claude DEV · на паузе (работает Claude PROD)'
+            if e=='codex':
+                rotation=self.ns.get('FLEET_ROTATION')
+                quota=rotation.limit_pause() if rotation and hasattr(rotation,'limit_pause') else {}
+                if quota.get('active'):
+                    st='limit' if quota.get('hard') else 'pause';label+=' · '+('лимит исчерпан' if st=='limit' else 'пауза по лимитам')
             out[e] = dict(state=st, text=AG_TEXT[st], label=label)
         pst = 'run' if remote_on else 'pause'
         out['prod'] = dict(state=pst, text=AG_TEXT[pst],
@@ -420,7 +425,7 @@ class Workers:
         return ('Не начинай работу, не меняй файлы, в Telegram не пиши: '
                 'ответь одной короткой строкой только в этой консоли.')
 
-    def handoff_sync_text(self, target):
+    def _handoff_sync_text(self, target):
         if target not in TARGETS:
             raise ValueError('unknown handoff target')
         folder = str(self.handoff_sync_dir())
@@ -447,6 +452,14 @@ class Workers:
                 'Не начинай работу, не меняй файлы, в Telegram не пиши: '
                 'ответь одной короткой строкой только в этой консоли.')
 
+    def handoff_sync_text(self, target, sender=None):
+        text=self._handoff_sync_text(target)
+        if sender=='codex' and target=='claude':
+            text+=' The sender is Codex. Also read '+str(self.handoff_sync_dir()/'codex.md')+'. '
+            text+='Compare its timestamp with the project card; a Claude transcript tail does not describe the state of the Codex task. '
+            text+='Both consoles remain independent. Do not change the sender profile or its console.'
+        return text
+
     def handoff_send_claude(self, text):
         if not isinstance(text, str) or not text.isascii():
             return False
@@ -461,7 +474,7 @@ class Workers:
         code, _ = _run(args + ['\r'], 10)
         return code == 0
 
-    def handoff_sync(self, target):
+    def handoff_sync(self, target, force=False, sender=None):
         try:
             if target not in TARGETS:
                 return False
@@ -492,7 +505,7 @@ class Workers:
                     state = {}
                 if not isinstance(state, dict):
                     raise ValueError('invalid handoff state')
-                if state.get(target) == signature:
+                if state.get(target) == signature and not force:
                     return False
                 mod = None
                 if target == 'claude':
@@ -500,7 +513,9 @@ class Workers:
                     while True:
                         text = self.ns['screen_hardcopy']().lower() if self.claude_running() else ''
                         ready = any(x in text for x in ('❯', 'shift+tab to cycle', 'bypass permissions'))
-                        if ready and not self.profiles.transitioning and not self.profiles.native.busy():
+                        native=self.profiles.native
+                        target_busy=native.busy_for('claude') if hasattr(native,'busy_for') else native.busy()
+                        if ready and not self.profiles.transitioning and not target_busy:
                             break
                         if time.monotonic() >= deadline:
                             return False
@@ -509,7 +524,7 @@ class Workers:
                     mod = self.ns.get('cc_codex_console')
                     if mod is None:
                         return False
-                text = self.handoff_sync_text(target)
+                text = self.handoff_sync_text(target,sender=sender) if sender else self.handoff_sync_text(target)
                 if target == 'claude':
                     success = self.handoff_send_claude(text)
                 else:
@@ -530,11 +545,15 @@ class Workers:
         p = self.profiles
         n = p.native
         orig_transition, orig_scenario = p.transition, p.apply_scenario
+        orig_resume = getattr(p, 'resume_for_handoff', None)
 
-        def transition(candidate, message, force=None, recover_blocked=False):
+        def transition(candidate, message, force=None, recover_blocked=False, handoff_engine=None):
             # после любой успешной смены профиля — сообщение в Telegram: Claude в общий чат, Codex в свой
             before = self.labels()
-            result = orig_transition(candidate, message, force, recover_blocked)
+            if handoff_engine:
+                result = orig_transition(candidate, message, force, recover_blocked, handoff_engine=handoff_engine)
+            else:
+                result = orig_transition(candidate, message, force, recover_blocked)
             if result.get('ok'):
                 try:
                     after = self.labels()
@@ -547,38 +566,38 @@ class Workers:
                     pass
             return result
 
-        def apply_scenario(body):
+        def with_claude_staging(operation, dry_run, target_claude, handoff_engine=None):
             with self.lock, p.lock:
-                target_claude = bool((body.get('choices') or {}).get('claude'))
                 # Активная удалённая сессия проверяется NativeProfiles; для неё
                 # не нужен запуск локальной беседы из снимка передачи.
                 if getattr(n, '_remote', lambda: None)() is not None:
-                    return orig_scenario(body)
+                    return operation()
                 if self.claude_running():
                     self.remember_claude()   # беседа на случай, если Claude потом остановят (передача на PROD, сбой)
-                    return orig_scenario(body)
+                    return operation()
                 if not target_claude:
-                    return orig_scenario(body)
+                    return operation()
                 # Claude не запущен (остался остановленным после PROD или сбоя), а выбран профиль с Claude:
                 # сначала поднимаем его в той же беседе без Telegram, потом применяем профиль
                 try:
-                    cand = type(p.state).from_data(p.state.export(), p.clock)
-                    dry = cand.apply_scenario(body.get('choices'), body.get('confirm', ''), body.get('revision'))
+                    dry = dry_run()
                 except Exception:
                     return dict(ok=False, message='Не удалось проверить сценарий; текущий профиль не изменён.')
                 if not dry.get('ok'):return dry
-                if p.transitioning or p.pending.exists() or p.update_active() or p.native.busy():
+                target_busy=p.native.busy_for(handoff_engine) if handoff_engine else p.native.busy()
+                if p.transitioning or p.pending.exists() or p.update_active() or target_busy:
                     return dict(ok=False, busy=True, message='Дождись завершения работы и повтори переключение.', state=p.public())
                 snapshot = self.handoff_snapshot_load()
                 if not snapshot:
                     return dict(ok=False, message='Не найдена проверенная беседа Claude; текущий профиль не изменён.', state=p.public())
-                old_choices = dict(p.state.manual_choices)
+                old_choices = dict(p.state.manual_choices) if p.state.manual_choices is not None else None
+                old_state = p.state.export()
                 try:
                     self.handoff_start_staging(snapshot)
                     n._handoff_snapshot = snapshot
                     n._handoff_telegram = bool(snapshot.get('telegram_channel'))
                     n._handoff_sandbox_root = bool(snapshot.get('sandbox_root'))
-                    result = orig_scenario(body)
+                    result = operation()
                     if not result.get('ok'):raise WorkersError(result.get('message') or 'Профиль Claude не применён.')
                     captured = n.claude.capture()
                     if captured.get('thread_id') != snapshot['thread_id']:
@@ -594,7 +613,15 @@ class Workers:
                     if stopped and not p.pending.exists():
                         if p.state.manual_choices != old_choices:
                             revision = p.public().get('revision')
-                            reverted = orig_scenario(dict(choices=old_choices, revision=revision, confirm='подтверждаю'))
+                            if handoff_engine or old_choices is None:
+                                restored=type(p.state).from_data(old_state,p.clock)
+                                restored.revision=revision+1
+                                if handoff_engine:
+                                    reverted=orig_transition(restored,'Исходный профиль получателя восстановлен.',handoff_engine=handoff_engine)
+                                else:
+                                    reverted=orig_transition(restored,'Исходный профиль восстановлен.')
+                            else:
+                                reverted = orig_scenario(dict(choices=old_choices, revision=revision, confirm='подтверждаю'))
                             if not reverted.get('ok'):
                                 return dict(ok=False, message=str(exc)+' Исходный профиль не восстановлен; требуется проверка.', state=p.public())
                         return dict(ok=False, message=str(exc)+' Исходный профиль сохранён.', state=p.public())
@@ -603,6 +630,15 @@ class Workers:
                     n._handoff_snapshot = None
                     n._handoff_telegram = False
                     n._handoff_sandbox_root = False
+
+        def apply_scenario(body):
+            def dry_run():
+                cand=type(p.state).from_data(p.state.export(),p.clock)
+                return cand.apply_scenario(body.get('choices'),body.get('confirm',''),body.get('revision'))
+            return with_claude_staging(lambda:orig_scenario(body),dry_run,bool((body.get('choices') or {}).get('claude')))
+
+        def resume_for_handoff(engine):
+            return with_claude_staging(lambda:orig_resume(engine),lambda:orig_resume(engine,dry_run=True),engine=='claude',engine)
 
         def apply_scenario_sync(body):
             result = apply_scenario(body)
@@ -614,6 +650,7 @@ class Workers:
             return result
 
         p.transition, p.apply_scenario = transition, apply_scenario_sync
+        if orig_resume is not None:p.resume_for_handoff=resume_for_handoff
 
 
 def tg_me(fresh=False):
@@ -855,6 +892,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
     var shown=null, cand=null, count=0, busy=false;
     function pickWorking(d){
       if(!d || !d.engines) return null;
+      try{var hand=window.fleetRemote&&window.fleetRemote.mode()||{},target=hand.task_target;if(target)return target==='dev'?'claude':target;
+        if(hand.worker==='codex'&&['solo','leader','executor'].includes(d.engines.codex?.role))return 'codex';}catch(e){}
       try{if(window.fleetRemote && (window.fleetRemote.mode()||{}).active) return 'prod';}catch(e){}
       var names=['claude','codex'], working=[];
       for(var i=0;i<names.length;i++){

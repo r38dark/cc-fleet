@@ -1,14 +1,69 @@
 """Remote quota protection and pause notifications, independent of auto handoff."""
 import time
+import threading
 
 import cc_remote as R
+import cc_avail
 
 STATE_FILE = R.BASE + "/remote_limit_guard.json"
 _deployed = {}
+_policy_lock=threading.Lock()
 
 
 def public():
     return R.jload(STATE_FILE, {})
+
+
+def agent_limits(local, snapshot, remote, remote_pause=None, now=None):
+    """Отдельные состояния Claude; те же пороги/сводка, что у гейта. Без реквизитов аккаунтов."""
+    now = time.time() if now is None else now
+    threshold, cap = local.get("threshold", 90), local.get("weekly_cap", 99)
+    pause = local.get("pause") or {}
+    result = {}
+    unknown = {'claude': True, 'prod': True}
+    groups = (("claude", snapshot.get("accounts") or {}, {}), ("prod", {}, remote or {}))
+    for engine, accounts, members in groups:
+        if engine == "claude" and local.get("stale"):
+            continue
+        summary = cc_avail.fleet_summary(accounts, members, threshold, cap, now=now)
+        unknown[engine] = bool(not summary['accounts'] or summary['unknown'])
+        if not summary["all_blocked"]:
+            continue
+        nearest = summary.get("nearest") or {}
+        chosen_key = nearest.get("acc") or next(iter(summary["accounts"]), "")
+        chosen = summary["accounts"].get(chosen_key) or {}
+        held = nearest.get("held") or chosen.get("held") or ""
+        week = summary["all_week_capped"] or "неделя" in held
+        pct = chosen.get("wpct" if week else "pct")
+        hard = all((a.get("wpct" if week else "pct") or 0) >= 100 for a in summary["accounts"].values())
+        manual = engine == "claude" and local.get("level") == "manual"
+        waiting = hard or (not pause.get("override") and not manual and (not week or local.get("weekly_pause")))
+        active_row = accounts.get(local.get('active')) if engine == 'claude' else None
+        can_override = not cc_avail.dead(active_row) if active_row else not hard
+        result[engine] = dict(window="week" if week else "5h", pct=pct,
+                              threshold=cap if week else threshold,
+                              resume_at=cc_avail._ts(nearest.get("resets_at") or "") or 0,
+                              waiting=bool(waiting), override=bool(pause.get("override")),
+                              manual=manual, can_override=can_override)
+        # Отдельные реальные сбросы выбранного ближайшего доступного аккаунта:
+        # общий resume_at может быть позднейшим из двух окон и не заменяет каждый.
+        row = (accounts if engine == 'claude' else members).get(chosen_key.partition(':')[2]) or {}
+        windows = []
+        for key, name, limit, enabled in (('five_hour', '5h', threshold, True),
+                                          ('seven_day', 'week', cap, bool(local.get('weekly_pause')))):
+            w = row.get(key) or {};value = w.get('pct')
+            if isinstance(value, (int, float)) and (value >= 100 or waiting and enabled and value >= limit):
+                windows.append(dict(window=name, resume_at=cc_avail._ts(w.get('resets_at') or '') or 0))
+        result[engine]['windows'] = windows
+    # Подтверждённая пауза не пропадает при устаревшем/неполном снимке процентов.
+    for engine, state, confirmed in (
+        ('claude', pause, pause.get('active') and not pause.get('override')),
+        ('prod', remote_pause or {}, all((remote_pause or {}).get(k) for k in ('enabled','applied','blocked'))),
+    ):
+        if confirmed and unknown[engine] and engine not in result:
+            result[engine]=dict(window='pause',pct=None,threshold=None,resume_at=state.get('resume_at') or 0,
+                                waiting=True,override=False,manual=False,can_override=False)
+    return result
 
 
 def policy(ns, row, enabled):
@@ -35,7 +90,8 @@ def tick(ns):
             _deployed[mid] = True
         row = R.cached().get(mid) or {}
         import json
-        result = R.ctl(mid, "guard-config", inp=json.dumps(policy(ns, row, enabled)))
+        with _policy_lock:
+            result = R.ctl(mid, "guard-config", inp=json.dumps(policy(ns, row, enabled)))
         if not result or not result.get("ok"):
             continue
         info = R.ctl(mid, "guard-status") or {}
@@ -65,3 +121,13 @@ def tick(ns):
         if not enabled:
             current["notified_blocked"] = False
     R.jsave(STATE_FILE, state)
+
+
+def sync_policy(ns):
+    """Apply a panel toggle to an already active remote guard without waking local Claude."""
+    import cc_remote_mode as M
+    import json
+    mode=M.mode();mid=mode.get('member')
+    if not mode.get('active') or mid not in R.members():return
+    with _policy_lock:
+        R.ctl(mid,'guard-config',inp=json.dumps(policy(ns,R.cached().get(mid) or {},True)))

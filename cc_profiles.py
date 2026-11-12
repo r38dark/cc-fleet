@@ -47,11 +47,16 @@ class NativeProfiles:
         if not ok and strict:raise ProfileError('claude_prod_role_failed')
 
     def busy(self):
+        return self.busy_for('claude') or self.busy_for('codex')
+
+    def busy_for(self, engine):
+        """При независимой передаче проверяется только изменяемый получатель."""
+        if engine == 'codex':
+            return bool(self.codex.busy() or self.bridge.BRIDGE.busy() and self.manager.input_allowed('codex'))
         # A paused queue worker may be alive while waiting; it must not prevent unpausing.
         if self.ns.get('_busy_tick'):self.ns['_busy_tick'](self.ns['screen_hardcopy']())
-        bridge_busy = self.bridge.BRIDGE.busy() and self.manager.input_allowed('codex')
         remote=self._remote()
-        return bool(self.codex.busy() or bridge_busy or self.ns['session_busy']() or remote and remote.prod_busy())
+        return bool(remote.prod_busy() if remote else self.ns['session_busy']())
 
     def plan(self, state, e):
         data=state.public()['engines'][e];profile=next(p for p in state.definitions(e) if p['id']==data['base_selected'])
@@ -102,8 +107,8 @@ class NativeProfiles:
                 out['claude_absent']=True
         return out
 
-    def preflight(self, before, after, changed, captured):
-        if self.busy():raise ProfileError('console_busy')
+    def preflight(self, before, after, changed, captured, handoff_engine=None):
+        if (self.busy_for(handoff_engine) if handoff_engine else self.busy()):raise ProfileError('console_busy')
         legacy=self.bridge._state()
         if legacy.get('pending') or any(t.get('state') in ('sent','accepted') for t in (legacy.get('tasks') or {}).values()):raise ProfileError('legacy_task_pending')
         for e in ENGINES:
@@ -137,8 +142,10 @@ class NativeProfiles:
             for row in rows:
                 try:
                     start=Path('/proc/'+str(row['pid'])+'/stat').read_text().rsplit(')',1)[1].split()[19]
-                    if start==row['start']:os.kill(row['pid'],signal.SIGCONT)
-                except (OSError,KeyError):pass
+                    quota=json.loads((self.base/'profile_runtime/codex-quota-paused.json').read_text()) if (self.base/'profile_runtime/codex-quota-paused.json').exists() else []
+                    held=any(q.get('pid')==row['pid'] and str(q.get('start'))==str(row['start']) for q in quota)
+                    if start==row['start'] and not held:os.kill(row['pid'],signal.SIGCONT)
+                except (OSError,ValueError,KeyError):pass
             path.unlink(missing_ok=True);return
         if path.exists():return
         level=[str(self.codex._pid() or '')];rows=[]
@@ -373,12 +380,12 @@ class Profiles:
     def _changed(self,before,after):
         return [e for e in ENGINES if self.native.plan(before,e)!=self.native.plan(after,e)]
 
-    def transition(self,candidate,message,force=None,recover_blocked=False):
+    def transition(self,candidate,message,force=None,recover_blocked=False,handoff_engine=None):
         rotation=getattr(self.native,'ns',{}).get('FLEET_ROTATION')
         with rotation.lock if rotation else nullcontext():
-            return self._transition(candidate,message,force,recover_blocked)
+            return self._transition(candidate,message,force,recover_blocked,handoff_engine)
 
-    def _transition(self,candidate,message,force=None,recover_blocked=False):
+    def _transition(self,candidate,message,force=None,recover_blocked=False,handoff_engine=None):
         if self.update_active():return dict(ok=False,busy=True,message='Завершается обновление панели. Примени сценарий после проверки.')
         if self.pending.exists():
             blocked=json.loads(self.pending.read_text()).get('recovery_blocked')
@@ -388,12 +395,17 @@ class Profiles:
             else:return dict(ok=False,message='Идёт восстановление предыдущего переключения. Дождись завершения.')
         before=self.state;changed=self._changed(before,candidate)
         if force and force not in changed:changed.append(force)
+        if handoff_engine and any(e != handoff_engine for e in changed):
+            return dict(ok=False,message='Передача не должна менять профиль отправителя.')
         if not changed:
             self.state=candidate;self.save();return dict(ok=True,message=message,state=self.public())
-        if self.native.busy() or self.tasks and self.tasks.busy():return dict(ok=False,busy=True,message='Сейчас идёт ответ или подтверждённый шаг. Профили можно менять после его завершения.')
+        native_busy=self.native.busy_for(handoff_engine) if handoff_engine else self.native.busy()
+        if native_busy or self.tasks and self.tasks.busy():return dict(ok=False,busy=True,message='Сейчас идёт ответ или подтверждённый шаг. Профили можно менять после его завершения.')
         self.transitioning=True;self.side.clear();old_managed=dict(self.managed);captured=None
         try:
-            captured=self.native.capture(changed);self.native.preflight(before,candidate,changed,captured)
+            captured=self.native.capture(changed)
+            if handoff_engine:self.native.preflight(before,candidate,changed,captured,handoff_engine=handoff_engine)
+            else:self.native.preflight(before,candidate,changed,captured)
             atomic(self.pending,dict(before=before.export(),after=candidate.export(),managed=old_managed,changed=changed,captured=captured))
             self.state=candidate
             for e in changed:self.managed[e]=True
@@ -420,6 +432,22 @@ class Profiles:
                     self._block_recovery()
             return dict(ok=False,message=self.error,state=self.public())
         finally:self.transitioning=False
+
+    def resume_for_handoff(self, engine, dry_run=False):
+        """Возобновить выбранный ранее профиль получателя, сохранив план отправителя."""
+        if engine not in ENGINES:return dict(ok=False,message='Неизвестный получатель.')
+        with self.lock:
+            if not self.paused(engine):return dict(ok=True,message='Профиль получателя уже активен.')
+            candidate=ProfileState.from_data(self.state.export(),self.clock)
+            # Базовый сценарий уже поддерживает две независимые консоли. Снимаем
+            # только исключение второй модели из прежнего ручного сценария.
+            candidate.manual_choices=None
+            other=next(e for e in ENGINES if e!=engine)
+            if candidate.public()['engines'][engine]['role']=='paused' or self.native.plan(self.state,other)!=self.native.plan(candidate,other):
+                return dict(ok=False,message='Сначала выбери самостоятельный профиль получателя; отправитель не изменён.')
+            candidate.revision+=1
+            if dry_run:return dict(ok=True)
+            return self.transition(candidate,'Получатель активирован; отправитель продолжает работать.',handoff_engine=engine)
 
     def apply_scenario(self, body):
         if not self.lock.acquire(blocking=False):return dict(ok=False,message='Переключение уже выполняется. Дождись результата.')
