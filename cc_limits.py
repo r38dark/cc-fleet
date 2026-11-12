@@ -7866,7 +7866,7 @@ async function ccliLoad(check){
  try{const r=await fetch(API+'claude-cli?token='+TOKEN+(check?'&check=1':''));if(!r.ok)throw new Error(r.status);ccliData=await r.json();}catch(e){return;}
  ccliRender();ccliBadgeRender();
  clearTimeout(ccliTimer);
- const busy=['local','remote'].some(k=>ccliData[k]&&ccliData[k].state==='running');
+ const busy=['local','remote','codex'].some(k=>ccliData[k]&&ccliData[k].state==='running');
  if(busy&&(!$('#scrim').hidden||ccliPopOpen))ccliTimer=setTimeout(()=>ccliLoad(false),3000);
 }
 function ccliRow(k,d){
@@ -7938,7 +7938,10 @@ function ccliPopRender(){
    sub=d.op==='rollback'?tr('ccliDoneRb',d.from_version,d.version_after||d.version):tr('ccliOkTitle',nm,d.from_version,d.version_after||d.version);cls=' ok';
    sub+=' '+tr(r&&r.running===false?(k==='codex'?'ccliNextCodexStopped':'ccliNextClaudeStopped'):(k==='codex'?'ccliNextCodex':'ccliNextClaude'));
   }
-  else if(d.state==='failed'){sub=tr('ccliFailed',d.err||'');cls=' bad';}
+  else if(d.state==='failed'){
+   sub=tr('ccliFailed',d.err||'');cls=' bad';
+   if(d.can_update)btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="latest">'+tr('ccliBtnRetry')+'</button>';
+  }
   else if(d.update_available&&d.can_update){sub=tr('ccliPopSub',d.version||'',d.latest||'');btn='<button type="button" class="ghostbtn" data-ccli-pop="update" data-k="'+k+'" data-v="'+ccpEsc(d.latest||'latest')+'">'+tr('ccliPopUpdate')+'</button>';}
   else if(r&&r.stale)sub=tr(k==='codex'?'ccliStaleNote':'ccliStaleClaude');
   if(r&&r.running&&(r.stale||(d.state==='done'&&fresh)))btn='<button type="button" class="ghostbtn" data-ccli-pop="restart" data-k="'+k+'"'+(r.busy?' disabled':'')+'>'+tr(k==='codex'?'ccliRestartBtn':'ccliRestartClaude')+'</button>';
