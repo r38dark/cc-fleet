@@ -3793,10 +3793,13 @@ body.tpdraging .tpadd.tpdrop{background:rgba(25,80,66,.9)}
 .ccli-pv[hidden]{display:none}.ccli-pv.new{color:var(--ok,#45d6ab)}.ccli-pv.old{color:var(--warn,#ecc277)}
 @media (max-width:640px){.ccli-pvbox{display:none}}
 .ccps-box{position:absolute;left:0;top:0;width:0;height:0;z-index:4;pointer-events:none}
-.ccps{position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:rgba(165,172,190,.28);pointer-events:none}
-.ccps svg{display:block;width:min(30%,150px);height:auto;aspect-ratio:1}
+.ccps{position:absolute;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:16px;color:rgba(165,172,190,.28);pointer-events:none;container-type:inline-size}
+.ccps-clock{display:flex;flex-direction:column;align-items:center;gap:7px;max-width:100%;text-align:center}
+.ccps-caption{font-size:clamp(10px,2.8cqw,13px);line-height:1.4;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
+.ccps-value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:clamp(18px,8cqw,62px);font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.04em;line-height:1.1;white-space:nowrap}
+.ccps-unknown{font-size:clamp(13px,4cqw,20px);white-space:normal}
 .ccps[hidden]{display:none}
-@media (max-width:640px){.ccps svg{width:min(34%,100px)}}
+@media (max-width:640px){.ccps{gap:18px;padding:10px}.ccps-clock{gap:5px}}
 #ccliBox pre{margin:6px 0 0;max-height:110px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.45 ui-monospace,Consolas,monospace;opacity:.85}
 .ccli-badge{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;margin:0 0 0 8px;border:1px solid rgba(69,214,171,.45);border-radius:99px;background:rgba(69,214,171,.12);color:var(--fleet-accent,#45d6ab);font:600 11px/1 Inter,system-ui,sans-serif;cursor:pointer;flex:none;animation:ccliGlow 2.6s ease-in-out infinite}
 .ccli-badge[hidden]{display:none}.ccli-badge svg{width:12px;height:12px;display:block}.ccli-badge b{font-weight:650}
@@ -4622,6 +4625,7 @@ const I18N={
   ccpsTitle:'Claude на паузе по лимитам',ccpsTitleCx:'Codex на паузе по лимитам',ccpsUntil:(at,left)=>` до ${at} (осталось ${left})`,
   ccpsBody:'Новые действия ждут сброса. Сообщения в Telegram встают в очередь, беседа сохранена — после сброса работа продолжится сама.',
   ccpsBodyCx:'Переключаться некуда. Сообщения из Telegram ждут в очереди и уйдут сами после сброса.',
+  ccpsReset5h:'5 часов · до сброса',ccpsResetWeek:'Неделя · до сброса',ccpsReset:'До сброса лимита',ccpsUnknown:'Время уточняется',ccpsDays:n=>`${n} д`,
   limxPause:at=>'пауза по лимитам'+(at?' до '+at:''),limxOutWeek:at=>'лимит недели исчерпан'+(at?' до '+at:''),limxOut5h:at=>'лимит 5 ч исчерпан'+(at?' до '+at:''),limxOut:at=>'лимит исчерпан'+(at?' до '+at:''),
   limxTipPause:'Новые действия ждут сброса, беседа сохранена.',limxTipOut:'Настоящий лимит исчерпан: новые запросы не пройдут до сброса, беседа сохранена.',
   ccpaWeek:(n,p,a)=>`${n} · неделя ${p}%${a?' до '+a:''}`,ccpaSession:(n,p,a)=>`${n} · 5 ч ${p}%${a?' до '+a:''}`,
@@ -5144,6 +5148,7 @@ const I18N={
   ccpsTitle:'Claude paused on limits',ccpsTitleCx:'Codex paused on limits',ccpsUntil:(at,left)=>` until ${at} (${left} left)`,
   ccpsBody:'New actions wait for the reset. Telegram messages are queued, the conversation is kept — work resumes by itself after the reset.',
   ccpsBodyCx:'Nowhere to switch. Telegram messages wait in the queue and go out by themselves after the reset.',
+  ccpsReset5h:'5 hours · until reset',ccpsResetWeek:'Week · until reset',ccpsReset:'Until limit reset',ccpsUnknown:'Reset time unavailable',ccpsDays:n=>`${n} d`,
   limxPause:at=>'paused on limits'+(at?' until '+at:''),limxOutWeek:at=>'weekly limit used up'+(at?' until '+at:''),limxOut5h:at=>'5 h limit used up'+(at?' until '+at:''),limxOut:at=>'limit used up'+(at?' until '+at:''),
   limxTipPause:'New actions wait for the reset; the conversation is kept.',limxTipOut:'The real limit is used up: new requests fail until the reset; the conversation is kept.',
   ccpaWeek:(n,p,a)=>`${n} · week ${p}%${a?' until '+a:''}`,ccpaSession:(n,p,a)=>`${n} · 5 h ${p}%${a?' until '+a:''}`,
@@ -8055,9 +8060,32 @@ function limxBadges(){
  });
 }
 setInterval(limxBadges,1000);
-const PAUSE_ICO='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5.2" y="3.6" width="5" height="16.8" rx="1.7"/><rect x="13.8" y="3.6" width="5" height="16.8" rx="1.7"/></svg>';
-// исчерпан настоящий лимит — крестик того же размера, цвета и прозрачности, что знак паузы
-const OUT_ICO='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4.8" stroke-linecap="round" aria-hidden="true"><path d="M5.8 5.8l12.4 12.4M18.2 5.8L5.8 18.2"/></svg>';
+function ccpsWindows(k,s){
+ let windows=[];
+ if(k==='codex'){
+  const p=typeof cxlpData!=='undefined'&&cxlpData||{},mins=p.windows||[];
+  windows=mins.map(m=>({window:m===300?'5h':m===10080?'week':'',resume_at:(p.resets||{})[m]||(mins.length===1?p.resume_at:0)||0}));
+ }else if(ccpData&&ccpData.claude_limits){
+  const q=ccpData.claude_limits[k];if(q)windows=q.windows||[{window:q.window==='pause'?'':q.window,resume_at:q.resume_at||0}];
+ }else{
+  const snap=typeof lastSnap!=='undefined'&&lastSnap||{},rows=snap.remote||{};
+  const a=k==='claude'?(snap.accounts||{})[snap.active]:rows[Object.keys(rows)[0]],d=ccpData||{};
+  for(const [key,window,threshold] of [['five_hour','5h',d.threshold||90],['seven_day','week',d.weekly_cap||99]]){
+   const w=a&&a[key];if(w&&typeof w.pct==='number'&&(w.pct>=100||s.kind==='pause'&&w.pct>=threshold))windows.push({window,resume_at:(limxWinOf(w,window).until||0)/1000});
+  }
+ }
+ if(!windows.length)windows=[{window:s.win||'',resume_at:(s.until||0)/1000}];
+ return [...new Map(windows.map(w=>[w.window,w])).values()].sort((a,b)=>['5h','week',''].indexOf(a.window)-['5h','week',''].indexOf(b.window));
+}
+function ccpsCountdown(until,now){
+ if(!Number.isFinite(until)||until<=0)return tr('ccpsUnknown');
+ let left=Math.max(0,Math.ceil((until-now)/1000));const days=Math.floor(left/86400);left%=86400;
+ const pad=n=>String(n).padStart(2,'0');
+ return (days?tr('ccpsDays',days)+' ':'')+pad(Math.floor(left/3600))+':'+pad(Math.floor(left%3600/60))+':'+pad(left%60);
+}
+function ccpsTimerHtml(k,s,now){
+ return ccpsWindows(k,s).map(w=>'<div class="ccps-clock"><div class="ccps-caption">'+ccpEsc(tr(w.window==='5h'?'ccpsReset5h':w.window==='week'?'ccpsResetWeek':'ccpsReset'))+'</div><div class="ccps-value'+(!w.resume_at?' ccps-unknown':'')+'" role="timer" aria-live="off">'+ccpEsc(ccpsCountdown((+w.resume_at||0)*1000,now))+'</div></div>').join('');
+}
 function ccpPlain(h){return String(h).replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');}
 function ccpPartStrip(){
  const wrap=document.querySelector('.termwrap');if(!wrap||typeof PANES==='undefined')return;
@@ -8070,8 +8098,8 @@ function ccpPartStrip(){
   const s=sts[i],b=P.box,r=b&&b.getBoundingClientRect();
   if(!s||P.hid||!r||r.width<200||b.offsetParent===null){if(el)el.hidden=true;return;}
   if(!el){el=document.createElement('div');el.id=id;el.className='ccps';box.appendChild(el);}
-  // (63532) в консоли — большая серая прозрачная иконка по центру части: пауза или крестик «лимит исчерпан»; сам текст — в верхнем баннере, на плитке и в подсказке
-  if(el.dataset.kind!==s.kind){el.innerHTML=s.kind==='pause'?PAUSE_ICO:OUT_ICO;el.dataset.kind=s.kind;}
+  // Полупрозрачный обратный отсчёт по центру своей части, обновляется каждую секунду.
+  const html=ccpsTimerHtml(P.k,s,Date.now());if(el.innerHTML!==html)el.innerHTML=html;el.dataset.kind=s.kind;
   el.title=s.kind==='pause'?ccpPlain(ccpsHtml(P.k)):limxTitle(P.k,s);el.hidden=false;
   el.style.top=Math.round(r.top-wr.top)+'px';el.style.left=Math.round(r.left-wr.left)+'px';el.style.width=Math.round(r.width)+'px';el.style.height=Math.round(r.height)+'px';
  });

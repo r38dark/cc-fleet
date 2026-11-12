@@ -65,7 +65,15 @@ class States(unittest.TestCase):
         data.update(email='private@example.test', token='fixture-private-value')
         result = self.states(remote={'r': data})
         self.assertEqual(result['prod']['resume_at'], NOW + 9000)
+        self.assertEqual(result['prod']['windows'],[
+            {'window':'5h','resume_at':NOW+9000}, {'window':'week','resume_at':NOW+7200}])
         self.assertNotIn('private', json.dumps(result))
+
+    def test_timers_come_from_the_same_nearest_account_not_different_accounts(self):
+        result=self.states({'a':row(100,session=100,reset=12000,session_reset=300),
+                            'b':row(100,session=100,reset=4000,session_reset=3000)})
+        self.assertEqual(result['claude']['windows'],[
+            {'window':'5h','resume_at':NOW+3000}, {'window':'week','resume_at':NOW+4000}])
 
     def test_confirmed_pause_remains_visible_without_fresh_percentages(self):
         remote_pause=dict(enabled=True,applied=True,blocked=True,resume_at=NOW+9000)

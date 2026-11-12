@@ -28,8 +28,8 @@ def agent_limits(local, snapshot, remote, remote_pause=None, now=None):
         if not summary["all_blocked"]:
             continue
         nearest = summary.get("nearest") or {}
-        chosen = (summary["accounts"].get(nearest.get("acc")) or
-                  next(iter(summary["accounts"].values()), {}))
+        chosen_key = nearest.get("acc") or next(iter(summary["accounts"]), "")
+        chosen = summary["accounts"].get(chosen_key) or {}
         held = nearest.get("held") or chosen.get("held") or ""
         week = summary["all_week_capped"] or "неделя" in held
         pct = chosen.get("wpct" if week else "pct")
@@ -43,6 +43,16 @@ def agent_limits(local, snapshot, remote, remote_pause=None, now=None):
                               resume_at=cc_avail._ts(nearest.get("resets_at") or "") or 0,
                               waiting=bool(waiting), override=bool(pause.get("override")),
                               manual=manual, can_override=can_override)
+        # Отдельные реальные сбросы выбранного ближайшего доступного аккаунта:
+        # общий resume_at может быть позднейшим из двух окон и не заменяет каждый.
+        row = (accounts if engine == 'claude' else members).get(chosen_key.partition(':')[2]) or {}
+        windows = []
+        for key, name, limit, enabled in (('five_hour', '5h', threshold, True),
+                                          ('seven_day', 'week', cap, bool(local.get('weekly_pause')))):
+            w = row.get(key) or {};value = w.get('pct')
+            if isinstance(value, (int, float)) and (value >= 100 or waiting and enabled and value >= limit):
+                windows.append(dict(window=name, resume_at=cc_avail._ts(w.get('resets_at') or '') or 0))
+        result[engine]['windows'] = windows
     # Подтверждённая пауза не пропадает при устаревшем/неполном снимке процентов.
     for engine, state, confirmed in (
         ('claude', pause, pause.get('active') and not pause.get('override')),
