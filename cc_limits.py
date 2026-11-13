@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.35"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.36"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -1245,8 +1245,37 @@ def _sweep_stale_hardcopy_dumps():
 # он корректно декодирует UTF-8. screen_hardcopy() выше НЕ трогаем — им
 # пользуется session_model()/_dialog_watchdog(), там только ASCII.
 CONSOLE_LOG = os.path.join(BASE, "console.log")
+CONSOLE_LOG_OWNER = CONSOLE_LOG + ".session"   # PID screen-сессии, которая пишет в CONSOLE_LOG (чтобы рестарт панели не откладывал лог живой сессии)
 _console_log_ready = False
 _console_screen_pid = None
+
+
+def _console_owner_id(pid):
+    """«PID:время старта процесса» — после перезагрузки сервера PID мог совпасть случайно, время старта не совпадёт."""
+    try:
+        with open("/proc/%d/stat" % int(pid), encoding="utf-8") as f:
+            raw = f.read()
+        return "%s:%s" % (int(pid), raw[raw.rindex(")") + 2:].split()[19])
+    except (OSError, ValueError, IndexError):
+        return ""
+
+
+def _console_log_owner_read():
+    try:
+        with open(CONSOLE_LOG_OWNER, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def _console_log_owner_write(pid):
+    try:
+        tmp = CONSOLE_LOG_OWNER + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(str(pid or ""))
+        os.replace(tmp, CONSOLE_LOG_OWNER)
+    except OSError:
+        pass
 
 
 def _current_screen_pid(scr):
@@ -1325,6 +1354,18 @@ def _console_ensure_logging():
     pid = _current_screen_pid(scr)
     if _console_log_ready and pid == _console_screen_pid:
         return
+    owner = _console_owner_id(pid) if pid else ""
+    if owner and os.path.exists(CONSOLE_LOG) and _console_log_owner_read() == owner:
+        # Перезапустили саму панель (обновление), а screen-сессия та же и уже пишет в этот лог: он её. Откладывать его в .prev
+        # нельзя: Claude Code рисует экран дифф-обновлениями, и без начала лога на экране остаются только мелкие обрывки
+        # (пропадают рамка поля ввода, полоски лимитов, строка режима). Просто подхватываем.
+        subprocess.run(["screen", "-S", scr, "-p", "0", "-X", "log", "on"], capture_output=True, timeout=10)
+        _console_log_ready = True
+        _console_screen_pid = pid
+        with _console_lock:
+            _console_screen = None
+            _console_offset = 0
+        return
     # Старый CONSOLE_LOG принадлежит мёртвой сессии — убираем с дороги, чтобы
     # не тащить гигабайты неактуального скроллбэка в pyte на каждый реparse
     # (инцидент 12.07: 29МБ статичного огрызка вешали сервер на ~90с на запрос).
@@ -1339,6 +1380,7 @@ def _console_ensure_logging():
                    capture_output=True, timeout=10)
     _console_log_ready = True
     _console_screen_pid = pid
+    _console_log_owner_write(owner)
     with _console_lock:
         _console_screen = None
         _console_offset = 0

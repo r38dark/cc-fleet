@@ -774,13 +774,9 @@ html.no-prod:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:0}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc+.fleet-acc>.fleet-compact-account{border-top:1px solid var(--fleet-line)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{box-sizing:border-box;min-height:42px;padding:0 14px;border:1px solid var(--fleet-line);border-radius:8px;background:rgba(8,10,14,.35);box-shadow:none}
-html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude,
-html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod,
-html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex,
-html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude .fleet-compact-name::before,
-html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod .fleet-compact-name::before,
-html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex .fleet-compact-name::before,
-/* «пауза» словом в строке аккаунта не пишем: состояние показывает значок ⏸ перед именем */
+/* «пауза» словом в строке аккаунта не пишем: состояние показывает значок ⏸ перед именем.
+   (13.11.26) Раньше над этим правилом стоял список селекторов «ag-live-*» без своего тела: он склеивался с ним и давал плиткам
+   работающего агента display:inline-flex — их ширина шла по содержимому, и окна выходили разной ширины. Список убран. */
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-window[data-window="session"] .fleet-compact-range{display:inline-flex;margin-left:2px;color:var(--fleet-muted)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-model .fleet-compact-label::after,
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-effort .fleet-compact-label::after,
