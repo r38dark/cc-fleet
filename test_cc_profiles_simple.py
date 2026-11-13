@@ -20,8 +20,9 @@ class SimpleProfiles(unittest.TestCase):
     def test_exact_symmetric_catalog(self):
         for engine in ['claude','codex']:
             profiles=self.state.definitions(engine)
-            self.assertEqual([p['id'] for p in profiles],[engine+'_solo_full','orchestrator'])  # резерва больше нет
-            self.assertEqual([p['kind'] for p in profiles],['full','orchestrator'])
+            # внутренний каталог: Full, прежняя связка (нужна, чтобы читать старые записи; в интерфейс не попадает), у Claude — «Opus → Sonnet»
+            self.assertEqual([p['id'] for p in profiles],[engine+'_solo_full','orchestrator']+(['claude_opus_sonnet'] if engine=='claude' else []))
+            self.assertEqual([p['kind'] for p in profiles],['full','orchestrator']+(['duo'] if engine=='claude' else []))
             self.assertEqual(profiles[0]['access'],'full');self.assertEqual(profiles[1]['access'],'read')
             self.assertEqual(profiles[1]['task_rights'],'dev')
             self.assertTrue(profiles[1]['title'].startswith('Claude → Codex' if engine=='claude' else 'Codex → Claude'))

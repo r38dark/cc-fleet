@@ -1,8 +1,11 @@
-"""Full and orchestrator choices with an explicitly selected companion."""
+"""Профили по одному движку: Full (Claude и Codex) и «Opus → Sonnet» (только Claude). Связки Claude↔Codex убраны."""
 import copy
 
 ENGINES = ('claude', 'codex')
-ROLES = (None, 'full', 'orchestrator', 'executor')
+# orchestrator/executor остаются в списке только для чтения старых записей: новые пары не принимаются
+ROLES = (None, 'full', 'duo', 'orchestrator', 'executor')
+DUO_ENGINE = 'claude'   # «Opus → Sonnet» есть только у Claude
+DUO_ID = 'claude_opus_sonnet'   # id профиля: Opus ведёт, Sonnet исполняет (одна сессия + субагент)
 
 
 def validate_choices(choices):
@@ -10,12 +13,12 @@ def validate_choices(choices):
         return False, 'Выбери роли Claude и Codex.'
     if any(value not in ROLES for value in choices.values()):
         return False, 'Неизвестная роль.'
-    active = [value for value in choices.values() if value]
-    if len(active) == 1 and active[0] == 'full':
-        return True, ''
-    if len(active) == 2 and set(active) == {'orchestrator','executor'}:
-        return True, ''
-    return False, 'Для оркестратора подключи вторую модель для выполнения шагов. Full другой модели несовместим с оркестратором.'
+    active = [(engine, value) for engine, value in choices.items() if value]
+    if len(active) == 1:
+        engine, value = active[0]
+        if value == 'full' or (value == 'duo' and engine == DUO_ENGINE):
+            return True, ''
+    return False, 'Выбери один профиль: Full или «Opus → Sonnet» (только Claude). Связки Claude и Codex убраны.'
 
 
 def validate_stored_choices(choices):
@@ -63,14 +66,14 @@ class ManualScenarioMixin:
         result = super().public()
         result['manual_scenario'] = dict(choices=copy.deepcopy(self.manual_choices) or dict.fromkeys(ENGINES),
                                          legacy=self.manual_choices is None)
-        result['capabilities'] = dict(manual_scenario=True,full_only=False,orchestrator=True)
+        result['capabilities'] = dict(manual_scenario=True,full_only=False,orchestrator=False,duo=True)
         for data in result['engines'].values():
-            data['profiles']=[p for p in data['profiles'] if p['kind'] in ('full','orchestrator')]
+            data['profiles']=[p for p in data['profiles'] if p['kind'] in ('full','duo')]   # связок в списке больше нет
         if self.manual_choices is not None:
             for engine, choice in self.manual_choices.items():
                 data = result['engines'][engine]
                 free = choice is None and engine == 'codex' and self._codex_free()
-                data.update(role={'full':'solo', 'orchestrator':'leader', 'executor':'executor'}.get(choice, 'solo' if free else 'paused'),
+                data.update(role={'full':'solo', 'duo':'solo', 'orchestrator':'leader', 'executor':'executor'}.get(choice, 'solo' if free else 'paused'),
                             active=choice is not None or free)
                 if choice is None and not free:
                     data.update(selected=None, label=self.actor(engine)+' · не участвует')
@@ -102,16 +105,17 @@ class ManualScenarioMixin:
                 return dict(ok=False, message=message)
             if choices == self.manual_choices:
                 return dict(ok=True, message='Этот сценарий уже действует.', state=self.public())
-            if 'full' in choices.values() and str(confirm).strip().casefold() != 'подтверждаю':
+            if any(v in ('full', 'duo') for v in choices.values()) and str(confirm).strip().casefold() != 'подтверждаю':
                 return dict(ok=False, confirmation_required=True, word='подтверждаю',
                             message='Подтверди весь сценарий: вторая модель не будет участвовать.')
             self.manual_choices = copy.deepcopy(choices)
             self.leader = next((e for e in ENGINES if choices[e] == 'orchestrator'), None)
-            self.selected = {e: choices[e] if choices[e] in ('orchestrator', 'executor')
-                             else self.last_solo[e] for e in ENGINES}
+            self.selected = {e: self.last_solo[e] for e in ENGINES}
             for e in ENGINES:
                 if choices[e] == 'full':
                     self.selected[e] = self.last_solo[e] = e+'_solo_full'
+                elif choices[e] == 'duo':
+                    self.selected[e] = DUO_ID   # last_solo не трогаем: выход из «Opus → Sonnet» вернёт Full
             self.service = None
             self.restore = None
             self.until = 0
@@ -125,6 +129,7 @@ class ManualScenarioMixin:
         stale = self._check_revision(revision)
         if stale:
             return stale
-        if engine not in ENGINES or profile_id != engine+'_solo_full':
-            return dict(ok=False, message='Выбери оркестратора в общем окне и подключи вторую модель перед применением.')
-        return self.apply_scenario({e: 'full' if e == engine else None for e in ENGINES}, confirm, revision)
+        if engine not in ENGINES or profile_id not in (engine+'_solo_full', DUO_ID if engine == DUO_ENGINE else None):
+            return dict(ok=False, message='Выбери профиль в общем окне: Full или «Opus → Sonnet» (только Claude).')
+        role = 'duo' if profile_id == DUO_ID else 'full'
+        return self.apply_scenario({e: role if e == engine else None for e in ENGINES}, confirm, revision)

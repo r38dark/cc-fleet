@@ -712,16 +712,13 @@ html:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account:focus-
 /* Full другой модели недоступен при выбранном оркестраторе. */
 #cxMenu.mono-profile-window .full-choice[aria-disabled="true"]{border-color:var(--fleet-line);background:var(--bg);cursor:not-allowed}
 #cxMenu.mono-profile-window .full-choice[aria-disabled="true"] .cxpt,#cxMenu.mono-profile-window .full-choice[aria-disabled="true"] .full-choice-top,#cxMenu.mono-profile-window .full-choice[aria-disabled="true"] .fleet-profile-choose{opacity:.48}
-.manual-companion{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin:6px 14px 10px;padding:8px 10px;border:1px solid var(--fleet-accent);border-radius:7px;background:color-mix(in srgb,var(--fleet-accent) 7%,var(--bg));font-size:11px;line-height:1.4;color:var(--fleet-muted)}
-.manual-companion button{margin:0;padding:5px 8px;min-height:27px;background:transparent;border:1px solid var(--fleet-accent);border-radius:5px;color:var(--fleet-accent);font-size:11px;box-shadow:none}
-.manual-companion button[aria-pressed="true"]{background:var(--fleet-accent);color:#0b1714}
 #cxMenu.mono-profile-window.fleet-profile-desktop .full-choice{min-height:0;margin:8px 14px!important;padding:10px 14px!important}
 #cxMenu.mono-profile-window.fleet-profile-desktop .full-choice-top{margin-bottom:6px}
 #cxMenu.mono-profile-window.fleet-profile-desktop .full-choice-check{width:22px;height:22px;font-size:15px}
 #cxMenu.mono-profile-window.fleet-profile-desktop .manual-role.full-choice .cxpnm{font-size:16px;line-height:1.3}
 #cxMenu.mono-profile-window.fleet-profile-desktop .full-choice .cxps{font-size:11.5px;line-height:1.5}
 #cxMenu.mono-profile-window.fleet-profile-desktop .full-choice .fleet-profile-card-footer{padding-top:6px}
-@media(max-width:700px){#cxMenu.mono-profile-window .full-choice{padding:13px!important}.full-choice-top{margin-bottom:7px}.manual-companion{margin:6px 12px 12px}.manual-companion button{min-height:34px}}
+@media(max-width:700px){#cxMenu.mono-profile-window .full-choice{padding:13px!important}.full-choice-top{margin-bottom:7px}}
 
 
 
@@ -1935,52 +1932,36 @@ JS = r'''
   const scenario=mirrorState?.manual_scenario;
   if(scenario&&!scenario.legacy)return scenario.choices;
   const choices={claude:null,codex:null};
-  for(const engine of manualEngines){const e=mirrorState?.engines?.[engine];if(e?.applied)choices[engine]={solo:'full',leader:'orchestrator',executor:'executor'}[e.role]||null;}
+  for(const engine of manualEngines){const e=mirrorState?.engines?.[engine];if(e?.applied)choices[engine]=e.selected==='claude_opus_sonnet'?'duo':{solo:'full',leader:'orchestrator',executor:'executor'}[e.role]||null;}
   return choices;
  };
  const manualProdNote=()=>{try{return window.fleetRemote&&window.fleetRemote.mode().active?' · Claude работает на PROD':''}catch(_){return ''}};
  paletteTools.remove();paletteFooter.remove();
  const manualThemeBefore=mirrorTheme;
- mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,'Full или Оркестратор');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля')};
+ mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,'Full или Opus → Sonnet');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля')};
  function manualSync(){
   if(!manualDraft||!manualDirty){manualDraft={...manualCurrent()};manualRevision=mirrorState.revision;manualDirty=false}
  }
- function manualReason(engine,role){
-  const other=manualOther(engine);
-  if(manualDraft[other]==='orchestrator')return role==='full'?mirrorNames[other]+' выбрана оркестратором. Full '+mirrorNames[engine]+' заблокирован.':'Ведущая уже выбрана: '+mirrorNames[other]+'. Сними её выбор, чтобы сменить оркестратора.';
-  return '';
- }
+ function manualReason(engine,role){return ''}
  function manualStatus(){
   if(mirrorState.updating)return {valid:false,text:'Завершается обновление панели. Профиль можно применить после проверки.'};
   if(manualRevision!==mirrorState.revision)return {valid:false,text:'Профиль изменился в другом окне. Верни текущий выбор перед применением.',stale:true};
-  const leader=manualEngines.find(engine=>manualDraft[engine]==='orchestrator'),full=manualEngines.find(engine=>manualDraft[engine]==='full'),roles=manualEngines.filter(engine=>manualDraft[engine]);
-  if(leader){const other=manualOther(leader);return manualDraft[other]==='executor'?{valid:true,text:mirrorNames[leader]+' → '+mirrorNames[other]+' · выполнение шагов подключено'+manualProdNote()}:{valid:false,text:mirrorNames[leader]+' — оркестратор. Подключи '+mirrorNames[other]+' для выполнения подтверждённых шагов.'}}
-  if(full&&roles.length===1)return {valid:true,text:mirrorNames[full]+' Full · самостоятельно; '+mirrorNames[manualOther(full)]+' не участвует'};
+  const roles=manualEngines.filter(engine=>manualDraft[engine]);
+  if(roles.length===1){const engine=roles[0],role=manualDraft[engine];return {valid:true,text:(role==='duo'?'Claude · Opus → Sonnet: Opus ставит задачи, Sonnet пишет код; Codex не участвует':mirrorNames[engine]+' Full · самостоятельно; '+mirrorNames[manualOther(engine)]+' не участвует')+(engine==='claude'?manualProdNote():'')}}
   if(roles.length===2&&manualEngines.every(e=>manualDraft[e]==='full'))return {valid:false,text:'Claude и Codex работают самостоятельно в отдельных консолях. Текущий профиль уже действует.'};
-  return {valid:false,text:'Выбери Full или Оркестратор. До применения текущая работа продолжается.'};
+  return {valid:false,text:'Выбери Full или Opus → Sonnet. До применения текущая работа продолжается.'};
  }
  function manualSelect(engine,role){
-  if(mirrorBusy||!['full','orchestrator'].includes(role))return;manualSync();
+  if(mirrorBusy||!['full','duo'].includes(role))return;manualSync();
   const reason=manualReason(engine,role);if(reason){toast(reason);return}
-  if(role==='orchestrator'&&manualDraft[engine]===role)manualDraft={claude:null,codex:null};
-  else manualDraft={claude:null,codex:null,[engine]:role};
+  manualDraft={claude:null,codex:null,[engine]:role};
   manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
  }
- function manualCompanion(engine){
-  if(mirrorBusy||manualDraft[manualOther(engine)]!=='orchestrator')return;
-  manualDraft={...manualDraft,[engine]:manualDraft[engine]==='executor'?null:'executor'};
-  manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();
- }
- function manualCardTitle(engine,role){return mirrorNames[engine]+(role==='orchestrator'?' · оркестратор':' Full · самостоятельно');}
+ function manualCardTitle(engine,role){return role==='duo'?'Claude · Opus → Sonnet':mirrorNames[engine]+' Full · самостоятельно';}
  function manualRoleCard(engine,role){
-  const state=mirrorState.engines[engine],id=role==='full'?engine+'_solo_full':'orchestrator',p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]===role,reason=manualReason(engine,role),info=mirrorInfo[engine].has(id),current=state.selected===id&&['solo','leader'].includes(state.role),label=role==='full'?mirrorNames[engine]+' Full':mirrorNames[engine]+' · оркестратор';
-  const copy=role==='full'?'Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.':'Планирует и проверяет работу. Вторая модель выполняет шаги после твоего подтверждения.';
-  return '<div class="cxprof fleet-profile-card manual-role full-choice'+(role==='orchestrator'?' orchestrator-choice':'')+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="'+role+'" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="full-choice-top"><span class="full-choice-check" aria-hidden="true">'+(selected?'✓':'')+'</span><span class="full-choice-badge">'+(reason?'Заблокирован':selected?'Выбран':current?'Текущая сессия':role==='full'?'Full':'Оркестратор')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(label)+'</span></span><span class="cxps">'+copy+'</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(reason?'Недоступен при выбранном оркестраторе':selected?(role==='orchestrator'?'Нажми повторно, чтобы снять':manualDirty?'Выбран для применения':'Действующий профиль'):'Нажми, чтобы выбрать')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
- }
- function manualCompanionPanel(engine){
-  const leader=manualOther(engine);if(manualDraft[leader]!=='orchestrator')return '';
-  const selected=manualDraft[engine]==='executor';
-  return '<section class="manual-companion" data-engine="'+engine+'"><span>'+acctEsc(mirrorNames[engine]+' выполняет подтверждённые шаги '+mirrorNames[leader]+'.')+'</span><button type="button" data-manual-action="companion" data-companion-engine="'+engine+'" aria-pressed="'+selected+'">'+(selected?'✓ Подключён · нажми, чтобы отключить':'Подключить '+mirrorNames[engine]+' для выполнения шагов')+'</button></section>';
+  const state=mirrorState.engines[engine],id=role==='full'?engine+'_solo_full':'claude_opus_sonnet',p=state.profiles.find(profile=>profile.id===id),selected=manualDraft[engine]===role,reason=manualReason(engine,role),info=mirrorInfo[engine].has(id),current=state.selected===id&&state.role==='solo',label=role==='full'?mirrorNames[engine]+' Full':'Claude · Opus → Sonnet';
+  const copy=role==='full'?'Самостоятельно планирует, выполняет и проверяет задачу. Полные доступные права.':'Opus ставит задачи и принимает результат, Sonnet пишет код. Права — как у Full. Модели — последние из пула.';
+  return '<div class="cxprof fleet-profile-card manual-role full-choice'+(role==='duo'?' duo-choice':'')+(selected?' act':'')+'" data-engine="'+engine+'" data-profile-id="'+id+'" data-id="'+id+'" data-manual-role="'+role+'" role="radio" aria-checked="'+selected+'" aria-disabled="'+!!reason+'" tabindex="0"'+(reason?' title="'+acctEsc(reason)+'"':'')+'><div class="full-choice-top"><span class="full-choice-check" aria-hidden="true">'+(selected?'✓':'')+'</span><span class="full-choice-badge">'+(reason?'Заблокирован':selected?'Выбран':current?'Текущая сессия':role==='full'?'Full':'Opus → Sonnet')+'</span></div><div class="cxpt"><span class="cxpn"><span class="cxpnm">'+acctEsc(label)+'</span></span><span class="cxps">'+copy+'</span>'+(info?monoDetails(p):'')+'</div><div class="fleet-profile-card-footer"><span class="fleet-profile-choose">'+(selected?(manualDirty?'Выбран для применения':'Действующий профиль'):'Нажми, чтобы выбрать')+'</span><button type="button" class="fleet-profile-more" aria-disabled="false" data-mirror-action="info" aria-expanded="'+info+'">'+(info?'Свернуть':'Подробнее')+'</button></div></div>';
  }
  const manualPaletteBefore=paintMirrorPalette;
  paintMirrorPalette=function(){
@@ -1989,10 +1970,10 @@ JS = r'''
   const status=manualStatus(),recovering=!!mirrorState.recovery?.blocked,dirty=manualDirty||recovering,signature=JSON.stringify([mirrorState.revision,mirrorState.updating,recovering,manualDraft,mirrorInfo.claude.size,mirrorInfo.codex.size,mirrorBusy]);
   if(recovering)status.text='Автоматические перезапуски остановлены. Выбери профиль и повтори восстановление подключения.';
   if(signature===monoSignature){monoCenter();return}monoSignature=signature;
-  let html='<div class="mono-provider-grid manual-provider-grid" role="radiogroup" aria-label="Full или Оркестратор">';
+  let html='<div class="mono-provider-grid manual-provider-grid" role="radiogroup" aria-label="Full или Opus → Sonnet">';
   for(const engine of manualEngines){
    const selected=manualDraft[engine];
-   html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="Профили '+mirrorNames[engine]+'"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+(selected?acctEsc(selected==='executor'?'Выполнение шагов подключено':manualCardTitle(engine,selected)):acctEsc(mirrorState.engines[engine].label))+'</span></header>'+manualRoleCard(engine,'full')+manualRoleCard(engine,'orchestrator')+manualCompanionPanel(engine)+'</section>';
+   html+='<section class="mono-provider" data-engine="'+engine+'" aria-label="Профили '+mirrorNames[engine]+'"><header class="mono-provider-head"><strong>'+mirrorNames[engine]+'</strong><span>'+(selected?acctEsc(manualCardTitle(engine,selected)):acctEsc(mirrorState.engines[engine].label))+'</span></header>'+manualRoleCard(engine,'full')+(engine==='claude'?manualRoleCard(engine,'duo'):'')+'</section>';
   }
   html+='</div><div class="manual-apply-bar"><div class="manual-selection-summary" role="status"><strong>'+(!dirty?(status.valid?'Действующий профиль':'Текущие сессии работают'):status.valid?'Готово к применению':'Выбери профиль')+'</strong><span>'+acctEsc(status.text)+'</span></div><div class="manual-scenario-actions">'+(dirty?'<button type="button" class="ghostbtn" data-manual-action="restore">Вернуть текущий</button>':'')+'<button type="button" class="manual-apply" data-manual-action="apply" '+(!status.valid||!dirty||mirrorBusy?'disabled':'')+'>'+(mirrorBusy?'Применение…':recovering?'Повторить восстановление':!dirty?(status.valid?'Профиль применён':'Выбери профиль'):'Применить профиль')+'</button></div></div>';
   profileRoot.innerHTML=html;paletteEmpty.hidden=true;profileBody.scrollTop=scroll;
@@ -2004,13 +1985,13 @@ JS = r'''
  mirrorProfileClick=function(event){
   if(monoView!=='profiles')return manualClickBefore(event);
   const action=event.target.closest('[data-manual-action]')?.dataset.manualAction;
-  if(action){event.stopImmediatePropagation();if(mirrorBusy)return;if(action==='apply'){manualApplyScenario();return}if(action==='companion'){manualCompanion(event.target.closest('[data-companion-engine]').dataset.companionEngine);return}manualDraft=action==='restore'?{...manualCurrent()}:{claude:null,codex:null};manualRevision=mirrorState.revision;manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();return}
+  if(action){event.stopImmediatePropagation();if(mirrorBusy)return;if(action==='apply'){manualApplyScenario();return}manualDraft=action==='restore'?{...manualCurrent()}:{claude:null,codex:null};manualRevision=mirrorState.revision;manualDirty=!manualSame(manualDraft,manualCurrent());monoSignature='';cxpRender();return}
   const card=event.target.closest('[data-manual-role]');if(!card)return;event.stopImmediatePropagation();const engine=card.dataset.engine,role=card.dataset.manualRole,sub=event.target.closest('[data-mirror-action]')?.dataset.mirrorAction;
   if(sub==='info'){const id=card.dataset.profileId;mirrorInfo[engine].has(id)?mirrorInfo[engine].delete(id):mirrorInfo[engine].add(id);monoSignature='';cxpRender();return}
   if(!event.target.closest('.cxpinfo'))manualSelect(engine,role);
  }
  const manualApplyBefore=mirrorApply;
- mirrorApply=function(engine,id,confirmation=''){if(monoView==='profiles'&&!menu.hidden){manualSelect(engine,id.endsWith('_solo_full')?'full':id);return Promise.resolve()}return manualApplyBefore(engine,id,confirmation)};
+ mirrorApply=function(engine,id,confirmation=''){if(monoView==='profiles'&&!menu.hidden){manualSelect(engine,id.endsWith('_solo_full')?'full':id==='claude_opus_sonnet'?'duo':id);return Promise.resolve()}return manualApplyBefore(engine,id,confirmation)};
  async function manualApplyScenario(confirmation='',choices={...manualDraft},revision=manualRevision){
   if(mirrorBusy||!manualStatus().valid)return;mirrorBusy=true;menu.setAttribute('aria-busy','true');
   try{
@@ -2032,10 +2013,9 @@ JS = r'''
    const TPO={
     claude:[
      {id:'full',name:'Claude Full · самостоятельно',desc:'Планирует, выполняет и проверяет задачу сам. Полные доступные права.',draft:{claude:'full',codex:null},steps:['Claude работает один','Codex не участвует',SOLO]},
-     {id:'orch',name:'Claude → Codex',desc:'Claude планирует и проверяет, Codex выполняет шаги после твоего подтверждения.',draft:{claude:'orchestrator',codex:'executor'},steps:['Claude — оркестратор, Codex — исполнитель','Шаги Codex выполняются после твоего подтверждения']}],
+     {id:'duo',name:'Claude · Opus → Sonnet',desc:'Opus ставит задачи и принимает результат, Sonnet пишет код. Права — как у Full.',draft:{claude:'duo',codex:null},steps:['Opus — оркестратор, Sonnet — исполнитель','Модели — последние из пула','Codex не участвует',SOLO]}],
     codex:[
-     {id:'full',name:'Codex Full · самостоятельно',desc:'Планирует, выполняет и проверяет задачу сам. Полные доступные права.',draft:{claude:null,codex:'full'},steps:['Codex работает один','Claude не участвует',SOLO]},
-     {id:'orch',name:'Codex → Claude',desc:'Codex планирует и проверяет, Claude выполняет шаги после твоего подтверждения.',draft:{claude:'executor',codex:'orchestrator'},steps:['Codex — оркестратор, Claude — исполнитель','Шаги Claude выполняются после твоего подтверждения']}]
+     {id:'full',name:'Codex Full · самостоятельно',desc:'Планирует, выполняет и проверяет задачу сам. Полные доступные права.',draft:{claude:null,codex:'full'},steps:['Codex работает один','Claude не участвует',SOLO]}]
    };
    let tp=null,tpAnchor=null,tpEng='',tpSel='',tpBusy=false;
    const tpOpts=()=>{const cur=manualCurrent();return TPO[tpEng].map(o=>({...o,cur:o.id==='full'?cur[tpEng]==='full':manualSame(o.draft,cur),why:''}))};

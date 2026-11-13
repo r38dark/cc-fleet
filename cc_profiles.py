@@ -12,7 +12,7 @@ import time
 import uuid
 
 from cc_claude_profile import ClaudeProfile, ProfileError, atomic
-from cc_profile_state import ProfileScenarios, ProfileState, ENGINES
+from cc_profile_state import ProfileScenarios, ProfileState, ENGINES, DUO_ID
 
 class NativeProfiles:
     def __init__(self, ns):
@@ -67,6 +67,25 @@ class NativeProfiles:
         mode='self' if service or data['role']=='executor' else profile['mode']
         return dict(role=data['role'],profile=data['selected'],base=data['base_selected'],access=access,mode=mode,task_rights=profile.get('task_rights','dev'),leader=state.leader,service=copy.deepcopy(service))
 
+    def duo_models(self):
+        """Последние Opus и Sonnet из пула моделей панели: чистые id без дат, скрытые в панели не берём."""
+        cfg=self.ns['cfg']();hidden=set(cfg.get('model_hidden') or []);enabled=cfg.get('enabled_models') or None;best={}
+        for mid in dict(self.ns['all_models']() or {}):
+            m=re.fullmatch(r'claude-(opus|sonnet)-(\d{1,2})(?:-(\d{1,2}))?',mid)
+            if not m or mid in hidden or enabled and mid not in enabled:continue
+            ver=(int(m.group(2)),int(m.group(3) or 0))
+            if m.group(1) not in best or ver>best[m.group(1)][0]:best[m.group(1)]=(ver,mid)
+        if 'opus' not in best or 'sonnet' not in best:raise ProfileError('duo_models_missing')
+        return best['opus'][1],best['sonnet'][1]
+
+    def _model_name(self, mid):
+        return (self.ns['all_models']() or {}).get(mid,mid)
+
+    def duo_agents(self, sonnet):
+        """Помощник-исполнитель для --agents: Sonnet, права — как у сессии."""
+        return dict(executor=dict(description='Исполнитель на Sonnet: пишет код и правит файлы по задаче оркестратора, возвращает что изменил и чем проверил.',
+            prompt='Ты исполнитель, Sonnet. Выполняй только поставленную задачу и её ограничения, не расширяй объём и не меняй соседний код. В конце верни: изменённые файлы, суть правок, результат проверок, что не удалось.',model=sonnet))
+
     def prompt(self, state, e):
         data=state.public()['engines'][e];other='codex' if e=='claude' else 'claude';name=e.capitalize() if e=='claude' else 'Codex';op=other.capitalize() if other=='claude' else 'Codex'
         prefix='[Профиль балансера: '+data['label']+'.] '
@@ -74,6 +93,9 @@ class NativeProfiles:
         if data['role']=='leader':
             out=self.manager.exchange(e)/'outbox/task.md'
             return prefix+f'Ты ведущий, {op} исполнитель. Проект самостоятельно не изменяй. Один проверяемый шаг запиши в {out}; первая строка права: чтение / дев / полные. Шаг уходит исполнителю только после подтверждения человека в балансере. Не вызывай второго исполнителя самостоятельно и не создавай встречные связки. После получения результата проверь его относительно цели и подготовь следующий шаг либо сообщи итог.'
+        if e=='claude' and data['base_selected']==DUO_ID:
+            opus,sonnet=self.duo_models();opus,sonnet=self._model_name(opus),self._model_name(sonnet)
+            return prefix+f'Ты {opus}, оркестратор; исполнитель — {sonnet}, его вызываешь инструментом Agent (subagent_type=executor). Сам проект не меняй: код, правки файлов и команды, меняющие систему, поручай исполнителю. Ставь ему проверяемую задачу: цель, пути файлов, ограничения, что вернуть и как проверить. Результат принимаешь сам: читай изменения и запускай проверки, отчёту на слово не верь. Читать, искать, запускать проверки, вести память, журнал и карточку дела, отвечать человеку можешь сам. Права — как у Full, секреты не выводи. Codex в этом профиле не участвует.'
         if data['role']=='executor':return prefix+f'Ты исполнитель {op}. Выполняй только подтверждённый шаг и его ограничения. Не делегируй задачу ведущему или другим агентам. Верни проверенный результат и проверки.'
         return prefix+'Работай самостоятельно в пределах настроенных прав пользователя ОС. '+self.bridge.team_note('Другой исполнитель не используется.')+' Согласование изменений с человеком сохраняется; секреты не выводи.'
 
@@ -81,8 +103,25 @@ class NativeProfiles:
         plan=self.plan(state,'claude');cwd=self.claude_cwd if plan['access']=='full' else str(self.manager.exchange('claude')) if plan['role']=='leader' else self.claude_work
         project=self.bridge.project_dir()
         workspace=cwd
-        return dict(expires=0,access=plan['access'],paused=plan['role']=='paused',cwd=self.claude_cwd,workspace=workspace,
+        policy=dict(expires=0,access=plan['access'],paused=plan['role']=='paused',cwd=self.claude_cwd,workspace=workspace,
                     write_roots=[workspace],read_roots=list(dict.fromkeys([workspace,str(self.manager.exchange('claude')),str(self.manager.exchange('codex'))]+([project] if project else []))))
+        if plan['base']==DUO_ID:
+            # «Opus → Sonnet»: модель консоли и помощника задаёт запуск, сторож модели ждёт Opus, а не дефолт из settings.json
+            opus,sonnet=self.duo_models()
+            policy.update(expected_model=opus,subagent_model=sonnet,agents=self.duo_agents(sonnet))
+        return policy
+
+    def _claude_snapshot(self, snapshot, before, after):
+        """Модель консоли под профиль: «Opus → Sonnet» — последний Opus, выход из него — дефолт из settings.json (Sonnet)."""
+        was=self.plan(before,'claude')['base']==DUO_ID;now=self.plan(after,'claude')['base']==DUO_ID
+        if was==now:return snapshot
+        snap=dict(snapshot)
+        model=self.duo_models()[0] if now else (self.ns['jload'](self.ns['SETTINGS'],{}) or {}).get('model') or snapshot['model']
+        if model!=snap['model']:
+            snap['model']=model
+            levels=self.ns['effort_support'](model) if 'effort_support' in self.ns else None
+            if snap.get('effort') and levels is not None and snap['effort'] not in levels:snap['effort']=None
+        return snap
 
     def capture(self, changed):
         out={}
@@ -122,13 +161,14 @@ class NativeProfiles:
                          else captured.get('claude',{}).get('bypass',False))
             if not actual_full:raise ProfileError('full_access_not_active')
         if 'claude' in changed and 'claude_remote' in captured:
+            if self.plan(after,'claude')['base']==DUO_ID:raise ProfileError('claude_duo_prod_unsupported')
             rm=self.ns['REMOTE_MODE']
             if self.plan(after,'claude')['role'] in rm.ROLE_TEXT and not rm.prod_ready():raise ProfileError('claude_prod_not_ready')
         if 'claude' in changed and 'claude_remote' not in captured:Path(self.claude_work).mkdir(parents=True,exist_ok=True)
         if 'claude' in changed and 'claude_remote' not in captured:
             if captured.get('claude_absent'):
                 if not self.claude_policy(after)['paused']:raise ProfileError('claude_history_unknown')
-            else:self.claude.prepare(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
+            else:self.claude.prepare(self._claude_snapshot(captured['claude'],before,after),self.claude_policy(after),self.prompt(after,'claude'))
         if 'codex' in changed and not captured.get('codex_runtime',{}).get('thread_id'):raise ProfileError('codex_history_unknown')
         if after.service and after.service['engine']=='codex' and (after.service['kind']=='emergency' or after.service.get('emergency')):
             plan,error=self.emergency._plan()
@@ -195,7 +235,7 @@ class NativeProfiles:
                     if saved.get(key) and current.get(key)!=saved[key]:raise ProfileError('codex_'+key+'_changed')
             if plan['role']=='paused':self._codex_pause(True)
         if 'claude' in changed and 'claude_remote' in captured:self._announce(after)
-        elif 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(captured['claude'],self.claude_policy(after),self.prompt(after,'claude'))
+        elif 'claude' in changed and not captured.get('claude_absent'):self.claude.apply(self._claude_snapshot(captured['claude'],before,after),self.claude_policy(after),self.prompt(after,'claude'))
 
     def rollback(self, before, changed, captured):
         self._codex_pause(False)
@@ -278,7 +318,7 @@ class Profiles:
         if self.path.exists():
             raw=json.loads(self.path.read_text());self.state=ProfileState.from_data(raw['core'],clock);self.managed.update(raw.get('managed') or {})
             for engine in ENGINES:
-                if raw['core']['selected'][engine] not in ('orchestrator', 'executor', engine+'_solo_full'):
+                if raw['core']['selected'][engine] not in ('orchestrator', 'executor', engine+'_solo_full', DUO_ID):
                     self.managed[engine] = False
             native.claude_cwd=raw.get('claude_cwd') or native.claude_cwd
         else:self.state=native.seed();self.save()
@@ -417,7 +457,7 @@ class Profiles:
                 code=str(exc)
                 failed['failure']=dict(type=type(exc).__name__,code=code if re.fullmatch(r'[a-z_]+',code) else None)
                 atomic(self.pending,failed)
-            reasons={'codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.','claude_prod_not_ready':'Claude на PROD не отвечает или не запущен. Проверь вкладку «Claude PROD» и повтори выбор.','claude_prod_role_failed':'Не удалось сообщить роль Claude на PROD. Проверь связь с PROD и повтори выбор.'}
+            reasons={'duo_models_missing':'В пуле моделей нет Opus или Sonnet. Добавь их в панели («Проверить новые модели») и повтори выбор.','claude_duo_prod_unsupported':'Профиль «Opus → Sonnet» пока работает только на DEV. Пока включён PROD, выбери Full.','codex_resume_locked':'Беседа ещё занята предыдущим подключением Codex. Дождись освобождения беседы; автоматические перезапуски остановлены.','full_access_not_active':'Сначала примени Full к выбранной модели.','emergency_not_configured':'Аварийный доступ Codex ещё не настроен.','claude_history_unknown':'Открой нужную беседу Claude в рабочей консоли и повтори выбор.','claude_history_missing':'История выбранной беседы Claude недоступна. Проверь её в консоли.','codex_history_unknown':'Открой нужную беседу Codex через cxw и повтори выбор.','console_busy':'Дождись завершения текущего ответа и повтори выбор.','claude_prod_not_ready':'Claude на PROD не отвечает или не запущен. Проверь вкладку «Claude PROD» и повтори выбор.','claude_prod_role_failed':'Не удалось сообщить роль Claude на PROD. Проверь связь с PROD и повтори выбор.'}
             self.error='Переключение отменено. '+reasons.get(str(exc),'Консоль не подтвердила применение профиля; проверь её экран перед повтором.')
             revoked=bool(before.service and before.service['engine']=='codex' and (before.service['kind']=='emergency' or before.service.get('emergency')) and hasattr(self.native,'emergency') and not self.native.emergency.active() and self.pending.exists())
             if revoked:
@@ -465,8 +505,8 @@ class Profiles:
         if not self.lock.acquire(blocking=False):return dict(ok=False,message='Переключение уже выполняется. Дождись результата.')
         try:
             candidate=ProfileState.from_data(self.state.export(),self.clock)
-            if action=='apply' and not self.managed[e] and body.get('id')==e+'_solo_full' and body.get('confirm')!='подтверждаю':
-                return dict(ok=False,confirmation_required=True,word='подтверждаю',message='Подтверди применение Full к текущей сессии.')
+            if action=='apply' and not self.managed[e] and body.get('id') in (e+'_solo_full',DUO_ID) and body.get('confirm')!='подтверждаю':
+                return dict(ok=False,confirmation_required=True,word='подтверждаю',message='Подтверди применение профиля к текущей сессии.')
             if action=='apply':result=candidate.apply(e,body.get('id'),body.get('confirm',''),body.get('revision'))
             elif action=='stop':result=candidate.stop_service(e,body.get('revision'))
             elif action=='config':result=candidate.configure(e,body.get('enabled'),body.get('emergency',False),body.get('confirm',''),body.get('revision'))
