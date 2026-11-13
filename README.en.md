@@ -872,6 +872,8 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex until it is connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex and Telegram).
+- **v2.0.36** — A panel update no longer breaks the Claude console: the input frame, limit bars and mode line stay in place. Active account windows share one width: the running agent window no longer shrinks to its content.
+
 - **v2.0.35** — Handoff keeps Claude and Codex independent: each agent has its own quota banner and pause. Console quota icons show a reset countdown per window (5 h and weekly), larger and with higher contrast. Codex: 90/99% thresholds, queued tasks survive a restart, manual Pause off; a real 100% is never bypassed.
 
 - **v2.0.34** — Removed the third agent, its profiles and reserve mode while preserving shared handoff and conversation recovery. The console uses the freed space. Pause and exhausted limits appear as badges on active account borders. An exhausted agent has a translucent cross in its console; pause takes priority. Failed Claude Code and Codex updates offer Retry. The update window now polls Codex installation progress.

@@ -91,5 +91,24 @@ class SingleClaudeRow(unittest.TestCase):
         self.assertNotIn('html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{grid-column:1/-1}', css)  # без no-prod две строки Claude остаются рядом
 
 
+class TileWidthTests(unittest.TestCase):
+    """Окна аккаунтов одной ширины: список «ag-live-*» без тела не должен склеиваться с соседним правилом и давать плиткам
+    работающего агента display:inline-flex (ширина по содержимому)."""
+
+    def test_live_selectors_are_not_glued_to_the_range_rule(self):
+        css = cc_overview.CSS
+        self.assertNotIn('.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude,', css)
+        self.assertNotIn('.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex,', css)
+        self.assertIn('.fleet-compact-window[data-window="session"] .fleet-compact-range{display:inline-flex', css)
+
+    def test_every_selector_list_line_ending_with_comma_is_followed_by_a_selector(self):
+        """Общая защита: после строки на запятую не должен идти комментарий или пустая строка (такая склейка и дала баг)."""
+        lines = cc_overview.CSS.split("\n")
+        for i, line in enumerate(lines[:-1]):
+            if line.rstrip().endswith(",") and line.lstrip().startswith("html:root"):
+                nxt = lines[i + 1].lstrip()
+                self.assertTrue(nxt and not nxt.startswith("/*"), "после «%s…» идёт комментарий или пусто" % line.strip()[:70])
+
+
 if __name__ == '__main__':
     unittest.main()

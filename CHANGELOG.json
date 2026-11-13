@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.36",
+      "date": "2026-11-13",
+      "ru": {
+        "t": "Консоль после обновления цела, окна аккаунтов одной ширины",
+        "p": [
+          "Обновление панели больше не ломает консоль Claude: рамка ввода, полоски лимитов и строка режима не пропадают.",
+          "Окна «Активные аккаунты» одной ширины: окно работающего агента не сжимается по содержимому."
+        ]
+      },
+      "en": {
+        "t": "Console survives updates, account windows share one width",
+        "p": [
+          "A panel update no longer breaks the Claude console: the input frame, limit bars and mode line stay in place.",
+          "Active account windows share one width: the running agent window no longer shrinks to its content."
+        ]
+      }
+    },
+    {
       "v": "2.0.35",
       "date": "2026-11-13",
       "ru": {
