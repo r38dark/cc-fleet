@@ -9,6 +9,8 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 MEMBERS_FILE = os.environ.get("CC_REMOTE_MEMBERS") or BASE + "/remote_members.json"
 STATE_FILE = os.environ.get("CC_REMOTE_STATE") or BASE + "/remote_state.json"
 CACHE_SEC = 180
+NEAR_SEC = 60        # 80–98 %: чаще, но под бюджет usage у Anthropic
+LIMIT_SEC = 300      # 99–100 %: упёрлись в потолок — только проверка на внезапный сброс
 LINK_GRACE = 90.0   # обрыв ssh короче этого (дом/VPN моргнул) не показываем как «нет связи»: держим прежний вид
 LINK_RETRY = 20.0   # ...а перепроверяем через столько секунд, не через весь кэш
 USAGE_REMOTE = "/root/cc-remote/usage.py"
@@ -97,14 +99,23 @@ def expired_view(row, now=None):
     return out
 
 
+def poll_interval(old):
+    """Как часто спрашивать второй сервер. У границы чаще, но не чаще бюджета Anthropic (~28 запросов/ч на
+    аккаунт: раньше при ≥80 % было 30 с → 429 и цифры залипали на минуты). На 99–100 % окно упёрлось в потолок:
+    только редкая проверка, не случился ли внезапный бесплатный сброс лимитов."""
+    top = max(float((old.get(k) or {}).get("pct") or 0) for k in ("five_hour", "seven_day"))
+    if top >= 99:
+        return LIMIT_SEC
+    return NEAR_SEC if top >= 80 else CACHE_SEC
+
+
 def fetch_limits(mid, force=False):
     m = members().get(mid)
     if not m:
         return None
     state = jload(STATE_FILE, {})
     old = state.get(mid) or {}
-    near = any(float((old.get(k) or {}).get("pct") or 0) >= 80 for k in ("five_hour", "seven_day"))
-    cache_sec = 30 if near else CACHE_SEC
+    cache_sec = poll_interval(old)
     if not force and time.time() - float(old.get("ts") or 0) < cache_sec:
         return old
     code, text = ssh_run(m, "python3 " + USAGE_REMOTE)

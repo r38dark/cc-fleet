@@ -125,5 +125,23 @@ class RemoteLimits(unittest.TestCase):
         self.assertEqual(cc_remote.members(), {})
 
 
+class PollInterval(unittest.TestCase):
+    """Интервал опроса второго сервера по проценту лимита (бюджет usage ~28/ч)."""
+
+    def test_intervals(self):
+        import cc_remote as R
+        row = lambda a, b: {"five_hour": {"pct": a}, "seven_day": {"pct": b}}
+        self.assertEqual(R.poll_interval({}), R.CACHE_SEC)
+        self.assertEqual(R.poll_interval(row(20, 79.9)), R.CACHE_SEC)
+        self.assertEqual(R.poll_interval(row(20, 80)), 60)
+        self.assertEqual(R.poll_interval(row(98, 10)), 60)
+        self.assertEqual(R.poll_interval(row(99, 10)), 300)
+        self.assertEqual(R.poll_interval(row(30, 100)), 300)
+        self.assertEqual(R.poll_interval({"five_hour": {"pct": None}, "seven_day": None}), R.CACHE_SEC)
+        # 60 с у границы = 60 запросов/ч к панели, но скрипт PROD отвечает из кэша, в Anthropic уходит ≤ 3600/130
+        import remote_usage as U
+        self.assertLessEqual(3600 / U.TTL, 28)
+
+
 if __name__ == '__main__':
     unittest.main()

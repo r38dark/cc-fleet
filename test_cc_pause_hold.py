@@ -182,3 +182,50 @@ class RemoteWork(Base):
             f.write("{oops")
         pc.cmd_wake(argparse.Namespace(if_due=True))
         self.assertFalse(pc.load()["active"])
+
+
+class EarlyRelease(Base):
+    """Лимиты сбросили вручную в аккаунте — сессионная пауза снимается сразу по свежему снимку, а не в 21:53."""
+
+    def snap(self, pct, ts=None, error=None, since_offset=0):
+        now = time.time()
+        row = {"email": "a@b", "plan": "pro", "five_hour": {"pct": pct, "resets_at": "2099-01-01T00:00:00+00:00"},
+               "seven_day": {"pct": 0.0, "resets_at": "2099-01-05T00:00:00+00:00"}}
+        if error:
+            row["error"] = error
+        put(pc.SNAP, {"ts": now if ts is None else ts, "active": "acc3", "accounts": {"acc3": row}})
+        put(pc.CONFIG, {"threshold": 90, "weekly_cap": 99, "weekly_pause": True})
+        put(pc.STATE, {"active": True, "since": now - 600 + since_offset, "reason": "лимиты", "kind": "session",
+                       "resume_at": now + 1800})
+
+    def wake(self):
+        pc.cmd_wake(argparse.Namespace(if_due=True))
+        return pc.load()
+
+    def test_manual_reset_lifts_session_pause_before_alarm(self):
+        self.snap(4.0)
+        st = self.wake()
+        self.assertFalse(st["active"])
+        self.assertEqual((len(self.wakes), len(self.tgs)), (1, 1))
+
+    def test_still_over_threshold_keeps_pause_and_alarm(self):
+        self.snap(91.0)
+        before = pc.load()["resume_at"]
+        st = self.wake()
+        self.assertTrue(st["active"])
+        self.assertEqual(st["resume_at"], before)
+        self.assertEqual((self.wakes, self.tgs), ([], []))
+
+    def test_snapshot_taken_before_pause_does_not_lift(self):
+        self.snap(4.0, ts=time.time() - 700)  # пауза началась 600 с назад, снимок старше неё
+        self.assertTrue(self.wake()["active"])
+
+    def test_old_snapshot_does_not_lift(self):
+        self.snap(4.0, ts=time.time() - 1000, since_offset=-3000)  # снимок позже паузы, но старше 15 минут
+        self.assertTrue(self.wake()["active"])
+
+    def test_error_or_unknown_percent_does_not_lift(self):
+        self.snap(4.0, error="http_503")
+        self.assertTrue(self.wake()["active"])
+        self.snap(None)
+        self.assertTrue(self.wake()["active"])

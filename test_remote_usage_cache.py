@@ -76,7 +76,7 @@ class SharedCache(unittest.TestCase):
         home, net = make_home(), Net()
         run(home, net, NOW)
         net.pct = 55
-        b = run(home, net, NOW + 90)
+        b = run(home, net, NOW + 150)
         self.assertEqual(net.usage, 2)
         self.assertEqual(net.profile, 1)           # план и дата подписки — раз в 6 часов
         self.assertEqual(b["five_hour"]["pct"], 55)
@@ -90,19 +90,19 @@ class Throttled(unittest.TestCase):
         home, net = make_home(), Net()
         run(home, net, NOW)
         net.mode, net.pct = "429", 99
-        b = run(home, net, NOW + 90)               # TTL вышел → запрос → 429
+        b = run(home, net, NOW + 150)               # TTL вышел → запрос → 429
         self.assertTrue(b["ok"])
         self.assertTrue(b["stale"])
         self.assertEqual(b["stale_code"], 429)
         self.assertEqual(b["five_hour"]["pct"], 40)   # последние удачные цифры, не ошибка
         self.assertNotIn("error", b)
-        self.assertGreater(b["retry_at"], NOW + 90)
+        self.assertGreater(b["retry_at"], NOW + 150)
         self.assertEqual(net.usage, 2)
-        c = run(home, net, NOW + 150)              # пауза идёт — Anthropic не трогаем
+        c = run(home, net, NOW + 200)              # пауза идёт — Anthropic не трогаем
         self.assertEqual(net.usage, 2)
         self.assertTrue(c["stale"])
         net.mode, net.pct = "ok", 60
-        d = run(home, net, NOW + 90 + 130)         # пауза (120 с минимум) кончилась — спрашиваем снова
+        d = run(home, net, NOW + 150 + 130)         # пауза (120 с минимум) кончилась — спрашиваем снова
         self.assertEqual(net.usage, 3)
         self.assertEqual(d["five_hour"]["pct"], 60)
         self.assertFalse(d.get("stale"))
@@ -111,13 +111,13 @@ class Throttled(unittest.TestCase):
         home, net = make_home(), Net()
         run(home, net, NOW)
         net.mode, net.retry_after = "429", 300
-        b = run(home, net, NOW + 90)
-        self.assertAlmostEqual(b["retry_at"], NOW + 90 + 300, delta=1)
+        b = run(home, net, NOW + 150)
+        self.assertAlmostEqual(b["retry_at"], NOW + 150 + 300, delta=1)
         home2, net2 = make_home(), Net()
         run(home2, net2, NOW)
         net2.mode, net2.retry_after = "429", 99999
-        b2 = run(home2, net2, NOW + 90)
-        self.assertAlmostEqual(b2["retry_at"], NOW + 90 + 900, delta=1)       # потолок 15 минут
+        b2 = run(home2, net2, NOW + 150)
+        self.assertAlmostEqual(b2["retry_at"], NOW + 150 + 900, delta=1)       # потолок 15 минут
         net3 = Net()
         net3.mode = "429"
         home3 = make_home()
@@ -134,7 +134,7 @@ class Throttled(unittest.TestCase):
             raise urllib.error.HTTPError("u", 503, "x", {}, None)
         buf = io.StringIO()
         with mock.patch.dict(os.environ, {"HOME": home}), mock.patch("urllib.request.urlopen", boom), \
-                mock.patch("time.time", lambda: NOW + 90), redirect_stdout(buf):
+                mock.patch("time.time", lambda: NOW + 150), redirect_stdout(buf):
             try:
                 runpy.run_path(os.path.join(HERE, "remote_usage.py"), run_name="__main__")
             except SystemExit:
@@ -145,3 +145,30 @@ class Throttled(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RawOtherFields(unittest.TestCase):
+    """Остальные поля ответа usage (акции, «Limit resets») сохраняются в кэш, но не попадают в ответ панели."""
+
+    def test_other_fields_are_cached_but_not_returned(self):
+        home, net = make_home(), Net()
+        orig = net.__call__
+
+        def with_perks(req, timeout=0):
+            r = orig(req, timeout)
+            if "oauth/usage" in getattr(req, "full_url", req):
+                body = json.loads(r.read())
+                body.update(promo_credits={"offer": "full_reset", "expires": "2026-12-10"}, tangelo=None)
+                return io.BytesIO(json.dumps(body).encode())
+            return r
+
+        out = run(home, with_perks, NOW)
+        self.assertTrue(out["ok"])
+        self.assertNotIn("raw_other", out)
+        self.assertNotIn("promo_credits", json.dumps(out))
+        cache = json.load(open(os.path.join(home, ".cache", "cc-fleet", "usage.json")))
+        raw = cache["net"]["raw_other"]
+        self.assertEqual(raw["promo_credits"]["offer"], "full_reset")
+        self.assertIn("tangelo", raw)
+        self.assertNotIn("five_hour", raw)
+        self.assertNotIn("seven_day", raw)

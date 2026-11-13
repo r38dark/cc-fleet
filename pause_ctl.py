@@ -519,6 +519,16 @@ def _override_window_ready(local):
     except (OSError,ValueError,TypeError):return False
 
 
+def _fresh_snapshot_after(st):
+    """Годится ли снимок лимитов для досрочного снятия сессионной паузы: он снят позже начала
+    паузы, не старше 15 минут, у активного аккаунта нет ошибки и известен процент окна 5 ч."""
+    accs, active, ts = accounts()
+    row = accs.get(active) or {}
+    pct = (row.get("five_hour") or {}).get("pct")
+    return (ts > float(st.get("since") or 0) + 5 and _now() - ts < 900
+            and not row.get("error") and pct is not None)
+
+
 def cmd_wake(a):
     st = load()
     if st.get("override"):
@@ -543,7 +553,11 @@ def cmd_wake(a):
     # (добавили аккаунт, выключили опцию, сняли потолок) — её проверяем каждую минуту
     week = st.get("kind") == "week"
     due = _now() >= float(st.get("resume_at") or 0)
-    if a.if_due and not due and not week:
+    # сессионную паузу до будильника тоже можно снять досрочно: лимиты сбросили вручную в
+    # аккаунте (кнопка «сбросить лимиты»), добавили аккаунт, подняли порог — окно освободилось
+    # раньше срока (пример: пауза стояла до 21:53 при acc3 4%). Но только по свежему
+    # снимку, снятому ПОСЛЕ начала паузы, — старый или пустой процент не должен снять её вслепую
+    if a.if_due and not due and not week and not _fresh_snapshot_after(st):
         return 0
 
     blocked, line = week_blocked() if week else session_blocked()
