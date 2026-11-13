@@ -3,7 +3,7 @@
 import copy
 import threading
 import time
-from cc_manual_scenarios import ManualScenarioMixin, validate_stored_choices
+from cc_manual_scenarios import ManualScenarioMixin, validate_stored_choices, DUO_ID
 
 ENGINES = ('claude', 'codex')
 
@@ -28,7 +28,7 @@ class ProfileScenarios:
 
     def definitions(self, engine):
         name, other = self.actor(engine), self.actor(self.other(engine))
-        return [
+        profiles = [
             dict(id=engine+'_solo_full', title=name+' Full · самостоятельно', kind='full', mode='self',
                  access='full', task_rights='dev', builtin=True,
                  description='Все инструменты, команды и файлы в пределах прав пользователя ОС.',
@@ -43,6 +43,15 @@ class ProfileScenarios:
                  cannot='Менять проект силами ведущей, отправлять неподтверждённые шаги или создавать встречную связку.',
                  when='Нужна ведущая модель и отдельный исполнитель под контролем человека.',
                  flow=[name+' · чтение', 'Подтверждение человека', other+' · дев', name+' проверяет'])]
+        if engine == 'claude':
+            profiles.append(dict(id=DUO_ID, title='Claude · Opus → Sonnet', kind='duo', mode='self',
+                 access='full', task_rights='dev', builtin=True,
+                 description='Opus ставит задачи и принимает результат, Sonnet пишет код. Права — как у Full.',
+                 can='Планировать и проверять силами Opus, поручать написание кода и правки файлов помощнику-исполнителю на Sonnet; работать со всеми файлами и командами в пределах прав пользователя ОС.',
+                 cannot='Управлять Codex или получать от него задания; самостоятельно получать отсутствующие права ОС.',
+                 when='Большая задача: нужен сильный планировщик, а основной объём кода дешевле писать Sonnet. Модели берутся из пула: последний Opus и последний Sonnet.',
+                 flow=['Ты', 'Opus: ставит задачу', 'Sonnet: пишет код', 'Opus: проверяет']))
+        return profiles
 
     def _stop_pair(self):
         if self.leader:
@@ -133,7 +142,7 @@ class ProfileScenarios:
             already = self.public()['engines'][engine]
             if already['selected'] == profile_id and already['role'] not in ('executor', 'paused'):
                 return dict(ok=True, message='Этот профиль уже выбран.', state=self.public())
-            word = 'подтверждаю' if profile['kind'] == 'full' else ''
+            word = 'подтверждаю' if profile['kind'] in ('full', 'duo') else ''
             if word and str(confirm).casefold().strip() != word:
                 return dict(ok=False, confirmation_required=True, word=word, message='Подтверди выбор профиля '+profile['title']+'.')
             if self.service:
@@ -143,7 +152,7 @@ class ProfileScenarios:
             self.selected[engine] = profile_id
             if profile['kind'] == 'orchestrator':
                 self.leader = engine
-            else:
+            elif profile['kind'] == 'full':
                 self.last_solo[engine] = profile_id
             self.until = 0
             self.revision += 1
@@ -164,7 +173,7 @@ class ProfileScenarios:
             return dict(ok=True, message='Предыдущий сценарий восстановлен.', state=self.public())
 
     def delete(self, engine, profile_id, revision=None):
-        return dict(ok=False, message='Доступны только встроенные Full и Оркестратор.')
+        return dict(ok=False, message='Доступны только встроенные профили: Full и «Opus → Sonnet».')
 
 
 class ProfileState(ManualScenarioMixin, ProfileScenarios):
@@ -192,7 +201,7 @@ class ProfileState(ManualScenarioMixin, ProfileScenarios):
         state.auto_blocked = set(state.auto_blocked)
         def normalize(base):
             for engine in ENGINES:
-                allowed = ('orchestrator', 'executor', engine+'_solo_full')
+                allowed = ('orchestrator', 'executor', engine+'_solo_full') + ((DUO_ID,) if engine == 'claude' else ())
                 for key in ('selected', 'last_solo'):
                     if base[key][engine] not in allowed:
                         base[key][engine] = engine+'_solo_full'
@@ -220,8 +229,8 @@ class ProfileState(ManualScenarioMixin, ProfileScenarios):
                 if not validate_stored_choices(choices)[0] or base.get('leader')!=leader:
                     raise ValueError('invalid_manual_scenario')
                 for engine,role in choices.items():
-                    wanted=engine+'_solo_full' if role=='full' else role
-                    if role in ('full','orchestrator','executor') and base['selected'][engine]!=wanted:
+                    wanted=engine+'_solo_full' if role=='full' else DUO_ID if role=='duo' else role
+                    if role in ('full','duo','orchestrator','executor') and base['selected'][engine]!=wanted:
                         raise ValueError('invalid_manual_scenario_profile')
         return state
 

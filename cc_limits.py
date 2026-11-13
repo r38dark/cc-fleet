@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.37"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.38"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2018,6 +2018,11 @@ def _model_watch_tick(txt):
     if prev is None:
         return  # первый замер после старта сервиса
     dflt_id = (jload(SETTINGS, {}) or {}).get("model")
+    # профиль «Opus → Sonnet» запускает консоль на Opus при дефолте Sonnet — ждём модель профиля, а не дефолт
+    try:
+        dflt_id = (jload(os.path.join(BASE, "profile_runtime", "claude-policy.json"), {}) or {}).get("expected_model") or dflt_id
+    except Exception:
+        pass
     dflt = all_models().get(dflt_id, dflt_id)
     if name != dflt:
         sg = _SAFEGUARD_RE.search(txt.replace("\n", " "))

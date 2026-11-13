@@ -5,27 +5,62 @@ import os
 import tempfile
 import unittest
 from unittest.mock import patch
-from cc_manual_scenarios import validate_choices,ROLES
+from cc_manual_scenarios import validate_choices,ROLES,DUO_ID
 from cc_profile_state import ProfileState
 from cc_profiles import Profiles
 from test_cc_profiles import FakeNative,legacy_pair_state
 
 
 class ManualPolicy(unittest.TestCase):
-    def test_orchestrator_blocks_other_full_and_requires_explicit_companion(self):
+    def test_new_leader_executor_pairs_are_rejected_and_state_is_untouched(self):
+        # связки Claude↔Codex убраны: новые пары не принимаются ни в каком порядке
         for leader in ('claude','codex'):
             state=ProfileState();other=state.other(leader);before=state.export()
-            for companion in (None,'full','orchestrator'):
+            for companion in (None,'full','orchestrator','executor'):
                 self.assertFalse(state.apply_scenario({leader:'orchestrator',other:companion},revision=0)['ok'])
                 self.assertEqual(state.export(),before)
-            self.assertTrue(state.apply_scenario({leader:'orchestrator',other:'executor'},revision=0)['ok'])
-            self.assertEqual(state.public()['engines'][other]['role'],'executor')
 
-    def test_full_reserve_and_explicit_orchestrator_pair_are_accepted(self):
+    def test_only_full_or_claude_duo_are_accepted(self):
         valid=[]
-        for a,b in itertools.product((None,'full','reserve','orchestrator','executor'),repeat=2):  # reserve больше не принимается
+        for a,b in itertools.product((None,'full','reserve','duo','orchestrator','executor'),repeat=2):  # reserve больше не принимается
             if validate_choices(dict(claude=a,codex=b))[0]:valid.append((a,b))
-        self.assertCountEqual(valid,[(None,'full'),('full',None),('orchestrator','executor'),('executor','orchestrator')])
+        self.assertCountEqual(valid,[(None,'full'),('full',None),('duo',None)])
+
+    def test_duo_is_claude_only(self):
+        state=ProfileState();before=state.export()
+        self.assertFalse(state.apply_scenario(dict(claude=None,codex='duo'),'подтверждаю',0)['ok'])
+        self.assertFalse(state.apply_scenario(dict(claude='duo',codex='full'),'подтверждаю',0)['ok'])
+        self.assertEqual(state.export(),before)
+
+    def test_duo_needs_confirmation_then_claude_works_solo_and_codex_is_paused(self):
+        state=ProfileState();before=state.export();choices=dict(claude='duo',codex=None)
+        self.assertTrue(state.apply_scenario(choices,revision=0)['confirmation_required']);self.assertEqual(state.export(),before)
+        self.assertTrue(state.apply_scenario(choices,'подтверждаю',0)['ok'])
+        view=state.public();claude=view['engines']['claude']
+        self.assertEqual(claude['role'],'solo');self.assertEqual(claude['selected'],DUO_ID)
+        self.assertEqual(view['engines']['codex']['role'],'paused')
+        self.assertIsNone(view['leader'])
+        self.assertEqual(view['manual_scenario']['choices'],choices)
+
+    def test_duo_survives_reload_and_does_not_replace_the_last_full_choice(self):
+        state=ProfileState();self.assertTrue(state.apply_scenario(dict(claude=None,codex='full'),'подтверждаю',0)['ok'])
+        last=state.export().get('last_solo')
+        self.assertTrue(state.apply_scenario(dict(claude='duo',codex=None),'подтверждаю',state.revision)['ok'])
+        self.assertEqual(state.export().get('last_solo'),last)
+        restored=ProfileState.from_data(state.export());view=restored.public()
+        self.assertEqual(view['engines']['claude']['selected'],DUO_ID);self.assertEqual(view['engines']['claude']['role'],'solo')
+        self.assertEqual(restored.manual_choices,dict(claude='duo',codex=None))
+
+    def test_leaving_duo_for_full_returns_claude_to_its_own_full_profile(self):
+        state=ProfileState();self.assertTrue(state.apply_scenario(dict(claude='duo',codex=None),'подтверждаю',0)['ok'])
+        self.assertTrue(state.apply_scenario(dict(claude='full',codex=None),'подтверждаю',state.revision)['ok'])
+        self.assertEqual(state.public()['engines']['claude']['selected'],'claude_solo_full')
+
+    def test_old_route_apply_accepts_duo_only_for_claude(self):
+        state=ProfileState();before=state.export()
+        self.assertFalse(state.apply('codex',DUO_ID,'подтверждаю',0)['ok']);self.assertEqual(state.export(),before)
+        self.assertTrue(state.apply('claude',DUO_ID,'подтверждаю',0)['ok'])
+        self.assertEqual(state.public()['engines']['claude']['selected'],DUO_ID)
 
     def test_invalid_selections_and_revisions_do_not_modify_state(self):
         state=ProfileState();before=state.export()
@@ -75,13 +110,15 @@ class ManualPolicy(unittest.TestCase):
         self.assertEqual([view['engines'][e]['role'] for e in ('claude','codex')],['solo','solo'])
         self.assertEqual(restored.selected,raw['selected'])
 
-    def test_public_work_catalog_has_full_and_orchestrator_without_executor_entry(self):
+    def test_public_work_catalog_has_full_and_duo_without_pair_entries(self):
         public=ProfileState().public()
-        self.assertTrue(public['capabilities']['orchestrator'])
+        self.assertFalse(public['capabilities']['orchestrator']);self.assertTrue(public['capabilities']['duo'])
+        want=dict(claude=['claude_solo_full',DUO_ID],codex=['codex_solo_full'])
         for engine,data in public['engines'].items():
-            self.assertEqual([p['id'] for p in data['profiles'] if p['kind']!='reserve'],[engine+'_solo_full','orchestrator'])
+            self.assertEqual([p['id'] for p in data['profiles'] if p['kind']!='reserve'],want[engine])
 
-    def test_each_pair_has_explicit_write_executor_and_one_read_leader(self):
+    def test_older_saved_pairs_are_still_readable_with_their_rights(self):
+        # записи прежних версий (ведущий/ведомый) читаются без падения и без смены прав
         for leader in ('claude','codex'):
             state=legacy_pair_state(leader);follower=state.other(leader)
             choices={leader:'orchestrator',follower:'executor'}

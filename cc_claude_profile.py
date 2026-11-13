@@ -102,6 +102,7 @@ class ClaudeProfile:
         parts = shlex.split(self.ns['cfg']().get('claude_cmd') or 'claude')
         if not parts or any(p in (';', '&&', '||', '|', '&') for p in parts):raise ProfileError('unsupported_claude_command')
         flags_with_value = {'--permission-mode', '--model', '--effort', '--resume', '-r', '--append-system-prompt', '--append-system-prompt-file', '--system-prompt-snapshot', '--settings'}
+        if policy.get('agents'):flags_with_value.add('--agents')
         flags = {'--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--continue', '-c', '--fork-session'}
         cleaned = [];i = 0
         while i<len(parts):
@@ -115,12 +116,15 @@ class ClaudeProfile:
         if not cleaned:raise ProfileError('claude_binary_missing')
         environment = ['env', 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1']
         if snapshot.get('sandbox_root') and 'IS_SANDBOX=1' not in cleaned:environment.append('IS_SANDBOX=1')
+        # «Opus → Sonnet»: все субагенты сессии идут на Sonnet (профиль задаёт id из пула моделей)
+        if policy.get('subagent_model'):environment.append('CLAUDE_CODE_SUBAGENT_MODEL='+policy['subagent_model'])
         argv = environment+cleaned
         if snapshot.get('telegram_channel') and '--channels' not in cleaned:
             argv += ['--channels', 'plugin:telegram@claude-plugins-official']
         argv += ['--resume', snapshot['thread_id'], '--model', snapshot['model'], '--permission-mode', 'bypassPermissions' if policy['access']=='full' else 'dontAsk']
         if snapshot.get('effort'):argv += ['--effort', snapshot['effort']]
         argv += ['--settings', str(self.runtime/'claude-settings.json'), '--system-prompt-snapshot', 'off', '--append-system-prompt', prompt]
+        if policy.get('agents'):argv += ['--agents', json.dumps(policy['agents'], ensure_ascii=False)]
         return argv
 
     def prepare(self, snapshot, policy, prompt):

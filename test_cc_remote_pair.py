@@ -530,6 +530,10 @@ class NativeRemoteSlot(unittest.TestCase):
 
     @staticmethod
     def state(claude, codex):
+        # связки убраны из выбора, но сохранённые состояния прежних версий читаются — строим их как в test_cc_profiles
+        if 'orchestrator' in (claude, codex):
+            from test_cc_profiles import legacy_pair_state
+            return legacy_pair_state('claude' if claude == 'orchestrator' else 'codex')
         s = ProfileState()
         assert s.apply_scenario({'claude': claude, 'codex': codex}, 'подтверждаю', s.revision)['ok']
         return s

@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.38",
+      "date": "2026-11-13",
+      "ru": {
+        "t": "Профили: у Codex только Full, у Claude — Full и «Opus → Sonnet»",
+        "p": [
+          "Новый профиль Claude «Opus → Sonnet»: Opus ставит задачи и принимает результат, Sonnet пишет код.",
+          "Связки Claude↔Codex убраны: Codex работает только в Full. Ручная передача заданий осталась.",
+          "Модели профиля — последние Opus и Sonnet из пула; на втором сервере профиль пока недоступен."
+        ]
+      },
+      "en": {
+        "t": "Profiles: Codex is Full only, Claude gets Full and \"Opus → Sonnet\"",
+        "p": [
+          "New Claude profile \"Opus → Sonnet\": Opus sets tasks and accepts the result, Sonnet writes the code.",
+          "Claude-Codex pairs are gone: Codex works in Full only. Handing tasks over by hand still works.",
+          "The profile uses the latest Opus and Sonnet from the pool; it is not available on the second server yet."
+        ]
+      }
+    },
+    {
       "v": "2.0.37",
       "date": "2026-11-13",
       "ru": {
