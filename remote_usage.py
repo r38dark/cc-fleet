@@ -17,7 +17,8 @@ HOME = os.environ.get("HOME") or "/root"
 HDR = {"anthropic-beta": "oauth-2025-04-20"}
 CACHE_DIR = os.path.join(HOME, ".cache", "cc-fleet")
 CACHE = os.path.join(CACHE_DIR, "usage.json")
-TTL = 60                      # свежее этого не перезапрашиваем: панель и защита лимитов делят один ответ
+TTL = 130                     # свежее этого не перезапрашиваем: панель и защита лимитов делят один ответ;
+                              # 130 с ≈ 27 запросов/ч — под бюджет Anthropic (~28/ч на аккаунт); было 60 с → 429 при ≥80 %)
 PROFILE_TTL = 6 * 3600        # план и дата подписки меняются редко — второй запрос (profile) не чаще раза в 6 часов
 BACKOFF_MIN, BACKOFF_MAX = 120, 900   # пауза опроса после 429, секунд (Retry-After, если он есть)
 
@@ -122,6 +123,9 @@ def main():
     for k in ("five_hour", "seven_day"):
         v = u.get(k) or {}
         net[k] = {"pct": v.get("utilization"), "resets_at": v.get("resets_at")}
+    # все остальные поля ответа — как есть, только в кэш (панели не отдаём): Anthropic кладёт сюда акции и
+    # «Limit resets» (Full reset / Reset for free), формат ещё изучаем; result() их не читает, лишних запросов нет
+    net["raw_other"] = {k: v for k, v in u.items() if k not in ("five_hour", "seven_day")}
     if now - float(cache.get("profile_ts") or 0) >= PROFILE_TTL:
         try:
             prof = get("https://api.anthropic.com/api/oauth/profile", token)

@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.37",
+      "date": "2026-11-13",
+      "ru": {
+        "t": "Пауза снимается после ручного сброса, меньше 429 от второго сервера",
+        "p": [
+          "Сессионная пауза снимается сразу после ручного сброса лимитов, а не в конце окна.",
+          "Второй сервер у границы лимита опрашивается реже: меньше ответов 429, цифры не залипают.",
+          "На 99–100 % второй сервер проверяется раз в 5 минут: внезапный сброс лимита не пропустим."
+        ]
+      },
+      "en": {
+        "t": "Pause lifts after a manual reset, fewer 429s from the second server",
+        "p": [
+          "A session pause now lifts right after a manual limit reset instead of waiting for the window end.",
+          "The second server is polled less often near the limit: fewer 429 replies, numbers no longer stall.",
+          "At 99-100% the second server is checked every 5 minutes, so a sudden limit reset is still noticed."
+        ]
+      }
+    },
+    {
       "v": "2.0.36",
       "date": "2026-11-13",
       "ru": {
