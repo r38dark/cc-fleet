@@ -359,19 +359,20 @@ function paintSplit(){var s=rmode().split||{};
  spEl.className='ccpause lvl-hard';
  if(spEl.dataset.sig!==sig){spEl.dataset.sig=sig;var dis=spBusy?' disabled':'';
   spEl.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">Двойная работа: режим «Claude PROD», а Claude DEV запущен</div>'
-   +'<div class="ccp-sub">Claude DEV с Telegram работает уже '+mins+' мин, хотя работа числится на PROD. Оба слушают одного бота: ответы могут дублироваться или теряться. Панель ничего не переключала — выбери, кто остаётся.</div>'
+   +'<div class="ccp-sub">Claude DEV с Telegram работает уже '+mins+' мин, хотя работа числится на PROD. Оба слушают одного бота: ответы могут дублироваться или теряться. Панель ничего не переключала — выбери, где будет работа.</div>'
    +(spNote?'<div class="ccp-sub"><b>'+esc(spNote)+'</b></div>':'')
-   +'<div class="ccp-actions"><button type="button" class="ccp-btn" data-split="keep_dev"'+dis+'>Оставить DEV</button><button type="button" class="ccp-btn sec" data-split="stop_dev"'+dis+'>Остановить DEV</button></div></div>'}
+   +'<div class="ccp-actions"><button type="button" class="ccp-btn" data-split="work_dev"'+dis+'>Работа на DEV</button><button type="button" class="ccp-btn sec" data-split="work_prod"'+dis+'>Работа на PROD</button></div>'
+   +'<div class="ccp-sub"><b>Работа на DEV:</b> Claude PROD остановится, память и беседа с него скопируются сюда (около минуты).<br><b>Работа на PROD:</b> панель проверит PROD. Не запущен — запустит его с беседой и карточкой DEV (1–2 минуты) и только потом остановит DEV; уже работает — остановит только DEV. Не получится — Claude DEV останется как есть.</div></div>'}
  spEl.hidden=false}
 function splitGo(act,force){spBusy=true;spNote='';paintSplit();
  post('remote/split',{action:act,force:!!force}).then(function(j){j=j||{};
   try{if(j.state&&lastSnap)lastSnap.remote_mode=j.state}catch(e){}
   spBusy=false;
-  if(j.answering&&!force){paintSplit();window.fleetAsk(spEl,'Claude на PROD сейчас отвечает. Остановить его посреди ответа и всё равно оставить работу на DEV?','Всё равно оставить').then(function(ok){if(ok)splitGo(act,true)});return}
+  if(j.answering&&!force){paintSplit();window.fleetAsk(spEl,act==='work_dev'?'Claude на PROD сейчас отвечает. Остановить его посреди ответа и всё равно оставить работу на DEV?':'Claude на PROD сейчас отвечает. Перезапустить его посреди ответа и передать ему работу с DEV?','Всё равно').then(function(ok){if(ok)splitGo(act,true)});return}
   spNote=j.ok?'':(j.message||'Не выполнено.');if(j.ok&&j.message)sToast(j.message);paint();poll()})
  .catch(function(){spBusy=false;spNote='Нет связи с панелью.';paintSplit()})}
-document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#rmSplit [data-split]');if(!b||spBusy)return;var act=b.dataset.split,keep=act==='keep_dev';
- window.fleetAsk(b,keep?'Оставить Claude DEV? Работа вернётся на DEV: память и беседа с PROD скопируются сюда, Claude PROD остановится, переключатели встанут на DEV. Около минуты.':'Остановить Claude DEV? Его текущий ответ оборвётся, беседа сохранится. Работа остаётся на Claude PROD.',keep?'Оставить DEV':'Остановить DEV').then(function(ok){if(ok)splitGo(act,false)})});
+document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#rmSplit [data-split]');if(!b||spBusy)return;var act=b.dataset.split,keep=act==='work_dev';
+ window.fleetAsk(b,keep?'Работа на DEV? Память и беседа с PROD скопируются сюда, Claude PROD остановится, переключатели встанут на DEV. Около минуты.':'Работа на PROD? Если PROD не запущен, он стартует с беседой и карточкой DEV, и только потом остановится Claude DEV (его текущий ответ оборвётся). Если PROD уже работает, остановится только DEV. Не получится — DEV останется как есть.',keep?'Работа на DEV':'Работа на PROD').then(function(ok){if(ok)splitGo(act,false)})});
 function paint(){var m=mem();paintStrip(m);paintCard(m);ensureHand();paintHand();paintSplit();sSync();if(pp&&!pp.hidden&&rmode().busy&&!pBusy)pClose();var has=!!m;if(has!==hadTab){hadTab=has;try{typeof consTabs==='function'&&consTabs()}catch(e){}}}
 try{var prev=renderCards;renderCards=function(d){prev(d);try{paint()}catch(e){}}}catch(e){}
 setInterval(function(){if(!document.hidden)try{paint()}catch(e){}},15000);

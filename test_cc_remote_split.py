@@ -1,5 +1,5 @@
 """«Двойная работа»: режим говорит «работа на Claude PROD», а основной Claude DEV с Telegram запущен (поднялся сам, мимо панели).
-Счётчик расхождения, одно сообщение в Telegram, ответ панели, кнопки «Оставить DEV» / «Остановить DEV» и подключение в поток панели."""
+Счётчик расхождения, одно сообщение в Telegram, ответ панели, кнопки «Работа на DEV» / «Работа на PROD» и подключение в поток панели."""
 import inspect
 import os
 import shutil
@@ -182,50 +182,179 @@ class Public(Base):
 class Resolve(Base):
     def test_unknown_action_and_busy_are_refused(self):
         self.assertFalse(S.resolve('сломай')['ok'])
+        self.assertFalse(S.resolve('stop_dev')['ok'])   # старое имя действия больше не принимается
         self.state['busy'] = True
-        res = S.resolve('stop_dev')
+        with mock.patch.object(M, 'claim_prod') as claim:
+            res = S.resolve('work_prod')
         self.assertFalse(res['ok'])
         self.assertTrue(res['busy'])
+        claim.assert_not_called()
         self.assertEqual(self.wk.stopped, 0)
 
     def test_nothing_to_resolve_touches_nothing(self):
         self.wk.running = False
-        with mock.patch.object(M, 'off') as off:
-            res = S.resolve('keep_dev')
-        self.assertTrue(res['ok'])
-        self.assertIn('уже нет', res['message'])
+        with mock.patch.object(M, 'off') as off, mock.patch.object(M, 'claim_prod') as claim:
+            for action in ('work_dev', 'work_prod'):
+                res = S.resolve(action)
+                self.assertTrue(res['ok'])
+                self.assertIn('уже нет', res['message'])
         off.assert_not_called()
+        claim.assert_not_called()
         self.assertEqual(self.wk.stopped, 0)
 
-    def test_keep_dev_returns_the_work_like_the_return_button(self):
+    def test_work_dev_returns_the_work_like_the_return_button(self):
         with mock.patch.object(M, 'off', return_value={'ok': True, 'started': True}) as off:
-            res = S.resolve('keep_dev', force=True)
+            res = S.resolve('work_dev', force=True)
         self.assertTrue(res['ok'])
         self.assertEqual(off.call_count, 1)
         self.assertIn('Claude DEV запущен сам', off.call_args[0][0])
         self.assertIs(off.call_args[0][1], True)
         self.assertEqual(self.wk.stopped, 0)
 
-    def test_keep_dev_passes_the_answering_refusal_to_the_panel(self):
+    def test_work_dev_passes_the_answering_refusal_to_the_panel(self):
         answer = {'ok': False, 'busy': True, 'answering': True, 'message': 'Claude на PROD сейчас отвечает'}
         with mock.patch.object(M, 'off', return_value=answer):
-            self.assertEqual(S.resolve('keep_dev'), answer)
+            self.assertEqual(S.resolve('work_dev'), answer)
 
-    def test_stop_dev_stops_only_the_local_claude_and_clears_the_plaque(self):
+    def test_work_prod_goes_through_claim_prod_and_clears_the_plaque(self):
         self.ticks(NOW, 300)
-        with mock.patch.object(M, 'off') as off:
-            res = S.resolve('stop_dev')
+        self.assertTrue(S.public(NOW + 300))
+
+        def claim(reason, force):
+            self.wk.stop_claude()   # PROD уже работал: claim_prod погасил только DEV
+            return {'ok': True, 'message': 'Claude PROD уже работает: Claude DEV остановлен.'}
+        with mock.patch.object(M, 'off') as off, mock.patch.object(M, 'claim_prod', side_effect=claim) as cp:
+            res = S.resolve('work_prod')
         self.assertTrue(res['ok'])
-        self.assertEqual(self.wk.stopped, 1)
         off.assert_not_called()
+        self.assertEqual(cp.call_count, 1)
+        self.assertIn('владелец оставил работу на PROD', cp.call_args[0][0])
+        self.assertIs(cp.call_args[0][1], False)
         self.assertEqual(S._mem['first'], 0.0)
         self.assertEqual(S.public(NOW + 300), {})
 
-    def test_stop_dev_that_does_not_stop_says_so(self):
+    def test_work_prod_failure_is_passed_through_and_dev_stays(self):
+        bad = {'ok': False, 'message': 'PROD не готов: нет связи. Claude DEV не тронут.'}
+        with mock.patch.object(M, 'claim_prod', return_value=bad) as cp:
+            res = S.resolve('work_prod', force=True)
+        self.assertEqual(res, bad)
+        self.assertIs(cp.call_args[0][1], True)
+        self.assertEqual(self.wk.stopped, 0)
+        self.assertTrue(self.wk.running)
+
+
+class ClaimProd(Base):
+    """M.claim_prod: проверка PROD до остановки DEV, запуск PROD при необходимости."""
+
+    def setUp(self):
+        super().setUp()
+        self.status = {'ok': True, 'running': False, 'busy': False, 'tg': False}
+        self.job_args = []
+        self.saved = []
+        self.not_ready = ''
+
+        def on_job(*args, **kwargs):
+            self.job_args.append((args, kwargs))
+            return {'ok': True}
+        for target, name, value in (
+                (M, 'lock_message', lambda: ''),
+                (M, 'mode', lambda: {'member': 'p'}),
+                (M.R, 'members', lambda: {'p': {'host': 'h'}}),
+                (M, '_prod_not_ready', lambda mid, force=False: self.not_ready),
+                (M, 'ctl', lambda m, args, timeout=150: self.status),
+                (M, '_save', lambda **kw: self.saved.append(kw)),
+                (M, '_on_job', on_job)):
+            p = mock.patch.object(target, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def join(self):
+        t = M._job.get('t')
+        if t is not None:
+            t.join(5)
+
+    def test_prod_not_ready_leaves_dev_alone(self):
+        self.not_ready = 'PROD не готов: нет связи.'
+        res = M.claim_prod('причина')
+        self.assertFalse(res['ok'])
+        self.assertIn('PROD не готов', res['message'])
+        self.assertIn('Claude DEV не тронут', res['message'])
+        self.assertEqual(self.wk.stopped, 0)
+        self.assertEqual(self.job_args, [])
+
+    def test_prod_that_does_not_answer_leaves_dev_alone(self):
+        self.status = {'ok': False, 'error': 'ssh'}
+        res = M.claim_prod('причина')
+        self.assertFalse(res['ok'])
+        self.assertIn('не ответил', res['message'])
+        self.assertIn('Claude DEV не тронут', res['message'])
+        self.assertEqual((self.wk.stopped, self.job_args), (0, []))
+
+    def test_missing_member_leaves_dev_alone(self):
+        with mock.patch.object(M.R, 'members', lambda: {}):
+            res = M.claim_prod('причина')
+        self.assertFalse(res['ok'])
+        self.assertIn('Claude DEV не тронут', res['message'])
+        self.assertEqual((self.wk.stopped, self.job_args), (0, []))
+
+    def test_running_prod_with_telegram_only_dev_is_stopped(self):
+        self.status = {'ok': True, 'running': True, 'busy': True, 'tg': True}   # PROD отвечает — нам это не мешает, его не трогаем
+        res = M.claim_prod('причина')
+        self.assertTrue(res['ok'])
+        self.assertNotIn('started', res)
+        self.assertIn('Claude DEV остановлен', res['message'])
+        self.assertEqual(self.wk.stopped, 1)
+        self.assertEqual(self.job_args, [])   # PROD не перезапускаем и память не гоняем
+
+    def test_dev_that_does_not_stop_says_so(self):
         self.wk.stops = False
-        res = S.resolve('stop_dev')
+        self.status = {'ok': True, 'running': True, 'busy': False, 'tg': True}
+        res = M.claim_prod('причина')
         self.assertFalse(res['ok'])
         self.assertIn('не остановился', res['message'])
+        self.assertEqual(self.job_args, [])
+
+    def test_stopped_prod_gets_the_full_handoff_with_the_conversation(self):
+        res = M.claim_prod('причина владельца')
+        self.join()
+        self.assertTrue(res['ok'])
+        self.assertTrue(res['started'])
+        self.assertEqual(len(self.job_args), 1)
+        args, kwargs = self.job_args[0]
+        self.assertEqual(args, ('p', 'причина владельца', '', True))   # resume=True: беседа DEV едет на PROD
+        self.assertEqual(kwargs, {})
+        self.assertEqual(self.wk.stopped, 0)   # DEV гасит сама передача, после копирования, а не мы заранее
+        self.assertEqual(self.saved, [{'stage': 'начало', 'error': ''}])
+
+    def test_prod_running_without_telegram_is_restarted_only_when_idle_or_forced(self):
+        self.status = {'ok': True, 'running': True, 'busy': True, 'tg': False}
+        res = M.claim_prod('причина')
+        self.assertFalse(res['ok'])
+        self.assertTrue(res['answering'])
+        self.assertEqual(self.job_args, [])
+        res = M.claim_prod('причина', force=True)
+        self.join()
+        self.assertTrue(res['ok'] and res['started'])
+        self.assertEqual(len(self.job_args), 1)
+
+    def test_pair_lock_no_operation_and_not_active_are_refused_before_any_check(self):
+        with mock.patch.object(M, 'lock_message', lambda: 'пара включена'):
+            res = M.claim_prod('причина')
+        self.assertEqual((res['ok'], res['message']), (False, 'пара включена'))
+        self.state['busy'] = True
+        self.assertTrue(M.claim_prod('причина')['busy'])
+        self.state.update(busy=False, active=False)
+        self.assertTrue(M.claim_prod('причина')['ok'])
+        self.assertEqual((self.wk.stopped, self.job_args), (0, []))
+
+
+class TextAndNames(unittest.TestCase):
+    def test_telegram_notice_uses_the_outcome_names(self):
+        text = S._text(3)
+        self.assertIn('«Работа на DEV»', text)
+        self.assertIn('«Работа на PROD»', text)
+        self.assertNotIn('Остановить DEV', text)
+        self.assertNotIn('Оставить DEV', text)
 
 
 class Wiring(unittest.TestCase):
@@ -289,24 +418,28 @@ class Route(Base):
         self.h.do_POST()
         return FakeBase.sent[-1]
 
-    def test_stop_dev_goes_through_the_real_handler(self):
-        code, body = self.post({'action': 'stop_dev'})
+    def test_work_prod_goes_through_the_real_handler(self):
+        def claim(reason, force):
+            self.wk.stop_claude()
+            return {'ok': True, 'message': 'Claude PROD уже работает: Claude DEV остановлен.'}
+        with mock.patch.object(M, 'claim_prod', side_effect=claim):
+            code, body = self.post({'action': 'work_prod'})
         self.assertEqual(code, 200)
         self.assertTrue(body['ok'])
         self.assertEqual(body['state'], {'split': {}})
         self.assertEqual(self.wk.stopped, 1)
 
-    def test_keep_dev_force_flag_reaches_off(self):
+    def test_work_dev_force_flag_reaches_off(self):
         with mock.patch.object(M, 'off', return_value={'ok': True}) as off:
-            self.post({'action': 'keep_dev', 'force': True})
-            self.post({'action': 'keep_dev', 'force': 'yes'})
+            self.post({'action': 'work_dev', 'force': True})
+            self.post({'action': 'work_dev', 'force': 'yes'})
         self.assertEqual([c[0][1] for c in off.call_args_list], [True, False])
 
     def test_unknown_action_and_no_auth_do_nothing(self):
         code, body = self.post({'action': 'сломай'})
         self.assertFalse(body['ok'])
         FakeBase.authed = False
-        code, body = self.post({'action': 'stop_dev'})
+        code, body = self.post({'action': 'work_prod'})
         self.assertEqual(code, 403)
         self.assertEqual(self.wk.stopped, 0)
 
@@ -314,9 +447,12 @@ class Route(Base):
 class Screen(unittest.TestCase):
     def test_script_is_valid_and_plaque_offers_both_buttons_with_confirmation(self):
         js = UI.JS
-        for part in ("spEl.id='rmSplit'", 'data-split="keep_dev"', 'data-split="stop_dev"',
-                     'Оставить DEV', 'Остановить DEV', "post('remote/split'", 'window.fleetAsk(', 'paintSplit();sSync()'):
+        for part in ("spEl.id='rmSplit'", 'data-split="work_dev"', 'data-split="work_prod"',
+                     '>Работа на DEV</button>', '>Работа на PROD</button>', "post('remote/split'", 'window.fleetAsk(', 'paintSplit();sSync()',
+                     '<b>Работа на DEV:</b>', '<b>Работа на PROD:</b>', 'Не получится — Claude DEV останется как есть'):
             self.assertIn(part, js, part)
+        for gone in ('Оставить DEV', 'Остановить DEV', 'keep_dev', 'stop_dev'):
+            self.assertNotIn(gone, js, gone)
         self.assertIn('html.conly #rmSplit{display:none}', UI.CSS)
         self.assertLess(js.index("window.fleetAsk(b,keep?"), js.index("splitGo(act,false)"))   # без подтверждения запрос не уходит
 

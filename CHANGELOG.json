@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.41",
+      "date": "2026-11-14",
+      "ru": {
+        "t": "Плашка двойной работы: кнопки «Работа на DEV» и «Работа на PROD»",
+        "p": [
+          "Кнопки названы по исходу: «Работа на DEV» возвращает работу сюда, «Работа на PROD» оставляет её на втором сервере.",
+          "«Работа на PROD» сначала проверяет второй сервер: не запущен — стартует с беседой и карточкой, потом гасится DEV.",
+          "Под плашкой строка с пояснением; не получилось — Claude DEV остаётся как есть."
+        ]
+      },
+      "en": {
+        "t": "Double work banner: buttons \"Work on DEV\" and \"Work on PROD\"",
+        "p": [
+          "Buttons name the outcome: \"Work on DEV\" brings the work back here, \"Work on PROD\" leaves it on the second server.",
+          "\"Work on PROD\" checks the second server first: if it is down it starts with the chat and card, then DEV stops.",
+          "A hint line under the banner explains both; if it fails, Claude DEV stays as it was."
+        ]
+      }
+    },
+    {
       "v": "2.0.40",
       "date": "2026-11-14",
       "ru": {
