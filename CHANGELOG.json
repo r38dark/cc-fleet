@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.43",
+      "date": "2026-11-14",
+      "ru": {
+        "t": "Честные сообщения о лимите: одно на эпизод",
+        "p": [
+          "Если Claude PROD свободен, а автопередача выключена, сообщение так и говорит, а не «переключаться некуда».",
+          "Один лимит — одно сообщение в Telegram: пауза, порог 90% и ответ очереди больше не дублируют друг друга.",
+          "Баннер паузы и ответ на сообщение в очереди называют свободный сервер и его лимиты."
+        ]
+      },
+      "en": {
+        "t": "Honest limit messages: one per episode",
+        "p": [
+          "When Claude PROD is free but auto handoff is off, the message says so instead of \"nowhere to switch\".",
+          "One limit, one Telegram message: the pause, the 90% warning and the queue reply no longer repeat each other.",
+          "The pause banner and the queue reply name the free server and its limits."
+        ]
+      }
+    },
+    {
       "v": "2.0.42",
       "date": "2026-11-14",
       "ru": {

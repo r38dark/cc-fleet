@@ -148,11 +148,64 @@ def nearest_reset(week=False):
     return iso, who
 
 
+def _auto_state(now):
+    """(включена ли передача на PROD, почему нет) — только настройки и пульс потока, БЕЗ level_state():
+    cc_remote_auto.handoff_ready() сам зовёт level_state(), а тот — причину паузы, то есть сюда (был бы круг)."""
+    import cc_remote_auto as A
+    cfg = A.load()
+    if not cfg["enabled"] or cfg["dry_run"]:
+        return False, "автопередача выключена"
+    hb = A._jfile(A.HB_FILE)
+    if now - float(hb.get("ts") or 0) > A.HB_MAX:
+        return False, "поток автопередачи не отвечает"
+    if now - max(float(hb.get("last_return") or 0), 0.0) < float(cfg.get("cooldown") or 0):
+        return False, "рано после переключения с PROD"
+    return True, ""
+
+
+def prod_hint(now=None):
+    """Claude PROD свободен, а у Claude DEV упёрлись лимиты: {"label", "pct", "wpct", "on", "why"} или {}.
+    on — передача на PROD включена и готова (тогда работа уйдёт туда); why — почему она не сработает.
+    Нет PROD, нет свежих цифр, он тоже забит или работа уже там — {}: «переключаться некуда» остаётся правдой."""
+    now = _now() if now is None else now
+    try:
+        if _remote_active():
+            return {}
+        import cc_remote_auto as A
+        members = A.R.members()
+        mid = next(iter(members), "")
+        row = A.R.cached().get(mid) if mid else None
+        if not row or now - float(row.get("ts") or 0) > A.PROD_FRESH:
+            return {}
+        if not A.prod_state(row, _threshold(), _weekly_cap(), now).get("usable"):
+            return {}
+        on, why = _auto_state(now)
+        return dict(label=str((members.get(mid) or {}).get("label") or "Claude PROD"),
+                    pct=(row.get("five_hour") or {}).get("pct"),
+                    wpct=(row.get("seven_day") or {}).get("pct"), on=on, why=why)
+    except Exception:
+        return {}
+
+
+def prod_phrase(h):
+    """«Claude PROD свободен (сессия 0%, неделя 11%), но автопередача выключена» — вместо «переключаться некуда»."""
+    nums = ", ".join(x for x in (
+        "сессия %.0f%%" % h["pct"] if isinstance(h.get("pct"), (int, float)) else "",
+        "неделя %.0f%%" % h["wpct"] if isinstance(h.get("wpct"), (int, float)) else "") if x)
+    out = "%s свободен%s" % (h.get("label") or "Claude PROD", " (%s)" % nums if nums else "")
+    if h.get("on"):
+        return out + ", передача работы на него включена"
+    why = h.get("why") or ""
+    return out + (", но " + why if why == "автопередача выключена" else ", но передача на него не готова: " + (why or "?"))
+
+
 def _week_reason(s):
     """Причина паузы на недельном потолке — человеческим текстом."""
     a = s["accounts"].get(s.get("active")) or {}
-    return "неделя %s на %.0f%% (потолок %.0f%%), переключаться некуда" % (
-        s.get("active"), a.get("wpct") or 0, s.get("weekly_cap") or _weekly_cap())
+    h = prod_hint()
+    return "неделя %s на %.0f%% (потолок %.0f%%), %s" % (
+        s.get("active"), a.get("wpct") or 0, s.get("weekly_cap") or _weekly_cap(),
+        prod_phrase(h) if h else "переключаться некуда")
 
 
 def _held_text(a):
@@ -173,11 +226,17 @@ def _held_text(a):
 def _hard_reason(s):
     """Причина паузы «переключаться некуда» — что держит каждый аккаунт."""
     accs = s.get("accounts") or {}
+    h = prod_hint()
     if not any(a.get("ses_ok") for a in accs.values()):
+        if h:
+            return "аккаунты DEV выше порога сессии (%s); %s" % (s.get("line") or "?", prod_phrase(h))
         return "все аккаунты выше порога сессии (%s), переключаться некуда" % (s.get("line") or "?")
     act = s.get("active")
     a = accs.get(act) or {}
     rest = ", ".join("%s — %s" % (n, _held_text(r)) for n, r in sorted(accs.items()) if n != act)
+    if h:
+        return "%s: сессия %.0f%% (порог %.0f%%), остальные аккаунты DEV не годятся: %s; %s" % (
+            act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest, prod_phrase(h))
     return "%s: сессия %.0f%% (порог %.0f%%), переключаться некуда: %s" % (
         act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest)
 
@@ -380,6 +439,58 @@ def _tg(text, force=False):
         _log("телеграм: не отправилось (%s)" % e)
 
 
+NOTICE_FILE = os.path.join(BASE, "pause_notice.json")
+NOTICE_TTL = 900  # сек: столько держится «об этом эпизоде уже написали»
+
+
+def _notice_io(key, now, claim):
+    """Читает (и при claim=True занимает) отметку эпизода key под flock: пауза, балансер и очередь — разные процессы.
+    → True, если отметка свежая (менее NOTICE_TTL назад) и писать не нужно."""
+    import fcntl
+    fd = os.open(NOTICE_FILE, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            d = json.loads(os.read(fd, 65536) or b"{}")
+            d = d if isinstance(d, dict) else {}
+        except Exception:
+            d = {}
+        fresh = 0 <= now - float(d.get(key) or 0) < NOTICE_TTL
+        if claim and not fresh:
+            d[key] = now
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.ftruncate(fd, 0)
+            os.write(fd, json.dumps(d).encode())
+        return fresh
+    finally:
+        os.close(fd)
+
+
+def notice_claim(key, now=None):
+    """Одно сообщение в Telegram на эпизод «упёрлись в лимит» (key: hard | week | …). True — писать, False — об этом
+    уже написал другой (балансер «некуда», пауза, предупреждение о лимите): владелец получал по 3–4 одинаковых. Сбой — писать."""
+    try:
+        return not _notice_io(key, _now() if now is None else now, True)
+    except Exception:
+        return True
+
+
+def notice_fresh(key, now=None):
+    """Уже писали про эпизод key (без занятия отметки)."""
+    try:
+        return _notice_io(key, _now() if now is None else now, False)
+    except Exception:
+        return False
+
+
+def notice_clear():
+    """Эпизод кончился (пауза снята) — следующий снова получит своё сообщение."""
+    try:
+        os.remove(NOTICE_FILE)
+    except OSError:
+        pass
+
+
 def _handoff_instead():
     """(True, причина) — вместо паузы идёт передача на Claude PROD (cc_remote_auto.request_handoff). Любой сбой — (False, ""): пауза как раньше."""
     try:
@@ -463,7 +574,12 @@ def cmd_set(a):
             msg += " Продолжить сразу — «Отключить паузу» на панели."
     if st["note"]:
         msg += "\nНезакрытое: %s" % st["note"]
-    _tg(msg)
+    if getattr(a, "quiet", False):
+        _log("уведомление о паузе не шлю: на входящее ответит подтверждение очереди")
+    elif notice_claim("week" if week else "hard"):
+        _tg(msg)
+    else:
+        _log("уведомление о паузе не шлю: об этом эпизоде уже написали")
     return 0
 
 
@@ -471,6 +587,7 @@ def cmd_clear(_a):
     st = load()
     st.update(active=False, cleared_at=_now())
     save(st)
+    notice_clear()
     _log("пауза снята вручную")
     return 0
 
@@ -585,6 +702,7 @@ def cmd_wake(a):
     st.pop("remote_hold", None)
     save(st)
     _log("пауза снята автоматически: %s" % line)
+    notice_clear()
     stood = _dur(_now() - float(st.get("since") or _now()))
     msg = ("▶️ Claude: пауза на недельном потолке снята — есть куда работать." if week
            else "▶️ Claude: пауза снята — окно отпустило.")

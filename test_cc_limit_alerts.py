@@ -73,6 +73,9 @@ class NowhereTelegram(unittest.TestCase):
     def setUp(self):
         if os.path.exists(L.STATE):
             os.remove(L.STATE)
+        pc = L._pause_mod()
+        p = mock.patch.object(pc, "NOTICE_FILE", os.path.join(TMP0, "pause_notice.json")); p.start(); self.addCleanup(p.stop)
+        self.pc = pc
         self.sent = []
         p = mock.patch.object(L, "tg_notify", self.sent.append); p.start(); self.addCleanup(p.stop)
 
@@ -82,6 +85,7 @@ class NowhereTelegram(unittest.TestCase):
         for check, extra in ((L.autoswitch_check, {}), (L.optimize_check, {"optimize": True})):
             if os.path.exists(L.STATE):
                 os.remove(L.STATE)
+            self.pc.notice_clear()   # два независимых прогона: отметка эпизода первого не должна глушить второй
             del self.sent[:]
             cfg = {"tz": "Asia/Irkutsk", "autoswitch": True, "threshold": 90, "weekly_cap": 99}
             cfg.update(extra)
