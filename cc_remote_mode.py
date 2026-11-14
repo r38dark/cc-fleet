@@ -85,13 +85,24 @@ def worker():
     return val
 
 
+def _split_public():
+    """«Двойная работа» (cc_remote_split): режим на PROD, а основной Claude DEV с Telegram запущен. {} — расхождения нет."""
+    if not active() or busy():   # пока идёт передача или работа уже здесь, расхождения нет (счётчик догонит на следующем проходе)
+        return {}
+    try:
+        import cc_remote_split
+        return cc_remote_split.public()
+    except Exception:
+        return {}
+
+
 def public():
     d = mode()
     return {"active": bool(d.get("active")), "member": d.get("member"), "since": d.get("since"), "stage": d.get("stage", ""),
             "error": d.get("error", ""), "busy": busy(), "reason": d.get("reason", ""), "resume": bool(d.get("resume")),
             "auto": _auto_status(), "worker": worker(), "to": d.get("to", ""), "tg": tg(), "pair": pair_info(),
             "task_target": d.get('task_target', '') if d.get('task_target') == worker() else '',
-            "handoff_lock": bool(handoff_lock_message()), "handoff_message": handoff_lock_message()}
+            "handoff_lock": bool(handoff_lock_message()), "handoff_message": handoff_lock_message(), "split": _split_public()}
 
 
 def _auto_status():
@@ -1437,7 +1448,7 @@ def install(ns):
     """Маршруты /api/remote* и подсказка вместо пустой консоли Claude, пока работа на PROD."""
     _NS.update(ns)
     base = ns["H"]
-    posts = ("/api/remote/on", "/api/remote/off", "/api/remote/handoff", "/api/remote/pair", "/api/remote/send", "/api/remote/console/start", "/api/remote/model", "/api/remote/auto",
+    posts = ("/api/remote/on", "/api/remote/off", "/api/remote/handoff", "/api/remote/pair", "/api/remote/send", "/api/remote/console/start", "/api/remote/model", "/api/remote/auto", "/api/remote/split",
              "/api/remote/relogin/start", "/api/remote/relogin/submit")
 
     class RemoteHandler(base):
@@ -1506,6 +1517,9 @@ def install(ns):
                              str(body.get("queued") or "")[:12000], body.get("resume") is True, body.get("force") is True)
                 elif path.endswith("/off"):
                     res = off(str(body.get("reason") or "по кнопке в панели")[:80], body.get("force") is True)
+                elif path.endswith("/split"):
+                    import cc_remote_split
+                    res = cc_remote_split.resolve(str(body.get("action") or ""), body.get("force") is True)
                 elif path.endswith("/relogin/start"):
                     res = relogin_start()
                 elif path.endswith("/relogin/submit"):

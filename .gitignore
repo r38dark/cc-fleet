@@ -6,3 +6,4 @@ codex_quota_runtime.json
 codex_input_queue.json
 PLAN_*.md
 REVIEW_*.md
+remote_split.json

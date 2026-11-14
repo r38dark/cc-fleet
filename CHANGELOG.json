@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.40",
+      "date": "2026-11-14",
+      "ru": {
+        "t": "Плашка «двойная работа»: Claude запущен там, где работа не числится",
+        "p": [
+          "Работа числится на втором сервере, а основной Claude здесь запущен 2 минуты: красная плашка и сообщение в Telegram.",
+          "Две кнопки с подтверждением: «Оставить DEV» возвращает работу сюда, «Остановить DEV» оставляет её на втором сервере.",
+          "Панель сама ничего не переключает; проверка раз в 30 секунд и не зависит от автопередачи."
+        ]
+      },
+      "en": {
+        "t": "Double work banner: Claude is running where the work is not assigned",
+        "p": [
+          "Work is on the second server but the main Claude runs here for 2 minutes: red banner and a Telegram message.",
+          "Two confirmed buttons: Keep DEV brings the work back here, Stop DEV leaves it on the second server.",
+          "The panel never switches by itself; the check runs every 30 seconds and does not depend on auto handoff."
+        ]
+      }
+    },
+    {
       "v": "2.0.39",
       "date": "2026-11-14",
       "ru": {
