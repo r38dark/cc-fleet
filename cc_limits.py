@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.44"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.45"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3571,9 +3571,13 @@ class H(BaseHTTPRequestHandler):
             action = body.get("action")
             if action not in ("off", "on"):
                 return self._send(400, {"ok": False, "error": "action: off|on"})
+            # у Claude DEV и Claude PROD «отключена вручную» — отдельные флаги: кнопка трогает только свой
+            engine = body.get("engine") or "claude"
+            if engine not in ("claude", "prod"):
+                return self._send(400, {"ok": False, "error": "engine: claude|prod"})
             try:
                 r = subprocess.run(["/usr/bin/python3", os.path.join(BASE, "pause_ctl.py"), action,
-                                    "--by", "web panel"], capture_output=True, text=True, timeout=30,
+                                    "--by", "web panel", "--engine", engine], capture_output=True, text=True, timeout=30,
                                    env=dict(os.environ, CC_LIMITS_BASE=BASE))
                 with open(os.path.join(BASE, "pause_wake.log"), "a", encoding="utf-8") as f:
                     f.write(r.stdout + r.stderr)
@@ -7560,7 +7564,7 @@ function ccpAgents(d){
   const title=tr(s.window==='pause'?'ccpaPause':s.window==='week'?'ccpaWeek':'ccpaSession',name,s.pct==null?'?':Math.round(s.pct),at);
   const sub=s.override?tr('ccpaOverride'):s.manual?tr('ccpaManual'):s.window==='pause'?tr('ccpaKnownPause'):tr(s.waiting?'ccpaWait':'ccpaWarn',s.threshold);
   const toggle=s.override?'on':!s.manual&&s.waiting&&s.can_override?'off':'';
-  const action=toggle?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+toggle+'\',this)">'+tr(toggle==='on'?'ccpBtnOn':'ccpBtnOff')+'</button></div>':'';
+  const action=toggle?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+toggle+'\',this,\''+key+'\')">'+tr(toggle==='on'?'ccpBtnOn':'ccpBtnOff')+'</button></div>':'';
   el.className='ccpause lvl-'+(s.waiting?'pause':'hard');el.hidden=false;
   el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+ccpEsc(title)+'</div><div class="ccp-sub">'+ccpEsc(sub)+'</div>'+action+'</div>'
    +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)+'</div><div class="l">'+tr('ccpTillReset')+'</div></div>':'');
@@ -7699,11 +7703,11 @@ function ccpTick(){
  });
  if(expired)ccpLoad();  // один запрос на все истёкшие окна
 }
-async function ccpToggle(act,btn){
+async function ccpToggle(act,btn,engine){
  if(act==='settings'){$('#gear').click();return;}
  if(btn)btn.disabled=true;
  try{
-  const r=await fetch(API+'pause?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:act})});
+  const r=await fetch(API+'pause?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:act,engine:engine||'claude'})});
   const d=await r.json();
   if(!r.ok||!d.ok)throw new Error(d.out||d.error||('HTTP '+r.status));
   ccpData=d;ccpRender();

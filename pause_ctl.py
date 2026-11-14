@@ -14,6 +14,8 @@
 #   pause_ctl.py wake --if-due                                          — крон-тик
 #   pause_ctl.py off [--by ...]  — отключить паузу (кнопка на веб-панели): работа сверх порога
 #   pause_ctl.py on  [--by ...]  — включить обратно; если окно всё ещё забито — пауза сразу
+#   (у off/on есть --engine claude|prod: у DEV и PROD «отключена вручную» — РАЗНЫЕ флаги,
+#   override и override_prod; по умолчанию claude)
 #
 # Пауза ставится по сессионному (5-часовому) окну. Недельный потолок ставит её, только
 # если включён ключ "weekly_pause" (⚙ Настройки → «Пауза на недельном потолке», v1.21.0):
@@ -306,6 +308,9 @@ def level_state():
     pause = {
         "override": bool(st.get("override")),
         "override_since": st.get("override_since") or 0,
+        # «отключена вручную» у Claude PROD — отдельный флаг: кнопка на баннере PROD не трогает DEV и наоборот
+        "override_prod": bool(st.get("override_prod")),
+        "override_prod_since": st.get("override_prod_since") or 0,
         "active": bool(st.get("active")),
         "reason": st.get("reason") or "",
         "note": st.get("note") or "",
@@ -623,17 +628,28 @@ def _remote_active():
 
 
 def _override_window_ready(local):
-    """A background DEV reset must not re-enable a pause while PROD uses its remainder."""
-    if not _remote_active():
-        return not local.get('stale') and local.get('level') not in ('hard','week')
+    """Отпустило ли окно DEV: флаг «отключена вручную» у DEV возвращается по ЕГО окну.
+    Сброс DEV больше не трогает флаг PROD (до 2.0.45 флаг был один на оба аккаунта)."""
+    return not local.get('stale') and local.get('level') not in ('hard', 'week')
+
+
+def _override_prod_window_ready():
+    """Отпустило ли окно PROD: флаг «отключена вручную» у PROD возвращается по окну PROD,
+    а не по фоновому сбросу DEV. Неизвестный или протухший снимок PROD флаг не снимает."""
     try:
-        with open(os.path.join(BASE,'remote_mode.json'),encoding='utf-8') as f:member=json.load(f).get('member')
-        path=os.environ.get('CC_REMOTE_STATE') or os.path.join(BASE,'remote_state.json')
-        with open(path,encoding='utf-8') as f:row=json.load(f).get(member) or {}
-        if not row.get('online') or row.get('error') or not 0<=_now()-float(row.get('ts') or 0)<=900:return False
-        if not all(isinstance((row.get(k) or {}).get('pct'),(int,float)) for k in ('five_hour','seven_day')):return False
-        return cc_avail.availability(row,_threshold(),_weekly_cap() if _weekly_pause() else 100)[0]
-    except (OSError,ValueError,TypeError):return False
+        with open(os.path.join(BASE, 'remote_mode.json'), encoding='utf-8') as f:
+            member = json.load(f).get('member')
+        path = os.environ.get('CC_REMOTE_STATE') or os.path.join(BASE, 'remote_state.json')
+        with open(path, encoding='utf-8') as f:
+            rows = json.load(f)
+        row = rows.get(member) or rows.get('prod') or {}
+        if not row.get('online') or row.get('error') or not 0 <= _now() - float(row.get('ts') or 0) <= 900:
+            return False
+        if not all(isinstance((row.get(k) or {}).get('pct'), (int, float)) for k in ('five_hour', 'seven_day')):
+            return False
+        return cc_avail.availability(row, _threshold(), _weekly_cap() if _weekly_pause() else 100)[0]
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def _fresh_snapshot_after(st):
@@ -648,6 +664,11 @@ def _fresh_snapshot_after(st):
 
 def cmd_wake(a):
     st = load()
+    if st.get("override_prod") and _override_prod_window_ready():
+        # флаг PROD живёт сам по себе: его возвращает окно PROD, а не DEV
+        st.update(override_prod=False, override_prod_cleared_at=_now(), override_prod_cleared_by="окно отпустило")
+        save(st)
+        _log("пауза PROD снова включена: окно PROD отпустило")
     if st.get("override"):
         # отключённая вручную пауза включается обратно сама, как только окно отпустило —
         # иначе следующий забитый лимит прошёл бы уже без неё
@@ -756,9 +777,25 @@ def _wake_session(msg):
         _log("инжект в screen не удался: %s" % e)
 
 
+def _set_prod_override(on, by):
+    """Флаг «пауза PROD отключена вручную»: пишем только его. Новую политику на PROD отправляет панель
+    (cc_remote_limits.sync_policy), DEV не будим и в общий чат не пишем."""
+    st = load()
+    if on:
+        st.update(override_prod=True, override_prod_since=_now(), override_prod_by=by or "")
+    else:
+        st.update(override_prod=False, override_prod_cleared_at=_now(), override_prod_cleared_by=by or "")
+    save(st)
+    _log("пауза PROD %s вручную (%s)" % ("отключена" if on else "включена", by or "?"))
+    return 0
+
+
 def cmd_off(a):
     """Кнопка «Отключить паузу»: входящие идут сразу, инструменты не блокируются —
-    работа сверх порога, до настоящего лимита аккаунта."""
+    работа сверх порога, до настоящего лимита аккаунта.
+    --engine prod — то же для Claude PROD: меняется ТОЛЬКО его флаг, DEV и его пауза не трогаются."""
+    if getattr(a, "engine", "claude") == "prod":
+        return _set_prod_override(True, a.by)
     st = load()
     was = bool(st.get("active"))
     st.update(active=False, override=True, override_since=_now(), override_by=a.by or "",
@@ -779,7 +816,10 @@ def cmd_off(a):
 
 
 def cmd_on(a):
-    """Кнопка «Включить паузу»: снимает отключение; если окно всё ещё забито — пауза сразу."""
+    """Кнопка «Включить паузу»: снимает отключение; если окно всё ещё забито — пауза сразу.
+    --engine prod — снимает только флаг PROD; саму паузу PROD держит защита на его сервере."""
+    if getattr(a, "engine", "claude") == "prod":
+        return _set_prod_override(False, a.by)
     st = load()
     st.update(override=False, override_cleared_at=_now(), override_cleared_by=a.by or "")
     save(st)
@@ -814,6 +854,7 @@ def main():
     for name, fn in (("off", cmd_off), ("on", cmd_on)):
         s = sub.add_parser(name)
         s.add_argument("--by", default="")
+        s.add_argument("--engine", choices=("claude", "prod"), default="claude")
         s.set_defaults(fn=fn)
 
     s = sub.add_parser("wake")

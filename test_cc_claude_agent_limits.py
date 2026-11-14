@@ -40,11 +40,33 @@ class States(unittest.TestCase):
         self.assertEqual(self.states(remote={'r': row(98)}), {})
 
     def test_override_and_disabled_weekly_pause_do_not_claim_a_pause(self):
-        self.assertFalse(self.states(remote={'r': row(99)}, pause={'override': True})['prod']['waiting'])
+        self.assertFalse(self.states(remote={'r': row(99)}, pause={'override_prod': True})['prod']['waiting'])
         self.assertFalse(self.states(remote={'r': row(99)}, weekly_pause=False)['prod']['waiting'])
         self.assertTrue(self.states(remote={'r': row(100)}, weekly_pause=False)['prod']['waiting'])
         self.assertFalse(self.states({'a': row(99)}, level='manual')['claude']['waiting'])
-        self.assertTrue(self.states(remote={'r':row(100)},pause={'override':True})['prod']['waiting'])
+        self.assertTrue(self.states(remote={'r':row(100)},pause={'override_prod':True})['prod']['waiting'])
+
+    def test_dev_and_prod_overrides_are_independent(self):
+        # регрессия: «отключить» на одном Claude снимало паузу и у второго
+        both = ({'a': row(99)}, {'r': row(99)})
+        dev_off = self.states(*both, pause={'override': True})
+        self.assertTrue(dev_off['claude']['override'] and not dev_off['claude']['waiting'])
+        self.assertTrue(not dev_off['prod']['override'] and dev_off['prod']['waiting'])
+        prod_off = self.states(*both, pause={'override_prod': True})
+        self.assertTrue(prod_off['prod']['override'] and not prod_off['prod']['waiting'])
+        self.assertTrue(not prod_off['claude']['override'] and prod_off['claude']['waiting'])
+
+    def test_prod_guard_policy_carries_only_the_prod_override(self):
+        # защита на сервере PROD получает флаг PROD, а не DEV
+        import json, tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            ns = {'cfg': lambda: dict(threshold=90, weekly_cap=99)}
+            with mock.patch.object(limits.R, 'BASE', d):
+                for state, want in ((dict(override=True), False), (dict(override_prod=True), True), ({}, False)):
+                    with open(d + '/pause_state.json', 'w') as f:
+                        json.dump(state, f)
+                    self.assertEqual(limits.policy(ns, {}, True)['override'], want, state)
 
     def test_other_usable_local_account_does_not_report_an_engine_wait(self):
         result = self.states({'a': row(100), 'b': row(20)}, {'r': row(99)})
@@ -113,6 +135,10 @@ console.log(JSON.stringify({off,on,hard:nodes.ccPauseProd}));
 """
         result=json.loads(subprocess.run(['node','-e',program],check=True,capture_output=True,text=True,timeout=10).stdout)
         for item in result['off'].values():self.assertIn('ccpBtnOff',item['innerHTML'])
+        # кнопка каждого баннера шлёт СВОЙ аккаунт (раньше один общий флаг на оба)
+        self.assertIn("ccpToggle('off',this,'claude')",result['off']['ccPauseDev']['innerHTML'])
+        self.assertIn("ccpToggle('off',this,'prod')",result['off']['ccPauseProd']['innerHTML'])
+        self.assertIn("ccpToggle('on',this,'prod')",result['on']['ccPauseProd']['innerHTML'])
         for item in result['on'].values():self.assertIn('ccpBtnOn',item['innerHTML'])
         self.assertNotIn('ccpBtnOff',result['hard']['innerHTML'])
 

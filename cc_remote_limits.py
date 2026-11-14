@@ -37,13 +37,15 @@ def agent_limits(local, snapshot, remote, remote_pause=None, now=None):
         pct = chosen.get("wpct" if week else "pct")
         hard = all((a.get("wpct" if week else "pct") or 0) >= 100 for a in summary["accounts"].values())
         manual = engine == "claude" and local.get("level") == "manual"
-        waiting = hard or (not pause.get("override") and not manual and (not week or local.get("weekly_pause")))
+        # «отключена вручную» — отдельный флаг у каждого Claude (DEV: override, PROD: override_prod)
+        overridden = bool(pause.get("override_prod" if engine == "prod" else "override"))
+        waiting = hard or (not overridden and not manual and (not week or local.get("weekly_pause")))
         active_row = accounts.get(local.get('active')) if engine == 'claude' else None
         can_override = not cc_avail.dead(active_row) if active_row else not hard
         result[engine] = dict(window="week" if week else "5h", pct=pct,
                               threshold=cap if week else threshold,
                               resume_at=cc_avail._ts(nearest.get("resets_at") or "") or 0,
-                              waiting=bool(waiting), override=bool(pause.get("override")),
+                              waiting=bool(waiting), override=overridden,
                               manual=manual, can_override=can_override)
         # Отдельные реальные сбросы выбранного ближайшего доступного аккаунта:
         # общий resume_at может быть позднейшим из двух окон и не заменяет каждый.
@@ -70,7 +72,7 @@ def policy(ns, row, enabled):
     cfg = ns["cfg"]()
     pause = R.jload(R.BASE + "/pause_state.json", {})
     return dict(enabled=bool(enabled), threshold=cfg.get("threshold", 90), weekly_cap=cfg.get("weekly_cap", 99),
-                weekly_pause=bool(cfg.get("weekly_pause")), override=bool(pause.get("override")),
+                weekly_pause=bool(cfg.get("weekly_pause")), override=bool(pause.get("override_prod")),
                 row={k: row[k] for k in ("five_hour", "seven_day", "ts", "error", "online") if k in row})
 
 
