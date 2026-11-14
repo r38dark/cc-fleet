@@ -110,5 +110,25 @@ class TileWidthTests(unittest.TestCase):
                 self.assertTrue(nxt and not nxt.startswith("/*"), "после «%s…» идёт комментарий или пусто" % line.strip()[:70])
 
 
+class LiveFrameTests(unittest.TestCase):
+    """Зелёная рамка работающего агента в полосе «Активные аккаунты» не должна пропадать под обнулением тени ячейки."""
+
+    RESET = 'html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{box-sizing:border-box;'
+    FRAME = 'box-shadow:inset 0 0 0 1px #49d6aa}'
+
+    def test_claude_and_codex_frames_come_after_the_shadow_reset(self):
+        css = cc_overview.CSS
+        reset = css.index(self.RESET)
+        for eng in ('claude', 'codex'):
+            rule = 'html:root:root:root.ag-live-%s #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.%s{%s' % (eng, eng, self.FRAME)
+            self.assertIn(rule, css, 'нет рамки работающего агента для ' + eng)
+            self.assertGreater(css.index(rule), reset, 'рамка ' + eng + ' должна стоять после обнуления тени')
+
+    def test_prod_frame_beats_the_shadow_reset(self):
+        import cc_remote_ui
+        rule = 'html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod{' + self.FRAME
+        self.assertIn(rule, cc_remote_ui.CSS)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -15,7 +15,7 @@ import cc_avail
 import cc_remote as R
 
 CFG_FILE = os.environ.get("CC_REMOTE_AUTO") or R.BASE + "/remote_auto.json"
-DEFAULTS = dict(enabled=False, dry_run=False, ticks=2, cooldown=900, sim_level="", sim_prod="")  # sim_*: проверка вживую — подмена состояния Claude DEV (hard/none) и PROD ("1" пригоден, "0" нет)
+DEFAULTS = dict(enabled=False, dry_run=False, ticks=2, cooldown=900, resume=True, sim_level="", sim_prod="")  # sim_*: проверка вживую — подмена состояния Claude DEV (hard/none) и PROD ("1" пригоден, "0" нет)
 TICK_SEC = 30
 KICK_FILE = os.environ.get("CC_REMOTE_AUTO_KICK") or R.BASE + "/remote_auto_kick.json"   # хук паузы просит панель передать работу сейчас
 HB_FILE = os.environ.get("CC_REMOTE_AUTO_HB") or R.BASE + "/remote_auto_hb.json"          # «пульс» потока панели: жив ли тот, кто примет запрос
@@ -39,6 +39,7 @@ def load():
     if isinstance(raw, dict):
         out.update({k: raw[k] for k in DEFAULTS if k in raw})
     out["enabled"] = bool(out["enabled"])
+    out["resume"] = out["resume"] is not False   # перенос беседы на PROD при автопередаче; false в remote_auto.json — как раньше, без переноса
     return out
 
 
@@ -350,7 +351,7 @@ def _tick(ns, kicked=False):
     limits = limits_line(native, row)
     if action == "to_prod":
         queued, stamps = _queue_text()
-        res = M.on(mid, "автопередача: " + reason, queued)
+        res = M.on(mid, "автопередача: " + reason, queued, resume=bool(cfg.get("resume", True)), auto=True)
         if res.get("ok"):
             _queue_taken(stamps)
             try:
