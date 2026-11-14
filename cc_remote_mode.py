@@ -465,7 +465,13 @@ def claim_prod(reason="по кнопке в панели", force=False):
             if not wk.stop_claude():
                 return {"ok": False, "message": "Claude DEV не остановился: проверь консоль."}
             _wcache["ts"] = 0.0
-            return {"ok": True, "message": "Claude PROD уже работает: Claude DEV остановлен."}
+            # DEV уже остановлен и больше не пишет: его свежую память докладываем на работающий PROD (более новые файлы PROD не затираются)
+            if not rsync(m, PROJ + "/memory/", PROJ + "/memory/", True):
+                return {"ok": True, "message": "Claude PROD уже работает: Claude DEV остановлен. Память DEV на PROD скопировать не удалось: проверь вручную."}
+            left = rsync_pending(m, PROJ + "/memory/", PROJ + "/memory/", True)
+            if left != 0:
+                return {"ok": True, "message": "Claude PROD уже работает: Claude DEV остановлен. Память DEV скопирована не полностью (не подтверждено): проверь вручную."}
+            return {"ok": True, "message": "Claude PROD уже работает: Claude DEV остановлен, память DEV скопирована на PROD."}
         if st.get("running") and st.get("busy") and not force:   # PROD без Telegram отвечает: перезапуск оборвал бы ответ
             return {"ok": False, "busy": True, "answering": True, "message": "Claude на PROD сейчас отвечает: дождись конца ответа."}
         t = threading.Thread(target=_on_job, args=(mid, reason, "", True), daemon=True)   # беседа Claude DEV едет на PROD

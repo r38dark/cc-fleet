@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.42",
+      "date": "2026-11-14",
+      "ru": {
+        "t": "Кнопка «Перерисовать консоль» и память при передаче на PROD",
+        "p": [
+          "Кнопка «Перерисовать консоль» на вкладке Claude DEV возвращает пропавший кусок экрана, например полоски лимитов.",
+          "Кнопка меняет ширину окна консоли на колонку и обратно; в сессию ничего не вводится.",
+          "«Работа на PROD» при уже работающем втором сервере докладывает на него свежую память с этого сервера."
+        ]
+      },
+      "en": {
+        "t": "Redraw console button and memory copy on handoff to PROD",
+        "p": [
+          "The \"Redraw console\" button on the Claude DEV tab brings back a missing part of the screen, such as the limit bars.",
+          "The button narrows the console window by one column and back; nothing is typed into the session.",
+          "\"Work on PROD\" with the second server already working copies the fresh memory from this server onto it."
+        ]
+      }
+    },
+    {
       "v": "2.0.41",
       "date": "2026-11-14",
       "ru": {

@@ -252,6 +252,13 @@ class ClaimProd(Base):
         self.job_args = []
         self.saved = []
         self.not_ready = ''
+        self.rsync_ok = True       # результат rsync памяти DEV -> PROD
+        self.rsync_left = 0        # сколько файлов ещё отличается после копирования (None — проверить не удалось)
+        self.rsync_calls = []
+
+        def fake_rsync(m, src, dst, to_remote, extra=(), protect_newer=True):
+            self.rsync_calls.append((src, dst, to_remote, protect_newer))
+            return self.rsync_ok
 
         def on_job(*args, **kwargs):
             self.job_args.append((args, kwargs))
@@ -263,6 +270,8 @@ class ClaimProd(Base):
                 (M, '_prod_not_ready', lambda mid, force=False: self.not_ready),
                 (M, 'ctl', lambda m, args, timeout=150: self.status),
                 (M, '_save', lambda **kw: self.saved.append(kw)),
+                (M, 'rsync', fake_rsync),
+                (M, 'rsync_pending', lambda m, src, dst, to_remote: self.rsync_left),
                 (M, '_on_job', on_job)):
             p = mock.patch.object(target, name, value)
             p.start()
@@ -303,8 +312,40 @@ class ClaimProd(Base):
         self.assertTrue(res['ok'])
         self.assertNotIn('started', res)
         self.assertIn('Claude DEV остановлен', res['message'])
+        self.assertIn('память DEV скопирована на PROD', res['message'])
         self.assertEqual(self.wk.stopped, 1)
-        self.assertEqual(self.job_args, [])   # PROD не перезапускаем и память не гоняем
+        self.assertEqual(self.job_args, [])   # PROD не перезапускаем и беседу не гоняем
+        # память едет с DEV на PROD, более новые файлы PROD не затираются (--update)
+        self.assertEqual(self.rsync_calls, [(M.PROJ + '/memory/', M.PROJ + '/memory/', True, True)])
+
+    def test_memory_copy_failure_does_not_fail_the_claim_but_says_so(self):
+        self.status = {'ok': True, 'running': True, 'busy': False, 'tg': True}
+        self.rsync_ok = False
+        res = M.claim_prod('причина')
+        self.assertTrue(res['ok'])
+        self.assertEqual(self.wk.stopped, 1)   # DEV уже остановлен: работа осталась на PROD
+        self.assertIn('Память DEV на PROD скопировать не удалось', res['message'])
+        self.assertNotIn('скопирована на PROD.', res['message'])
+
+    def test_memory_not_confirmed_is_reported(self):
+        self.status = {'ok': True, 'running': True, 'busy': False, 'tg': True}
+        for left in (3, None):
+            self.rsync_left = left
+            self.wk.stopped = 0
+            res = M.claim_prod('причина')
+            self.assertTrue(res['ok'])
+            self.assertIn('не подтверждено', res['message'])
+
+    def test_memory_is_not_copied_when_dev_does_not_stop(self):
+        self.wk.stops = False
+        self.status = {'ok': True, 'running': True, 'busy': False, 'tg': True}
+        M.claim_prod('причина')
+        self.assertEqual(self.rsync_calls, [])   # DEV ещё пишет: до остановки память не гоняем
+
+    def test_memory_is_not_copied_separately_when_prod_gets_the_full_handoff(self):
+        M.claim_prod('причина')
+        self.join()
+        self.assertEqual(self.rsync_calls, [])   # полную передачу делает _on_job (там же память)
 
     def test_dev_that_does_not_stop_says_so(self):
         self.wk.stops = False

@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.41"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.42"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2152,6 +2152,41 @@ def send_session_command(key):
                 if ok else "не удалось отправить (сессия недоступна)")
 
 
+_redraw_lock = threading.Lock()
+REDRAW_HOLD = 2.0   # сек: сколько окно сессии остаётся на колонку уже, пока Claude Code перестраивает кадр
+
+
+def redraw_console(lang="ru"):
+    """Кнопка «Перерисовать консоль» (вкладка Claude DEV). Claude Code рисует экран диф-обновлениями: что потерялось
+    в console.log (полоски лимитов под консолью, обрезанный кусок), само не вернётся. Настоящий ресайз pty окна сессии
+    (cols -> cols-1 -> cols; ядро шлёт SIGWINCH) заставляет его перестроить кадр целиком, и полный кадр попадает в лог.
+    В сессию ничего не вводится (в отличие от /clear), разговор не затрагивается, размер возвращается как был."""
+    if not _redraw_lock.acquire(blocking=False):
+        return False, _t(lang, "Перерисовка уже идёт.", "A redraw is already running.")
+    try:
+        pid = _current_screen_pid(cfg().get("screen_session", "claude"))
+        path = _console_window_pty(pid)
+        if not path:
+            return False, _t(lang, "Консоль Claude не запущена: перерисовывать нечего.", "Claude console is not running: nothing to redraw.")
+        fd = os.open(path, os.O_RDONLY | os.O_NOCTTY)
+        try:
+            rows, cols = struct.unpack("HHHH", fcntl.ioctl(fd, termios.TIOCGWINSZ, struct.pack("HHHH", 0, 0, 0, 0)))[:2]
+            if rows < 5 or cols < 21:
+                return False, _t(lang, "Неожиданный размер окна консоли, не трогаю.", "Unexpected console window size, leaving it alone.")
+            try:
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols - 1, 0, 0))
+                time.sleep(REDRAW_HOLD)
+            finally:
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))   # размер возвращаем при любом исходе
+        finally:
+            os.close(fd)
+        return True, _t(lang, "Консоль перерисована: полный кадр появится через пару секунд.", "Console redrawn: the full frame appears in a couple of seconds.")
+    except Exception:
+        return False, _t(lang, "Не удалось перерисовать консоль (сессия недоступна).", "Could not redraw the console (session unavailable).")
+    finally:
+        _redraw_lock.release()
+
+
 def codex_setup_prompt(lang="ru"):
     return cc_codex.setup_prompt(lang, CONFIG, cfg().get("port", 8877))
 
@@ -3469,6 +3504,9 @@ class H(BaseHTTPRequestHandler):
                 cc_model_notice.changed("Claude DEV", "claude", before, _model_notice_state(smid, top))
             return self._send(200 if ok else 400, {"ok": ok, "message": msg, "model": model_info()})
         if u.path == "/api/session":
+            if body.get("cmd") == "redraw":   # не slash-команда: ресайз pty окна, в сессию ничего не вводится
+                ok, msg = redraw_console(body.get("lang"))
+                return self._send(200 if ok else 400, {"ok": ok, "message": msg})
             ok, msg = send_session_command(body.get("cmd", ""))
             return self._send(200 if ok else 400, {"ok": ok, "message": msg})
         if u.path == "/api/pause":
@@ -4379,7 +4417,7 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
 <div class="ccpause" id="ccPauseProd" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
- <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button></span></div>
+ <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctRedraw" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button></span></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="splitBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
 <span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden><span id="termIdleTxt"></span><button type="button" id="termIdleGo" hidden></button></div></pre>
@@ -4720,6 +4758,7 @@ const I18N={
   candErr:'Не удалось проверить модели — сервер ответил ошибкой',
   compactTitle:'Сжать контекст (/compact)',
   newSessionTitle:'Новая сессия (/clear)',
+  redrawTitle:'Перерисовать консоль (если пропал кусок экрана, например полоски лимитов)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
   cxTitle:'ChatGPT (Codex)',
   cxHint:'Отдельные аккаунты, модели и оптимизация лимитов Codex',
@@ -5250,6 +5289,7 @@ const I18N={
   candErr:'Could not check for models',
   compactTitle:'Compact context (/compact)',
   newSessionTitle:'New session (/clear)',
+  redrawTitle:'Redraw console (if part of the screen is missing, e.g. the limit bars)',
   confirmNewSession:'Start a new Claude session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the console. Continue?',
   cxTitle:'ChatGPT (Codex)',
   cxHint:'A separate program with its own sign-in — not part of the Claude rotation',
@@ -5611,6 +5651,7 @@ let cxStarting=false;
 // Кнопки «Остановить консоль» нет: консоль Codex запускается сама и гасится профилем.
 function ctActsSync(){const k=consCur(),show=k==='claude'||k==='prod'||k==='codex';
  $('#ctCompact').hidden=$('#ctNew').hidden=!show;
+ $('#ctRedraw').hidden=k!=='claude';{const b=$('#ctRedraw');b.title=tr('redrawTitle');b.setAttribute('aria-label',tr('redrawTitle'));}
  $('#cTabs').classList.toggle('cacts',show);$('.termwrap').classList.toggle('hascacts',show);
  if(show)for(const [id,t] of [['#ctCompact',k==='codex'?'cxcCompactTip':'compactTitle'],['#ctNew',k==='codex'?'cxcNewTip':'newSessionTitle']]){const b=$(id);b.title=tr(t);b.setAttribute('aria-label',tr(t));}}
 function cxConsUi(d){
@@ -6063,6 +6104,15 @@ async function prodSessionCmd(cmd,anchor){  // «Сжать контекст» /
 function consActCmd(cmd,anchor){const s=consCur();return s==='codex'?cxConsCmd(cmd,anchor):s==='prod'?prodSessionCmd(cmd,anchor):sessionCmd(cmd,anchor||$(cmd==='compact'?'#ctCompact':'#ctNew'));}
 $('#ctCompact').addEventListener('click',()=>consActCmd('compact'));
 $('#ctNew').addEventListener('click',()=>consActCmd('new'));
+async function consRedraw(){  // «Перерисовать консоль» (только Claude DEV): ресайз pty окна сессии на сервере, полный кадр придёт в консоль сам
+ const b=$('#ctRedraw');b.disabled=true;
+ try{
+  const r=await fetch(API+'session?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd:'redraw',lang:LANG})});
+  const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+(d.message||''));
+ }catch(e){toast('⚠ '+e)}
+ b.disabled=false;
+}
+$('#ctRedraw').addEventListener('click',consRedraw);
 setTimeout(()=>{consTabs();ccConsoleHistory();tickAll();},0);setInterval(tickAll,2000);  // после загрузки скрипта: consCur() читает cxData, объявленный ниже
 function col(p){return p==null?'#555':p<60?'var(--ok)':p<85?'var(--warn)':'var(--bad)'}
 function tone(p){return p==null?'na':p<60?'ok':p<85?'warn':'bad'}
