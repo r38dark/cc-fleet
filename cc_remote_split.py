@@ -5,8 +5,9 @@
 Оба слушают одного Telegram-бота: ответы дублируются или теряются.
 
 Панель ничего не переключает сама (на PROD могут ещё работать): держит расхождение HOLD_SEC подряд, показывает плашку
-(remote_mode.split) и один раз пишет в Telegram. Выход выбирает владелец: «Оставить DEV» (снять режим PROD, как «Вернуть мне»)
-или «Остановить DEV» (работа остаётся на PROD)."""
+(remote_mode.split) и один раз пишет в Telegram. Выход выбирает владелец, кнопки названы по исходу:
+«Работа на DEV» (снять режим PROD, как «Вернуть мне») или «Работа на PROD» (проверить PROD, при необходимости запустить его
+с беседой и карточкой и только потом погасить DEV; не вышло — DEV не трогаем)."""
 import os
 import threading
 import time
@@ -16,7 +17,7 @@ import cc_remote as R
 FILE = os.environ.get("CC_REMOTE_SPLIT") or R.BASE + "/remote_split.json"
 HOLD_SEC = 120     # сколько подряд расхождение должно держаться, прежде чем показать плашку
 STALE_SEC = 150    # проверка не шла дольше — «подряд» не подтверждено: отсчёт начинаем заново, плашку не показываем
-ACTIONS = ("keep_dev", "stop_dev")
+ACTIONS = ("work_dev", "work_prod")
 _lock = threading.Lock()
 _mem = {"first": 0.0, "seen": 0.0, "notified": 0.0}
 _loaded = [False]
@@ -73,8 +74,8 @@ def public(now=None):
 def _text(minutes):
     return ("⚠️ Двойная работа: режим «работа на Claude PROD», а основной Claude DEV с Telegram запущен уже %d мин "
             "(мог подняться сам, например после перезагрузки сервера). Оба слушают одного бота: ответы могут дублироваться "
-            "или теряться. Панель ничего не переключала. Открой панель: «Оставить DEV» вернёт работу сюда, «Остановить DEV» "
-            "оставит её на PROD." % max(1, int(minutes)))
+            "или теряться. Панель ничего не переключала. Открой панель: «Работа на DEV» вернёт работу сюда, «Работа на PROD» "
+            "запустит PROD (если он не работает) и остановит DEV." % max(1, int(minutes)))
 
 
 def tick(ns=None, now=None):
@@ -102,7 +103,8 @@ def tick(ns=None, now=None):
 
 
 def resolve(action, force=False):
-    """POST /api/remote/split {action, force?}. keep_dev: вернуть работу на DEV (как «Вернуть мне»); stop_dev: остановить Claude DEV."""
+    """POST /api/remote/split {action, force?}. work_dev: вернуть работу на DEV (как «Вернуть мне»);
+    work_prod: оставить работу на PROD (M.claim_prod: проверка и запуск PROD, потом остановка DEV)."""
     import cc_remote_mode as M
     if action not in ACTIONS:
         return {"ok": False, "message": "Неизвестное действие."}
@@ -115,10 +117,8 @@ def resolve(action, force=False):
         if not (M.active() and wk.claude_running()):
             tick()
             return {"ok": True, "message": "Расхождения уже нет."}
-        if action == "keep_dev":
+        if action == "work_dev":
             return M.off("Claude DEV запущен сам: оставляем работу на нём (кнопка в панели)", force)
-        stopped = bool(wk.stop_claude())
-    tick()
-    if not stopped:
-        return {"ok": False, "message": "Claude DEV не остановился: проверь консоль."}
-    return {"ok": True, "message": "Claude DEV остановлен. Работа остаётся на Claude PROD."}
+        res = M.claim_prod("Claude DEV запущен сам: владелец оставил работу на PROD (кнопка в панели)", force)
+    tick()   # DEV остановлен или идёт передача (busy): отсчёт плашки сбрасываем сразу, а не через 30 с
+    return res

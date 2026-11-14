@@ -436,6 +436,45 @@ def on(mid, reason="вручную", queued="", resume=False, force=False, auto=
         return {"ok": True, "started": True, "message": "Передача началась: ~1 минута."}
 
 
+def claim_prod(reason="по кнопке в панели", force=False):
+    """Плашка «двойная работа» (флаг уже «работа на PROD», а Claude DEV запущен): оставить работу на PROD.
+    Сначала проверяем PROD, DEV до этого не трогаем. PROD работает с Telegram — гасим только DEV. PROD не запущен —
+    обычная передача (_on_job: инструменты, память, беседа, карточка, запуск), DEV гасится внутри неё; сбой до остановки
+    оставляет DEV как есть, сбой после — _on_job возвращает работу на DEV."""
+    with LOCK:
+        wk = _wk()
+        if wk is None:
+            return {"ok": False, "message": "Панель ещё не готова."}
+        if lock_message():
+            return {"ok": False, "message": lock_message()}
+        if not active():
+            return {"ok": True, "message": "Режим PROD уже снят."}
+        if busy():
+            return {"ok": False, "busy": True, "message": "Операция уже идёт."}
+        mid = mode().get("member")
+        m = R.members().get(mid)
+        if not m:
+            return {"ok": False, "message": "Запись о PROD пропала. Claude DEV не тронут."}
+        bad = _prod_not_ready(mid, force)
+        if bad:
+            return {"ok": False, "message": bad + " Claude DEV не тронут."}
+        st = ctl(m, "status", timeout=40)
+        if not st.get("ok"):
+            return {"ok": False, "message": "PROD не ответил на проверку (%s). Claude DEV не тронут." % (st.get("error") or "нет связи")}
+        if st.get("running") and st.get("tg"):
+            if not wk.stop_claude():
+                return {"ok": False, "message": "Claude DEV не остановился: проверь консоль."}
+            _wcache["ts"] = 0.0
+            return {"ok": True, "message": "Claude PROD уже работает: Claude DEV остановлен."}
+        if st.get("running") and st.get("busy") and not force:   # PROD без Telegram отвечает: перезапуск оборвал бы ответ
+            return {"ok": False, "busy": True, "answering": True, "message": "Claude на PROD сейчас отвечает: дождись конца ответа."}
+        t = threading.Thread(target=_on_job, args=(mid, reason, "", True), daemon=True)   # беседа Claude DEV едет на PROD
+        _job["t"] = t
+        _save(stage="начало", error="")
+        t.start()
+        return {"ok": True, "started": True, "message": "Claude PROD не запущен: передача началась (~1–2 минуты), Claude DEV остановится при запуске PROD."}
+
+
 def _off_job(reason, force, restore=True, deliver=True):
     """restore=False: Claude здесь не запускается (работа уходит дальше к Codex, Claude DEV не будим)."""
     mid = mode().get("member")
