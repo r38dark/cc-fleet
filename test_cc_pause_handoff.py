@@ -39,13 +39,14 @@ class Files(unittest.TestCase):
         j = lambda n: os.path.join(self.d, n)
         self.saved = [(A, n, getattr(A, n)) for n in ('CFG_FILE', 'KICK_FILE', 'HB_FILE', 'MODE_FILE')]
         self.saved += [(R, n, getattr(R, n)) for n in ('MEMBERS_FILE', 'STATE_FILE')]
-        self.saved += [(pc, n, getattr(pc, n)) for n in ('STATE', 'level_state', '_threshold', '_weekly_cap',
+        self.saved += [(pc, n, getattr(pc, n)) for n in ('STATE', 'NOTICE_FILE', 'level_state', '_threshold', '_weekly_cap',
                                                            'nearest_reset', '_tg', '_log')]
         self.saved += [(Q, 'QUEUE', Q.QUEUE)]
         self.addCleanup(self.restore)
         A.CFG_FILE, A.KICK_FILE, A.HB_FILE, A.MODE_FILE = j('auto.json'), j('kick.json'), j('hb.json'), j('mode.json')
         R.MEMBERS_FILE, R.STATE_FILE = j('members.json'), j('rstate.json')
         pc.STATE = j('pause_state.json')
+        pc.NOTICE_FILE = j('pause_notice.json')   # отметка «об эпизоде уже написали» не должна утекать между тестами
         Q.QUEUE = j('tg_queue.jsonl')
         self.ls = dict(level='hard', stale=False, line='acc3 90%', why='все выше порога', accounts={}, active='acc3')
         pc.level_state = lambda: self.ls

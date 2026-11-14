@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.42"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.43"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -2285,7 +2285,7 @@ def autoswitch_check(snap):
             return  # работа уходит на Claude PROD: «некуда» неправда, флаг эпизода не ставим — если передача не выйдет, сообщение уйдёт на следующем проходе
         text, lvl = _nowhere_text(accs, act, act_free)
         if not st.get("all_high_notified") or _week_news(st, lvl):
-            tg_notify(text)
+            _notice_send(text, lvl)
             st["all_high_notified"] = True
             st["nowhere_lvl"] = lvl
             jsave(STATE, st)
@@ -2463,6 +2463,38 @@ def _nearest_reset(accs):
 WEEK_LEVELS = ("week", "weekrisk")
 
 
+def _pause_mod():
+    import sys
+    if BASE not in sys.path:
+        sys.path.insert(0, BASE)
+    import pause_ctl  # данные модуль читает с диска на каждый вызов — кэш не мешает
+    return pause_ctl
+
+
+def _prod_hint():
+    """Claude PROD свободен, а у DEV лимит (pause_ctl.prod_hint) → {…}; нет PROD или сбой → {}."""
+    try:
+        return _pause_mod().prod_hint()
+    except Exception:
+        return {}
+
+
+def _prod_phrase(h):
+    return _pause_mod().prod_phrase(h)
+
+
+def _notice_send(text, key):
+    """Одно сообщение «упёрлись в лимит» на эпизод: пауза, балансер и очередь делят отметку (pause_ctl.notice_claim).
+    Раньше про один и тот же лимит приходило 3–4 сообщения подряд. Отметка недоступна — пишем как раньше."""
+    try:
+        if not _pause_mod().notice_claim(key):
+            print("notice %s: об эпизоде уже написали — второе сообщение не шлю" % key, flush=True)
+            return False
+    except Exception:
+        pass
+    return tg_notify(text)
+
+
 def _nowhere_text(accs, act, act_free=False):
     """(текст, level) уведомления «переключаться некуда» — что будет дальше, по тому же
     pause_ctl.level_state(), что и баннер. До v1.21.0 здесь всегда было «жду», хотя с
@@ -2473,10 +2505,18 @@ def _nowhere_text(accs, act, act_free=False):
     w = round(((accs.get(act) or {}).get("seven_day") or {}).get("pct") or 0)
     cap = ls.get("weekly_cap") or cfg().get("weekly_cap", 99)
     tail = "\n" + _accs_line(accs) + "\nРаньше всех освободится: " + _nearest_reset(accs)
+    # Claude PROD свободен, но работа к нему не уходит (автопередача выключена и т. п.): «переключаться некуда» было бы неправдой
+    prod = {} if act_free or lvl not in ("hard", "week") else _prod_hint()
+    nowhere = _prod_phrase(prod) if prod else "переключаться некуда"
+    who = "Claude DEV" if prod else "Claude"
+    if prod:
+        tail = ("\n" + _accs_line(accs) + "\nDEV поднимется сам: " + _nearest_reset(accs)
+                + ("" if prod.get("on") else "\nРаньше — передать работу на PROD: «Работа на PROD» на панели"
+                   + (" или включить «Автопередача» в «Настройки PROD»." if prod.get("why") == "автопередача выключена" else ".")))
     if act_free:
         head = f"⛔ Claude: {act} слетел в Free, остальные недоступны — переключаться некуда, жду, пока освободится другой."
     elif lvl == "week" and not override:
-        head = (f"⏸ Claude: неделя {act} — {w}% (потолок {cap:.0f}%), переключаться некуда — Claude встаёт на паузу. "
+        head = (f"⏸ Claude: неделя {act} — {w}% (потолок {cap:.0f}%), {nowhere} — {who} встаёт на паузу. "
                 "Поднимется сам, когда освободится другой аккаунт или сбросится неделя"
                 # на 100% недели настоящий лимит исчерпан — отключать паузу бесполезно
                 + ("." if w >= 100 else "; продолжить сразу — «Отключить паузу» на панели."))
@@ -2486,7 +2526,7 @@ def _nowhere_text(accs, act, act_free=False):
         head += ("\nПауза отключена вручную на панели." if override else
                  f"\nОстановку на {cap:.0f}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».")
     elif lvl == "hard" and not override:
-        head = f"⛔ Claude: {ls.get('why') or 'все аккаунты выше порога сессии'} — Claude встаёт на паузу до сброса окна."
+        head = f"⛔ Claude: {ls.get('why') or 'все аккаунты выше порога сессии'} — {who} встаёт на паузу до сброса окна."
     elif lvl == "hard":
         head = (f"⛔ Claude: {ls.get('why') or 'все аккаунты выше порога сессии'}. "
                 "Пауза отключена вручную: работа идёт до настоящего лимита аккаунта.")
@@ -2577,7 +2617,10 @@ def _week_cap_warn(snap):
                 continue  # балансер уходит с него в ближайшие тики — предупредим, когда уйдёт
         warned[n] = key
         if text:
-            tg_notify(text)
+            if n == act and lvl in WEEK_LEVELS:
+                _notice_send(text, lvl)  # это «некуда» на неделе — делит отметку с паузой и балансером
+            else:
+                tg_notify(text)
     if warned != (st.get("week_warned") or {}):
         st["week_warned"] = warned
         jsave(STATE, st)
@@ -2717,7 +2760,7 @@ def optimize_check(snap):
             # предупреждение о недельном потолке не глушим двухчасовым окном: без него
             # человек не узнает, что аккаунт добивается до 100% (или что Claude встал)
             if lvl in WEEK_LEVELS or time.time() - st.get("all_high_notified_ts", 0) >= 7200:
-                tg_notify(text)
+                _notice_send(text, lvl)
                 st["all_high_notified_ts"] = time.time()
             st["all_high_notified"] = True
             st["nowhere_lvl"] = lvl
@@ -2822,11 +2865,12 @@ def _lim_at(iso):
         return ""
 
 
-def claude_limit_alerts(accs, prev):
+def claude_limit_alerts(accs, prev, hush=()):
     """Сообщения о лимитах Claude в том же виде, что у Codex: на каждом пороге одно —
     «израсходовано на 90%», «исчерпан» (100%) и «снова доступен». По каждому аккаунту и окну
     (5 ч, неделя); имя аккаунта — только если аккаунтов больше одного. Ошибка чтения или Free —
-    состояние аккаунта не меняется. → (сообщения, новое состояние)."""
+    состояние аккаунта не меняется. hush — окна ("five_hour"/"seven_day"), про которые уже написано (пауза или «некуда»
+    с теми же цифрами): порог «подходит» для них молча запоминается. → (сообщения, новое состояние)."""
     prev = {n: dict(v) for n, v in (prev or {}).items() if n in accs}
     out, multi = [], len(accs) > 1
     for n, row in sorted(accs.items()):
@@ -2843,8 +2887,9 @@ def claude_limit_alerts(accs, prev):
             at = _lim_at(w["resets_at"]) if w.get("resets_at") else ""
             tail = f" Сбросится в {at}." if at else ""
             if lvl > old:
-                out.append(f"⚠ Лимит Claude{who} исчерпан: окно {nm}.{tail}" if lvl == 100 else
-                           f"⚠ Лимит Claude{who}: окно {nm} израсходовано на {round(pct)}%.{tail}")
+                if not (lvl < 100 and key in hush and not n.startswith("remote:")):
+                    out.append(f"⚠ Лимит Claude{who} исчерпан: окно {nm}.{tail}" if lvl == 100 else
+                               f"⚠ Лимит Claude{who}: окно {nm} израсходовано на {round(pct)}%.{tail}")
                 mem[key] = lvl
             elif old == 100 and lvl < 100:
                 out.append(f"✅ Лимит Claude{who} снова доступен: окно {nm}, занято {round(pct)}%.")
@@ -2867,7 +2912,16 @@ def _claude_limit_tick(snap):
         return
     st = jload(STATE, {})
     first = "limit_alerts" not in st
-    msgs, st["limit_alerts"] = claude_limit_alerts(accs, st.get("limit_alerts"))
+    hush = set()  # про этот лимит уже написала пауза или «некуда» балансера — второе «⚠ Лимит Claude» было бы тем же самым
+    try:
+        pc = _pause_mod()
+        if pc.notice_fresh("hard"):
+            hush.add("five_hour")
+        if pc.notice_fresh("week") or pc.notice_fresh("weekrisk"):
+            hush.add("seven_day")
+    except Exception:
+        pass
+    msgs, st["limit_alerts"] = claude_limit_alerts(accs, st.get("limit_alerts"), hush)
     jsave(STATE, st)
     if first:
         return  # первый запуск: запоминаем текущие пороги молча — не пишем о том, что было до установки
@@ -2955,6 +3009,8 @@ def pause_state():
         d["claude_limits"] = cc_remote_limits.agent_limits(d, snapshot, cc_remote.cached(), d["remote_pause"])
         # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
         d["handoff"] = ""
+        # Claude PROD свободен, а у DEV лимит и работа к нему не уходит: баннер и тексты не говорят «переключаться некуда»
+        d["prod_free"] = _prod_hint() if d.get("level") in ("hard", "week") else {}
         if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
             try:
                 import cc_remote_auto
@@ -4706,6 +4762,9 @@ const I18N={
   ccpErr:e=>'не получилось: '+e,
   ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
   ccpGateWeekTitle:'⏸ Неделя активного аккаунта <b>на потолке</b>',
+  ccpProdSes:p=>'сессия '+p+'%',ccpProdWeek:w=>'неделя '+w+'%',ccpProdFree:'свободен',
+  ccpProdTitle:'⏸ Claude DEV в лимите — <b>Claude PROD свободен</b>',
+  ccpProdSub:(n,why,prod,on,off)=>`${n}: ${why}. ${prod}`+(on?', передача на него включена.':off?', но автопередача выключена. DEV ждёт сброса окна; передать работу сейчас — «Работа на PROD» или «Автопередача» в «Настройки PROD».':', но передача на него не готова.'),
   ccpSearchTitle:'🔎 Ищу свободный аккаунт — <b>переключусь сам</b>',
   ccpSearchSub:(n,why)=>`${n}: ${why}. Свободного аккаунта здесь нет — смотрю Claude PROD. Если там есть лимит, работа перейдёт туда сама в течение минуты; если нет — здесь встанет пауза.`,
   ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'Свободный аккаунт есть — балансер переключится на следующем тике'+(bg?', после него задачи пойдут сами.':'.'):'Свободный аккаунт есть, но авто-переключение выключено — переключись вручную.'),
@@ -5237,6 +5296,9 @@ const I18N={
   ccpErr:e=>'failed: '+e,
   ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
   ccpGateWeekTitle:'⏸ Active account <b>at the weekly cap</b>',
+  ccpProdSes:p=>'session '+p+'%',ccpProdWeek:w=>'week '+w+'%',ccpProdFree:'is free',
+  ccpProdTitle:'⏸ Claude DEV hit its limit — <b>Claude PROD is free</b>',
+  ccpProdSub:(n,why,prod,on,off)=>`${n}: ${why}. ${prod}`+(on?', handoff to it is on.':off?', but auto handoff is off. DEV waits for the window reset; to move the work now use "Work on PROD" or "Auto handoff" in "PROD settings".':', but handoff to it is not ready.'),
   ccpSearchTitle:'🔎 Looking for a free account — <b>will switch by itself</b>',
   ccpSearchSub:(n,why)=>`${n}: ${why}. No free account here — checking Claude PROD. If it has room, work moves there by itself within a minute; if not, a pause starts here.`,
   ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'A free account exists — the balancer switches on the next tick'+(bg?', after that jobs resume by themselves.':'.'):'A free account exists, but auto-switching is off — switch manually.'),
@@ -7554,6 +7616,14 @@ function ccpRender(){
  if(search){
   const a=(d.accounts||{})[d.active]||{};
   title=tr('ccpSearchTitle');sub=tr('ccpSearchSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap));
+ }else if(d.prod_free&&['hard','week'].includes(mode)){
+  // DEV упёрся, а Claude PROD свободен и работа к нему не уходит (автопередача выключена): «переключаться некуда» — неправда
+  const pf=d.prod_free,a=(d.accounts||{})[d.active]||{};
+  title=tr('ccpProdTitle');
+  const nums=[pf.pct==null?'':tr('ccpProdSes',Math.round(pf.pct)),pf.wpct==null?'':tr('ccpProdWeek',Math.round(pf.wpct))].filter(Boolean).join(', ');
+  sub=tr('ccpProdSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),ccpEsc(pf.label||'Claude PROD')+(nums?' ('+nums+')':'')+' '+tr('ccpProdFree'),!!pf.on,!pf.on&&pf.why==='автопередача выключена');
+  if(near){timer=near;tlabel=tr('ccpTillNearest');}
+  action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintHardOff')};
  }else if(mode==='off'){
   const na=d.nearest&&d.nearest.acc;
   const full=lvl==='hard'||lvl==='week';

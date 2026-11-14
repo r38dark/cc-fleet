@@ -34,8 +34,22 @@ HANDOFF_ACK_MSG = ("Принято. Лимит Claude DEV закончился, 
 # Ответ отправителю, пока идёт пауза. Переопределяется ключом "queue_ack_message"
 # в config.json; подставляются {n} — сколько сообщений ждёт, {line} — проценты окон,
 # {when} — время планового подъёма.
-ACK_MSG = ("Got it, queued ({n} waiting). All limit windows are burnt ({line}); "
+# {state} — что с лимитами: по умолчанию «все окна выбраны», а если Claude PROD свободен — прямо об этом (раньше ответ врал).
+ACK_MSG = ("Got it, queued ({n} waiting). {state}; "
            "I will be back around {when} and work through them in order.")
+STATE_BURNT = "All limit windows are burnt ({line})"
+STATE_PROD_FREE = "This server's limit window is burnt ({line}); {prod}"
+
+
+def _prod_state_en(h):
+    """«Claude PROD is free (session 0%, week 11%), but auto handoff is off» — по pause_ctl.prod_hint()."""
+    nums = ", ".join(x for x in (
+        "session %.0f%%" % h["pct"] if isinstance(h.get("pct"), (int, float)) else "",
+        "week %.0f%%" % h["wpct"] if isinstance(h.get("wpct"), (int, float)) else "") if x)
+    out = "%s is free%s" % (h.get("label") or "Claude PROD", " (%s)" % nums if nums else "")
+    if h.get("on"):
+        return out + ", the work is handed over to it"
+    return out + (", but auto handoff is off" if h.get("why") == "автопередача выключена" else ", but handoff is not ready")
 
 
 def _cfg():
@@ -148,6 +162,7 @@ def cmd_enqueue(a):
                 reason="limit windows burnt",
                 resume_at="",
                 note="incoming queue: %d message(s)" % len(_pending(rows)),
+                quiet=True,  # отправителю ответит подтверждение ниже — отдельное «⏸ пауза» было бы вторым про то же
             ))
         except Exception as e:
             print("could not start the pause: %s" % e, file=sys.stderr)
@@ -166,7 +181,13 @@ def cmd_enqueue(a):
     else:
         tmpl = _cfg().get("queue_ack_message") or ACK_MSG
     try:
-        ack = tmpl.format(n=n, line=line or "?", when=when or "?")
+        hint = pc.prod_hint()
+    except Exception:
+        hint = {}
+    state = (STATE_PROD_FREE.format(line=line or "?", prod=_prod_state_en(hint)) if hint
+             else STATE_BURNT.format(line=line or "?"))
+    try:
+        ack = tmpl.format(n=n, line=line or "?", when=when or "?", state=state)
     except Exception:
         ack = tmpl
     print(ack)
