@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.39",
+      "date": "2026-11-14",
+      "ru": {
+        "t": "Автопередача переносит беседу; вернулась рамка активного аккаунта",
+        "p": [
+          "Автопередача на второй сервер переносит беседу; слишком большая или не открывшаяся не срывает передачу.",
+          "Если состояние дела неясно, второй сервер сверяет карточку и конец беседы; завершённое ждёт слова владельца.",
+          "Вернулась зелёная рамка вокруг активного аккаунта в полосе «Активные аккаунты»."
+        ]
+      },
+      "en": {
+        "t": "Auto handoff carries the conversation; active account frame is back",
+        "p": [
+          "Auto handoff moves the conversation to the second server; one too big or failing to open does not break it.",
+          "If the state of the task is unclear, the second server checks the card and the end of the chat; finished work waits.",
+          "The green frame around the active account in the Active accounts strip is back."
+        ]
+      }
+    },
+    {
       "v": "2.0.38",
       "date": "2026-11-13",
       "ru": {

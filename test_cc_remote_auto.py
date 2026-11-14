@@ -169,6 +169,22 @@ class Tick(unittest.TestCase):
         self.assertIn('автопередача', self.calls[0][1])
         self.assertTrue(self.sent and 'Переход на Claude PROD' in self.sent[0])
 
+    def test_auto_handoff_moves_the_conversation_unless_switched_off(self):
+        seen = []
+        M.on = lambda mid, reason, queued='', **k: (seen.append(dict(k)), dict(ok=True))[1]
+        A.set_enabled(True)
+        self.assertTrue(A.load()['resume'])                               # по умолчанию беседа едет вместе с работой
+        A.tick(self.ns)
+        A.tick(self.ns)
+        self.assertEqual(seen, [dict(resume=True, auto=True)])
+        A.save(dict(A.load(), resume=False))
+        self.assertFalse(A.load()['resume'])
+        self.md = dict(active=False)
+        A._memo.update(to_prod=0, last_return=0.0)
+        A.tick(self.ns)
+        A.tick(self.ns)
+        self.assertEqual(seen[-1], dict(resume=False, auto=True))
+
     def test_notification_marks_stale_prod_numbers(self):
         self.state['prod']['row'] = {'error': 'token_expired', 'five_hour': {'pct': 12.0, 'resets_at': '2099-01-01T00:00:00+00:00'},
                                      'seven_day': {'pct': 9.0, 'resets_at': '2099-01-01T00:00:00+00:00'}}

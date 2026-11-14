@@ -92,6 +92,7 @@ class Transfer(unittest.TestCase):
         self.size_delta = 0
         self.prod_names = []  # беседы на PROD, которые найдёт find
         self.on_stop = None   # что происходит на PROD в момент остановки
+        self.rsync_extra = []  # дополнительные ключи rsync у каждой копии беседы
         self.saved = (M.PROJ, M._NS.copy(), N.CLAUDE_HISTORY_DIR, M._notify, M.R.ssh_run, M.rsync, M.rsync_pending, M.remote_sha,
                       M.remote_size, M.ctl, M.deploy_tools, M.put_file, M.freeze_screen, M.friend_claude_md)
         M.PROJ = self.hist
@@ -135,6 +136,8 @@ class Transfer(unittest.TestCase):
 
     def fake_rsync(self, m, src, dst, to_remote, extra=()):
         self.events.append(('rsync', src, to_remote))
+        if src.endswith('.jsonl'):
+            self.rsync_extra.append(tuple(extra))
         if to_remote and src.endswith('.jsonl') and os.path.isfile(src):   # dev -> PROD: беседа
             with open(src, 'rb') as a, open(os.path.join(self.prod, os.path.basename(src)), 'wb') as b:
                 b.write(a.read())
@@ -154,6 +157,8 @@ class Transfer(unittest.TestCase):
         self.ctl_args.append(args)
         if args.startswith('start') and getattr(self, 'start_fails', False):
             return {'ok': False, 'error': 'не стартовал'}
+        if args.startswith('start') and getattr(self, 'resume_fails', False) and args.split()[1] != '-':
+            return {'ok': False, 'error': 'exited'}   # беседу PROD не открыл, чистый старт проходит
         if args.startswith('stop') and self.on_stop:
             self.on_stop()
         return {'ok': True, 'busy': False}
@@ -213,6 +218,77 @@ class Transfer(unittest.TestCase):
         self.assertTrue(res['ok'])
         self.assertEqual([a for a in self.ctl_args if a.startswith('start')], ['start - 1'])
         self.assertFalse(M.mode()['resume'])
+
+    SID = '11111111-2222-3333-4444-555555555555'
+
+    def test_auto_handoff_carries_conversation_and_says_so(self):
+        self.wk.thread_id = self.SID
+        self.write_conversation(self.hist, self.SID, self.unanswered())
+        res = M._on_job('prod', 'автопередача: лимит', '', True, auto=True)
+        self.assertTrue(res['ok'])
+        self.assertEqual([a for a in self.ctl_args if a.startswith('start')], ['start %s 1' % self.SID])
+        self.assertIn('перенесена на этот сервер', self.briefs[-1])
+        self.assertIn(('-z',), self.rsync_extra)                          # журнал беседы идёт сжатым
+        self.assertTrue(M.mode()['delivery_ok'], M.mode().get('delivery'))
+
+    def test_without_resume_brief_does_not_claim_the_conversation_moved(self):
+        self.write_conversation(self.hist, 'dev1', self.unanswered())
+        M._on_job('prod', 'по кнопке', '', False)
+        self.assertNotIn('перенесена на этот сервер', self.briefs[-1])
+
+    def test_oversized_conversation_is_not_moved_but_handoff_goes_on(self):
+        self.wk.thread_id = self.SID
+        self.write_conversation(self.hist, self.SID, self.unanswered())
+        self.addCleanup(setattr, M, 'RESUME_MAX_BYTES', M.RESUME_MAX_BYTES)
+        M.RESUME_MAX_BYTES = 10
+        res = M._on_job('prod', 'автопередача: лимит', '', True, auto=True)
+        self.assertTrue(res['ok'])
+        self.assertEqual([a for a in self.ctl_args if a.startswith('start')], ['start - 1'])
+        self.assertFalse(any(e[0] == 'rsync' and e[1].endswith('.jsonl') and e[2] for e in self.events))
+        self.assertFalse(M.mode()['resume'])
+        self.assertIn('беседа не перенесена', M.mode()['delivery'])
+        self.assertNotIn('перенесена на этот сервер', self.briefs[-1])
+        self.assertIn('STATE: UNFINISHED', self.briefs[-1])               # работа продолжается по карточке и хвосту
+
+    def test_conversation_that_prod_cannot_open_falls_back_to_clean_start(self):
+        self.wk.thread_id = self.SID
+        self.write_conversation(self.hist, self.SID, self.unanswered())
+        self.resume_fails = True
+        res = M._on_job('prod', 'автопередача: лимит', '', True, auto=True)
+        self.assertTrue(res['ok'])
+        self.assertEqual([a for a in self.ctl_args if a.startswith('start')], ['start %s 1' % self.SID, 'start - 1'])
+        self.assertTrue(M.mode()['active'])
+        self.assertFalse(M.mode()['resume'])
+        self.assertIn('не открылась', M.mode()['delivery'])
+        self.assertNotIn('перенесена на этот сервер', self.briefs[-1])
+
+    def test_failed_clean_start_after_failed_resume_still_returns_work_to_dev(self):
+        self.wk.thread_id = self.SID
+        self.write_conversation(self.hist, self.SID, self.unanswered())
+        self.start_fails = True
+        res = M._on_job('prod', 'автопередача: лимит', '', True, auto=True)
+        self.assertFalse(res['ok'])
+        self.assertFalse(M.mode()['active'])
+
+    def test_auto_unclear_state_checks_card_instead_of_waiting_blindly(self):
+        self.write_conversation(self.hist, 'dev1', [])                    # в беседе нет событий: STATE: UNKNOWN
+        M._on_job('prod', 'автопередача: лимит', '', False, auto=True)
+        brief = self.briefs[-1]
+        self.assertIn('Сверь карточку', brief)
+        self.assertIn('не начинай', brief)                                # открытого шага нет — не выдумывать работу
+        self.assertNotIn('Работу сам не начинай и файлы не меняй', brief)
+
+    def test_manual_unclear_state_still_waits_for_owner(self):
+        self.write_conversation(self.hist, 'dev1', [])
+        M._on_job('prod', 'по кнопке', '', False)
+        self.assertIn('Работу сам не начинай', self.briefs[-1])
+        self.assertNotIn('Сверь карточку', self.briefs[-1])
+
+    def test_auto_finished_work_still_waits_for_owner(self):
+        self.write_conversation(self.hist, 'dev1', self.answered())
+        M._on_job('prod', 'автопередача: лимит', '', False, auto=True)
+        self.assertIn('STATE: FINISHED', self.briefs[-1])
+        self.assertIn('Работу сам не начинай', self.briefs[-1])           # завершённое не повторяем и нового не придумываем
 
     def test_to_prod_without_resume_ignores_snapshot(self):
         self.wk.thread_id = '11111111-2222-3333-4444-555555555555'

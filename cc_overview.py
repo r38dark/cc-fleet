@@ -771,6 +771,10 @@ html.no-prod:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:0}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc+.fleet-acc>.fleet-compact-account{border-top:1px solid var(--fleet-line)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{box-sizing:border-box;min-height:42px;padding:0 14px;border:1px solid var(--fleet-line);border-radius:8px;background:rgba(8,10,14,.35);box-shadow:none}
+/* Зелёная рамка работающего агента (14.11.26): правило выше обнуляет тень ячейки с тем же весом селектора, а рамка из блока «ag-live» стоит раньше
+   и проигрывала — рамки не было видно с 2.0.36. Здесь рамка стоит после обнуления и с классом ag-live тяжелее его. Каждое правило со своим телом, без списка через запятую. */
+html:root:root:root.ag-live-claude #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.claude{box-shadow:inset 0 0 0 1px #49d6aa}
+html:root:root:root.ag-live-codex #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.codex{box-shadow:inset 0 0 0 1px #49d6aa}
 /* «пауза» словом в строке аккаунта не пишем: состояние показывает значок ⏸ перед именем.
    (13.11.26) Раньше над этим правилом стоял список селекторов «ag-live-*» без своего тела: он склеивался с ним и давал плиткам
    работающего агента display:inline-flex — их ширина шла по содержимому, и окна выходили разной ширины. Список убран. */

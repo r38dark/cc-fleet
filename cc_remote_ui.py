@@ -14,6 +14,7 @@ CSS = r"""
 .rm-quick .cxqnote.bad{color:var(--warn)}
 .fleet-live-account.prod .fleet-live-email{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 html:root:root.ag-live-prod #fleetActiveAccounts .fleet-compact-account.prod{box-shadow:inset 0 0 0 1px #49d6aa}
+html:root:root:root.ag-live-prod #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.prod{box-shadow:inset 0 0 0 1px #49d6aa}
 html:root:root.ag-live-prod #fleetActiveAccounts .fleet-live-account.prod{border-color:#49d6aa}
 html:root:root.ag-pause-prod .fleet-live-account.prod .fleet-live-name::before,html:root:root.ag-pause-prod .fleet-live-account.prod .cxdot,html:root:root.ag-pause-prod .fleet-compact-account.prod .fleet-compact-name::before,html:root:root.ag-pause-prod .fleet-console-toolbar #ctProd::before{--pz:var(--fleet-claude,#e7af85);width:7px!important;height:8px!important;border:0!important;border-radius:1px!important;box-shadow:none!important;animation:none!important;background:linear-gradient(90deg,var(--pz) 0 2.4px,transparent 2.4px 4.6px,var(--pz) 4.6px 7px)!important}
 .fleet-compact-account.prod[data-online="0"] .fleet-compact-name::before{background:var(--warn)}
