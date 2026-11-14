@@ -1,5 +1,5 @@
 {
-  "version": "2.0.39",
+  "version": "2.0.40",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -162,6 +162,10 @@
     },
     {
       "src": "cc_remote_auto.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote_split.py",
       "mode": "644"
     },
     {

@@ -411,6 +411,11 @@ def start(ns):
             if kicked or now - last_tick >= TICK_SEC:
                 last_tick = now
                 try:
+                    import cc_remote_split
+                    cc_remote_split.tick(ns)   # «двойная работа»: режим на PROD, а Claude DEV с Telegram запущен; от автопередачи не зависит
+                except Exception as exc:
+                    print("remote-split: сбой проверки: %r" % (exc,), flush=True)
+                try:
                     tick(ns, kicked=kicked)
                 except Exception as exc:
                     print("remote-auto: сбой прохода: %r" % (exc,), flush=True)

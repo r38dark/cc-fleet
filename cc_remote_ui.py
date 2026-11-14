@@ -24,6 +24,7 @@ html:root:root.ag-pause-prod .fleet-live-account.prod .fleet-live-name::before,h
 .fleet-remote-card .rm-relogin{margin:0}
 .fleet-remote-card .fleet-card-state.off{color:var(--warn)}
 .fleet-remote-card .fleet-card-date b{font-variant-numeric:tabular-nums}
+html.conly #rmSplit{display:none}
 .fleet-card-auto{display:flex;align-items:center;gap:8px;margin:10px 0 2px;font-size:12px;color:var(--fleet-muted);cursor:pointer}
 .fleet-card-auto input{accent-color:var(--fleet-claude);width:15px;height:15px;margin:0}
 .rm-hand{--rm-c:var(--live-accent,var(--fleet-claude));--rm-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8h14l-3.5-3.5M20 16H6l3.5 3.5'/%3E%3C/svg%3E");grid-area:hand;align-self:center;justify-self:end;display:inline-flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box;width:252px;height:34px;margin:0 28px 0 0;padding:0 14px;border-radius:7px;border:1px solid color-mix(in srgb,var(--rm-c) 55%,var(--fleet-line));background:color-mix(in srgb,var(--rm-c) 10%,var(--bg));color:var(--txt);font:inherit;font-size:12px;font-weight:600;line-height:1;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:border-color .15s,background .15s,color .15s}
@@ -350,7 +351,28 @@ function sClose(){if(!sp||sp.hidden)return;sp.hidden=true;if(spBtn)spBtn.setAttr
  if(spMoved){var g=$i('fleetClaudeModels');if(g)[$i('poolList'),$i('checkNew')].forEach(function(n){if(n)g.append(n)});spMoved=false}
  mdata=null}
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-gear');if(!b||!tile||!tile.contains(b))return;e.stopPropagation();spBtn=b;if(sp&&!sp.hidden)sClose();else sOpen()});
-function paint(){var m=mem();paintStrip(m);paintCard(m);ensureHand();paintHand();sSync();if(pp&&!pp.hidden&&rmode().busy&&!pBusy)pClose();var has=!!m;if(has!==hadTab){hadTab=has;try{typeof consTabs==='function'&&consTabs()}catch(e){}}}
+var spEl=null,spBusy=false,spNote='';
+function paintSplit(){var s=rmode().split||{};
+ if(!s.on){if(spEl)spEl.hidden=true;spNote='';return}
+ if(!spEl){var a=$i('ccPause');if(!a||!a.parentNode)return;spEl=document.createElement('div');spEl.id='rmSplit';spEl.setAttribute('role','alert');spEl.hidden=true;a.parentNode.insertBefore(spEl,a)}
+ var mins=Math.max(1,Math.round((Date.now()/1000-s.since)/60)),sig=[mins,spBusy,spNote].join('|');
+ spEl.className='ccpause lvl-hard';
+ if(spEl.dataset.sig!==sig){spEl.dataset.sig=sig;var dis=spBusy?' disabled':'';
+  spEl.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">Двойная работа: режим «Claude PROD», а Claude DEV запущен</div>'
+   +'<div class="ccp-sub">Claude DEV с Telegram работает уже '+mins+' мин, хотя работа числится на PROD. Оба слушают одного бота: ответы могут дублироваться или теряться. Панель ничего не переключала — выбери, кто остаётся.</div>'
+   +(spNote?'<div class="ccp-sub"><b>'+esc(spNote)+'</b></div>':'')
+   +'<div class="ccp-actions"><button type="button" class="ccp-btn" data-split="keep_dev"'+dis+'>Оставить DEV</button><button type="button" class="ccp-btn sec" data-split="stop_dev"'+dis+'>Остановить DEV</button></div></div>'}
+ spEl.hidden=false}
+function splitGo(act,force){spBusy=true;spNote='';paintSplit();
+ post('remote/split',{action:act,force:!!force}).then(function(j){j=j||{};
+  try{if(j.state&&lastSnap)lastSnap.remote_mode=j.state}catch(e){}
+  spBusy=false;
+  if(j.answering&&!force){paintSplit();window.fleetAsk(spEl,'Claude на PROD сейчас отвечает. Остановить его посреди ответа и всё равно оставить работу на DEV?','Всё равно оставить').then(function(ok){if(ok)splitGo(act,true)});return}
+  spNote=j.ok?'':(j.message||'Не выполнено.');if(j.ok&&j.message)sToast(j.message);paint();poll()})
+ .catch(function(){spBusy=false;spNote='Нет связи с панелью.';paintSplit()})}
+document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#rmSplit [data-split]');if(!b||spBusy)return;var act=b.dataset.split,keep=act==='keep_dev';
+ window.fleetAsk(b,keep?'Оставить Claude DEV? Работа вернётся на DEV: память и беседа с PROD скопируются сюда, Claude PROD остановится, переключатели встанут на DEV. Около минуты.':'Остановить Claude DEV? Его текущий ответ оборвётся, беседа сохранится. Работа остаётся на Claude PROD.',keep?'Оставить DEV':'Остановить DEV').then(function(ok){if(ok)splitGo(act,false)})});
+function paint(){var m=mem();paintStrip(m);paintCard(m);ensureHand();paintHand();paintSplit();sSync();if(pp&&!pp.hidden&&rmode().busy&&!pBusy)pClose();var has=!!m;if(has!==hadTab){hadTab=has;try{typeof consTabs==='function'&&consTabs()}catch(e){}}}
 try{var prev=renderCards;renderCards=function(d){prev(d);try{paint()}catch(e){}}}catch(e){}
 setInterval(function(){if(!document.hidden)try{paint()}catch(e){}},15000);
 (function wait(n){if(buildStrip()){paint();try{new MutationObserver(function(){if(hRaf)return;hRaf=requestAnimationFrame(function(){hRaf=0;ensureHand();paintHand()})}).observe($i('fleetLiveRows'),{childList:true,subtree:true})}catch(e){}}else if(n<40)setTimeout(function(){wait(n+1)},250)})(0);
