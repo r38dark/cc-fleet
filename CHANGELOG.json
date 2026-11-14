@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.45",
+      "date": "2026-11-14",
+      "ru": {
+        "t": "Пауза Claude DEV и PROD отключается раздельно",
+        "p": [
+          "Кнопка «Отключить паузу» на одном Claude больше не снимает паузу у второго: у каждого свой флаг.",
+          "Сброс окна DEV не возвращает паузу, отключённую вручную на PROD: её возвращает только окно PROD."
+        ]
+      },
+      "en": {
+        "t": "Claude DEV and PROD pause toggles are independent",
+        "p": [
+          "The \"Disable pause\" button on one Claude no longer lifts the pause on the other; each has its own flag.",
+          "A DEV window reset no longer restores a pause turned off on PROD; only the PROD window does."
+        ]
+      }
+    },
+    {
       "v": "2.0.44",
       "date": "2026-11-14",
       "ru": {
