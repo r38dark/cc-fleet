@@ -77,6 +77,22 @@ class GateTests(unittest.TestCase):
     def test_full_still_excludes_other_agents(self):
         self.policy.update(access='full');self.assertFalse(decide(self.policy,self.event('Bash','/root')));self.assertTrue(decide(self.policy,self.event('Agent','/root')));self.assertFalse(decide(self.policy,self.event('mcp__other__tool','/root')))
 
+    # Профиль «Opus → Sonnet»: хук пропускал только «подтверждённые шаги» и резал вызов своего исполнителя
+    def agent(self,args,**extra):return dict(hook_event_name='PreToolUse',tool_name='Agent',tool_input=args,cwd='/root',**extra)
+    def duo(self):self.policy.update(access='full',subagent_model='claude-sonnet-5-5',agents=dict(executor=dict(model='claude-sonnet-5-5',prompt='p',description='d')))
+    def test_duo_allows_only_its_own_executor(self):
+        self.duo();self.assertEqual(decide(self.policy,self.agent(dict(subagent_type='executor',prompt='x',description='d'))),'')
+        for args in [dict(prompt='x'),dict(subagent_type='fork',prompt='x'),dict(subagent_type='general-purpose',prompt='x'),dict(subagent_type='executor',prompt='x',isolation='remote')]:
+            self.assertTrue(decide(self.policy,self.agent(args)),args)
+    def test_duo_executor_cannot_spawn_agents_and_other_agent_tools_stay_blocked(self):
+        self.duo();self.assertTrue(decide(self.policy,self.agent(dict(subagent_type='executor',prompt='x'),agent_id='a1')))
+        for name in ['Task','SendMessage','TeamCreate','mcp__codex__codex','mcp__claude_ai_x__y']:
+            self.assertTrue(decide(self.policy,dict(hook_event_name='PreToolUse',tool_name=name,tool_input=dict(subagent_type='executor'),cwd='/root')),name)
+    def test_executor_needs_duo_policy_and_pause_still_wins(self):
+        self.policy.update(access='full',agents=dict(executor={}));self.assertTrue(decide(self.policy,self.agent(dict(subagent_type='executor'))),'без subagent_model — не duo')
+        self.duo();self.policy['agents']=['executor'];self.assertTrue(decide(self.policy,self.agent(dict(subagent_type='executor'))))
+        self.duo();self.policy['paused']=True;self.assertTrue(decide(self.policy,self.agent(dict(subagent_type='executor'))))
+
 class CommandTests(unittest.TestCase):
     def test_resumes_exact_thread_model_and_effort_without_fork_or_old_permissions(self):
         with tempfile.TemporaryDirectory() as tmp:

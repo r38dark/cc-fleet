@@ -14,12 +14,25 @@ def inside(path, roots):
     path = os.path.realpath(path)
     return any(path == os.path.realpath(r) or path.startswith(os.path.realpath(r).rstrip('/')+'/') for r in roots)
 
+def own_executor(policy, event):
+    """Профиль «Opus → Sonnet»: разрешён только вызов своего исполнителя (имя из policy.agents, модель задана
+    профилем). Чужие агенты, fork, общий агент, удалённый запуск и вложенный вызов из самого исполнителя — нет."""
+    agents = policy.get('agents')
+    if event.get('tool_name') != 'Agent' or not policy.get('subagent_model') or not isinstance(agents, dict):
+        return False
+    args = event.get('tool_input') or {}
+    if event.get('agent_id') or args.get('isolation') == 'remote':
+        return False
+    return args.get('subagent_type') in agents
+
 def decide(policy, event):
     if policy.get('paused'):
         return 'Claude на паузе: активен служебный режим другой стороны.'
     if event.get('hook_event_name') == 'UserPromptSubmit':
         return ''
     name = event.get('tool_name', '')
+    if own_executor(policy, event):
+        return ''
     if name in AGENT_TOOLS or name.startswith(('mcp__codex', 'mcp__claude')):
         return 'Этот профиль использует только подтверждённые шаги через балансер.'
     if name.startswith(('mcp__plugin_telegram','mcp__telegram')) and name.rsplit('__',1)[-1] in ('reply','react','download_attachment'):
