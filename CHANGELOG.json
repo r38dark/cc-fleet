@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.44",
+      "date": "2026-11-14",
+      "ru": {
+        "t": "Профиль «Opus → Sonnet» вызывает исполнителя",
+        "p": [
+          "Защита профиля больше не блокирует вызов исполнителя на Sonnet: раньше профиль работал как «Opus один».",
+          "Разрешён только свой исполнитель профиля; Codex, другие агенты и удалённый запуск по-прежнему запрещены."
+        ]
+      },
+      "en": {
+        "t": "Opus to Sonnet profile calls its executor",
+        "p": [
+          "The profile guard no longer blocks the Sonnet executor; before, the profile worked as Opus alone.",
+          "Only the profile's own executor is allowed; Codex, other agents and remote runs stay blocked."
+        ]
+      }
+    },
+    {
       "v": "2.0.43",
       "date": "2026-11-14",
       "ru": {
