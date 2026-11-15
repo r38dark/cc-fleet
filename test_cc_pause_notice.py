@@ -125,6 +125,45 @@ class ProdHint(Base):
         self.assertTrue(pc._week_reason(dict(self.state, accounts={"acc3": {"wpct": 99.0}})).endswith("переключаться некуда"))
 
 
+class ProdExpiredToken(Base):
+    """15.11: токен PROD истёк, в строке остались старые 42%/41% — «PROD свободен (42%)» врало (реально ~93%)."""
+
+    def setUp(self):
+        super().setUp()
+        self.row.update(error="token_expired", five_hour={"pct": 42.0, "resets_at": "2026-11-14T22:10:00+00:00"},
+                        seven_day={"pct": 41.0, "resets_at": FUTURE})
+        put(R.STATE_FILE, {"prod": self.row})
+
+    def test_old_numbers_are_not_shown_as_free(self):
+        self.assertEqual(pc.prod_hint(self.now), {})                       # «свободен» не говорим
+        row = R.cached()["prod"]
+        self.assertNotIn("five_hour", row)
+        self.assertEqual(row["last_five_hour"]["pct"], 42.0)               # а «было» хранится отдельно
+        phrase = pc.prod_unknown_phrase()
+        self.assertIn("токен устарел", phrase)
+        self.assertIn("неизвестно", phrase)
+        self.assertNotIn("свободен (", phrase)
+
+    def test_reasons_say_unknown_not_free_and_not_nowhere(self):
+        hard = pc._hard_reason(self.state)
+        self.assertIn("токен устарел", hard)
+        self.assertNotIn("свободен (", hard)
+        self.assertNotIn("переключаться некуда", hard)
+        week = pc._week_reason(dict(self.state, weekly_cap=99.0, accounts={"acc3": {"wpct": 99.0}}))
+        self.assertIn("токен устарел", week)
+        self.assertNotIn("переключаться некуда", week)
+
+    def test_no_phrase_for_healthy_prod_or_work_already_there(self):
+        put(R.STATE_FILE, {"prod": dict(self.row, error="", five_hour={"pct": 5.0, "resets_at": FUTURE})})
+        self.assertEqual(pc.prod_unknown_phrase(), "")
+        put(R.STATE_FILE, {"prod": self.row})
+        put(os.path.join(self.d, "remote_mode.json"), {"active": True})
+        self.assertEqual(pc.prod_unknown_phrase(), "")
+        put(os.path.join(self.d, "remote_mode.json"), {"active": False})
+        put(R.MEMBERS_FILE, {})
+        self.assertEqual(pc.prod_unknown_phrase(), "")
+
+
 class OneNotice(Base):
     def test_claim_once_per_key_and_ttl(self):
         self.assertTrue(pc.notice_claim("hard", self.now))

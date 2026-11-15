@@ -87,7 +87,10 @@ function color(p){return p==null?'var(--txt)':p>=99?'var(--bad)':p>=85?'var(--wa
 function httpCode(m){return m&&m.error&&m.error.indexOf('http_')===0?m.error.slice(5):''}
 function status(m){return !m.online?'нет связи':m.error==='no_login'?'нужен вход':m.error==='token_expired'?'токен устарел':httpCode(m)?'лимиты не обновились · '+httpCode(m):'онлайн'}
 // пояснение к надписи: что случилось и почему цифры на плитке могут быть старыми
+function lastNums(m){var a=m&&m.last_five_hour,b=m&&m.last_seven_day,p=function(w){return w&&isFinite(w.pct)?Math.round(w.pct)+'%':'—'};
+ return a||b?' Последняя удачная проверка'+(m.ok_ts?' ('+clk(new Date(m.ok_ts*1000))+')':'')+': 5 ч '+p(a)+', неделя '+p(b)+' — это не текущие цифры.':''}
 function statusHint(m){var c=httpCode(m);
+ if(m&&m.error==='token_expired')return 'Токен Claude на PROD устарел: под этим входом Claude давно не работал, свежих цифр лимита нет.'+lastNums(m)+' Запуск Claude PROD обновит токен сам.';
  if(!c&&m&&m.stale)return 'Anthropic временно ограничил частоту запросов лимитов (429): показаны последние цифры. Опрос возобновится около '+(m.retry_at?clk(new Date(m.retry_at*1000)):'через несколько минут')+'; Claude на PROD от этого не останавливается.';
  if(!c)return '';
  var why=c==='429'?'слишком частые запросы к Anthropic':c==='401'||c==='403'?'доступ отклонён, возможно, нужен новый вход':c.charAt(0)==='5'?'сбой на стороне Anthropic':'ответ сервера Anthropic с ошибкой';
@@ -269,7 +272,7 @@ function paintCard(m){
   +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'" title="'+esc(statusHint(m))+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
   +row('Сессия 5ч',m.five_hour,false)+row('Неделя',m.seven_day,true)
   +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD). Вручную переключённая работа остаётся там, куда её переключили. Codex переключается вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
-  +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: войди заново':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
+  +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: цифр лимита нет':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
   +'<button type="button" class="btn-relogin fleet-footer-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
   +'</div>';   // кнопки «Передать работу» в этой карточке нет: она живёт в плитке «Активные аккаунты»
  try{var top=el.querySelector('.top');if(top&&window.fleetClaudeDates){var dbox=document.createElement('div');dbox.className='fleet-card-dates';

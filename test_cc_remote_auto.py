@@ -111,25 +111,34 @@ class ProdState(unittest.TestCase):
         self.assertFalse(A.prod_state(dict(ok, error='http_500'), 90, 99)['usable'])
         self.assertFalse(A.prod_state(None, 90, 99)['usable'])
 
-    def test_expired_token_is_not_the_same_as_no_limit(self):
-        """Баг: Claude на PROD давно не работал, токен истёк (живёт ~8 ч и обновляется только в работе), и PROD считался непригодным.
-        Автопередача на него не шла, а владельцу приходило ложное «лимиты закончились и там, и там»."""
-        past = '2026-11-07T01:00:00+00:00'
+    def test_expired_token_is_unknown_not_free_and_not_exhausted(self):
+        """15.11: токен PROD истёк — цифры в строке старые (аккаунт работает и под другим входом): не «свободен» и не «закончился».
+        Раньше (07.11) решали по последним цифрам и автопередача шла на PROD — но «42%» оказалось реальными 93%."""
         future = '2099-01-01T00:00:00+00:00'
         base = {'online': True, 'error': 'token_expired'}
         low = dict(base, five_hour={'pct': 12.0, 'resets_at': future}, seven_day={'pct': 9.0, 'resets_at': future})
         res = A.prod_state(low, 90, 99, now=1794045000)
-        self.assertTrue(res['usable'])
+        self.assertFalse(res['usable'])
+        self.assertTrue(res['unknown'])
         self.assertTrue(res['stale'])
-        high_future = dict(base, five_hour={'pct': 92.0, 'resets_at': future}, seven_day={'pct': 9.0, 'resets_at': future})
-        self.assertFalse(A.prod_state(high_future, 90, 99, now=1794045000)['usable'])      # окно ещё не сбросилось
-        high_past = dict(base, five_hour={'pct': 92.0, 'resets_at': past}, seven_day={'pct': 9.0, 'resets_at': future})
-        self.assertTrue(A.prod_state(high_past, 90, 99, now=1794045000)['usable'])         # окно уже сбросилось
-        week_full = dict(base, five_hour={'pct': 5.0, 'resets_at': future}, seven_day={'pct': 99.0, 'resets_at': future})
-        self.assertFalse(A.prod_state(week_full, 90, 99, now=1794045000)['usable'])
+        self.assertIn('токен устарел', res['why'])
         nothing = A.prod_state(dict(base), 90, 99, now=1794045000)
-        self.assertFalse(nothing['usable'])                                                # цифр нет вовсе: не знаем
-        self.assertIn('цифр', nothing['why'])
+        self.assertFalse(nothing['usable'])
+        self.assertTrue(nothing['unknown'])
+        self.assertNotIn('unknown', A.prod_state(dict(online=True, error='', five_hour={'pct': 95.0, 'resets_at': future},
+                                                        seven_day={'pct': 9.0, 'resets_at': future}), 90, 99))   # реально забитый — не unknown
+
+    def test_decide_unknown_prod_neither_hands_off_nor_cries_wolf(self):
+        cfg = dict(enabled=True, ticks=1, cooldown=0)
+        prod = dict(usable=False, unknown=True)
+        memo = dict(to_prod=0, to_native=0, both_notified=False)
+        blocked = dict(level='hard', stale=False, role='solo')
+        self.assertEqual(A.decide(1000, cfg, blocked, prod, dict(active=False), memo), (None, ''))     # на PROD не уходим
+        self.assertEqual(A.decide(1000, cfg, blocked, prod, dict(active=True), memo), (None, ''))      # «закончились и там, и там» не шлём
+        free = dict(level='none', stale=False, role='solo')
+        self.assertEqual(A.decide(1000, cfg, free, prod, dict(active=True), memo), (None, ''))         # и с PROD не «возвращаем» из-за неизвестности
+        exhausted = dict(usable=False)
+        self.assertEqual(A.decide(1000, cfg, blocked, exhausted, dict(active=True), memo)[0], 'notify_both')   # реально забит — как прежде
 
 
 class Tick(unittest.TestCase):
@@ -185,14 +194,15 @@ class Tick(unittest.TestCase):
         A.tick(self.ns)
         self.assertEqual(seen[-1], dict(resume=False, auto=True))
 
-    def test_notification_marks_stale_prod_numbers(self):
-        self.state['prod']['row'] = {'error': 'token_expired', 'five_hour': {'pct': 12.0, 'resets_at': '2099-01-01T00:00:00+00:00'},
-                                     'seven_day': {'pct': 9.0, 'resets_at': '2099-01-01T00:00:00+00:00'}}
+    def test_expired_token_prod_gets_no_handoff_and_no_alarm(self):
+        """Токен PROD устарел (prod_state → unknown): сама на PROD не уходит и не шлёт «закончились и там, и там»."""
+        self.state['prod'] = dict(usable=False, unknown=True, stale=True, why='токен устарел, лимиты PROD не видны', row={'error': 'token_expired'})
         A.set_enabled(True)
         A.tick(self.ns)
-        self.assertEqual(A.tick(self.ns), 'to_prod')
-        self.assertIn('токен устарел', self.sent[0])
-        self.assertIn('5 ч 12%', self.sent[0])
+        self.assertIsNone(A.tick(self.ns))
+        self.state['native'] = dict(native(), level='hard')
+        self.assertIsNone(A.tick(self.ns))
+        self.assertEqual((self.calls, self.sent), ([], []))
 
     def test_dry_run_only_reports(self):
         A.set_enabled(True)
