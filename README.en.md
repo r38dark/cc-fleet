@@ -872,6 +872,7 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex until it is connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex and Telegram).
+- **v2.0.47** — Two logins to one account on the second server share fresh limits: one Anthropic request instead of two, fewer 429s. A login with an expired token shows the numbers of the live login instead of "token expired".
 - **v2.0.46** — When the PROD token has expired, old percentages are no longer shown as live: the tile says "token expired" and "-". Pause and auto handoff do not treat such PROD as free or as exhausted: the quota is simply unknown.
 - **v2.0.45** — The "Disable pause" button on one Claude no longer lifts the pause on the other; each has its own flag. A DEV window reset no longer restores a pause turned off on PROD; only the PROD window does.
 - **v2.0.44** — The profile guard no longer blocks the Sonnet executor; before, the profile worked as Opus alone. Only the profile's own executor is allowed; Codex, other agents and remote runs stay blocked.
