@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.47",
+      "date": "2026-11-15",
+      "ru": {
+        "t": "Общий кэш лимитов для нескольких входов одного аккаунта",
+        "p": [
+          "Два входа в один аккаунт на втором сервере делят свежие цифры лимитов: один запрос к Anthropic вместо двух, реже 429.",
+          "У входа с устаревшим токеном панель показывает цифры живого входа, а не «токен устарел»."
+        ]
+      },
+      "en": {
+        "t": "Shared limits cache for several logins of one account",
+        "p": [
+          "Two logins to one account on the second server share fresh limits: one Anthropic request instead of two, fewer 429s.",
+          "A login with an expired token shows the numbers of the live login instead of \"token expired\"."
+        ]
+      }
+    },
+    {
       "v": "2.0.46",
       "date": "2026-11-15",
       "ru": {
