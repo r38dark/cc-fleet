@@ -113,6 +113,40 @@ class RemoteLimits(unittest.TestCase):
         self.assertTrue(row['online'])
         self.assertEqual(row['error'], 'token_expired')
 
+    def test_expired_token_hides_old_numbers_keeps_last(self):
+        """15.11: токен устарел — прежние 5%/9% живыми не показываем: пусто в five_hour/seven_day, «было» отдельно, время удачной проверки."""
+        ok = cc_remote.fetch_limits('prod')
+        self.assertIn('ok_ts', ok)
+        self.answer = (0, json.dumps({'ok': False, 'error': 'token_expired'}))
+        row = cc_remote.fetch_limits('prod', force=True)
+        self.assertEqual(row['error'], 'token_expired')
+        self.assertNotIn('five_hour', row)
+        self.assertNotIn('seven_day', row)
+        self.assertEqual(row['last_five_hour']['pct'], 5.0)
+        self.assertEqual(row['last_seven_day']['pct'], 9.0)
+        self.assertEqual(row['ok_ts'], ok['ok_ts'])
+        again = cc_remote.fetch_limits('prod', force=True)            # повтор: «было» не затирается
+        self.assertEqual(again['last_five_hour']['pct'], 5.0)
+        self.answer = (0, json.dumps({'ok': True, 'email': 'a@b.c', 'plan': 'pro',
+                                      'five_hour': {'pct': 20.0, 'resets_at': 'x'}, 'seven_day': {'pct': 10.0, 'resets_at': 'y'}}))
+        back = cc_remote.fetch_limits('prod', force=True)             # токен обновился: живые цифры вернулись, «было» убрано
+        self.assertEqual(back['five_hour']['pct'], 20.0)
+        self.assertNotIn('last_five_hour', back)
+
+    def test_cached_masks_rows_saved_before_the_fix(self):
+        json.dump({'prod': {'online': True, 'error': 'token_expired', 'ts': time.time(),
+                            'five_hour': {'pct': 42.0, 'resets_at': 'x'}, 'seven_day': {'pct': 41.0, 'resets_at': 'y'}}},
+                  open(cc_remote.STATE_FILE, 'w'))
+        row = cc_remote.cached()['prod']
+        self.assertNotIn('five_hour', row)
+        self.assertEqual(row['last_five_hour']['pct'], 42.0)
+        self.assertEqual(json.load(open(cc_remote.STATE_FILE))['prod']['five_hour']['pct'], 42.0)   # файл не трогаем при чтении
+
+    def test_mask_leaves_healthy_rows_alone(self):
+        row = {'online': True, 'error': '', 'five_hour': {'pct': 5.0}}
+        self.assertEqual(cc_remote.mask_expired(row), row)
+        self.assertIsNone(cc_remote.mask_expired(None))
+
     def test_cached_only_known_members(self):
         cc_remote.fetch_limits('prod')
         st = json.load(open(cc_remote.STATE_FILE))

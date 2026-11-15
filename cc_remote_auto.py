@@ -64,12 +64,10 @@ def prod_state(row, thr, cap, now=None):
     if not row or not row.get("online"):
         return dict(usable=False, why="нет данных или связи")
     if row.get("error") == "token_expired":
-        # Claude на PROD давно не работал, токен истёк: при запуске он обновится сам. Решаем по последним известным цифрам
-        view = R.expired_view(row, now)
-        if not view.get("known"):
-            return dict(usable=False, why="токен устарел, цифр лимита нет", stale=True)
-        ok, _t, why = cc_avail.availability(view, thr, cap, now)
-        return dict(usable=ok, why=why, stale=True)
+        # Токен PROD истёк: Claude под этим входом давно не работал, свежих цифр Anthropic не отдаёт, а старые могли устареть
+        # (аккаунт работает и под другим входом на том же сервере: 15.11 было «42%» при реальных 93%). Свободным не считаем и
+        # «лимит закончился» не объявляем: unknown. Запуск Claude PROD вручную токен обновит.
+        return dict(usable=False, unknown=True, stale=True, why="токен устарел, лимиты PROD не видны")
     if row.get("error"):
         return dict(usable=False, why="нет данных или связи")
     ok, _t, why = cc_avail.availability(row, thr, cap, now)
@@ -103,7 +101,7 @@ def decide(now, cfg, native, prod, mode, memo):
     back = None
     # переключаемся только когда лимит заканчивается у того, где идёт работа (здесь — PROD), а на другом есть;
     # «вернуться, потому что у DEV свободно» нет: куда человек переключил вручную, там работа и остаётся
-    if native_ok and not prod.get("usable"):
+    if native_ok and not prod.get("usable") and not prod.get("unknown"):
         back = "лимит на Claude PROD исчерпан, у Claude DEV есть"
     if back:
         memo["to_native"] += 1
@@ -112,7 +110,7 @@ def decide(now, cfg, native, prod, mode, memo):
             return "to_native", back
         return None, ""
     memo["to_native"] = 0
-    if not native_ok and not prod.get("usable"):
+    if not native_ok and not prod.get("usable") and not prod.get("unknown"):
         if not memo.get("both_notified"):
             memo["both_notified"] = True
             return "notify_both", "лимиты закончились и у Claude DEV, и на Claude PROD"

@@ -76,6 +76,21 @@ def ssh_run(m, remote_cmd, timeout=25, inp=None):
         time.sleep(0.5)   # обрыв (канал моргнул или умер общий сеанс): ещё одна попытка, чтение безопасно повторять
 
 
+def mask_expired(row):
+    """Токен PROD истёк (Claude под этим входом давно не работал) — Anthropic цифр не отдаёт, а те, что лежат в строке,
+    остались от последней удачной проверки: аккаунт мог тем временем работать под другим входом на том же сервере.
+    Живыми их не выдаём: окна переносим в last_five_hour/last_seven_day (подсказка «было…»), в five_hour/seven_day пусто."""
+    if not isinstance(row, dict) or row.get("error") != "token_expired":
+        return row
+    out = dict(row)
+    for key in ("five_hour", "seven_day"):
+        if key in out:
+            val = out.pop(key)
+            if val and val.get("pct") is not None:
+                out["last_" + key] = val
+    return out
+
+
 def expired_view(row, now=None):
     """Токен PROD истёк (Claude там давно не работал, обновляется он только при работе): свежих цифр нет, берём последние известные.
     Окно, чей сброс уже прошёл, считаем пустым. Возвращает копию строки; known=False, если цифр не было вовсе."""
@@ -141,7 +156,9 @@ def fetch_limits(mid, force=False):
                    five_hour=data.get("five_hour"), seven_day=data.get("seven_day"),
                    model=data.get("model") or old.get("model") or "", effort=data.get("effort") or old.get("effort") or "",
                    subscription_since=data.get("subscription_since") or old.get("subscription_since") or "",
-                   login_expires=data.get("login_expires") or old.get("login_expires") or "")
+                   login_expires=data.get("login_expires") or old.get("login_expires") or "", ok_ts=time.time())
+        row.pop("last_five_hour", None)
+        row.pop("last_seven_day", None)
         # (63531) Anthropic ответил 429, скрипт лимитов отдал последние удачные цифры и паузу опроса: это не ошибка, но цифры не свежие
         if data.get("stale"):
             row.update(stale=True, retry_at=data.get("retry_at") or 0)
@@ -150,6 +167,7 @@ def fetch_limits(mid, force=False):
             row.pop("retry_at", None)
     else:
         row.update(fail_since=0, online=True, error=str(data.get("error") or "error"))
+        row = mask_expired(row)   # токен устарел: старые цифры живыми не показываем (15.11)
     state[mid] = row
     jsave(STATE_FILE, state)
     return row
@@ -167,7 +185,7 @@ def refresh_all(force=False):
 def cached():
     state = jload(STATE_FILE, {})
     ms = members()
-    return {k: v for k, v in state.items() if k in ms}
+    return {k: mask_expired(v) for k, v in state.items() if k in ms}
 
 
 def ctl(mid, *args, inp=None, timeout=25):

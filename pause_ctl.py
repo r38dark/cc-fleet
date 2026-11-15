@@ -189,6 +189,24 @@ def prod_hint(now=None):
         return {}
 
 
+def prod_unknown_phrase(now=None):
+    """Токен Claude PROD устарел — лимиты PROD не видны: «Claude PROD: токен устарел, лимит неизвестен» или "".
+    Не «свободен» и не «закончился»: цифры, что остались от прошлой проверки, живыми не выдаём (15.11)."""
+    try:
+        if _remote_active():
+            return ""
+        import cc_remote_auto as A
+        members = A.R.members()
+        mid = next(iter(members), "")
+        row = A.R.cached().get(mid) if mid else None
+        if row and row.get("online") and row.get("error") == "token_expired":
+            return "%s: токен устарел, лимиты не видны, свободен ли он — неизвестно (запуск Claude PROD обновит токен)" % (
+                str((members.get(mid) or {}).get("label") or "Claude PROD"))
+    except Exception:
+        pass
+    return ""
+
+
 def prod_phrase(h):
     """«Claude PROD свободен (сессия 0%, неделя 11%), но автопередача выключена» — вместо «переключаться некуда»."""
     nums = ", ".join(x for x in (
@@ -207,7 +225,7 @@ def _week_reason(s):
     h = prod_hint()
     return "неделя %s на %.0f%% (потолок %.0f%%), %s" % (
         s.get("active"), a.get("wpct") or 0, s.get("weekly_cap") or _weekly_cap(),
-        prod_phrase(h) if h else "переключаться некуда")
+        prod_phrase(h) if h else (prod_unknown_phrase() or "переключаться некуда"))
 
 
 def _held_text(a):
@@ -229,16 +247,17 @@ def _hard_reason(s):
     """Причина паузы «переключаться некуда» — что держит каждый аккаунт."""
     accs = s.get("accounts") or {}
     h = prod_hint()
+    unk = "" if h else prod_unknown_phrase()
     if not any(a.get("ses_ok") for a in accs.values()):
-        if h:
-            return "аккаунты DEV выше порога сессии (%s); %s" % (s.get("line") or "?", prod_phrase(h))
+        if h or unk:
+            return "аккаунты DEV выше порога сессии (%s); %s" % (s.get("line") or "?", prod_phrase(h) if h else unk)
         return "все аккаунты выше порога сессии (%s), переключаться некуда" % (s.get("line") or "?")
     act = s.get("active")
     a = accs.get(act) or {}
     rest = ", ".join("%s — %s" % (n, _held_text(r)) for n, r in sorted(accs.items()) if n != act)
-    if h:
+    if h or unk:
         return "%s: сессия %.0f%% (порог %.0f%%), остальные аккаунты DEV не годятся: %s; %s" % (
-            act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest, prod_phrase(h))
+            act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest, prod_phrase(h) if h else unk)
     return "%s: сессия %.0f%% (порог %.0f%%), переключаться некуда: %s" % (
         act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest)
 

@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.46",
+      "date": "2026-11-15",
+      "ru": {
+        "t": "Устаревший токен Claude PROD не выдаётся за свободный лимит",
+        "p": [
+          "Если токен PROD истёк, старые проценты в панели не показываются как живые: плитка пишет «токен устарел» и «—».",
+          "Пауза и автопередача не считают такой PROD свободным и не объявляют, что лимит закончился: лимит неизвестен."
+        ]
+      },
+      "en": {
+        "t": "An expired Claude PROD token is no longer shown as free quota",
+        "p": [
+          "When the PROD token has expired, old percentages are no longer shown as live: the tile says \"token expired\" and \"-\".",
+          "Pause and auto handoff do not treat such PROD as free or as exhausted: the quota is simply unknown."
+        ]
+      }
+    },
+    {
       "v": "2.0.45",
       "date": "2026-11-14",
       "ru": {
