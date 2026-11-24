@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.48",
+      "date": "2026-11-24",
+      "ru": {
+        "t": "Скрыт отключённый Claude DEV; кнопка Codex не зависает",
+        "p": [
+          "Когда у основного сервера нет аккаунтов, Claude DEV пропадает из шапки, вкладок консоли и строки аккаунтов.",
+          "Брошенный незакрытый ход Codex больше не держит кнопку «Перезапустить консоль Codex» серой."
+        ]
+      },
+      "en": {
+        "t": "Disconnected Claude DEV hidden; Codex restart no longer sticks",
+        "p": [
+          "Without accounts on the main server, Claude DEV vanishes from the header, console tabs and accounts row.",
+          "An abandoned, never-closed Codex turn no longer keeps the \"Restart the Codex console\" button grey."
+        ]
+      }
+    },
+    {
       "v": "2.0.47",
       "date": "2026-11-15",
       "ru": {

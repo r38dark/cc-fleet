@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.47"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.48"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -3093,7 +3093,7 @@ def codex_restart_info(cx):
         running = bool(cc_codex_console.status().get("running"))
         started = float((cc_codex_console._meta() or {}).get("started") or 0)
         stale = bool(running and started and cx.get("pkg_mtime") and started < float(cx["pkg_mtime"]))
-        return {"running": running, "stale": stale, "busy": bool(running and cc_codex_console.busy())}
+        return {"running": running, "stale": stale, "busy": bool(running and cc_codex_console.busy_for_restart())}
     except Exception:
         return None
 
@@ -3139,7 +3139,7 @@ def claude_cli_action(action, body):
             return {"ok": False, "error": "not_supported"}
         if not codex_bin():
             return {"ok": False, "error": "not_installed"}
-        if cc_codex_console.busy():   # посреди запроса не перезапускаем
+        if cc_codex_console.busy_for_restart():   # посреди запроса не перезапускаем (брошенный незакрытый ход старше 15 мин — не помеха)
             return {"ok": False, "error": "busy"}
         ok, message = cc_codex_console.stop()
         if not ok:
@@ -3722,6 +3722,7 @@ class H(BaseHTTPRequestHandler):
 
 PAGE = r"""<!doctype html>
 <html lang="ru"><head><script>try{if(localStorage.getItem('cc_has_prod')!=='1')document.documentElement.classList.add('no-prod')}catch(e){document.documentElement.classList.add('no-prod')}</script>
+<script>try{if(localStorage.getItem('cc_has_dev')==='0')document.documentElement.classList.add('no-dev')}catch(e){}</script>
 <script>try{var _u=(localStorage.getItem('cc_unl')||'').split(',');for(var _i=0;_i<_u.length;_i++)if(/^[a-z]+$/.test(_u[_i]))document.documentElement.classList.add('ag-unlinked-'+_u[_i])}catch(e){}</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3796,6 +3797,8 @@ button:disabled{opacity:.35;cursor:default}
 /* вкладки консолей Claude | Codex: слева над консолью, без своей плашки; показываются, только если Codex установлен */
 .ctabs{position:absolute;top:7px;left:8px;z-index:2;display:flex;align-items:center;gap:4px;padding:2px;border-radius:9px;background:transparent}
 .ctabs[hidden],.ctstop[hidden],.ctab[hidden]{display:none}
+html:root:root .ctab[hidden]{display:none!important}
+html.no-dev:root #wkAgents .wk-seg[data-ag="claude"],html.no-dev:root .fleet-console-toolbar #ctClaude,html.no-dev:root .fleet-compact-account.claude{display:none!important}
 html.no-prod #ctProd,html.no-prod .wk-seg[data-ag="prod"],html.no-prod .fleet-live-account.prod,html.no-prod .fleet-compact-account.prod,html.no-prod .fleet-acc[data-engine="prod"],html.no-prod .wk-h3.t-prod,html.no-prod .rm-hand[data-target="prod"],html.no-prod .tpmi[data-k="prod"]{display:none!important}
 @media(max-width:520px){.ctab .ctlong{display:none}}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
@@ -5681,11 +5684,15 @@ function idleUi(P,d,dot,txt,who,go){
 try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
 function prodAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_prod')==='1';return !!(lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}  // снимка ещё нет (первые секунды после обновления страницы): по запомненному cc_has_prod, иначе вкладка PROD на миг откатывается на DEV
 // второй сервер не подключён — прячем всё, что с ним связано (вкладка, плашка шапки, карточка, кнопки передачи); запоминаем, чтобы страница не мигала при загрузке
+// основной Claude (DEV) отключён в балансере (в снимке нет ни одного аккаунта): его вкладки в консоли нет; запоминаем, чтобы страница не мигала
+function devAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_dev')!=='0';return !!(lastSnap.accounts&&Object.keys(lastSnap.accounts).length)}catch(e){return true}}
+let DEVAV=null;
+function devSync(){const v=devAvail();document.documentElement.classList.toggle('no-dev',!v);if(v===DEVAV)return;DEVAV=v;try{localStorage.setItem('cc_has_dev',v?'1':'0')}catch(e){}consTabs();}
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
 // запомненная вкладка Codex не выбирается, пока Codex не подключён (призрачная плитка), и консоль Codex сама не стартует без входа в ChatGPT — иначе при каждой загрузке страницы «Нет входа в ChatGPT» (владелец 62657)
-function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}
+function baseCur(){const cxo=cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex');let k=CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxo?'codex':'claude';if(k==='claude'&&!devAvail())k=prodAvail()?'prod':cxo?'codex':'claude';return k;}
 // не подключённый Codex (призрачная плитка, html.ag-unlinked-codex) в разделение консоли не предлагается (правка владельца 62622)
-function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]);}
+function splitKeysAvail(){const R=document.documentElement.classList;const r=(devAvail()?['claude']:[]).concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]);return r.length?r:['claude'];}
 // модели по панелям при разделении (только доступные); null — разделения нет (узкий экран, одна модель, не включено)
 function splitEff(){
  if(!splitMq.matches)return null;
@@ -5862,7 +5869,7 @@ document.addEventListener('keydown',e=>{
 document.documentElement.removeAttribute('data-skin');{const box=$('#termBox');box.scrollTop=box.scrollHeight;}
 function consTabs(){
  const av=cxAvail(),pv=prodAvail(),cur=consCur(),ks=splitEff()||[];
- $('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;$('#ctCodex').hidden=!av;  // Codex недоступен — его вкладки нет
+ $('#ctClaude').hidden=!devAvail();$('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;$('#ctCodex').hidden=!av;  // Codex недоступен — его вкладки нет
  [['claude','#ctClaude'],['prod','#ctProd'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
   b.classList.toggle('on',on);b.classList.toggle('tshown',!on&&ks.includes(k));b.setAttribute('aria-selected',on);
@@ -6232,7 +6239,7 @@ function renderCards(d){
 function setUpd(ts){const t=tr('updated')+' '+new Date(ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru');$('#termDot').title=t;$('#rfBtn').title=tr('refresh')+' · '+t}
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
- lastSnap=d;noProdSync();consFollow(d);
+ lastSnap=d;noProdSync();devSync();consFollow(d);
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
  const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
  $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';

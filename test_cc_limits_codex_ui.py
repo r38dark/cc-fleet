@@ -204,7 +204,7 @@ class Page(unittest.TestCase):
         self.assertRegex(page, r"function consFollow\(d\)\{")
         self.assertIn("d.remote_mode.worker", page)
         self.assertIn("{prod:'ctProd',codex:'ctCodex'}[w]||'ctClaude'", page)
-        self.assertRegex(page, r"lastSnap=d;(noProdSync\(\);)?consFollow\(d\);")
+        self.assertRegex(page, r"lastSnap=d;(noProdSync\(\);)?(devSync\(\);)?consFollow\(d\);")
         # запоминаем, за кем уже последовали: и в памяти страницы (localStorage может быть закрыт), и в localStorage
         self.assertIn("let consFollowed='',consFollowWait=0;", page)
         self.assertIn("localStorage.setItem('cc_conworker',w)", page)
@@ -325,7 +325,7 @@ class Page(unittest.TestCase):
     def test_codex_console_tab_needs_an_account(self):
         # «Удалить Codex целиком» оставляет бинарь, но убирает входы: вкладка консоли Codex после этого не нужна
         self.assertIn("function cxAvail()", L.PAGE)
-        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}", L.PAGE)
+        self.assertIn("function baseCur(){const cxo=cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex');let k=CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxo?'codex':'claude';if(k==='claude'&&!devAvail())k=prodAvail()?'prod':cxo?'codex':'claude';return k;}", L.PAGE)
         self.assertIn("function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}", L.PAGE)
         self.assertIn("const av=cxAvail(),pv=prodAvail(),cur=consCur()", L.PAGE)
 

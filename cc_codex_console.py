@@ -204,6 +204,26 @@ def busy():
     return _ask_lock.locked() or current_turn_open()
 
 
+def busy_for_restart(max_idle=900):
+    """«Занято» для кнопки перезапуска консоли: идёт запрос (замок) ИЛИ ход открыт и файл сессии менялся за последние max_idle секунд.
+    Ход, который остался без task_complete/turn_aborted в брошенной сессии, больше не держит кнопку серой навсегда (24.11.2026)."""
+    if _ask_lock.locked():
+        return True
+    if not _pid():
+        return False
+    meta = _meta()
+    settings = active_settings()
+    path = settings.get('rollout_path')
+    if not path and settings.get('thread_id'):
+        path = find_rollout(meta.get('slot') or '', settings['thread_id'])
+    if not path or not _turn_open(path, meta.get('started') or 0):
+        return False
+    try:
+        return time.time() - os.path.getmtime(path) < max_idle
+    except OSError:
+        return False
+
+
 def apply_plan():
     """Применить сохранённый профиль в паузе, не прерывая принятый ввод."""
     if not _pid() or not _ask_lock.acquire(blocking=False):

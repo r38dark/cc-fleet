@@ -154,7 +154,7 @@ class Page(unittest.TestCase):
         # ключи частей: claude / prod / codex
         self.assertIn("/^(claude|prod|codex)$/.test(k)", L.PAGE)
         self.assertIn("function tabKey(b){return b.dataset.s;}", L.PAGE)
-        self.assertIn("function splitKeysAvail(){const R=document.documentElement.classList;return ['claude'].concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]);}", L.PAGE)
+        self.assertIn("function splitKeysAvail(){const R=document.documentElement.classList;const r=(devAvail()?['claude']:[]).concat(prodAvail()?['prod']:[],cxAvail()&&!R.contains('ag-unlinked-codex')?['codex']:[]);return r.length?r:['claude'];}", L.PAGE)
         self.assertIn("$('#cTabs').addEventListener('dragstart',", L.PAGE)
 
     def test_unlinked_codex_is_not_offered_for_the_split(self):
@@ -167,7 +167,7 @@ class Page(unittest.TestCase):
 
     def test_codex_tab_is_not_chosen_and_console_not_autostarted_without_login(self):
         # запомненная вкладка Codex не выбирается, пока Codex не подключён; консоль Codex сама не стартует без входа в ChatGPT (владелец 62657)
-        self.assertIn("CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude'", L.PAGE)
+        self.assertIn("CONS==='codex'&&cxo?'codex':'claude'", L.PAGE)
         self.assertIn("!d.profile_paused&&ciAcc()){cxAutoGo=false;cxConsAct('start',true,P);}", L.PAGE)
 
     def test_draft_follows_the_model(self):
