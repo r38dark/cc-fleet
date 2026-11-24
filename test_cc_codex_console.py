@@ -933,7 +933,7 @@ class Page(unittest.TestCase):
     def test_tabs_are_hidden_until_codex_is_available(self):
         self.assertRegex(L.PAGE, r'<div class="ctabs" id="cTabs"[^>]*\bhidden\b')
         self.assertIn("$('#cTabs').hidden=!(av||pv)", L.PAGE)  # av = cxConsOn(): Codex установлен и есть вход ChatGPT; pv — подключён Аккаунт PROD
-        self.assertIn("function baseCur(){return CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex')?'codex':'claude';}", L.PAGE)
+        self.assertIn("function baseCur(){const cxo=cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex');let k=CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxo?'codex':'claude';if(k==='claude'&&!devAvail())k=prodAvail()?'prod':cxo?'codex':'claude';return k;}", L.PAGE)
         self.assertIn("function consCur(){const ks=splitEff();return ks?ks[splitActIdx(ks)]:baseCur();}", L.PAGE)
 
     def test_tabs_sit_inside_console_block_before_it(self):

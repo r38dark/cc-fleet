@@ -812,7 +812,7 @@ class Restart(unittest.TestCase):
     def act(self, busy=False, stop=(True, "ok"), start=(True, "ok"), target="codex", codex="/x/codex"):
         L = self.L
         order = mock.Mock()
-        with mock.patch.object(L, "codex_bin", return_value=codex), mock.patch.object(L.cc_codex_console, "busy", return_value=busy), \
+        with mock.patch.object(L, "codex_bin", return_value=codex), mock.patch.object(L.cc_codex_console, "busy", return_value=busy), mock.patch.object(L.cc_codex_console, "busy_for_restart", return_value=busy), \
                 mock.patch.object(L.cc_codex_console, "stop", side_effect=lambda **k: (order.stop(), stop)[1]), \
                 mock.patch.object(L.cc_codex_console, "start", side_effect=lambda **k: (order.start(), start)[1]):
             r = L.claude_cli_action("restart", {"target": target})
