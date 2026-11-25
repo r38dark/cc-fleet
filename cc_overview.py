@@ -768,6 +768,9 @@ html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc.open{grid-col
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc:has(>.fleet-compact-account.codex){grid-column:1/-1}
 /* второй сервер не подключён (Claude PROD скрыт) — строка Claude одна и занимает всю ширину; появится второй — обе встанут рядом */
 html.no-prod:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{grid-column:1/-1}
+/* основной Claude (DEV) отключён: его ячейка не занимает место, PROD встаёт на всю ширину */
+html.no-dev:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{display:none}
+html.no-dev:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="prod"]{grid-column:1/-1}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc>.fleet-live-account{margin:0}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc+.fleet-acc>.fleet-compact-account{border-top:1px solid var(--fleet-line)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account{box-sizing:border-box;min-height:42px;padding:0 14px;border:1px solid var(--fleet-line);border-radius:8px;background:rgba(8,10,14,.35);box-shadow:none}

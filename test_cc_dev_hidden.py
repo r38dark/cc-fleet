@@ -31,6 +31,11 @@ class Page(unittest.TestCase):
         self.assertIn('html.no-dev:root #wkAgents .wk-seg[data-ag="claude"]', L.PAGE)
         self.assertIn("html:root:root .ctab[hidden]{display:none!important}", L.PAGE)
 
+    def test_accounts_strip_gives_the_width_to_prod(self):
+        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cc_overview.py"), encoding="utf-8").read()
+        self.assertIn('html.no-dev:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="claude"]{display:none}', src)
+        self.assertIn('html.no-dev:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="prod"]{grid-column:1/-1}', src)
+
     @unittest.skipUnless(shutil.which("node"), "нужен node")
     def test_logic_in_node(self):
         funcs = "\n".join(grab(n) for n in ("devAvail", "baseCur", "consCur", "splitKeysAvail", "consTabs"))
