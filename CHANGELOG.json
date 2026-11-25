@@ -2,6 +2,22 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.49",
+      "date": "2026-11-25",
+      "ru": {
+        "t": "Строка Claude PROD на всю ширину, когда Claude DEV скрыт",
+        "p": [
+          "Когда основной Claude отключён, в «Активных аккаунтах» не остаётся пустой половины: PROD занимает всю ширину."
+        ]
+      },
+      "en": {
+        "t": "Claude PROD row takes the full width when DEV is hidden",
+        "p": [
+          "With the main Claude disconnected, the accounts strip no longer leaves an empty half: PROD spans the whole width."
+        ]
+      }
+    },
+    {
       "v": "2.0.48",
       "date": "2026-11-24",
       "ru": {
