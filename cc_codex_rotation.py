@@ -248,8 +248,16 @@ class Rotation:
         by_slot = {row['slot']: row for row in rows}
         rows = [by_slot.get(slot) or dict(self.codex.meta(slot), slot=slot, windows=[], models=[], loading=True)
                 for slot in self.codex.profile_slots()]
+        runtime = {'running': False}
+        if self.console._pid():
+            meta = self.console._meta()
+            settings = self.console.active_settings()
+            pending = meta.get('pending_settings') or {}
+            runtime = dict(running=True, slot=meta.get('slot'),
+                           **{key: settings.get(key) for key in ('model', 'effort', 'service_tier')},
+                           pending={key: pending[key] for key in ('model', 'effort', 'service_tier') if key in pending} or None)
         return {'ok': True, 'available': bool(self.binary()), 'accounts': rows, 'loading': loading,
-                'ts': self.updated}
+                'ts': self.updated, 'runtime': runtime}
 
     def public(self):
         active = self.active()

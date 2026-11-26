@@ -719,7 +719,7 @@ class Emergency(unittest.TestCase):
 class QuickSwitch(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        i = L.PAGE.index("function cxQCur(a){")
+        i = L.PAGE.index("function cxQCur(")
         j = L.PAGE.index("async function cxpApply(")
         path = os.path.join(TMP, "quick.js")
         with open(path, "w", encoding="utf-8") as f:
