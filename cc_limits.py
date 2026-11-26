@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.49"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.50"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -4860,6 +4860,8 @@ const I18N={
   cxFastTip:'Быстрее ответы, но лимит расходуется быстрее',
   cxFastNa:'Для этой модели Fast недоступен',
   cxQTip:'Быстрая смена модели и усилия',
+  cxQWait:'ожидает смены',
+  cxQPending:(m)=>'Ожидает применения: '+m,
   cxRelogin:'🔑 Войти заново',
   cxLaunch:'Команда запуска',
   cxLaunchTip:'Скопировать команду, которая запускает Codex под этим аккаунтом',
@@ -5394,6 +5396,8 @@ const I18N={
   cxFastTip:'Faster replies, but the limit is used up faster',
   cxFastNa:'Fast is not available for this model',
   cxQTip:'Quick model and effort switch',
+  cxQWait:'change pending',
+  cxQPending:(m)=>'Waiting to apply: '+m,
   cxRelogin:'🔑 Sign in again',
   cxLaunch:'Launch command',
   cxLaunchTip:'Copy the command that starts Codex under this account',
@@ -7223,13 +7227,17 @@ addEventListener('popstate',()=>{
 });
 // ---- быстрая смена модели и усилия: кнопка в шапке и маленькая панель под ней (те же настройки, что в окне ⚙ → Аккаунты) ----
 // Аккаунт — тот, чьи лимиты видны в шапке (им работает мост). Пустое значение = «по умолчанию Codex».
-function cxQCur(a){
+function cxQCur(a,choice=false){
  const ms=a.models||[],def=ms.find(m=>m.is_default)||ms[0];
- const known=!!a.model&&ms.some(m=>m.id===a.model);
- const mod=(known&&ms.find(m=>m.id===a.model))||def;
+ const r=cxData&&cxData.runtime,live=!!(r&&r.running&&r.slot===a.slot&&r.model);
+ const pending=live&&r.pending,desired=choice&&pending;
+ const mid=(desired?(pending.model||r.model):(live?r.model:a.model))||'',model=mid||def.id;
+ const known=!!mid&&ms.some(m=>m.id===mid);
+ const mod=(known&&ms.find(m=>m.id===mid))||def;
  const efs=mod.efforts||[];
- const ef=a.effort&&efs.includes(a.effort)?a.effort:'';
- return{ms,def,known,mod,efs,ef,eff:ef||mod.default_effort||'',name:a.model&&!known?a.model:mod.name};
+ const rawEf=desired&&'effort' in pending?pending.effort:live?r.effort:a.effort,ef=rawEf&&efs.includes(rawEf)?rawEf:'';
+ return{ms,def,known,mod,efs,ef,model,live,defaultSelected:!a.model&&model===def.id,
+  pending,eff:(live&&rawEf)||ef||mod.default_effort||'',name:mid&&!known?mid:mod.name};
 }
 function cxQBtn(){
  const btn=$('#cxMod');if(!btn)return;
@@ -7237,19 +7245,20 @@ function cxQBtn(){
  btn.hidden=!ok;
  if(!ok){cxQClose();return;}
  const c=cxQCur(a);
- $('#cxModN').textContent=c.name;$('#cxModE').textContent=c.eff;
- const t=tr('cxQTip')+': '+c.name+(c.eff?' · '+c.eff:'');
+ $('#cxModN').textContent=c.name;$('#cxModE').textContent=c.eff+(c.pending?' · '+tr('cxQWait'):'');
+ const next=c.pending&&(c.ms.find(m=>m.id===c.pending.model)||{}).name;
+ const t=tr('cxQTip')+': '+c.name+(c.eff?' · '+c.eff:'')+(c.pending?'\n'+tr('cxQPending',next||c.pending.model||c.def.name):'');
  btn.title=t;btn.setAttribute('aria-label',t);
 }
 function cxQRender(){
  const q=$('#cxQb'),a=cxLimAcc();if(!q)return;
  if(!a||!(a.models||[]).length){q.innerHTML='';return;}
- const c=cxQCur(a),multi=((cxData&&cxData.accounts)||[]).length>1;
+ const c=cxQCur(a,true),multi=((cxData&&cxData.accounts)||[]).length>1;
  const mrow=(id,name,on)=>`<button type="button" class="cxqm${on?' on':''}" role="radio" aria-checked="${on}" data-m="${acctEsc(id)}"><i class="cxqr"></i><span>${acctEsc(name)}</span></button>`;
- let ml=mrow('',tr('cxDefault')+' · '+c.def.name,!a.model);
- if(a.model&&!c.known)ml+=mrow(a.model,a.model,true);
+ let ml=mrow('',tr('cxDefault')+' · '+c.def.name,c.defaultSelected);
+ if(c.model&&!c.known&&!c.defaultSelected)ml+=mrow(c.model,c.model,true);
  const hid=(typeof lastSnap!=='undefined'&&lastSnap&&lastSnap.config&&lastSnap.config.codex_hidden)||[];  // без галочки «в быстром меню» — не показываем (кроме выбранной)
- ml+=c.ms.filter(m=>!hid.includes(m.id)||(c.known&&m.id===a.model)).map(m=>mrow(m.id,m.name,c.known&&m.id===a.model)).join('');
+ ml+=c.ms.filter(m=>!hid.includes(m.id)||(c.known&&m.id===c.model)).map(m=>mrow(m.id,m.name,!c.defaultSelected&&c.known&&m.id===c.model)).join('');
  const erow=(e,label,on)=>`<button type="button" class="cxqe${on?' on':''}" role="radio" aria-checked="${on}" data-e="${acctEsc(e)}">${acctEsc(label)}</button>`;
  const el=c.efs.length?erow('',tr('cxDefault')+(c.mod.default_effort?' · '+c.mod.default_effort:''),!c.ef)+c.efs.map(e=>erow(e,e,e===c.ef)).join(''):'';
  q.innerHTML=`<div class="cxqh"><span>${tr('cxModelTip')}</span>${multi?`<span class="cxqa">${acctEsc(a.label||a.email||a.slot)}</span>`:''}</div>
@@ -7278,12 +7287,12 @@ let cxQBusy=false;
 async function cxQSet(model,effort){
  if(cxQBusy)return;
  const a=cxLimAcc();if(!a)return;
- const c=cxQCur(a),curM=a.model||'';
+ const c=cxQCur(a,true),curM=c.live&&!c.defaultSelected?c.model:(a.model||'');
  const mid=model===null?curM:model;
  const mod=c.ms.find(x=>x.id===mid)||c.def;
  let ef=effort===null?c.ef:effort;
  if(ef&&mod.efforts&&!mod.efforts.includes(ef))ef='';  // у другой модели может не быть такого усилия — сбрасываем, чтобы сервер не отказал
- if(mid===curM&&ef===c.ef){if(effort!==null)cxQClose();return;}
+ if(mid===curM&&mid===(a.model||'')&&ef===c.ef&&!c.pending){if(effort!==null)cxQClose();return;}
  if(!await window.fleetAsk($('#cxMod'),tr('askCxSet',model!==null?mid+(ef&&ef!==c.ef?' · '+ef:''):ef),tr('askYes')))return;
  const fast=!!(a.fast&&mod.fast);
  cxQBusy=true;$('#cxQ').classList.add('busy');
