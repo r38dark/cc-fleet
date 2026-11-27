@@ -71,7 +71,7 @@ def profiles():
     out = []
     for n in sorted(os.listdir(PROFILES)):
         oa_path = os.path.join(PROFILES, n, "oauth_account.json")
-        if os.path.isfile(oa_path):
+        if os.path.isfile(oa_path) and not os.path.exists(os.path.join(PROFILES, n, ".ccfleet-disconnected")):
             out.append((n, jload(oa_path)))
     return out
 
@@ -101,6 +101,17 @@ def sync_back():
 
 
 def cmd_save(name):
+    import cc_remote
+    with cc_remote.claude_account_lock(BASE):
+        saved = {n: oa["accountUuid"] for n, oa in profiles() if oa.get("accountUuid")}
+        if cc_remote.members() or (saved and saved.get(name) != current_uuid()):
+            sys.exit("Поддерживается один аккаунт Claude. Сначала отключи текущий аккаунт или удалённый сервер.")
+        if os.path.exists(os.path.join(profile_dir(name), ".ccfleet-disconnected")):
+            sys.exit("Этот слот отключён. Подключи аккаунт через панель.")
+        _save_profile(name)
+
+
+def _save_profile(name):
     d = profile_dir(name)
     os.makedirs(d, exist_ok=True)
     cfg = jload(LIVE_CFG)

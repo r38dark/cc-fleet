@@ -813,10 +813,7 @@ class Page(unittest.TestCase):
         self.assertIn('#scrim:not([data-view="general"]) .wk-gen.claude', ui)
         self.assertIn("call('telegram')", ui)   # бот и чат — GET /api/workers/telegram
 
-    def test_auto_confirm_is_inside_the_tile_popup(self):
-        # подтверждение «Включить/Выключить авто» — в самом окне плитки, не отдельным окном под ним (владелец 62664)
-        self.assertIn("c.className='wk-cfm'", self.src)
-        self.assertIn("c.querySelector('.wk-cn').onclick=function(){c.style.display='none';row.style.display='';placePop();setTimeout(function(){c.remove()},0)};", self.src)
+    def test_confirmation_dialog_stays_above_agent_popup(self):
         import cc_overview
         self.assertIn(".fleet-ask{z-index:100000}", cc_overview.CSS)
 
@@ -832,27 +829,19 @@ class Page(unittest.TestCase):
         self.assertIn(".wk-pop button{height:32px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;", self.src)
 
     def test_prod_popup_is_drawn_like_the_reference(self):
-        for part in ('class="wk-ph"', 'class="wk-pi ', 'class="wk-sw"', 'role="switch" aria-checked="', "pp.classList.add('ag-'+k,'rich')"):
+        for part in ('class="wk-ph"', 'class="wk-pi ', "pp.classList.add('ag-'+k,'rich')"):
             self.assertIn(part, self.src)
         self.assertIn(".wk-pop.ag-prod .wk-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}", self.src)
         self.assertIn(".wk-pop.ag-prod button.wk-yes{grid-column:1/-1;height:40px;background:#6f59f9", self.src)
         self.assertIn(".wk-pop.rich .wk-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}", self.src)
         self.assertIn("({claude:'Claude DEV',prod:'Claude PROD',codex:'Codex'})[k])+(gp.text?' - '+esc(gp.text):'')", self.src)
-        self.assertIn(".wk-auto[aria-checked=\"true\"] .wk-sw::after{transform:translateX(11px)}", self.src)
 
-    def test_switch_shows_the_real_auto_state(self):
-        body = self.body
-        self.assertIn("ao=!!((rm.auto&&rm.auto()||{}).enabled)", body)
-        self.assertIn("aria-checked=\"'+ao+'\"", body)
-        self.assertIn('<span class="wk-bl">Включить авто</span>', body)
-        self.assertNotIn("'Выключить авто'", body)
-        self.assertIn("thr=thrNow()", body)
-        self.assertIn("'% лимита работа сама перейдёт на второй аккаунт.'", body)
-        self.assertIn("'% лимита работа сама не перейдёт.'", body)
-        self.assertIn("class=\"wk-lnk2\">Изменить порог</a>", body)
-        self.assertIn("document.getElementById('gear')", body)
-        self.assertIn("typeof THR==='number'", self.src)
-        self.assertIn("au.onclick=function(){var on=!((rm.auto()||{}).enabled)", body)
+    def test_limits_are_shown_without_auto_handoff_switch(self):
+        self.assertNotIn('class="wk-auto"', self.body)
+        self.assertIn("thr=thrNow()", self.body)
+        self.assertIn("ждёт сброса лимита", self.body)
+        self.assertIn('class="wk-lnk2">Изменить порог</a>', self.body)
+        self.assertIn("document.getElementById('gear')", self.body)
 
     def test_tail_points_at_the_pressed_icon(self):
         self.assertIn("tl.className='wk-tail'", self.src)
@@ -874,7 +863,7 @@ class Page(unittest.TestCase):
         i = self.src.index("function agentPop(k,anchor)")
         self.assertIn("(k==='prod'||k==='claude'||k==='codex'))return richPop(k,anchor,window.fleetRemote)", self.src[i:i + 260])
         self.assertIn("pair=k==='claude'||k==='prod'", self.body)
-        self.assertIn("(pair?'<button type=\"button\" class=\"wk-auto\"", self.body)
+        self.assertNotIn('class="wk-auto"', self.body)
 
     def test_handoff_button_target_rule(self):
         self.assertIn("act=wk===own,hi=act?null:rm.handInfo(own,md)", self.body)
@@ -882,10 +871,12 @@ class Page(unittest.TestCase):
         self.assertIn("rm.hand(own,anchor)", self.body)
         self.assertIn("(hi.dis?' disabled':'')", self.body)
 
-    def test_active_model_gets_buttons_for_the_other_two(self):
+    def test_active_model_gets_buttons_for_connected_targets(self):
         i = self.src.index("function hand3(own,md,rm)")
         f = self.src[i:self.src.index("function richPop(k,anchor,rm)")]
-        self.assertIn("['dev','prod','codex'].filter(function(t){return t!==own})", f)
+        self.assertIn("['dev','prod','codex'].filter(function(t)", f)
+        self.assertIn("t!=='dev'||typeof devAvail!=='function'||devAvail()", f)
+        self.assertIn("t!=='prod'||typeof prodAvail!=='function'||prodAvail()", f)
         self.assertIn("rm.handInfo(t,md)", f)
         self.assertIn('class="wk-h3n"', f)
         self.assertIn("pp.querySelectorAll('.wk-h3').forEach(function(b){b.onclick=function(){var t=this.dataset.t;closePop();rm.hand(t,anchor)}});", self.body)

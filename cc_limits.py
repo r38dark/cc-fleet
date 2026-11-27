@@ -377,25 +377,22 @@ def relogin_submit(name, code, new=False, lang="ru"):
         return False, _t(lang,
                          "Логин не завершился — код мог быть неверным, просроченным или ещё не подтверждён в браузере. Попробуй ещё раз (кнопка «Войти заново» заново) или проверь, что вход в браузере точно завершён.",
                          "Sign-in did not complete — the code may be wrong, expired, or not yet confirmed in the browser. Try again (the Log in again button) or make sure the browser sign-in really finished."), None
-    with lock:  # один захват на весь критический участок — collect() ниже lock уже не берёт
+    with lock, cc_remote.claude_account_lock(BASE):
         keep_login = False
         try:
             creds = jload(creds_path)
             oa = (jload(os.path.join(home, ".claude.json"), {}) or {}).get("oauthAccount")
+            saved_uuid = (jload(f"{PROFILES}/{name}/oauth_account.json", {}) or {}).get("accountUuid")
+            if not new and saved_uuid and (oa or {}).get("accountUuid") != saved_uuid:
+                return False, _t(lang, "Это другой аккаунт Claude. Для замены сначала отключи текущий.",
+                                 "This is a different Claude account. To replace it, disconnect the current one first."), None
             if new:
                 # без accountUuid профиль не опознать (ни в ротации, ни как активный)
                 if not (oa and oa.get("accountUuid")):
                     return False, _t(lang, "Вход прошёл, но Claude Code не вернул данные аккаунта — попробуй ещё раз.",
                                      "Signed in, but Claude Code returned no account data — try again."), None
-                dup = next((n for n in _real_names()
-                            if (jload(f"{PROFILES}/{n}/oauth_account.json", {}) or {}).get("accountUuid") == oa["accountUuid"]), None)
-                if dup:
-                    em = oa.get('emailAddress', '?')
-                    return False, _t(lang, f"Этот аккаунт ({em}) уже в ротации как {dup} — второй раз добавлять не нужно.",
-                                     f"This account ({em}) is already in the rotation as {dup} — no need to add it twice."), None
-                if name in _real_names():  # слот заняли, пока шёл вход
-                    return False, _t(lang, "Слот уже занят — начни добавление заново.",
-                                     "That slot has just been taken — start adding again."), None
+                if claude_account_connected():
+                    return False, claude_account_limit_message(lang), None
                 os.makedirs(f"{PROFILES}/{name}", exist_ok=True)
                 os.chmod(f"{PROFILES}/{name}", 0o700)  # слот установщика мог быть создан с 755
             jsave(f"{PROFILES}/{name}/credentials.json", creds)
@@ -419,13 +416,11 @@ def relogin_submit(name, code, new=False, lang="ru"):
     row = (snap.get("accounts") or {}).get(name, {})
     email = row.get("email", name)
     if new:
-        cnt, names = _rotation_text()
         plan = row.get("plan")
         tg_notify(f"➕ Claude: аккаунт {name} ({email}" + (f", {plan.upper()}" if plan else "")
-                  + f") добавлен в ротацию. Теперь в ротации: {cnt} ({names})."
-                  + (" ⚠️ Сейчас это Free — в авто-переключении он не участвует, пока не станет Pro." if plan == "free" else ""))
-        return True, _t(lang, f"✅ {email} добавлен в ротацию как {name}.",
-                        f"✅ {email} added to the rotation as {name}."), snap
+                  + ") подключён.")
+        return True, _t(lang, f"✅ Аккаунт Claude {email} подключён.",
+                        f"✅ Claude account {email} is connected."), snap
     tg_notify(f"🔑 Claude: аккаунт {name} ({email}) перелогинен через сайт — токен обновлён.")
     return True, _t(lang, f"✅ {email} — вход выполнен, токен обновлён.",
                     f"✅ {email} — signed in, token refreshed."), snap
@@ -459,6 +454,15 @@ def _rotation_text():
     return len(names), ", ".join(names) or "—"
 
 
+def claude_account_connected():
+    return bool(_real_names() or cc_remote.members())
+
+
+def claude_account_limit_message(lang="ru"):
+    return _t(lang, "Поддерживается один аккаунт Claude. Сначала отключи текущий аккаунт или второй сервер.",
+              "Only one Claude account is supported. Disconnect the current account or remote server first.")
+
+
 def _free_slot():
     # первый пустой слот установщика (oauth_account.json = {}), иначе следующий номер
     nums = []
@@ -478,35 +482,13 @@ def _free_slot():
 def addacct_start(email, lang="ru"):
     """→ (ok, url|message, slot, email). Почта необязательна: уходит в ссылку входа как подсказка."""
     email = (email or "").strip()
+    if claude_account_connected():
+        return False, claude_account_limit_message(lang), None, None
     if email and not _EMAIL_RE.match(email):
         return False, _t(lang, "Почта выглядит некорректно.", "The email looks invalid."), None, None
     slot = _free_slot()
     ok, url_or_msg, em = relogin_start(slot, new_email=email)
     return ok, url_or_msg, slot, em
-
-
-def _move_off(name):
-    """Активный аккаунт удаляют — сначала перевести живую сессию на другой. → (target|None, причина)."""
-    accs = (jload(SNAPSHOT) or {}).get("accounts") or {}
-    c = cfg()
-    thr, cap = c.get("threshold", 85), c.get("weekly_cap", 99)
-    cands = []
-    for n in _real_names():
-        if n == name:
-            continue
-        row = accs.get(n) or {}
-        if row.get("plan") == "free":
-            continue  # cc-switch на Free всё равно откажет
-        free_now = bool(row) and cc_avail.availability(row, thr, cap)[0]
-        fh = (row.get("five_hour") or {}).get("pct")
-        cands.append((0 if free_now else 1, fh if fh is not None else 101, n))
-    last = "нет другого пригодного аккаунта (остальные Free или без токенов)"
-    for _a, _b, n in sorted(cands):
-        ok, out = do_switch(n)
-        if ok:
-            return n, ""
-        last = out
-    return None, last
 
 
 def backup_status():
@@ -528,10 +510,9 @@ def delete_account(name, confirm, lang="ru"):
     if os.path.islink(pdir):
         return False, _t(lang, "Профиль — символическая ссылка, удалять не буду.",
                          "The profile is a symbolic link — refusing to delete it."), None
-    with lock:
+    with lock, cc_remote.claude_account_lock(BASE):
         oa = jload(f"{pdir}/oauth_account.json", {}) or {}
         email = oa.get("emailAddress") or ""
-        moved = None
         was_active = active_name() == name
         # Some CLI versions leave the token file without oauthAccount metadata.
         # Only compare non-empty tokens when no live identity is known.
@@ -549,12 +530,7 @@ def delete_account(name, confirm, lang="ru"):
         except (OSError, ValueError):
             return False, _t(lang, 'Не удалось безопасно прочитать авторизацию — отключение отменено.',
                              'Could not safely read authorization — disconnect cancelled.'), None
-        if was_active and len(_real_names()) > 1:
-            moved, why = _move_off(name)
-            if not moved:
-                return False, _t(lang, "Это активный аккаунт, а переключить сессию на другой не удалось — ничего не удалено. ",
-                                 "This is the active account and the session could not be moved to another one — nothing was deleted. ") + why, None
-        elif was_active:
+        if was_active:
             # The last login must not survive in a running process or in live credentials.
             scr = cfg().get('screen_session', 'claude')
             if _current_screen_pid(scr):
@@ -575,7 +551,7 @@ def delete_account(name, confirm, lang="ru"):
             return False, _t(lang, 'Не удалось исключить вход из восстановления резервных копий.',
                              'Could not exclude the login from backup restoration.'), None
         try:
-            if was_active and not moved:
+            if was_active:
                 with cc_lock.oauth_lock(os.path.dirname(LIVE_CREDS), os.path.dirname(LIVE_CFG)):
                     cc_disconnect.drop_keys(LIVE_CREDS, ('claudeAiOauth',))
                     with cc_lock.config_lock(LIVE_CFG):
@@ -597,10 +573,7 @@ def delete_account(name, confirm, lang="ru"):
                 st[k].pop(name, None)
         if (st.get("manual_hold") or {}).get("account") == name:
             st.pop("manual_hold", None)
-        if moved:
-            st["known_active"] = moved
-            st["last_switch_ts"] = time.time()
-        elif st.get("known_active") == name:
+        if st.get("known_active") == name:
             st["known_active"] = active_name()
         jsave(STATE, st)
         snap = jload(SNAPSHOT) or {}
@@ -609,13 +582,10 @@ def delete_account(name, confirm, lang="ru"):
             snap["active"] = None
         jsave(SNAPSHOT, snap)
         snap = snap_set_active()
-    cnt, names = _rotation_text()
-    who = f"{name} ({email})" if email else f"{name} ({_t(lang, 'пустой слот', 'empty slot')})"
-    tg_notify(f"Claude: аккаунт {who} отключён — вход удалён, история и файлы сохранены."
-              + (f" Живая сессия переведена на {moved}." if moved else "")
-              + f" В ротации осталось: {cnt} ({names}).")
-    return True, (_t(lang, f'{who} отключён. История и файлы сохранены.', f'{who} disconnected. History and files retained.')
-                  + (_t(lang, f" Сессия переведена на {moved}.", f" Session moved to {moved}.") if moved else "")), snap
+    who = f"{name} ({email})" if email else name
+    tg_notify(f"Claude: аккаунт {who} отключён — вход удалён, история и файлы сохранены.")
+    return True, _t(lang, f"{who} отключён. История и файлы сохранены.",
+                    f"{who} disconnected. History and files retained."), snap
 
 
 def fetch_usage(access):
@@ -992,7 +962,7 @@ def collect(force=False, force_account=None, renew_account=None):
         if n in lapsed:
             row["lapsed"] = True
             row["lapsed_since"] = (lapsed[n] or {}).get("since")
-    snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
+    snap = {"ts": int(time.time()), "active": act, "accounts": accounts, "single_account": True}
     jsave(SNAPSHOT, snap)
     return snap
 
@@ -2930,12 +2900,11 @@ def _claude_limit_tick(snap):
 
 
 def switch_policy_check(snap):
-    # оптимизация — отдельный режим, при включении полностью заменяет простой
-    # авто-порог (пороговые уходы с забитого аккаунта в неё встроены)
-    if cfg().get("optimize"):
-        optimize_check(snap)
-    else:
-        autoswitch_check(snap)
+    # Старые сохранённые логины доступны для отключения, но не заменяют работающий.
+    current = snap.get("active")
+    accounts = snap.get("accounts") or {}
+    active_only = {current: accounts[current]} if current in accounts else {}
+    autoswitch_check(dict(snap, accounts=active_only))
     try:
         _week_cap_warn(snap)
     except Exception as e:
@@ -3252,6 +3221,7 @@ class H(BaseHTTPRequestHandler):
                         and cc_avail.manual_pick(hold, n, row)):
                     row["manual_until"] = float(hold.get("until") or 0)
             snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
+            snap["config"].update(claude_account_connected=claude_account_connected(), optimize=False)
             snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
             snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
             snap["config"]["codex_hidden"] = list(cfg().get("codex_hidden") or [])  # модели Codex, убранные из быстрого меню
@@ -3453,13 +3423,15 @@ class H(BaseHTTPRequestHandler):
         ln = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(ln) or b"{}") if ln else {}
         if u.path == "/api/switch":
-            # при включённой оптимизации ручные переключения заблокированы —
-            # 200 + ok:false, чтобы страница/бот показали message как есть
-            # (409 бы потерялся: urlopen в прокси/боте кидает исключение)
-            if cfg().get("optimize"):
-                return self._send(200, {"ok": False, "blocked": True,
-                    "message": "Оптимизация переключений лимитов включена — ручное переключение заблокировано. Выключи тумблер оптимизации, чтобы переключать вручную."})
+            # The sole saved account can be activated. A second account cannot be selected.
             target = body.get("account", "next")
+            local_names = _real_names()
+            current = active_name()
+            if (cc_remote.members() or target == "next"
+                    or (current and target != current)
+                    or (not current and local_names != [target])):
+                return self._send(200, {"ok": False, "blocked": True,
+                    "message": "Поддерживается один аккаунт Claude. Для смены сначала отключи текущий."})
             with lock:
                 prev_act = active_name()
                 ok, out = do_switch(target)
@@ -3605,15 +3577,18 @@ class H(BaseHTTPRequestHandler):
             res = cc_backup.make(PROFILES, BACKUP_DIR)
             return self._send(200, dict(backup_status(), ok=res.get("ok", False), why=res.get("why", ""), name=res.get("name", "")))
         if u.path == "/api/backup/restore":  # «Восстановить недостающие»: живые профили не трогаются
-            res = cc_backup.restore_missing(PROFILES, BACKUP_DIR)
+            with lock, cc_remote.claude_account_lock(BASE):
+                if claude_account_connected():
+                    return self._send(200, dict(backup_status(), ok=False, restored=[],
+                                                message=claude_account_limit_message(body.get("lang"))))
+                res = cc_backup.restore_missing(PROFILES, BACKUP_DIR, limit=1)
             return self._send(200, dict(backup_status(), ok=True, restored=res["restored"]))
         if u.path in ("/api/claude-cli/update", "/api/claude-cli/rollback", "/api/claude-cli/restart"):  # «Обновить» / «Вернуть» Claude Code (⚙ Настройки Claude)
             return self._send(200, claude_cli_action(u.path.rsplit("/", 1)[1], body))
         if u.path == "/api/config":
             c = cfg()
-            for k in ("autoswitch", "threshold", "optimize"):
-                if k in body:
-                    c[k] = body[k]
+            if "threshold" in body:
+                c["threshold"] = body["threshold"]
             if body.get("update_mode") in ("manual", "auto"):
                 c["update_mode"] = body["update_mode"]
             if isinstance(body.get("update_check"), bool):
@@ -3799,6 +3774,9 @@ button:disabled{opacity:.35;cursor:default}
 .ctabs[hidden],.ctstop[hidden],.ctab[hidden]{display:none}
 html:root:root .ctab[hidden]{display:none!important}
 html.no-dev:root #wkAgents .wk-seg[data-ag="claude"],html.no-dev:root .fleet-console-toolbar #ctClaude,html.no-dev:root .fleet-compact-account.claude{display:none!important}
+html.claude-linked #addAcct,html.claude-linked #wkGenClAdd,
+html.codex-linked .fleet-add-codex,html.codex-linked #wkGenCxAdd,html.codex-linked #cx .cxhead,
+#optWrap,#autoWrap,#autoNote,.fleet-card-auto:has(.rm-auto){display:none!important}
 html.no-prod #ctProd,html.no-prod .wk-seg[data-ag="prod"],html.no-prod .fleet-live-account.prod,html.no-prod .fleet-compact-account.prod,html.no-prod .fleet-acc[data-engine="prod"],html.no-prod .wk-h3.t-prod,html.no-prod .rm-hand[data-target="prod"],html.no-prod .tpmi[data-k="prod"]{display:none!important}
 @media(max-width:520px){.ctab .ctlong{display:none}}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
@@ -4556,8 +4534,8 @@ const I18N={
   lapsedSince:t=>` (с ${t})`,
   relogin:'🔑 Войти заново',
   addBtnTitle:'Добавить аккаунт',
-  addTitle:'Добавить аккаунт в ротацию',
-  addSub:'Войди в Claude под нужным аккаунтом — после входа он сам встанет в ротацию, настраивать вручную ничего не нужно.',
+  addTitle:'Подключить аккаунт Claude',
+  addSub:'Войди в аккаунт Claude, который будет работать в балансере.',
   addEmailLbl:'Почта аккаунта (необязательно)',
   addEmailHint:'Подставится на странице входа, чтобы не набирать её заново.',
   addGetLink:'Получить ссылку для входа',
@@ -4568,7 +4546,7 @@ const I18N={
   addCopied:'Скопировано ✓',
   addStep2:'Вставь код, который покажет страница после входа',
   addCodePh:'Код со страницы входа',
-  addSubmit:'Добавить в ротацию',
+  addSubmit:'Подключить',
   addChecking:'Проверяю вход…',
   addRestart:'Начать заново',
   addNeedCode:'Вставь код со страницы входа.',
@@ -4827,8 +4805,10 @@ const I18N={
   redrawTitle:'Перерисовать консоль (если пропал кусок экрана, например полоски лимитов)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
   cxTitle:'ChatGPT (Codex)',
-  cxHint:'Отдельные аккаунты, модели и оптимизация лимитов Codex',
-  cxAddTitle:'Добавить аккаунт ChatGPT',
+  cxHint:'Отдельный вход Codex, выбор модели и контроль лимитов',
+  oneClaude:'Сначала отключи текущий аккаунт Claude.',
+  oneCodex:'Сначала отключи текущий аккаунт Codex.',
+  cxAddTitle:'Подключить аккаунт ChatGPT',
   cxAddSub:'Пароль и почту вводить не нужно — вход по коду устройства. Сначала включи его в ChatGPT → Настройки → Безопасность («вход по коду устройства для Codex»); в рабочем пространстве это делает администратор. Если страница входа не принимает код — причина почти всегда в этом.',
   cxLabelLbl:'Название (необязательно)',
   cxLabelPh:'например, «Основной»',
@@ -5092,8 +5072,8 @@ const I18N={
   lapsedSince:t=>` (since ${t})`,
   relogin:'🔑 Log in again',
   addBtnTitle:'Add an account',
-  addTitle:'Add an account to the rotation',
-  addSub:'Sign in to Claude with the account you want — once you are in, it joins the rotation by itself, no manual setup.',
+  addTitle:'Connect a Claude account',
+  addSub:'Sign in to the Claude account you will use in the balancer.',
   addEmailLbl:'Account email (optional)',
   addEmailHint:'Pre-fills the sign-in page so you do not have to type it again.',
   addGetLink:'Get the sign-in link',
@@ -5104,7 +5084,7 @@ const I18N={
   addCopied:'Copied ✓',
   addStep2:'Paste the code the page shows after sign-in',
   addCodePh:'Code from the sign-in page',
-  addSubmit:'Add to rotation',
+  addSubmit:'Connect',
   addChecking:'Checking sign-in…',
   addRestart:'Start over',
   addNeedCode:'Paste the code from the sign-in page.',
@@ -5363,8 +5343,10 @@ const I18N={
   redrawTitle:'Redraw console (if part of the screen is missing, e.g. the limit bars)',
   confirmNewSession:'Start a new Claude session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the console. Continue?',
   cxTitle:'ChatGPT (Codex)',
-  cxHint:'A separate program with its own sign-in — not part of the Claude rotation',
-  cxAddTitle:'Add a ChatGPT account',
+  cxHint:'Codex sign-in, model settings and quota limits',
+  oneClaude:'Disconnect the current Claude account first.',
+  oneCodex:'Disconnect the current Codex account first.',
+  cxAddTitle:'Connect a ChatGPT account',
   cxAddSub:'No password or email needed — sign-in by device code. Turn it on first in ChatGPT → Settings → Security (the device-code switch for Codex); in a workspace an admin does it. If the sign-in page does not accept the code, this is almost always the reason.',
   cxLabelLbl:'Name (optional)',
   cxLabelPh:'e.g. "Main"',
@@ -5692,6 +5674,7 @@ function prodAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_prod')
 function devAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_dev')!=='0';return !!(lastSnap.accounts&&Object.keys(lastSnap.accounts).length)}catch(e){return true}}
 let DEVAV=null;
 function devSync(){const v=devAvail();document.documentElement.classList.toggle('no-dev',!v);if(v===DEVAV)return;DEVAV=v;try{localStorage.setItem('cc_has_dev',v?'1':'0')}catch(e){}consTabs();}
+function claudeLinked(){return !!(lastSnap?.config?.claude_account_connected||Object.keys(lastSnap?.accounts||{}).length||Object.keys(lastSnap?.remote||{}).length)}
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
 // запомненная вкладка Codex не выбирается, пока Codex не подключён (призрачная плитка), и консоль Codex сама не стартует без входа в ChatGPT — иначе при каждой загрузке страницы «Нет входа в ChatGPT» (владелец 62657)
 function baseCur(){const cxo=cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex');let k=CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxo?'codex':'claude';if(k==='claude'&&!devAvail())k=prodAvail()?'prod':cxo?'codex':'claude';return k;}
@@ -6231,7 +6214,7 @@ function renderCards(d){
    <div class="top"><span class="email">${a.email} ${plan}${lpTag}${a.renewal_next?renewChip(a.renewal_next):''}</span><div class="hdrright">${r}${icons}</div></div>
    ${lpNote}
    ${a.error&&!lp?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour&&!lp?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
-   <div class="acts">${lp&&!a.active?'':`<button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>`}
+   <div class="acts">${!a.active&&(lp||d.active||Object.keys(d.accounts||{}).length>1)?'':`<button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>`}
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="reloginAsk('${n}',this)">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
@@ -6244,8 +6227,9 @@ function setUpd(ts){const t=tr('updated')+' '+new Date(ts*1000).toLocaleTimeStri
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
  lastSnap=d;noProdSync();devSync();consFollow(d);
+ document.documentElement.classList.toggle('claude-linked',claudeLinked());
  $('#auto').checked=!!(d.config&&d.config.autoswitch);
- const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
+ const opt=false;$('#opt').checked=opt;
  $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';
  $('#autoWrap').title=opt?tr('optDisabledTitle'):'';$('#autoNote').hidden=!opt;
  if(d.config&&d.config.threshold)THR=d.config.threshold;
@@ -6523,6 +6507,7 @@ function acctDel(n){
  setTimeout(()=>inp.focus(),30);
 }
 function acctAdd(){
+ if(claudeLinked()){toast(tr('oneClaude'));return;}
  acctShow(`<h3>${tr('addTitle')}</h3>
   <div class="modalsub">${tr('addSub')}</div>
   <label class="dlglbl" for="addEmail">${tr('addEmailLbl')}</label>
@@ -6643,6 +6628,7 @@ function cxCard(a){
 }
 function cxRender(){
  const el=$('#cx'),d=cxData;
+ document.documentElement.classList.toggle('codex-linked',!!d?.accounts?.length);
  if(!d||!d.available){el.hidden=true;el.innerHTML='';return;}
  // открытый выпадающий список перерисовка закрыла бы под рукой — отложим до ухода фокуса
  const f=document.activeElement;
@@ -7422,6 +7408,7 @@ function cxAdd(slot){
   cxStart(slot,'',`<h3>${tr('cxRelTitle')}</h3><div class="modalsub"><b>${acctEsc(a.email||slot)}</b> · ${acctEsc(slot)}</div>`);
   return;
  }
+ if(cxData?.accounts?.length){toast(tr('oneCodex'));return;}
  acctShow(`<h3>${tr('cxAddTitle')}</h3><div class="modalsub">${tr('cxAddSub')}</div>
   <label class="dlglbl" for="cxLabel">${tr('cxLabelLbl')}</label>
   <input id="cxLabel" class="dlginp" maxlength="60" autocomplete="off" spellcheck="false" placeholder="${tr('cxLabelPh')}">

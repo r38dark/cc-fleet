@@ -158,9 +158,12 @@ def score(account, now=None):
 
 
 class Rotation:
-    def __init__(self, base, codex, console, binary, bridge):
+    single_account = False
+
+    def __init__(self, base, codex, console, binary, bridge, single_account=False):
         self.path = Path(base)/'codex_rotation.json'
         self.codex, self.console, self.binary, self.bridge = codex, console, binary, bridge
+        self.single_account = single_account
         self.lock = threading.RLock()
         self.accounts = []
         self.updated = 0
@@ -175,6 +178,8 @@ class Rotation:
         self.state.setdefault('threshold', 90)
         self.state.setdefault('weekly_cap', 99)
         self.state.setdefault('min_switch_sec', 1800)
+        if single_account:
+            self.state['optimize'] = False
 
     def active(self):
         return self.bridge.load().get('slot') or self.console._meta().get('slot') or next(iter(self.codex.profile_slots()), '')
@@ -200,6 +205,8 @@ class Rotation:
             if 'optimize' in body:
                 if not isinstance(body['optimize'], bool):
                     return False, 'Оптимизация должна быть включена или выключена.'
+                if body['optimize'] and self.single_account:
+                    return False, 'Codex использует один аккаунт. Автопереключение недоступно.'
                 changed['optimize'] = body['optimize']
             for key in ('threshold', 'weekly_cap'):
                 if key in body:
@@ -210,7 +217,7 @@ class Rotation:
             self.state = changed
             self.save()
         if getattr(self,'quota',None):self.quota.tick()
-        return True, 'Настройки оптимизации Codex сохранены.'
+        return True, 'Настройки лимитов Codex сохранены.'
 
     def refresh(self, force=False):
         with self.lock:
@@ -265,10 +272,12 @@ class Rotation:
         with self.lock:
             candidates = [a for a in self.accounts if a.get('slot') != active and eligible(
                 a, settings.get('model'), settings.get('effort'), max_session=min(85, self.state['threshold']), cap=self.state['weekly_cap'])]
-            candidates.sort(key=score, reverse=True)
+            candidates = [] if self.single_account else sorted(candidates, key=score, reverse=True)
             next_account = candidates[0] if candidates else {}
             message = self.message
-            if not self.state['optimize']:
+            if self.single_account:
+                message = 'Один аккаунт Codex.'
+            elif not self.state['optimize']:
                 message = 'Ручной выбор аккаунта Codex'
             elif len(self.accounts) == 1:
                 message = 'Один аккаунт; ротация начнётся после добавления других.'
@@ -303,6 +312,8 @@ class Rotation:
                 expired_override=self.state.get('override_until') and (time.time() if now is None else now)>self.state['override_until']+120
                 if self.state.get('override_slot')!=active or expired_override or (cur and not any(cur.get(k) for k in BAD) and not wins and not reported):
                     self.state.update(pause_override=False,override_slot='',override_until=0);self.save();override=False
+        if self.single_account:
+            rows = [a for a in rows if a.get('slot') == active]
         cands = [a for a in rows if a.get('slot') != active and eligible(a, max_session=min(85, th), cap=cap, now=now)]
         value=limit_pause_state(rows,active,bool(cands),now,threshold=th,weekly_cap=cap,override=override)
         guard=getattr(self,'quota',None)
@@ -312,6 +323,8 @@ class Rotation:
         """UI-only warning; the bridge continues to use limit_pause unchanged."""
         active = self.active()
         slots = set(self.codex.profile_slots())
+        if self.single_account:
+            slots.intersection_update({active})
         with self.lock:
             rows = [dict(a) for a in self.accounts if a.get('slot') in slots]
         pause = self.limit_pause(now)
@@ -338,6 +351,8 @@ class Rotation:
             old = self.active()
             if slot == old:
                 return True, 'Этот аккаунт уже выбран.'
+            if self.single_account:
+                return False, 'Codex использует один аккаунт. Для смены сначала отключи текущий.'
             if slot not in self.codex.profile_slots():
                 return False, 'Неизвестный аккаунт Codex.'
             selected = next((a for a in self.accounts if a.get('slot') == slot), None)
@@ -405,7 +420,7 @@ class Rotation:
         if not self.console.busy() and not self.limit_pause().get('active'):
             self.console.apply_plan()
         with self.lock:
-            if not self.state['optimize'] or self.refreshing or not self.console._pid():
+            if self.single_account or not self.state['optimize'] or self.refreshing or not self.console._pid():
                 return
             active = self.active()
             current = next((a for a in self.accounts if a.get('slot') == active), None)

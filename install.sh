@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-fleet — установка «под ключ»: панель для нескольких подписок Claude Code и Codex на ВАШЕМ сервере.
+# cc-fleet — установка панели для одного аккаунта Claude и одного аккаунта Codex.
 #
 #   sudo ./install.sh            установка (или продолжение прерванной / обновление)
 #   sudo ./install.sh --check    только проверить, какие шаги уже выполнены (ничего не меняет)
@@ -18,7 +18,6 @@ PROFILES_DIR="${CC_FLEET_PROFILES:-/root/.claude-profiles}"
 SERVICE_NAME="${CC_FLEET_SERVICE_NAME:-cc-limits}"
 PORT="${CC_FLEET_PORT:-8877}"
 SCREEN_SESSION="${CC_FLEET_SCREEN:-claude}"
-N_ACCOUNTS="${CC_FLEET_ACCOUNTS:-2}"
 THRESHOLD="${CC_FLEET_THRESHOLD:-85}"
 NONINTERACTIVE="${CC_FLEET_YES:-0}"
 DOMAIN="${CC_FLEET_DOMAIN:-}"
@@ -167,7 +166,6 @@ s2() {
   [ -f "$STATE_FILE" ] && [ "$NONINTERACTIVE" != "1" ] && { info "Нашёл ответы прошлой установки — они подставлены по умолчанию (Enter = оставить)."; . "$STATE_FILE"; }
   info "Ставим в $BASE, профили аккаунтов — в $PROFILES_DIR (стандартные пути)."
   ask SCREEN_SESSION "Имя screen-сессии, в которой живёт Claude Code" "$SCREEN_SESSION"
-  ask N_ACCOUNTS "Сколько аккаунтов Claude заведём (пустые слоты, войдёшь в них потом в панели)" "$N_ACCOUNTS"
   ask THRESHOLD "Порог авто-переключения, % занятости 5-часового окна" "$THRESHOLD"
   ask OWNER_NAME "Как к тебе обращаться (имя подставляется в записки агентам)" "${OWNER_NAME:-владелец}"
   [ -n "$TZ_NAME" ] || TZ_NAME="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
@@ -210,7 +208,7 @@ s2() {
   [ -n "$CLAUDE_SETTINGS" ] || CLAUDE_SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
   echo
   log "План:"
-  info "панель: $BASE (порт $PORT), служба $SERVICE_NAME, аккаунтов: $N_ACCOUNTS, screen: $SCREEN_SESSION, пояс: $TZ_NAME"
+  info "панель: $BASE (порт $PORT), служба $SERVICE_NAME, screen: $SCREEN_SESSION, пояс: $TZ_NAME"
   if yes_ "$WANT_NGINX"; then info "адрес: $(scheme)://$DOMAIN/cc/ (вход: $BASIC_USER)"; else info "адрес: только 127.0.0.1:$PORT (свой прокси или SSH-туннель)"; fi
   info "Telegram: $(yes_ "$WANT_TG" && echo да || echo нет) · Codex: $(yes_ "$WANT_CODEX" && echo да || echo нет) · голос: $(yes_ "$WANT_VOICE" && echo да || echo нет)"
   if [ "$NONINTERACTIVE" != "1" ]; then
@@ -218,7 +216,7 @@ s2() {
     yes_ "$CONFIRM" || fail "отменено" "запусти установщик снова, когда будешь готов"
   fi
   mkdir -p "$BASE"
-  { for v in WANT_CLAUDE SCREEN_SESSION N_ACCOUNTS THRESHOLD OWNER_NAME TZ_NAME WORK_DIR WANT_NGINX DOMAIN BASIC_USER WANT_HTTPS CERT_EMAIL WANT_TG CHAT_ID WANT_CODEX CODEX_USER WANT_VOICE HOOK_QUEUE HOOK_TOOLS CLAUDE_SETTINGS; do printf '%s=%q\n' "$v" "${!v}"; done; } > "$STATE_FILE"
+  { for v in WANT_CLAUDE SCREEN_SESSION THRESHOLD OWNER_NAME TZ_NAME WORK_DIR WANT_NGINX DOMAIN BASIC_USER WANT_HTTPS CERT_EMAIL WANT_TG CHAT_ID WANT_CODEX CODEX_USER WANT_VOICE HOOK_QUEUE HOOK_TOOLS CLAUDE_SETTINGS; do printf '%s=%q\n' "$v" "${!v}"; done; } > "$STATE_FILE"
   chmod 600 "$STATE_FILE"
   okm "ответы записаны ($STATE_FILE, без паролей)"
 }
@@ -293,11 +291,12 @@ c6() {
 s6() {
   header 6
   mkdir -p "$PROFILES_DIR"
-  for i in $(seq 1 "$N_ACCOUNTS"); do
-    d="$PROFILES_DIR/acc$i"; mkdir -p "$d"
-    [ -f "$d/oauth_account.json" ] || echo '{}' > "$d/oauth_account.json"
-  done
-  okm "профили аккаунтов: $N_ACCOUNTS пустых слота в $PROFILES_DIR (войдёшь в них в панели: «Добавить аккаунт» или «Войти заново»)"
+  if ! compgen -G "$PROFILES_DIR/acc*/oauth_account.json" >/dev/null; then
+    local d="$PROFILES_DIR/acc1"
+    mkdir -p -m 700 "$d"
+    echo '{}' > "$d/oauth_account.json"
+  fi
+  okm "каталог единственного аккаунта Claude: $PROFILES_DIR"
   # config.json не обнуляем: hook_token, internal_secret и уже настроенные ключи переживают обновление
   local old_token; old_token="$(json_get "$BASE/config.json" hook_token)"
   if [ -n "$old_token" ]; then HOOK_TOKEN="$old_token"; info "config.json уже есть — обновляю, hook_token оставляю прежним"

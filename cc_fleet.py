@@ -232,7 +232,7 @@ def install(ns):
     # один аккаунт Codex — ротации нет: профиль Claude Full не ставит Codex на паузу (число аккаунтов смотрим при каждом обращении)
     import cc_profile_state
     cc_profile_state.ProfileState.codex_independent = staticmethod(lambda: len(codex.profile_slots()) <= 1)
-    rotation = cc_codex_rotation.Rotation(ns['BASE'], codex, console, ns['codex_bin'], bridge)
+    rotation = cc_codex_rotation.Rotation(ns['BASE'], codex, console, ns['codex_bin'], bridge, single_account=True)
     models = cc_codex_models.Discovery(codex, rotation, ns['codex_bin'])
     inputs = ConsoleInput(ns)
     ns['FLEET_ROTATION'] = rotation
@@ -348,6 +348,8 @@ def install(ns):
                 current=bridge.load()
                 if any(key in body and body[key]!=current.get(key) for key in ('mode','access','task_rights')):
                     return self._send(200,dict(ok=False,message='Сценарий и права выбираются через Full или Оркестратор в меню профилей.'))
+                if len(codex.profile_slots()) > 1 and 'slot' in body and body['slot'] not in (current.get('slot'), rotation.active()):
+                    return self._send(200, dict(ok=False, message='Для смены аккаунта Codex сначала отключи текущий.'))
             if action=='bridge/save' and profiles.transitioning:
                 return self._send(200, {'ok':False,'message':'Сейчас применяется профиль. Сохрани настройки после завершения переключения.'})
             if action=='prefs' and not profiles.input_allowed('codex'):

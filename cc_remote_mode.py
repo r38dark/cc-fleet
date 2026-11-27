@@ -1576,9 +1576,10 @@ def install(ns):
                 elif path.endswith("/auto"):
                     import cc_remote_auto
                     on_ = body.get("enabled") is True
-                    cc_remote_auto.set_enabled(on_)
-                    res = dict(ok=True, message="Автопередача между Claude включена." if on_ else "Автопередача выключена.",
-                               auto=cc_remote_auto.status())
+                    if not on_ and cc_remote_auto.load()["enabled"]:
+                        cc_remote_auto.set_enabled(False)
+                    res = dict(ok=not on_, message="Claude использует один аккаунт. Автопередача недоступна." if on_
+                               else "Автопередача выключена.", auto={"enabled": False})
                 else:
                     res = send(body.get("text") or "")
             except Exception as exc:
@@ -1597,6 +1598,8 @@ def install(ns):
     if ns.get("__name__") == "__main__":  # поток автопередачи — только в самой панели, не при импорте в тестах
         try:
             import cc_remote_auto
+            if cc_remote_auto.load()["enabled"]:
+                cc_remote_auto.set_enabled(False)
             cc_remote_auto.start(ns)
         except Exception as exc:
             print("remote-auto: не запущен: %r" % (exc,), flush=True)

@@ -185,6 +185,13 @@ class Install(Base):
 
 
 class AuthKeys(Base):
+    def test_existing_local_account_blocks_remote_connection_before_ssh(self):
+        with mock.patch.object(S.R, "local_claude_linked", return_value=True), mock.patch.object(S, "probe") as probe:
+            ok, message, _ = S.connect({"host": "203.0.113.10"})
+        self.assertFalse(ok)
+        self.assertIn("один аккаунт Claude", message)
+        probe.assert_not_called()
+
     def test_add_replace_remove(self):
         os.makedirs(os.path.dirname(S.AUTH_FILE))
         open(S.AUTH_FILE, "w").write("ssh-ed25519 OWNERKEY owner@laptop\n")

@@ -118,7 +118,11 @@ def accounts():
         d = json.load(open(SNAP))
     except Exception:
         return {}, "", 0.0
-    return (d.get("accounts") or {}), (d.get("active") or ""), float(d.get("ts") or 0)
+    rows = d.get("accounts") or {}
+    active = d.get("active") or ""
+    if d.get("single_account"):
+        rows = {active: rows[active]} if active in rows else {}
+    return rows, active, float(d.get("ts") or 0)
 
 
 NO_WEEK = float("inf")  # сессионной паузе недельный потолок не нужен — см. шапку

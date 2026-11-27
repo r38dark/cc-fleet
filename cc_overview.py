@@ -986,7 +986,7 @@ JS = r'''
  ch.append(document.getElementById('optWrap'),document.getElementById('addAcct'));
  claude.append(ch,document.getElementById('cards'));accountArea.append(claude);
  const codex=el('section','fleet-section fleet-codex');codex.id='fleetCodex';
- const xh=el('div','fleet-section-head');xh.innerHTML='<h2><span class="fleet-provider codex">›_</span>Codex / ChatGPT</h2><label class="switchrow"><input type="checkbox" id="fleetCxOpt"> Оптимизация переключений лимитов</label>';
+ const xh=el('div','fleet-section-head');xh.innerHTML='<h2><span class="fleet-provider codex">›_</span>Codex / ChatGPT</h2>';
  const rotation=el('div','fleet-rotation-state');rotation.id='fleetRotation';
  codex.append(xh,document.getElementById('cxAccW'),rotation);accountArea.append(codex);
  const models=document.querySelector('.toolrow');models.prepend(el('span','fleet-model-label','Claude: модель и уровень рассуждений'));term.after(models);
@@ -1026,12 +1026,12 @@ JS = r'''
    const k={ArrowUp:'up',ArrowDown:'down',Enter:'enter',Escape:'escape'}[e.key];if(!k)return;
    const t=e.target;if(t&&t.closest&&t.closest('input,textarea,select,button,a,[contenteditable="true"]'))return;
    e.preventDefault();if(!e.repeat)sendConsoleKey(k)});})();
- function renderRotation(d){rotationData=d;if(!document.querySelector('.fleet-cx-options:focus-within')){document.getElementById('fleetCxThreshold').value=d.threshold||90;document.getElementById('fleetCxCap').value=d.weekly_cap||99;}document.getElementById('fleetCxOpt').checked=!!d.optimize;rotation.replaceChildren();const text=el('span','',d.message||'Проверка лимитов');rotation.append(text);if(d.next_label)rotation.append(el('span','','Следующий: '+d.next_label));if(d.last_error)rotation.append(el('span','err',d.last_error));
-  document.querySelectorAll('#cxcards .card').forEach((c,i)=>{const a=typeof cxData!=='undefined'&&cxData.accounts&&cxData.accounts[i];c.classList.toggle('fleet-active',!!a&&a.slot===d.active);if(!a)return;const top=c.querySelector('.top .email');if(top&&a.slot!==d.active)top.querySelector('.fleet-active-label')?.remove();if(top&&a.slot===d.active&&!top.querySelector('.fleet-active-label'))top.append(el('span','fleet-active-label','Выбран'));const existing=c.querySelector('.fleet-pick');if(existing){existing.textContent=a.slot===d.active?'Выбран':'Выбрать';existing.disabled=a.slot===d.active||!!d.optimize;existing.title=d.optimize?'Ручной выбор доступен при выключенной оптимизации':'';}if(!existing){const b=el('button','btn-sw fleet-pick',a.slot===d.active?'Выбран':'Выбрать');b.disabled=a.slot===d.active||!!d.optimize;b.title=d.optimize?'Ручной выбор доступен при выключенной оптимизации':'';b.onclick=async()=>{b.disabled=true;try{const r=await post('chatgpt/rotation/switch',{slot:a.slot});toast(r.message);loadRotation()}catch(e){toast('⚠ '+e.message);loadRotation()}};const acts=c.querySelector('.acts');if(acts)acts.prepend(b)}});
+ function renderRotation(d){rotationData=d;if(!document.querySelector('.fleet-cx-options:focus-within')){document.getElementById('fleetCxThreshold').value=d.threshold||90;document.getElementById('fleetCxCap').value=d.weekly_cap||99;}rotation.replaceChildren();const text=el('span','',d.message||'Проверка лимитов');rotation.append(text);if(d.next_label)rotation.append(el('span','','Следующий: '+d.next_label));if(d.last_error)rotation.append(el('span','err',d.last_error));
+  document.querySelectorAll('#cxcards .card').forEach((c,i)=>{const a=typeof cxData!=='undefined'&&cxData.accounts&&cxData.accounts[i];c.classList.toggle('fleet-active',!!a&&a.slot===d.active);if(!a)return;const top=c.querySelector('.top .email');if(top&&a.slot!==d.active)top.querySelector('.fleet-active-label')?.remove();if(top&&a.slot===d.active&&!top.querySelector('.fleet-active-label'))top.append(el('span','fleet-active-label','Выбран'));});
   refreshVisuals();
  }
  let refreshing=false;async function loadRotation(){if(refreshing)return;refreshing=true;try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(r.ok)renderRotation(await r.json())}catch(e){}finally{refreshing=false}}
- document.getElementById('fleetCxOpt').addEventListener('change',async e=>{const box=e.target,on=box.checked;box.checked=!on;if(!await window.fleetAsk(box,(on?'Включить':'Выключить')+' оптимизацию переключений лимитов Codex?',on?'Включить':'Выключить'))return;box.checked=on;box.disabled=true;try{await post('chatgpt/rotation/config',{optimize:on});await loadRotation()}catch(err){box.checked=!on;toast('⚠ '+err.message)}finally{box.disabled=false}});
+
  const oldCxRender=cxRender;cxRender=function(){oldCxRender();if(rotationData)renderRotation(rotationData);if(typeof cxData!=='undefined'&&cxData&&cxData.loading&&!cxData.accounts.length)document.getElementById('cx').textContent='Загружаем сохранённые аккаунты…'};
  const accLink=document.querySelector('#cxAccW>.cxacch');if(accLink)accLink.title='Аккаунты показаны на главной странице';
  document.getElementById('cxAccW').classList.add('open');
@@ -1109,7 +1109,7 @@ JS = r'''
  try{accFold.open=localStorage.getItem('cc_accounts_open')==='1'}catch(e){}
  accFold.addEventListener('toggle',()=>{try{localStorage.setItem('cc_accounts_open',accFold.open?'1':'0')}catch(e){}});
  const claudeFoot=el('div','fleet-group-footer'),claudeNote=el('span','fleet-group-note');claudeFoot.append(claudeNote,document.getElementById('optWrap'));claude.append(claudeFoot);
- const codexFoot=el('div','fleet-group-footer');codexFoot.append(rotation,xh.querySelector('.switchrow'));codex.append(codexFoot);
+ const codexFoot=el('div','fleet-group-footer');codexFoot.append(rotation);codex.append(codexFoot);
  const noteFooter=el('div','fleet-design-note');noteFooter.innerHTML='<span aria-hidden="true">ⓘ</span><p>Проценты показывают использованный лимит. Плановая смена аккаунта — между ответами.</p>';accFold.append(noteFooter);
  for(const head of [ch,xh]){const count=el('span','fleet-count');head.querySelector('h2').after(count)}
  function countText(n){const k=n%100,m=n%10;return n+' '+(k>=11&&k<=14?'аккаунтов':m===1?'аккаунт':m>=2&&m<=4?'аккаунта':'аккаунтов')}
@@ -1421,9 +1421,9 @@ JS = r'''
  // Одна схема у Claude и Codex: 1) переключение и лимиты, 2) модели в быстром меню, 3) свои настройки агента.
  const autoTitle=document.getElementById('autoHdr'),autoRow=document.getElementById('autoWrap').closest('.switchrow'),weekly=document.getElementById('wkPause').closest('label');
  autoTitle.hidden=true;document.getElementById('modelsHdr').hidden=true;for(const id of ['thrMinus','thrPlus'])document.getElementById(id).hidden=true;  // заголовки — у групп, пороги — полями
- const LIMIT_HINT='Сессия — с какого % окна 5 часов переключать аккаунт. Неделя — потолок недели: выше него аккаунт не берётся в работу.';
+ const LIMIT_HINT='На этих порогах работа ждёт сброса лимита. Сессия — окно 5 часов, неделя — недельное окно.';
  const clLimits=el('div','fleet-cx-options');clLimits.id='fleetClLimits';clLimits.innerHTML='<label>Сессия, % <input id="fleetClThreshold" type="number" min="50" max="99" value="90"></label><label>Неделя, % <input id="fleetClCap" type="number" min="50" max="100" value="99"></label><button type="button" id="fleetClSave">Сохранить</button>';
- const autoGroup=group('Переключение и лимиты',[clLimits,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT),autoRow,document.getElementById('autoNote'),weekly,autoTitle],'fleet-claude-group');autoGroup.id='fleetClaudeLimits';
+ const autoGroup=group('Лимиты',[clLimits,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT),autoRow,document.getElementById('autoNote'),weekly,autoTitle],'fleet-claude-group');autoGroup.id='fleetClaudeLimits';
  const modelGroup=group('Модели в быстром меню',[document.getElementById('modelsHdr'),document.getElementById('modalSub'),document.getElementById('poolList'),document.getElementById('checkNew')],'fleet-claude-group');modelGroup.id='fleetClaudeModels';
  const claudeOwnAccounts=el('div','fleet-own-row');claudeOwnAccounts.id='fleetClOwnAcc';
  const claudeBackups=group('',[document.getElementById('bkHdr'),document.getElementById('bkBox')],'fleet-own-sub');
@@ -1445,14 +1445,14 @@ JS = r'''
  function paintOwnAccounts(){
   const accounts=Object.keys(lastSnap?.accounts||{}),active=lastSnap?.active;
   claudeOwnAccounts.replaceChildren(el('span','fleet-own-text',accounts.length?'Аккаунты: '+accounts.length+' · сейчас '+(active||'—'):'Аккаунтов пока нет'),
-   ownButton('+ Добавить аккаунт',()=>{document.getElementById('modalDone').click();setTimeout(()=>acctAdd(),80)}),
+   ...(!claudeLinked()?[ownButton('Подключить аккаунт',()=>{document.getElementById('modalDone').click();setTimeout(()=>acctAdd(),80)})]:[]),
    ownButton('Управление аккаунтами ↓',()=>toCards('#cards',()=>document.getElementById('modalDone').click())));
   const cx=(typeof cxData!=='undefined'&&cxData?.accounts)||[],current=typeof cxLimAcc==='function'?cxLimAcc():null;
   codexOwnAccounts.replaceChildren(el('span','fleet-own-text',cx.length?'Аккаунты: '+cx.length+' · сейчас '+(current?.label||current?.slot||'—'):'Аккаунтов пока нет'),
-   ownButton('+ Добавить аккаунт',()=>{cxPopClose();setTimeout(()=>cxAdd(),80)}),
+   ...(!cx.length?[ownButton('Подключить аккаунт',()=>{cxPopClose();setTimeout(()=>cxAdd(),80)})]:[]),
    ownButton('Управление аккаунтами ↓',()=>toCards('#cxcards',cxPopClose)));
  }
- const codexThresholds=group('Переключение и лимиты',[cxOptions,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT+' Автовыбор аккаунта по этим порогам — переключатель «Автовыбор» в «Управление аккаунтами».')]);codexThresholds.id='fleetCxLimits';document.querySelector('#cxPop > .cxpbody').prepend(codexThresholds);
+ const codexThresholds=group('Лимиты',[cxOptions,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT)]);codexThresholds.id='fleetCxLimits';document.querySelector('#cxPop > .cxpbody').prepend(codexThresholds);
  // Каталог моделей: ручная проверка в фоне, без изменения выбранной модели.
  const catalogAccount=el('div','fleet-catalog-note'),catalogList=el('div','fleet-model-catalog'),catalogStatus=el('div','fleet-catalog-note'),catalogCheck=el('button','ghostbtn','🔄 Проверить новые модели');
  catalogAccount.id='fleetCxCatalogAccount';catalogList.id='fleetCxModelList';catalogStatus.id='fleetCxModelStatus';catalogStatus.setAttribute('role','status');catalogStatus.setAttribute('aria-live','polite');catalogCheck.id='fleetCxCheckNew';catalogCheck.type='button';

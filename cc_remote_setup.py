@@ -244,7 +244,12 @@ def auth_remove(member=MEMBER_ID):
 
 # ---------------------------------------------------------------- подключение
 def connect(fields):
-    """Подключает второй сервер. → (ok, сообщение, шаги [{"label", "ok"}])."""
+    """Connect the single Claude account on a remote server."""
+    with R.claude_account_lock():
+        return _connect(fields)
+
+
+def _connect(fields):
     steps = []
 
     def step(label, ok, extra=""):
@@ -254,6 +259,11 @@ def connect(fields):
     ok, msg, f = valid_fields(fields.get("host"), fields.get("port"), fields.get("user"), fields.get("tmux"), fields.get("back_host"))
     if not ok:
         return False, msg, steps
+    if R.local_claude_linked():
+        return False, "Поддерживается один аккаунт Claude. Сначала отключи локальный аккаунт.", steps
+    existing = R.members()
+    if existing and (len(existing) > 1 or not any(row.get("host") == f["host"] for row in existing.values())):
+        return False, "Сначала отключи уже подключённый сервер Claude.", steps
     back_host = f["back_host"] or default_back_host()
     if not back_host:
         return False, "Не определил адрес этого сервера для второго: впиши его в поле «Адрес этого сервера».", steps
@@ -319,6 +329,11 @@ def connect(fields):
 
 
 def remove(member=MEMBER_ID):
+    with R.claude_account_lock():
+        return _remove(member)
+
+
+def _remove(member):
     """Убирает пару и ключ обратного ssh с этого сервера. → (ok, сообщение)."""
     members = R.jload(R.MEMBERS_FILE, {})
     members = members if isinstance(members, dict) else {}
@@ -344,6 +359,7 @@ def status():
     except Exception as exc:
         pub, kerr = "", str(exc)[:160]
     return {"ok": True, "pub": pub, "key_error": kerr, "default_tmux": DEFAULT_TMUX, "back_host": default_back_host(),
+            "local_claude_linked": R.local_claude_linked(),
             "member": ({"host": m.get("host"), "port": m.get("port") or 22, "tmux": m.get("tmux") or DEFAULT_TMUX,
                         "back_host": m.get("back_host") or "", "label": m.get("label") or ""} if m else None)}
 
@@ -412,8 +428,9 @@ function render(){
   $i('rsRecheck').onclick=function(){run('check',{host:st.member.host,port:st.member.port,back_host:st.member.back_host,tmux:st.member.tmux})};
   $i('rsDrop').onclick=function(){if(!confirm('Отключить второй сервер? Пара и ключ обратного входа уберутся с этого сервера, на втором ничего не удалится.'))return;api('remote/setup/remove',{}).then(function(d){msg(d.message,d.ok?'ok':'bad');if(d.ok)load()})};
   return}
+ if(st.local_claude_linked){body.innerHTML='<div class="fleet-catalog-note">Claude уже подключён на этом сервере. Чтобы использовать Claude на другом сервере, сначала отключи локальный аккаунт.</div>';return}
  var cmd="echo '"+st.pub+"' >> /root/.ssh/authorized_keys";
- body.innerHTML='<div class="fleet-catalog-note">Второй сервер — машина, на которую панель передаёт работу Claude (когда лимит кончился здесь). Нужен доступ по ssh под root.</div>'
+ body.innerHTML='<div class="fleet-catalog-note">Подключи Claude на другом сервере. Нужен доступ по SSH под root.</div>'
   +'<div class="rs-step"><i>1</i>Шаг 1 из 3 · Ключ панели — добавь на втором сервере</div>'
   +'<div class="fleet-catalog-note">Выполни на втором сервере эту команду (или вставь строку в /root/.ssh/authorized_keys):</div><pre id="rsKey">'+esc(cmd)+'</pre><div class="rs-acts"><button type="button" class="ghostbtn" id="rsCopy">Скопировать команду</button></div>'
   +'<div class="rs-step"><i>2</i>Шаг 2 из 3 · Адрес второго сервера и проверка</div>'

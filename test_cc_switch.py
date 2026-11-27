@@ -121,10 +121,16 @@ class SwitchProc(unittest.TestCase):
         self.assertEqual(json.load(open(self.cfg))["oauthAccount"]["accountUuid"], "u-acc2")
 
     def test_save_is_atomic_copy(self):
+        shutil.rmtree(os.path.join(self.home, ".claude-profiles"))
         r = self.run_switch("save", "3")
         self.assertEqual(r.returncode, 0, r.stderr)
         p = os.path.join(self.home, ".claude-profiles", "acc3", "credentials.json")
         self.assertEqual(json.load(open(p))["claudeAiOauth"]["accessToken"], "tok-acc1-REFRESHED")
+
+    def test_save_refuses_a_second_account(self):
+        result = self.run_switch("save", "3")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude-profiles", "acc3")))
 
     def test_unsaved_current_account_goes_to_backup(self):
         json.dump({"oauthAccount": {"accountUuid": "u-stranger", "emailAddress": "s@x"}}, open(self.cfg, "w"))

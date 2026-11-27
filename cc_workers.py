@@ -835,22 +835,23 @@ function openPop(html,wide,anchor,cls){closePop();pop=document.createElement('di
 // Кнопка передачи: работа не у этого агента — «Передать работу в <он>»; работа у него — блок из кнопок остальных агентов.
 // Причина, почему кнопка серая, — строкой под блоком.
 function hand3(own,md,rm){var NMS={dev:'Claude DEV',prod:'Claude PROD',codex:'Codex'},why='';
- var bs=['dev','prod','codex'].filter(function(t){return t!==own}).map(function(t){var h=rm.handInfo(t,md);if(h.dis&&!why)why=h.tt;
+ var bs=['dev','prod','codex'].filter(function(t){
+  return t!==own&&(t!=='dev'||typeof devAvail!=='function'||devAvail())&&(t!=='prod'||typeof prodAvail!=='function'||prodAvail());
+ }).map(function(t){var h=rm.handInfo(t,md);if(h.dis&&!why)why=h.tt;
   return '<button type="button" class="wk-h3 t-'+t+'" data-t="'+t+'"'+(h.dis?' disabled':'')+' title="'+esc(h.tt)+'"><span class="wk-bl">'+NMS[t]+'</span></button>'}).join('');
  return '<div class="wk-hand3"><span class="wk-h3t">Передать работу в:</span>'+bs+(why?'<span class="wk-h3n">'+esc(why)+'</span>':'')+'</div>'}
 function thrNow(){try{return typeof THR==='number'&&THR>0?THR:90}catch(e){return 90}}
 function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'dev',prod:'prod',codex:'codex'}[k],wk=md.worker||'dev',
   act=wk===own,hi=act?null:rm.handInfo(own,md),pair=k==='claude'||k==='prod',
-  ao=!!((rm.auto&&rm.auto()||{}).enabled),run=['run','lead','exec'].indexOf(gp.state)>=0,
+  run=['run','lead','exec'].indexOf(gp.state)>=0,
   ic=gp.state==='pause'?'<svg viewBox="0 0 14 14" fill="currentColor"><rect x="2.5" y="1.5" width="3" height="11" rx="1"/><rect x="8.5" y="1.5" width="3" height="11" rx="1"/></svg>':run?'<svg viewBox="0 0 14 14" fill="currentColor"><path d="M3.5 1.8v10.4a.6.6 0 0 0 .9.5l8-5.2a.6.6 0 0 0 0-1l-8-5.2a.6.6 0 0 0-.9.5z"/></svg>':'<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h8"/></svg>',
   xi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
   oi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"/><path d="M6 8h8M11 5l3 3-3 3"/></svg>',
   base=esc((gp.label||names[k]).replace(/ · /g,' - ')),
-  thr=thrNow(),autoTxt=(ao?'При '+thr+'% лимита работа сама перейдёт на второй аккаунт.':'Авто выключено: при '+thr+'% лимита работа сама не перейдёт.')+' <a href="#" class="wk-lnk2">Изменить порог</a>.',
-  txt=k==='prod'?base+'. Это Claude на втором сервере (PROD). '+autoTxt
-   :base+'.'+(pair?' '+autoTxt:'')+' Сменить профиль — в <a href="#" class="wk-lnk">Выборе профиля</a>.',
+  thr=thrNow(),limitTxt='При '+thr+'% сессии Claude ждёт сброса лимита. <a href="#" class="wk-lnk2">Изменить порог</a>.',
+  txt=k==='prod'?base+'. Это Claude на втором сервере (PROD). '+limitTxt
+   :base+'.'+(pair?' '+limitTxt:'')+' Сменить профиль — в <a href="#" class="wk-lnk">Выборе профиля</a>.',
   rowh='<button type="button" class="wk-no">'+xi+'<span class="wk-bl">Закрыть</span></button>'
-   +(pair?'<button type="button" class="wk-auto" role="switch" aria-checked="'+ao+'"><span class="wk-sw"></span><span class="wk-bl">Включить авто</span></button>':'')
    +(act?hand3(own,md,rm):'<button type="button" class="wk-yes"'+(hi.dis?' disabled':'')+' title="'+esc(hi.tt)+'">'+oi+'<span class="wk-bl">'+esc(hi.txt)+'</span></button>');
   var pp=openPop('<div class="wk-ph"><span class="wk-pi '+(gp.state==='pause'?'':run?'run':'off')+'">'+ic+'</span><b>'+esc(({claude:'Claude DEV',prod:'Claude PROD',codex:'Codex'})[k])+(gp.text?' - '+esc(gp.text):'')+'</b></div><p>'+txt+'</p><div class="wk-row">'+rowh+'</div>',false,anchor,'ag-'+k+' rich');
   pp.classList.add('ag-'+k,'rich');
@@ -858,14 +859,7 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   pp.querySelectorAll('.wk-h3').forEach(function(b){b.onclick=function(){var t=this.dataset.t;closePop();rm.hand(t,anchor)}});
   var lk=pp.querySelector('.wk-lnk');if(lk)lk.onclick=function(e){e.preventDefault();closePop();var c=document.getElementById('cxBtn');if(c)c.click()};
   var ls=pp.querySelector('.wk-lnk2');if(ls)ls.onclick=function(e){e.preventDefault();closePop();var g=document.getElementById('gear');if(g)g.click()};
-  // подтверждение «авто» — прямо в этом же окне (отдельное окно подтверждения рисовалось ПОД ним, владелец 62664)
-  var au=pp.querySelector('.wk-auto');if(au)au.onclick=function(){var on=!((rm.auto()||{}).enabled),row=pp.querySelector('.wk-row');if(pp.querySelector('.wk-cfm'))return;
-   var c=document.createElement('div');c.className='wk-cfm';var w=on?'Включить':'Выключить';
-   c.innerHTML='<p class="wk-cq">'+w+' автопередачу работы на PROD при лимитах?</p><div class="wk-row"><button type="button" class="wk-no wk-cn"><span class="wk-bl">Отмена</span></button><button type="button" class="wk-yes wk-cy"><span class="wk-bl">'+w+'</span></button></div>';
-   row.style.display='none';row.after(c);
-   c.querySelector('.wk-cn').onclick=function(){c.style.display='none';row.style.display='';placePop();setTimeout(function(){c.remove()},0)};   // убираем после клика: удалённая кнопка выглядела бы для «клика мимо» и закрыла бы окно
-   c.querySelector('.wk-cy').onclick=function(){closePop();rm.setAuto(on).then(function(j){toast(j&&j.message||'Готово')}).catch(function(){toast('Панель не ответила')})};
-   placePop()}}
+}
 function agentPop(k,anchor){if(window.fleetRemote&&window.fleetRemote.handInfo&&(k==='prod'||k==='claude'||k==='codex'))return richPop(k,anchor,window.fleetRemote);
  var g=agState(k),nm=names[k];var p=openPop('<b>'+esc(nm)+(g.text?' · '+esc(g.text):'')+'</b><p>'+esc(g.label||nm)+'. Сменить профиль — в «Выборе профиля».</p><div class="wk-row"><button type="button" class="wk-no">Закрыть</button><button type="button" class="wk-yes">Выбор профиля</button></div>',false,anchor,'ag-'+k);p.classList.add('ag-'+k);
  p.querySelector('.wk-no').onclick=closePop;p.querySelector('.wk-yes').onclick=function(){closePop();var c=document.getElementById('cxBtn');if(c)c.click()}}

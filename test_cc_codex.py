@@ -253,12 +253,11 @@ class CodexTest(unittest.TestCase):
         self.assertEqual(cc_codex.profile_slots(), [])
         self.assertEqual(os.listdir(cc_codex.PROFILES), [])
 
-    def test_duplicate_account_rejected(self):
-        self._add("same@example.com")
-        ok, d = cc_codex.login_start(self.bin)
-        _w(self.gate, "same@example.com")
-        st = self._wait(d["slot"], "failed")
-        self.assertIn("уже подключён как gpt1", st["message"])
+    def test_second_account_rejected_before_starting_login(self):
+        self._add("first@example.com")
+        ok, msg = cc_codex.login_start(self.bin)
+        self.assertFalse(ok)
+        self.assertIn("один аккаунт Codex", msg)
         self.assertEqual(cc_codex.profile_slots(), ["gpt1"])
 
     def test_relogin_same_account_replaces_auth_keeps_config(self):
@@ -463,10 +462,10 @@ class CodexTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(p, "auth.json")))
         self.assertEqual(cc_codex.profile_slots(), [])
 
-    def test_delete_all_needs_word_and_wipes_every_slot(self):
+    def test_delete_all_needs_word_and_wipes_every_legacy_slot(self):
         s1 = self._add("a@example.com")
-        os.remove(self.gate)
-        s2 = self._add("b@example.com")
+        s2 = "gpt2"
+        shutil.copytree(cc_codex.profile_dir(s1), cc_codex.profile_dir(s2))
         self.assertEqual(cc_codex.profile_slots(), [s1, s2])
         ok, msg, n = cc_codex.delete_all(self.bin, "нет")
         self.assertFalse(ok)
@@ -492,10 +491,11 @@ class CodexTest(unittest.TestCase):
 
     def test_free_slot_preserves_disconnected_home(self):
         self._add("a@example.com")
+        cc_codex.delete_account(self.bin, "gpt1", "confirm")
         os.remove(self.gate)
         s2 = self._add("b@example.com")
         self.assertEqual(s2, "gpt2")
-        cc_codex.delete_account(self.bin, "gpt1", "confirm")
+        cc_codex.delete_account(self.bin, s2, "confirm")
         os.remove(self.gate)
         self.assertEqual(self._add("c@example.com"), "gpt3")
 

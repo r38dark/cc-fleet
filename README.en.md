@@ -2,15 +2,9 @@
 
 [🇷🇺 Русский](README.md) · 🇬🇧 English
 
-**Self-host dashboard for rotating multiple Claude Code accounts across usage limits.**
+**Self-hosted dashboard for one Claude account and one Codex account.**
 
-Monitors the usage limits (5-hour / weekly) of several Pro/Max accounts on a
-single VDS at once, automatically switches the active session once a
-threshold is hit, and shows a live read-only mirror of the running Claude
-Code console — all in one web panel, no third-party services or clouds.
-
-And when there is nothing left to switch to, it pauses the work and lifts the
-pause on its own as soon as the nearest window resets.
+Shows 5-hour and weekly limits, live consoles, and work profiles. Claude can run on the panel host or a separate server. When a configured quota threshold is reached, work waits for the limit to reset.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Shell: bash](https://img.shields.io/badge/installer-bash-89e051.svg)](install.sh)
@@ -81,20 +75,8 @@ gear, a "Delete" button on every card and the windows for both flows
 
 ## Features
 
-- 📊 **Multi-account limit monitoring** at once — 5-hour window and weekly
-  quota, with a countdown to reset. The polling pace is adaptive (v1.22.0):
-  slower when the numbers sit still, faster near the threshold, at most 20
-  requests an hour per account, and after a 429 it waits what the server asks.
-- 🔁 **Auto-switch** the active account at a configurable session-usage
-  threshold (checkbox in the panel, threshold as a slider/field).
-- 🎯 **Limit optimization mode** — the service itself decides which account
-  to use right now, to stretch the combined limit across all accounts;
-  manual switch buttons are blocked while it runs.
-  A planned switch (v1.19.3) waits for a pause between turns of the live
-  session, at most 15 minutes (`opt_defer_max_sec`, 0 = do not wait): switching
-  accounts mid-turn drops the prompt cache, and on Sonnet 5.5 also the
-  reasoning of that turn. Emergency moves (session threshold, weekly limit,
-  fall to Free) happen at once, as before.
+- 📊 **Claude and Codex quota monitoring** — 5-hour and weekly limits with reset countdowns. One account per provider.
+- ⏳ **Quota pauses** — tasks wait for the usage window to reset when the configured threshold is reached.
 - 🖥 **Live console mirror** — the same `screen` session visible in your
   terminal, streamed to the browser in real time (read-only).
 - 🚦 **Gate for background jobs** (`limits_gate.py`) — one line in your own
@@ -270,7 +252,7 @@ Either of two ways works — both save the account into
 `/root/.claude-profiles/accN/`:
 
 **Via the web "Log in again" button** (`/cc/` panel, if you installed
-nginx) — install.sh already created N empty slots
+nginx) — the installer prepared one empty slot
 (`oauth_account.json: {}`); the button starts `claude auth login` in an
 isolated temp HOME, hands you an OAuth link, you sign in in the browser
 under the account you want and paste the code back into the page.
@@ -288,8 +270,7 @@ then in a regular shell:
 cc-switch save 1   # saves the CURRENT live session as profile acc1
 ```
 
-Repeat `/login` + `cc-switch save N` for each next account. To check what
-the service sees: `cc-switch list`.
+Run `cc-switch list` to check the saved account. To use a different account, disconnect the current one in the panel first.
 
 ## Adding and deleting accounts (v1.19.0)
 
@@ -715,7 +696,7 @@ The commands need screen (`apt install screen`) and python3. To leave a console 
 | Command / URL | What it does |
 |---|---|
 | `cc-switch list` | which profiles exist, which one is active |
-| `cc-switch <N>` / `cc-switch next` | manually switch the active session |
+| `cc-switch 1` | activate the saved Claude account |
 | `/cc/` (or `curl 127.0.0.1:8877/api/limits?token=<hook_token>`) | limits, auto-switch, console mirror |
 | `curl 127.0.0.1:8877/api/update?token=<hook_token>` | update state: installed and available version, mode, stage, result of the last update |
 | `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`/`week`/`weekrisk`), pause, nearest reset |

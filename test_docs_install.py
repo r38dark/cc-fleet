@@ -71,7 +71,7 @@ class AgainstTheInstaller(unittest.TestCase):
         self.assertEqual(sorted(in_doc - in_install), [], "в инструкции переменные, которых нет в установщике")
 
     def test_defaults_in_the_table_are_the_real_ones(self):
-        for var, default in (("PORT", "8877"), ("ACCOUNTS", "2"), ("THRESHOLD", "85"), ("SCREEN", "claude"), ("CODEX_USER", "codex"), ("BASE", "/opt/cc-limits"),
+        for var, default in (("PORT", "8877"), ("THRESHOLD", "85"), ("SCREEN", "claude"), ("CODEX_USER", "codex"), ("BASE", "/opt/cc-limits"),
                              ("PROFILES", "/root/.claude-profiles"), ("SERVICE_NAME", "cc-limits")):
             self.assertIn('CC_FLEET_%s:-%s}' % (var, default), INSTALL.replace('"', ""), var)
             row = re.search(r"(?m)^\|[^\n]*`CC_FLEET_%s`[^\n]*" % var, DOC)
@@ -97,9 +97,9 @@ class AgainstTheInstaller(unittest.TestCase):
 
 class AgainstThePanel(unittest.TestCase):
     def test_button_and_field_labels_exist_in_the_code(self):
-        labels = ["Добавить аккаунт", "Получить ссылку для входа", "Названия серверов", "Переключение и лимиты", "Авто-переключение", "Пауза на недельном потолке",
+        labels = ["Добавить аккаунт", "Получить ссылку для входа", "Названия серверов", "Лимиты", "Пауза на недельном потолке",
                   "Установить Codex", "Мост Telegram", "Свои настройки Codex", "Аккаунты и лимиты ChatGPT",
-                  "Второй сервер", "Установить недостающее", "Скопировать команду", "Войти заново", "Включить авто", "Изменить порог", "Передать работу в"]
+                  "Второй сервер", "Установить недостающее", "Скопировать команду", "Войти заново", "Изменить порог", "Передать работу в"]
         for label in labels:
             self.assertIn(label, DOC, "подпись «%s» не упомянута в инструкции" % label)
             self.assertIn(label, PANEL, "в инструкции подпись «%s», а в коде панели её нет" % label)

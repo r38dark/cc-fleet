@@ -153,6 +153,15 @@ class Policy(unittest.TestCase):
         self.assertEqual(codex.set_prefs.call_args.args[2:4],(MODEL,'high'))
         self.assertEqual(json.loads(Path(con._meta_path()).read_text())['pending_settings']['thread_id'],TID)
 
+    def test_one_account_keeps_quota_pause_even_with_a_legacy_spare(self):
+        obj, con, _, _ = self.fixture()
+        obj.single_account = True
+        obj.accounts = [account('gpt1', session=95), account('gpt2', session=5)]
+        self.assertTrue(obj.limit_pause()['active'])
+        self.assertFalse(obj.configure({'optimize': True})[0])
+        self.assertFalse(obj.switch('gpt2', manual=True)[0])
+        con.stop.assert_not_called()
+
     def test_busy_turn_prevents_switch(self):
         obj,con,_,bridge=self.fixture();con.busy=lambda:True
         self.assertFalse(obj.switch('gpt2')[0]);self.assertEqual(bridge['slot'],'gpt1');con.stop.assert_not_called()
