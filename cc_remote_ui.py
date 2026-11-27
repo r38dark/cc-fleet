@@ -75,7 +75,7 @@ JS = r"""
 var compact=null,tile=null;
 function $i(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-function mem(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}var r=s&&s.remote;if(!r)return null;var k=Object.keys(r)[0];return k?Object.assign({id:k},r[k]):null}
+function mem(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}var r=s&&s.remote;if(!r||(typeof prodAvail==='function'&&!prodAvail()))return null;var k=Object.keys(r)[0];return k?Object.assign({id:k},r[k]):null}
 var WD=new Intl.DateTimeFormat('ru',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ});
 var CK=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ}),DY=new Intl.DateTimeFormat('ru',{day:'2-digit',month:'2-digit',timeZone:window.FLEET_TZ});
 function clk(t){var d=DY.format(t),c=CK.format(t);return d===DY.format(new Date())?c:d+' '+c}   // время сброса 5 ч по Иркутску
@@ -178,7 +178,7 @@ function pPaint(note){if(!pp)return;var d=rmode(),opts=pOpts();
   +opts.map(function(o){var dis=o.dis||o.cur;return '<button type="button" class="rm-popt'+(o.cur?' on':'')+(o.id===pSel?' sel':'')+'" role="radio" aria-checked="'+(o.cur||o.id===pSel)+'" data-kind="'+o.id+'"'+(dis?' disabled':'')+'><i></i><b>'+esc(o.name)+'</b><em>'+(o.cur?'Действующий':'')+'</em><span>'+esc(o.desc)+'</span></button>'}).join('')+'</div>';
  if(pSel)body+='<ul>'+pSteps(pSel).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
  if(note)body+='<p class="rm-hnote bad rm-hint">'+esc(note)+'</p>';
- else if(pSel&&pSel!=='off'&&!pKind())body+='<p class="rm-hnote rm-hint">Пока пара включена, передача работы между DEV и PROD закрыта. Занимает около минуты.</p>';
+ else if(pSel&&pSel!=='off'&&!pKind())body+='<p class="rm-hnote rm-hint">Пока пара включена, передача работы на другой сервер недоступна. Занимает около минуты.</p>';
  else if(pSel)body+='<p class="rm-hnote rm-hint">Занимает около минуты.</p>';
  body+='<div class="rm-hbtns"><button type="button" class="rm-hno">Отмена</button><button type="button" class="rm-hyes"'+(pSel&&!pBusy?'':' disabled')+'>'+(pForce?'Всё равно применить':'Применить')+'</button></div>';
  pp.querySelector('.cxpbody').innerHTML=body}
@@ -244,7 +244,7 @@ function buildStrip(){
  rows.appendChild(tile);return true}
 function paintStrip(m){
  if(!buildStrip())return;var wins=[m&&m.five_hour,m&&m.seven_day],st=m?status(m):'нет данных';
- var name='Claude PROD',mail=m&&m.email||'',mname=m?modelName(m.model):'—',eff=m&&m.effort||'—';
+ var name='Claude',mail=m&&m.email||'',mname=m?modelName(m.model):'—',eff=m&&m.effort||'—';
  compact.dataset.state=m&&m.online&&!m.error?'ready':'warning';compact.dataset.online=m&&m.online?'1':'0';
  compact.querySelector('.fleet-compact-name').title=name+(mail?' · '+mail:'')+(m&&m.plan?' · '+m.plan.toUpperCase():'');
  compact.querySelector('.rm-cmodel').textContent=mname;compact.querySelector('.rm-ceffort').textContent=eff;
@@ -257,7 +257,7 @@ function paintStrip(m){
  tile.querySelector('.fleet-live-name').textContent=name;tile.querySelector('.fleet-live-email').textContent=(mail||'почта не получена')+(m&&m.plan?' · '+m.plan.toUpperCase():'');
  var dot=tile.querySelector('.cxdot');dot.classList.toggle('err',!!(m&&(!m.online||m.error)));
  var mn=tile.querySelector('.rm-model');mn.querySelector('.cxmodn').textContent=mname;mn.querySelector('.cxmode').textContent=m&&m.effort||'';
- var tt='Модель Claude на PROD: '+mname+(m&&m.effort?' · '+m.effort:'')+'. Нажми, чтобы сменить.';mn.title=tt;mn.setAttribute('aria-label',tt);
+ var tt='Модель Claude: '+mname+(m&&m.effort?' · '+m.effort:'')+'. Нажми, чтобы сменить.';mn.title=tt;mn.setAttribute('aria-label',tt);
  var md=rmode(),pb=tile.querySelector('.rm-prof'),pn=md.pair?md.pair.name:'PROD Full · самостоятельно',pt=md.busy?'Идёт операция: профиль сменить нельзя.':md.pair?'Профиль PROD: '+pn+'. Нажми, чтобы сменить или снять пару.':'Профиль PROD: Full — самостоятельно. Нажми, чтобы включить пару с Codex.';
  var pl=pb.querySelector('.cxbtnname');if(pl.textContent!==pn)pl.textContent=pn;pb.title=pt;pb.setAttribute('aria-label',pt);if(md.busy)pb.setAttribute('aria-disabled','true');else pb.removeAttribute('aria-disabled');
  tile.dataset.state=compact.dataset.state}
@@ -361,21 +361,20 @@ function paintSplit(){var s=rmode().split||{};
  var mins=Math.max(1,Math.round((Date.now()/1000-s.since)/60)),sig=[mins,spBusy,spNote].join('|');
  spEl.className='ccpause lvl-hard';
  if(spEl.dataset.sig!==sig){spEl.dataset.sig=sig;var dis=spBusy?' disabled':'';
-  spEl.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">Двойная работа: режим «Claude PROD», а Claude DEV запущен</div>'
-   +'<div class="ccp-sub">Claude DEV с Telegram работает уже '+mins+' мин, хотя работа числится на PROD. Оба слушают одного бота: ответы могут дублироваться или теряться. Панель ничего не переключала — выбери, где будет работа.</div>'
+  spEl.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">Запущена лишняя копия Claude</div>'
+   +'<div class="ccp-sub">Обе консоли используют одного бота уже '+mins+' мин. Панель проверит подключённый Claude и остановит лишнюю копию.</div>'
    +(spNote?'<div class="ccp-sub"><b>'+esc(spNote)+'</b></div>':'')
-   +'<div class="ccp-actions"><button type="button" class="ccp-btn" data-split="work_dev"'+dis+'>Работа на DEV</button><button type="button" class="ccp-btn sec" data-split="work_prod"'+dis+'>Работа на PROD</button></div>'
-   +'<div class="ccp-sub"><b>Работа на DEV:</b> Claude PROD остановится, память и беседа с него скопируются сюда (около минуты).<br><b>Работа на PROD:</b> панель проверит PROD. Не запущен — запустит его с беседой и карточкой DEV (1–2 минуты) и только потом остановит DEV; уже работает — остановит только DEV. Не получится — Claude DEV останется как есть.</div></div>'}
+   +'<div class="ccp-actions"><button type="button" class="ccp-btn" data-split="work_prod"'+dis+'>Остановить лишнюю копию</button></div></div>'}
  spEl.hidden=false}
 function splitGo(act,force){spBusy=true;spNote='';paintSplit();
  post('remote/split',{action:act,force:!!force}).then(function(j){j=j||{};
   try{if(j.state&&lastSnap)lastSnap.remote_mode=j.state}catch(e){}
   spBusy=false;
-  if(j.answering&&!force){paintSplit();window.fleetAsk(spEl,act==='work_dev'?'Claude на PROD сейчас отвечает. Остановить его посреди ответа и всё равно оставить работу на DEV?':'Claude на PROD сейчас отвечает. Перезапустить его посреди ответа и передать ему работу с DEV?','Всё равно').then(function(ok){if(ok)splitGo(act,true)});return}
+  if(j.answering&&!force){paintSplit();window.fleetAsk(spEl,'Claude сейчас отвечает. Перезапустить его, чтобы завершить переключение?','Перезапустить').then(function(ok){if(ok)splitGo(act,true)});return}
   spNote=j.ok?'':(j.message||'Не выполнено.');if(j.ok&&j.message)sToast(j.message);paint();poll()})
  .catch(function(){spBusy=false;spNote='Нет связи с панелью.';paintSplit()})}
-document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#rmSplit [data-split]');if(!b||spBusy)return;var act=b.dataset.split,keep=act==='work_dev';
- window.fleetAsk(b,keep?'Работа на DEV? Память и беседа с PROD скопируются сюда, Claude PROD остановится, переключатели встанут на DEV. Около минуты.':'Работа на PROD? Если PROD не запущен, он стартует с беседой и карточкой DEV, и только потом остановится Claude DEV (его текущий ответ оборвётся). Если PROD уже работает, остановится только DEV. Не получится — DEV останется как есть.',keep?'Работа на DEV':'Работа на PROD').then(function(ok){if(ok)splitGo(act,false)})});
+document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#rmSplit [data-split]');if(!b||spBusy)return;
+ window.fleetAsk(b,'Остановить лишнюю копию Claude? Её текущий ответ прервётся после проверки подключения.','Остановить').then(function(ok){if(ok)splitGo(b.dataset.split,false)})});
 function paint(){var m=mem();paintStrip(m);paintCard(m);ensureHand();paintHand();paintSplit();sSync();if(pp&&!pp.hidden&&rmode().busy&&!pBusy)pClose();var has=!!m;if(has!==hadTab){hadTab=has;try{typeof consTabs==='function'&&consTabs()}catch(e){}}}
 try{var prev=renderCards;renderCards=function(d){prev(d);try{paint()}catch(e){}}}catch(e){}
 setInterval(function(){if(!document.hidden)try{paint()}catch(e){}},15000);

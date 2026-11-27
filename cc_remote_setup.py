@@ -1,6 +1,6 @@
-"""Мастер «Второй сервер»: подключение второго сервера, на который панель передаёт работу Claude (по ssh).
+"""Мастер «Подключение Claude»: подключение второго сервера, на который панель передаёт работу Claude (по ssh).
 
-Что делает мастер (кнопки в «Общие настройки» → «Второй сервер»):
+Что делает мастер (кнопки в «Общие настройки» → «Подключение Claude»):
   1. «Проверить»   — заходит на второй сервер по ключу панели и проверяет: вход по ssh, root, python3, tmux, rsync, Claude Code
                     (/usr/bin/claude), вход Claude (.credentials.json), Telegram-плагин. Нужное и недостающее показывает списком.
   2. «Установить недостающее» — apt-get install tmux rsync python3 (если на втором сервере есть apt).
@@ -162,14 +162,14 @@ def probe(m):
     elif other:
         hint = "Claude Code найден в %s, а панель ждёт /usr/bin/claude: выполни на втором сервере  ln -sf %s /usr/bin/claude" % (other, other)
     else:
-        hint = "Поставь Claude Code на втором сервере (см. инструкцию, раздел «Второй сервер»), затем проверь ещё раз."
+        hint = "Поставь Claude Code на втором сервере (см. инструкцию, раздел «Подключение Claude»), затем проверь ещё раз."
     checks.append({"id": "claude", "label": "Claude Code (/usr/bin/claude)", "ok": cl, "block": True, "hint": hint})
     login = info.get("login") == "yes"
     checks.append({"id": "login", "label": "Вход Claude на втором сервере", "ok": login, "block": False,
                    "hint": "" if login else "Не обязательно сейчас: после подключения нажми «Войти заново» на карточке второго сервера."})
     tg = bool(info.get("tg"))
     checks.append({"id": "tg", "label": "Telegram-плагин Claude", "ok": tg, "block": False,
-                   "hint": "" if tg else "Нужен, чтобы на втором сервере Claude отвечал в Telegram (инструкция: «Второй сервер» → Telegram)."})
+                   "hint": "" if tg else "Нужен, чтобы на втором сервере Claude отвечал в Telegram (инструкция: «Подключение Claude» → Telegram)."})
     ready = all(c["ok"] for c in checks if c.get("block"))
     return {"checks": checks, "ready": ready, "apt": apt, "missing": missing}
 
@@ -423,7 +423,7 @@ function list(items){return '<ul class="rs-list">'+items.map(function(c){var ic=
 function render(){
  if(!sec||!st)return;var body=sec.querySelector('[data-body]');
  if(st.member){
-  body.innerHTML='<div class="fleet-catalog-note">Подключён: <b>'+esc(st.member.host)+'</b>'+(st.member.port&&st.member.port!=22?':'+esc(st.member.port):'')+' · сессия tmux «'+esc(st.member.tmux)+'» · обратный адрес этого сервера: '+esc(st.member.back_host||'—')+'. Вход в Claude на втором сервере — кнопка «Войти заново» на его карточке.</div>'
+  body.innerHTML='<div class="fleet-catalog-note">Claude подключён по SSH · <b>'+esc(st.member.host)+'</b>'+(st.member.port&&st.member.port!=22?':'+esc(st.member.port):'')+' · сессия tmux «'+esc(st.member.tmux)+'» · обратный адрес этого сервера: '+esc(st.member.back_host||'—')+'. Вход в Claude на втором сервере — кнопка «Войти заново» на его карточке.</div>'
    +'<div class="rs-acts"><button type="button" class="ghostbtn" id="rsRecheck">Проверить связь</button><button type="button" class="ghostbtn" id="rsDrop">Отключить</button></div><div id="rsOut"></div><div class="rs-msg" id="rsMsg"></div>';
   $i('rsRecheck').onclick=function(){run('check',{host:st.member.host,port:st.member.port,back_host:st.member.back_host,tmux:st.member.tmux})};
   $i('rsDrop').onclick=function(){if(!confirm('Отключить второй сервер? Пара и ключ обратного входа уберутся с этого сервера, на втором ничего не удалится.'))return;api('remote/setup/remove',{}).then(function(d){msg(d.message,d.ok?'ok':'bad');if(d.ok)load()})};
@@ -463,7 +463,7 @@ function poll(jid,what,f){api('remote/setup/job').then(function(j){
 function load(){return api('remote/setup').then(function(d){if(d&&d.ok){st=d;render()}})}
 function place(){var c=document.querySelector('#scrim .fleet-common-settings');if(!c)return false;
  if(!sec){sec=document.createElement('section');sec.className='fleet-settings-group';sec.id='fleetRemoteSetup';
-  sec.innerHTML='<div class="fleet-settings-group-title">Второй сервер</div><div data-body><div class="fleet-catalog-note">Загрузка…</div></div>';c.append(sec);load()}
+  sec.innerHTML='<div class="fleet-settings-group-title">Подключение Claude</div><div data-body><div class="fleet-catalog-note">Загрузка…</div></div>';c.append(sec);load()}
  else if(c.lastElementChild!==sec&&!c.contains(document.activeElement))c.append(sec);
  return true}
 var n=0;(function tryPlace(){if(!place()&&++n<40)setTimeout(tryPlace,250)})();
@@ -478,7 +478,7 @@ def inject(page):
 
 
 def install(ns):
-    """Маршруты /api/remote/setup* и блок «Второй сервер» в «Общие настройки»."""
+    """Маршруты /api/remote/setup* и блок «Подключение Claude» в «Общие настройки»."""
     base = ns["H"]
     posts = ("/api/remote/setup/check", "/api/remote/setup/fix", "/api/remote/setup/connect", "/api/remote/setup/remove")
 

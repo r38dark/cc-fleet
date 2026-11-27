@@ -794,8 +794,8 @@ html.wk-nosub .fleet-brand-sub{display:none!important}
 var api=(typeof API!=='undefined'?API:location.origin+'/cc-hook/')+'workers',tok=(typeof TOKEN!=='undefined'?TOKEN:''),st=null,pop=null,popAnchor=null,toastT=0,timer=0;
 var names={claude:'Claude DEV',prod:'Claude PROD',codex:'Codex'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-var AGS=[['claude','Claude DEV','DEV'],['prod','Claude PROD','PROD'],['codex','Codex','Codex']];
-var bar=document.createElement('div');bar.id='wkAgents';bar.className='wk-ag';bar.setAttribute('role','group');bar.setAttribute('aria-label','Агенты: Claude DEV, Claude PROD, Codex');
+var AGS=[['claude','Claude DEV','Claude'],['prod','Claude PROD','Claude'],['codex','Codex','Codex']];
+var bar=document.createElement('div');bar.id='wkAgents';bar.className='wk-ag';bar.setAttribute('role','group');bar.setAttribute('aria-label','Агенты: Claude и Codex');
 bar.innerHTML=AGS.map(function(a){return '<button type="button" class="wk-seg s-off" data-ag="'+a[0]+'"><span class="wk-dot"></span><span class="wk-nm"><span class="wk-full">'+a[1]+'</span><span class="wk-short">'+a[2]+'</span></span><span class="wk-st"></span></button>'}).join('');
 var LEVELS=['','nost','nost short','nost short nosub','nost short nosub sm','nost short nosub sm xs','nost short nosub sm xs mini'];
 function place(){var rf=document.getElementById('rfBtn');if(rf&&rf.parentNode){rf.parentNode.insertBefore(bar,rf)}else{bar.style.cssText='position:fixed;left:12px;bottom:12px;z-index:9999';document.body.appendChild(bar)}}
@@ -849,7 +849,7 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   oi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"/><path d="M6 8h8M11 5l3 3-3 3"/></svg>',
   base=esc((gp.label||names[k]).replace(/ · /g,' - ')),
   thr=thrNow(),limitTxt='При '+thr+'% сессии Claude ждёт сброса лимита. <a href="#" class="wk-lnk2">Изменить порог</a>.',
-  txt=k==='prod'?base+'. Это Claude на втором сервере (PROD). '+limitTxt
+  txt=k==='prod'?base+'. '+limitTxt
    :base+'.'+(pair?' '+limitTxt:'')+' Сменить профиль — в <a href="#" class="wk-lnk">Выборе профиля</a>.',
   rowh='<button type="button" class="wk-no">'+xi+'<span class="wk-bl">Закрыть</span></button>'
    +(act?hand3(own,md,rm):'<button type="button" class="wk-yes"'+(hi.dis?' disabled':'')+' title="'+esc(hi.tt)+'">'+oi+'<span class="wk-bl">'+esc(hi.txt)+'</span></button>');
@@ -1180,7 +1180,7 @@ function paintTg(){var s=(data&&data.status)||{},b=((G().cxb||{}).bridge)||{},ce
   ['Codex',b.token_set?esc('свой бот'+(b.bot?' @'+b.bot:'')+' → чат '+(b.chat_id||'—')+' · мост '+(b.enabled?'включён':'выключен')):mut('без бота — только консоль и панель')]]))}
 function paintGen(){try{paintClaude()}catch(e){console.warn('gen claude',e)}try{paintCodex()}catch(e){console.warn('gen codex',e)}try{paintTg()}catch(e){console.warn('gen tg',e)}}
 var HOW_TG='<details data-k="thow"><summary>Подробно: что, где, как и почему</summary>'
- +'<p><b>Как устроено.</b> Один бот и один чат — общие для Claude. Отвечает Claude там, где сейчас работа: на этом сервере или на втором (PROD). Уведомления панели о лимитах и переключениях приходят в этот же чат. У Codex — свой бот.</p>'
+ +'<p><b>Как устроено.</b> Один бот и один чат — общие для Claude. Подключённый Claude отвечает в этом чате. Уведомления панели о лимитах и переключениях приходят в этот же чат. У Codex — свой бот.</p>'
  +'<p><b>Как подключить с нуля</b></p><ol>'
  +'<li>В Telegram открой @BotFather, отправь /newbot, задай имя и адрес бота. BotFather пришлёт токен вида '+code('123456789:AAH…')+' — копируй целиком.</li>'
  +'<li>Плагину нужен Bun на сервере: '+code('curl -fsSL https://bun.sh/install | bash')+'.</li>'

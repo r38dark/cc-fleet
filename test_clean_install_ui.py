@@ -25,9 +25,10 @@ class NoSecondServer(unittest.TestCase):
             self.assertIn("html.no-prod " + sel, rule, sel)
         self.assertIn("display:none!important", rule)  # тема меню консоли задаёт display:flex у .ctab — без !important атрибут hidden не работает
 
-    def test_with_a_pair_nothing_is_hidden(self):
-        self.assertIn("prodAvail()", self.page)  # решение — по тому же признаку, что и вкладка консоли: в снимке есть второй сервер
-        self.assertIn("function prodAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_prod')==='1';return !!(lastSnap.remote&&Object.keys(lastSnap.remote).length)}", self.page)  # до первого снимка — по запомненному cc_has_prod (62830)
+    def test_only_the_active_claude_location_is_selected(self):
+        self.assertIn("localStorage.getItem('cc_has_prod')==='1'", self.page)
+        self.assertIn("!Object.keys(lastSnap.accounts||{}).length||!!lastSnap.remote_mode?.active", self.page)
+        self.assertIn("Object.keys(lastSnap.accounts||{}).length&&!prodAvail()", self.page)
 
 
 if __name__ == "__main__":

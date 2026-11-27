@@ -311,7 +311,6 @@ import json, os, sys
 path, token, threshold, screen, port, service, tz, work, base, bot, chat, domain, scheme, isecret = sys.argv[1:15]
 cfg = {"hook_token": token, "internal_secret": isecret, "autoswitch": True, "threshold": int(threshold), "poll_sec": 120, "switch_cooldown_sec": 300,
        "optimize": False, "screen_session": screen, "port": int(port)}
-fresh = not os.path.exists(path)
 if os.path.exists(path):
     try:
         old = json.load(open(path))
@@ -320,7 +319,6 @@ if os.path.exists(path):
             cfg = old
     except Exception:
         pass
-if fresh: cfg["labels"] = {"main": "A", "remote": "B"}   # названия серверов («Claude A», «Claude B»): поменять в «Общие настройки»
 cfg.setdefault("update_mode", "manual")      # автообновление по умолчанию ручное (кнопка в панели)
 cfg.setdefault("update_check", True)
 cfg["service_name"] = service                # по нему обновлятор перезапускает службу
@@ -575,7 +573,7 @@ s13() {
   echo "  ☐ Запустить Claude Code в screen-сессии: $BASE/start_claude.sh (или кнопка «Запустить» в панели)"
   yes_ "$WANT_TG" || echo "  ☐ Подключить Telegram: docs/INSTALL.md, раздел 4"
   yes_ "$WANT_CODEX" && echo "  ☐ Codex: панель → «Codex +» → мастер (docs/INSTALL.md, раздел 5)" || echo "  ☐ Codex (по желанию): запусти установщик снова и ответь «y» на вопрос про Codex"
-  echo "  ☐ Второй сервер (по желанию): панель → ⚙ Общие настройки → «Второй сервер» (docs/INSTALL.md, раздел 6)"
+  echo "  ☐ Claude через SSH (по желанию): панель → ⚙ Общие настройки → «Подключение Claude» (docs/INSTALL.md, раздел 6)"
   echo
   echo "Проверить установку в любой момент: sudo ./install.sh --check"
   echo "Подробная инструкция со всеми подключениями: docs/INSTALL.md"

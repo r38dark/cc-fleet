@@ -114,7 +114,7 @@ class Tick(Base):
         self.assertEqual(res['since'], NOW)
         self.assertEqual(len(self.sent), 1)
         self.assertIn('Двойная работа', self.sent[0])
-        self.assertIn('Панель ничего не переключала', self.sent[0])
+        self.assertIn('Обе консоли используют одного бота', self.sent[0])
 
     def test_no_claude_here_means_no_plaque(self):
         self.wk.running = False
@@ -390,12 +390,12 @@ class ClaimProd(Base):
 
 
 class TextAndNames(unittest.TestCase):
-    def test_telegram_notice_uses_the_outcome_names(self):
+    def test_telegram_notice_points_to_one_recovery_action(self):
         text = S._text(3)
-        self.assertIn('«Работа на DEV»', text)
-        self.assertIn('«Работа на PROD»', text)
-        self.assertNotIn('Остановить DEV', text)
-        self.assertNotIn('Оставить DEV', text)
+        self.assertIn('«Остановить лишнюю копию»', text)
+        self.assertIn('сначала проверится подключение Claude', text)
+        self.assertNotIn('DEV', text)
+        self.assertNotIn('PROD', text)
 
 
 class Wiring(unittest.TestCase):
@@ -486,16 +486,15 @@ class Route(Base):
 
 
 class Screen(unittest.TestCase):
-    def test_script_is_valid_and_plaque_offers_both_buttons_with_confirmation(self):
+    def test_recovery_requires_confirmation_and_keeps_the_configured_claude(self):
         js = UI.JS
-        for part in ("spEl.id='rmSplit'", 'data-split="work_dev"', 'data-split="work_prod"',
-                     '>Работа на DEV</button>', '>Работа на PROD</button>', "post('remote/split'", 'window.fleetAsk(', 'paintSplit();sSync()',
-                     '<b>Работа на DEV:</b>', '<b>Работа на PROD:</b>', 'Не получится — Claude DEV останется как есть'):
-            self.assertIn(part, js, part)
-        for gone in ('Оставить DEV', 'Остановить DEV', 'keep_dev', 'stop_dev'):
-            self.assertNotIn(gone, js, gone)
+        for part in ("spEl.id='rmSplit'", 'data-split="work_prod"', '>Остановить лишнюю копию</button>',
+                     "post('remote/split'", "paintSplit();sSync()"):
+            self.assertIn(part, js)
+        self.assertNotIn('data-split="work_dev"', js)
         self.assertIn('html.conly #rmSplit{display:none}', UI.CSS)
-        self.assertLess(js.index("window.fleetAsk(b,keep?"), js.index("splitGo(act,false)"))   # без подтверждения запрос не уходит
+        self.assertLess(js.index("window.fleetAsk(b,'Остановить лишнюю копию Claude?"),
+                        js.index("if(ok)splitGo(b.dataset.split,false)"))
 
     @unittest.skipUnless(shutil.which('node'), 'нет node')
     def test_script_parses_under_node(self):

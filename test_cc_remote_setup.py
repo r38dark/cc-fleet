@@ -1,4 +1,4 @@
-# Мастер «Второй сервер»: проверка, установка недостающего, подключение, обратный ключ, отключение, маршруты
+# Мастер «Подключение Claude»: проверка, установка недостающего, подключение, обратный ключ, отключение, маршруты
 # python3 -m unittest test_cc_remote_setup -v
 import io
 import json
@@ -414,7 +414,7 @@ class Routes(Base):
     def test_page_has_the_wizard(self):
         page = self.ns["PAGE"]
         self.assertIn("fleetRemoteSetup", page)
-        self.assertIn("Второй сервер", page)
+        self.assertIn("Подключение Claude", page)
         self.assertIn("remote/setup/check", page)
         for n in (1, 2, 3):  # прогресс «шаг N из M»: следующий шаг недоступен, пока предыдущий не пройден (кнопка «Подключить» закрыта до успешной проверки)
             self.assertIn("Шаг %d из 3" % n, page)

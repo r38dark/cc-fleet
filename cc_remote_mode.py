@@ -1136,8 +1136,7 @@ def prod_send_once(text):
     if not _cin_lock.acquire(timeout=30):
         return False, "input"
     try:
-        import cc_labels
-        d = R.ctl(_member_id(), "sendin", inp=_clean_text(cc_labels.text(text)), timeout=60)
+        d = R.ctl(_member_id(), "sendin", inp=_clean_text(text), timeout=60)
     finally:
         _cin_lock.release()
     if d is None:

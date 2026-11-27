@@ -993,7 +993,7 @@ JS = r'''
  const profilebar=el('div','fleet-profilebar');profilebar.innerHTML='<span class="fleet-profilelabel">Профиль, модель и настройки Codex</span>';
  profilebar.append(document.getElementById('cxGrp'));term.before(profilebar);
  const form=el('form','fleet-composer');form.id='fleetConsoleForm';
- form.innerHTML='<textarea id="fleetInput" rows="1" aria-label="Сообщение или команда в выбранную консоль" placeholder="Сообщение или команда… Enter — отправить, Shift+Enter — новая строка"></textarea><button type="button" class="fleet-key fk-arrow" data-console-key="up" title="Стрелка вверх в консоль" aria-label="Стрелка вверх в консоль">↑</button><button type="button" class="fleet-key fk-arrow" data-console-key="down" title="Стрелка вниз в консоль" aria-label="Стрелка вниз в консоль">↓</button><button type="button" class="fleet-key fk-arrow" data-console-key="enter" title="Enter в консоль (выбрать пункт)" aria-label="Enter в консоль (выбрать пункт)">⏎</button><button type="button" class="fleet-key" data-console-key="escape" title="Esc в консоль">Esc</button><button type="submit" id="fleetSend">Отправить ↑</button>';
+ form.innerHTML='<textarea id="fleetInput" rows="1" aria-label="Сообщение или команда в выбранную консоль" placeholder="Сообщение или команда… Enter — отправить, Shift+Enter — новая строка"></textarea><button type="button" class="fleet-key fk-arrow" data-console-key="up" title="Стрелка вверх в консоль" aria-label="Стрелка вверх в консоль">↑</button><button type="button" class="fleet-key fk-arrow" data-console-key="down" title="Стрелка вниз в консоль" aria-label="Стрелка вниз в консоль">↓</button><button type="button" class="fleet-key fk-arrow" data-console-key="enter" title="Enter в консоль (выбрать пункт)" aria-label="Enter в консоль (выбрать пункт)">⏎</button><button type="button" class="fleet-key" data-console-key="escape" title="Esc в консоль">Esc</button><button type="button" class="fleet-key" data-console-key="stop" title="Прервать запрос Codex и очистить очередь" hidden>Стоп</button><button type="submit" id="fleetSend">Отправить ↑</button>';
  const inputStatus=el('div','fleet-input-status');inputStatus.innerHTML='<span id="fleetInputState">Ввод в выбранную консоль</span><span>Claude / Codex · действующая сессия</span>';term.append(form,inputStatus);
  const menu=document.getElementById('cxMenu');const search=el('input','fleet-profile-search');search.placeholder='Найти профиль…';search.setAttribute('aria-label','Поиск профилей');search.type='search';search.name='profile-filter';search.autocomplete='off';search.spellcheck=false;search.setAttribute('autocapitalize','none');search.setAttribute('autocorrect','off');search.enterKeyHint='search';
  let profileQuery='';
@@ -1013,12 +1013,24 @@ JS = r'''
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit()}});
   // клавиши консоли (↑ ↓ ⏎ Esc): по очереди, чтобы «↓ ↓ ⏎» не перегнали друг друга; sendKey отдаём наружу для клавиатуры
   let keyQ=Promise.resolve();
-  const sendKey=k=>{keyQ=keyQ.then(async()=>{try{const d=await post('console/key',{session:sessionOf(),key:k});stateNode.textContent=d.message;ccConsole()}catch(e){toast('⚠ '+e.message)}});return keyQ};
+  const sendKey=k=>{
+   const session=sessionOf();
+   const send=async()=>{
+    try{const d=await post('console/key',{session,key:k});stateNode.textContent=d.message;if(k==='stop')toast(d.message);ccConsole()}
+    catch(e){toast('⚠ '+e.message)}
+   };
+   if(k==='stop')return send();
+   keyQ=keyQ.then(send);return keyQ;
+  };
   form.querySelectorAll('[data-console-key]').forEach(btn=>btn.addEventListener('click',()=>sendKey(btn.dataset.consoleKey)));
   return sendKey;
  }
  window.fleetBindComposer=bindComposer;
  const sendConsoleKey=bindComposer(form,input,send,stateNode,()=>typeof consCur==='function'?consCur():'claude');
+ const stop=form.querySelector('[data-console-key=stop]');
+ stop.hidden=typeof consCur!=='function'||consCur()!=='codex';
+ if(LANG==='en'){stop.textContent='Stop';stop.title='Stop Codex and clear waiting requests';}
+
  // клавиатура консоли: после клика по консоли ↑ ↓ Enter Esc уходят в неё (для меню «1. … 2. …»); в поле ввода, кнопках и ссылках — как раньше
  (()=>{let on=false;const area=n=>n&&n.closest&&n.closest('#termBox,.tpextra,.fleet-console-viewport');
   document.addEventListener('pointerdown',e=>{on=!!area(e.target);const w=document.querySelector('.termwrap');if(w)w.classList.toggle('kbd-on',on)},true);
@@ -1585,17 +1597,18 @@ JS = r'''
   paintWindowReset(root.querySelector('.fleet-compact-range'),win,index,true);
  }
  function updateLiveAccount(engine,slot,account,pending){
-  const node=liveNodes[engine],provider=engine==='claude'?'Claude DEV':'Codex';
+  const node=liveNodes[engine],provider=engine==='claude'?'Claude':'Codex';
   const windows=engine==='claude'?[account?.five_hour,account?.seven_day]:[account?.windows?.find(w=>w.mins===300),account?.windows?.find(w=>w.mins===10080)];
   const end=resetDate(windows[0]),remaining=end?Math.max(0,Math.ceil((end.getTime()-Date.now())/60000)):null;
   const signature=JSON.stringify([slot,account,pending,remaining,liveYearFormat.format(new Date())]);if(liveSnapshots.get(engine)===signature)return;liveSnapshots.set(engine,signature);
   const name=account?(account.label||account.name||slot):slot?slot:pending?'Загрузка…':'Не выбран';
-  putText(node.querySelector('.fleet-live-name'),provider+' · '+name);
+  const displayName=engine==='claude'?provider:provider+' · '+name;
+  putText(node.querySelector('.fleet-live-name'),displayName);
   const issue=account&&(account.login_required||account.lapsed||account.error)?'Нужна проверка':account&&account.stale?'Данные устарели':'';
   putText(node.querySelector('.fleet-live-email'),account?((account.email||slot)+(issue?' · '+issue:'')):slot?'Лимиты пока недоступны':pending?'Получаем сохранённые данные':'Нет активного аккаунта');
   node.dataset.state=issue?'warning':account?'ready':'empty';node.dataset.slot=slot||'';
   const compact=compactNodes[engine];compact.dataset.state=node.dataset.state;compact.dataset.slot=slot||'';
-  putText(compact.querySelector('.fleet-compact-name'),provider+' · '+name);
+  putText(compact.querySelector('.fleet-compact-name'),displayName);
   compact.querySelector('.fleet-compact-name').title=provider+' · '+name+(account?.email?' · '+account.email:'');
   putText(compact.querySelector('.fleet-compact-warning'),issue?(account.stale?'устарело':'проверить'):'');
   node.title=provider+' · '+name+(account?.email?' · '+account.email:'')+(issue?' · '+issue:'');
@@ -1942,7 +1955,7 @@ JS = r'''
   for(const engine of manualEngines){const e=mirrorState?.engines?.[engine];if(e?.applied)choices[engine]=e.selected==='claude_opus_sonnet'?'duo':{solo:'full',leader:'orchestrator',executor:'executor'}[e.role]||null;}
   return choices;
  };
- const manualProdNote=()=>{try{return window.fleetRemote&&window.fleetRemote.mode().active?' · Claude работает на PROD':''}catch(_){return ''}};
+
  paletteTools.remove();paletteFooter.remove();
  const manualThemeBefore=mirrorTheme;
  mirrorTheme=function(){manualThemeBefore();putText(paletteCurrent,'Full или Opus → Sonnet');if(monoView==='profiles')putText(paletteHeading.querySelector('h2'),'Выбор профиля')};

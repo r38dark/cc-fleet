@@ -1064,9 +1064,12 @@ def run_codex(prompt, s=None):
     else:
         argv = [b, "exec", "--json", "--skip-git-repo-check", "-C", cwd, "-s", sandbox, *MCP_ARGS(), "--", prompt]
     argv, env = cc_codex.wrap(argv, cc_codex.profile_dir(slot), {"NO_COLOR": "1"})
-    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            env=env, cwd=cwd, text=True, bufsize=1, start_new_session=True)
-    BRIDGE.proc = proc
+    with BRIDGE.start_lock:
+        if BRIDGE.cancel.is_set():
+            raise Stopped("")
+        proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                env=env, cwd=cwd, text=True, bufsize=1, start_new_session=True)
+        BRIDGE.proc = proc
     timer = None
     if RUN_TIMEOUT is not None:
         timer = threading.Timer(RUN_TIMEOUT, lambda: cc_codex._kill(proc))
@@ -1102,6 +1105,8 @@ def run_codex(prompt, s=None):
             st = _state()
             st["threads"][key] = new_tid
             _state_save(st)
+    if BRIDGE.cancel.is_set():
+        raise Stopped("")
     if not answer:
         msg = failed or " ".join(tail[-3:]) or "Codex не вернул ответа."
         if cc_codex._AUTH_ERR.search(msg):
@@ -1534,12 +1539,14 @@ class Bridge:
         # Compatibility entry point uses the same queue, including when a turn is already active.
         return self.handle_image(file_ids, caption)
 
-    def _cancel_inputs(self):
+    def _cancel_inputs(self, *, stop=False):
         self._end_media_action()
         with self.album_lock:
             timers = [a['timer'] for a in self.albums.values() if a.get('timer')]
             self.albums.clear()
             with self.start_lock:
+                if stop:
+                    self.cancel.set()
                 count = self.inputs.clear()
                 clear = getattr(CONSOLE, 'clear_live', None) if CONSOLE is not None else None
                 if clear:
@@ -1547,6 +1554,35 @@ class Bridge:
         for timer in timers:
             timer.cancel()
         return count
+
+    def stop_work(self):
+        """Прервать текущий ход и снять очередь из любого интерфейса."""
+        in_console = self.in_console
+        queued = self._cancel_inputs(stop=True)
+        proc = self.proc
+        with _lock:
+            st = _state()
+            pending = bool(st["pending"])
+            inflight = bool(st["inflight"])
+            st["pending"] = None
+            st["inflight"] = None
+            if pending or inflight:
+                _state_save(st)
+        if proc:
+            cc_codex._kill(proc)
+        native_turn = CONSOLE is not None and (
+            in_console or self.in_console or getattr(CONSOLE, 'current_turn_open', lambda: False)()
+        )
+        pending_note = " Задание, ждавшее «да», снято." if pending else ""
+        queue_note = f" Удалено из очереди: {queued}." if queued else ""
+        if native_turn:
+            ok = CONSOLE.interrupt()
+            message = "Остановка отправлена в консоль." if ok else "Консоль не приняла остановку."
+        elif proc or pending or inflight or queued or self.answer_active:
+            ok, message = True, "Остановил."
+        else:
+            ok, message = True, "Сейчас ничего не запущено."
+        return ok, message + pending_note + queue_note
 
     @staticmethod
     def _drop_files(paths):
@@ -1594,26 +1630,8 @@ class Bridge:
             reset_thread()
             return self.send("Разговор начат заново.")
         if low in ("/stop", "стоп", "stop"):
-            p = self.proc
-            c = self.in_console
-            with _lock:
-                st = _state()
-                had = bool(st["pending"])
-                st["pending"] = None  # задание, ждущее «да», тоже снимается
-                st["inflight"] = None  # и ответ, который досылался после перезапуска
-                _state_save(st)
-            queued = self._cancel_inputs()
-            if p:
-                cc_codex._kill(p)
-            if c:
-                self.cancel.set()
-                CONSOLE.interrupt()  # Esc в консоль: Codex бросает ход
-            if p or c or had or queued or self.busy():
-                if self.busy() or queued:
-                    self.cancel.set()
-                return self.send("Остановил." + (" Задание, ждавшее «да», снято." if had else "") +
-                                 (f" Удалил из очереди: {queued}." if queued else ""))
-            return self.send("Сейчас ничего не запущено.")
+            _, message = self.stop_work()
+            return self.send(message)
         if low == "/status":
             s = load()
             sb, cwd = plan(s)
@@ -1655,6 +1673,9 @@ class Bridge:
         act.set("typing")
         token = self._inflight_begin()
         try:
+            if self.cancel.is_set():
+                self._inflight_end(token)
+                return
             try:
                 ask_started = time.monotonic()
                 answer, _ = run_codex(text, s)
@@ -1669,6 +1690,9 @@ class Bridge:
                 log(f"run_codex: {type(e).__name__} {e}")
                 self._inflight_end(token)
                 return self.send("⚠️ Не удалось запустить Codex, подробности в журнале.")
+            if self.cancel.is_set():
+                self._inflight_end(token)
+                return
             log(f"delivery stage=codex_end outcome=ok elapsed_ms={round((time.monotonic() - ask_started) * 1000)}")
             self._inflight_keep(token, answer)
             if self.send_answer(answer, act, s) is not False:

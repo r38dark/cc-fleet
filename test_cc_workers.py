@@ -793,7 +793,7 @@ class Page(unittest.TestCase):
             self.assertNotIn(word, low, word)
 
     def test_header_three_agents(self):
-        self.assertIn("var AGS=[['claude','Claude DEV','DEV'],['prod','Claude PROD','PROD'],['codex','Codex','Codex']];", M.UI)
+        self.assertIn("var AGS=[['claude','Claude DEV','Claude'],['prod','Claude PROD','Claude'],['codex','Codex','Codex']];", M.UI)
         self.assertIn("bar.id='wkAgents'", M.UI)
         self.assertIn("+'workers'", M.UI)   # опрос GET /api/workers
         self.assertIn("new CustomEvent('wk-state'", M.UI)

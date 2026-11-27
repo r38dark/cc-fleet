@@ -210,6 +210,8 @@ class ConsoleInput:
                 pass
 
     def key(self, session, key):
+        if session == 'codex' and key == 'stop':
+            return self.ns['cc_codex_bridge'].BRIDGE.stop_work()
         rotation=self.ns.get('FLEET_ROTATION')
         if session=='codex' and key!='escape' and rotation and rotation.limit_pause().get('active'):
             return False,'Codex на паузе по лимитам. Новые задания отправляй через поле сообщения: они сохранятся в очереди.'
@@ -310,6 +312,10 @@ def install(ns):
                     return self._send(200, result)
                 if path == '/api/console/input':
                     session = body.get('session')
+                    value = body.get('text')
+                    if session == 'codex' and isinstance(value, str) and value.strip().lower() == '/stop':
+                        ok, message = inputs.key(session, 'stop')
+                        return self._send(200 if ok else 409, dict(ok=ok, message=message))
                     if session in ('claude','codex') and not profiles.console_allowed(session):
                         if profiles.transitioning or profiles.pending.exists():
                             return self._send(200, dict(ok=False, message='Идёт переключение профиля. Повтори чуть позже.'))
@@ -397,7 +403,7 @@ def install(ns):
 
     ns['H'] = FleetHandler
     ns['PAGE'] = cc_overview.render(ns['PAGE'])
-    try:  # названия двух серверов (по умолчанию DEV/PROD, у новых установок A/B): подмена в страницах, ответах API и уведомлениях
+    try:  # Claude has one presentation name, regardless of its host
         import cc_labels
         cc_labels.install(ns)
     except Exception as exc:

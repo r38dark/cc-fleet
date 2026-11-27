@@ -53,6 +53,7 @@ _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
 _lock = threading.Lock()  # start/stop
 _ask_lock = threading.Lock()  # одно сообщение в консоль за раз
+_paste_lock = threading.Lock()  # Esc идёт только после уже начатой вставки
 _live_lock = threading.Lock()  # короткие операции с вводом, без ожидания ответа модели
 _live_request = None
 LIVE_INPUT = True
@@ -666,10 +667,18 @@ def _paste(text):
             pass
 
 
+def _paste_telegram(text, aborted):
+    with _paste_lock:
+        if aborted():
+            raise Aborted()
+        return _paste(text)
+
+
 def interrupt():
     """Esc в консоль: Codex прерывает текущий ход."""
     try:
-        return _ctl(["-S", NAME, "-p", "0", "-X", "stuff", "\x1b"]).returncode == 0
+        with _paste_lock:
+            return _ctl(["-S", NAME, "-p", "0", "-X", "stuff", "\x1b"]).returncode == 0
     except Exception:
         return False
 
@@ -898,11 +907,9 @@ def _ask_live(prompt, abort=None, timeout=None, lang='ru', pull=None):
                         request['awaiting'].append((queued, last_input))
                 if queued is not None:
                     sent_count += 1
-                    if aborted():
-                        raise Aborted()
                     if not INPUT_ALLOWED():
                         raise ConsoleError('Codex на паузе: ввод не передан.')
-                    if not _paste(queued):
+                    if not _paste_telegram(queued, aborted):
                         raise ConsoleError('Не удалось подтвердить ввод в консоль. Проверь вкладку Codex перед повтором.')
                 if path is None:
                     path = _new_rollout(slot, key, started-2)
@@ -993,9 +1000,7 @@ def ask(prompt, abort=None, timeout=None, lang="ru", live=False, pull=None):  # 
             raise ConsoleError("В консоли Codex уже идёт запрос. Подожди ответа или /stop.")
         off = os.path.getsize(path) if path else 0
         sent = time.time()
-        if aborted():
-            raise Aborted()
-        if not _paste(text):
+        if not _paste_telegram(text, aborted):
             raise ConsoleError("Не удалось напечатать в консоль Codex.")
         # --- ждём начала хода
         turn, answer, last_say = None, "", ""
