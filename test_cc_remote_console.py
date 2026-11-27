@@ -325,10 +325,10 @@ class RemoteConsole(unittest.TestCase):
         calls, sid = self._start_calls({'active': True, 'member': 'prod', 'tg': False})
         self.assertTrue(calls[-1].endswith('ctl.py start %s 0' % sid), calls)
 
-    def test_start_when_work_is_not_on_prod_stays_plain(self):
-        calls, _ = self._start_calls({'active': False, 'member': 'prod'})
-        self.assertTrue(calls[-1].endswith('ctl.py start - 0'), calls)
-        self.assertFalse(any(c.endswith('ctl.py hist') for c in calls))
+    def test_first_start_uses_telegram_on_configured_server(self):
+        calls, sid = self._start_calls({'active': False, 'member': 'prod'})
+        self.assertTrue(calls[-1].endswith('ctl.py start %s 1' % sid), calls)
+        self.assertTrue(any(c.endswith('ctl.py hist') for c in calls))
 
 
 if __name__ == '__main__':

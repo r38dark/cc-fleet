@@ -193,7 +193,7 @@ class PauseStrip(unittest.TestCase):
     def test_top_banner_carries_the_console_text_and_its_countdown_ticks(self):
         # 63532: два текста паузы → один. Верхний баннер Claude PROD берёт тексты консольной полосы (до часа, осталось, причина, очередь Telegram)
         i = SRC.index("const rp=d&&d.remote_pause;")
-        j = SRC.index("const fleet=d&&d.fleet;", i)
+        j = SRC.index("if(!d||d.stale", i)
         part = SRC[i:j]
         for need in ("tr('ccpsTitle')", "tr('ccpsUntil'", "tr('ccpsBody')", "ccp-left", "(rp.reasons||[])"):
             self.assertIn(need, part, need)

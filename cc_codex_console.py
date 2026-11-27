@@ -328,9 +328,7 @@ def start(lang="ru"):
         sandbox, cwd, slot = PLAN()
         if sandbox not in _SANDBOXES:
             return False, t("Неизвестные права доступа.", "Unknown access rights.")
-        slots = cc_codex.profile_slots()
-        if not slot or slot not in slots:
-            slot = slots[0] if slots else ""
+        slot = next(iter(cc_codex.profile_slots()), "")
         if not slot:
             return False, t("Нет входа в ChatGPT: добавь аккаунт в окне Codex.", "Not signed in to ChatGPT: add an account in the Codex window.")
         if not cwd or not os.path.isdir(cwd):

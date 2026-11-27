@@ -81,7 +81,7 @@ def profile_dir(slot):
     return os.path.join(PROFILES, slot)
 
 
-def profile_slots():
+def _stored_slots():
     """Заведённые профили (есть auth.json), по номеру."""
     out = []
     if os.path.isdir(PROFILES):
@@ -89,6 +89,28 @@ def profile_slots():
             if _SLOT_RE.match(d) and os.path.isfile(os.path.join(PROFILES, d, "auth.json")):
                 out.append(d)
     return sorted(out, key=lambda s: int(s[3:]))
+
+
+def _active_path():
+    return os.path.join(PROFILES, ".account.json")
+
+
+def select_existing(preferred=""):
+    """Pin the actual existing connection on upgrade, leaving saved files in place."""
+    with _lock:
+        slots = _stored_slots()
+        if slots and jload(_active_path(), None) is None:
+            slot = preferred if preferred in slots else slots[0] if len(slots) == 1 else ""
+            _jsave(_active_path(), {"slot": slot})
+
+
+def profile_slots():
+    slots = _stored_slots()
+    pin = jload(_active_path(), None)
+    if pin is None:
+        return slots if len(slots) == 1 else []
+    slot = pin.get("slot") if isinstance(pin, dict) else None
+    return [slot] if slot in slots else []
 
 
 def meta(slot):
@@ -337,6 +359,7 @@ def _login_watch(slot, st):
             _jsave(os.path.join(final, "meta.json"),
                    {"label": st["label"], "email": cl.get("email"), "added": int(time.time())})
             own(final, tree=True)
+            _jsave(_active_path(), {"slot": slot})
         else:
             old = (meta(slot).get("email") or "").lower()
             if old and cl.get("email") and old != cl["email"].lower():
@@ -963,6 +986,7 @@ def _disconnect_account(bin_path, slot, confirm, lang, before):
     except OSError:
         return False, _t(lang, 'Не удалось удалить авторизацию.', 'Could not remove authorization.')
     with _lock:
+        _jsave(_active_path(), {"slot": ""})
         _cache.pop(slot, None)
         _models_cache.pop(slot, None)
     return True, _t(lang, 'Аккаунт ChatGPT отключён. История и файлы сохранены.',

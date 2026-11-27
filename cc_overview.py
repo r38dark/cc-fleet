@@ -983,7 +983,7 @@ JS = r'''
  const accountArea=el('main','');accountArea.id='fleetAccounts';term.after(accountArea);
  const claude=el('section','fleet-section');claude.id='fleetClaude';
  const ch=el('div','fleet-section-head');ch.innerHTML='<h2><span class="fleet-provider">✳</span>Claude</h2>';
- ch.append(document.getElementById('optWrap'),document.getElementById('addAcct'));
+ ch.append(document.getElementById('addAcct'));
  claude.append(ch,document.getElementById('cards'));accountArea.append(claude);
  const codex=el('section','fleet-section fleet-codex');codex.id='fleetCodex';
  const xh=el('div','fleet-section-head');xh.innerHTML='<h2><span class="fleet-provider codex">›_</span>Codex / ChatGPT</h2>';
@@ -1001,8 +1001,8 @@ JS = r'''
  function filterProfiles(){if(search.value!==profileQuery)search.value=profileQuery;const q=profileQuery.trim().toLocaleLowerCase('ru');menu.querySelectorAll('.cxprof').forEach(n=>n.hidden=!!q&&!n.textContent.toLocaleLowerCase('ru').includes(q))}
  search.addEventListener('input',filterProfiles);new MutationObserver(filterProfiles).observe(document.getElementById('cxp'),{childList:true});
  const cxOptions=el('div','fleet-cx-options');cxOptions.innerHTML='<div class="modalh">Codex · пороги оптимизации</div><label>Сессия, % <input id="fleetCxThreshold" type="number" min="50" max="100" value="90"></label><label>Неделя, % <input id="fleetCxCap" type="number" min="50" max="100" value="99"></label><button type="button" id="fleetCxSave">Сохранить</button>';
- document.getElementById('autoNote').after(cxOptions);
- document.getElementById('fleetCxSave').addEventListener('click',async e=>{e.target.disabled=true;try{const d=await post('chatgpt/rotation/config',{threshold:Number(document.getElementById('fleetCxThreshold').value),weekly_cap:Number(document.getElementById('fleetCxCap').value)});toast(d.message);await loadRotation()}catch(err){toast('⚠ '+err.message)}finally{e.target.disabled=false}});
+ document.getElementById('wkPause').closest('label').after(cxOptions);
+ document.getElementById('fleetCxSave').addEventListener('click',async e=>{e.target.disabled=true;try{const d=await post('chatgpt/limits/config',{threshold:Number(document.getElementById('fleetCxThreshold').value),weekly_cap:Number(document.getElementById('fleetCxCap').value)});toast(d.message);await loadRotation()}catch(err){toast('⚠ '+err.message)}finally{e.target.disabled=false}});
  const stateNode=document.getElementById('fleetInputState'),input=document.getElementById('fleetInput'),send=document.getElementById('fleetSend');
  let rotationData=null;
  async function post(path,body){const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json','X-CC-Token':TOKEN},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||!d.ok){const er=Error(d.message||'Не удалось выполнить действие');er.data=d;throw er}return d}
@@ -1042,7 +1042,7 @@ JS = r'''
   document.querySelectorAll('#cxcards .card').forEach((c,i)=>{const a=typeof cxData!=='undefined'&&cxData.accounts&&cxData.accounts[i];c.classList.toggle('fleet-active',!!a&&a.slot===d.active);if(!a)return;const top=c.querySelector('.top .email');if(top&&a.slot!==d.active)top.querySelector('.fleet-active-label')?.remove();if(top&&a.slot===d.active&&!top.querySelector('.fleet-active-label'))top.append(el('span','fleet-active-label','Выбран'));});
   refreshVisuals();
  }
- let refreshing=false;async function loadRotation(){if(refreshing)return;refreshing=true;try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(r.ok)renderRotation(await r.json())}catch(e){}finally{refreshing=false}}
+ let refreshing=false;async function loadRotation(){if(refreshing)return;refreshing=true;try{const r=await fetch(API+'chatgpt/limits',{headers:{'X-CC-Token':TOKEN}});if(r.ok)renderRotation(await r.json())}catch(e){}finally{refreshing=false}}
 
  const oldCxRender=cxRender;cxRender=function(){oldCxRender();if(rotationData)renderRotation(rotationData);if(typeof cxData!=='undefined'&&cxData&&cxData.loading&&!cxData.accounts.length)document.getElementById('cx').textContent='Загружаем сохранённые аккаунты…'};
  const accLink=document.querySelector('#cxAccW>.cxacch');if(accLink)accLink.title='Аккаунты показаны на главной странице';
@@ -1120,7 +1120,7 @@ JS = r'''
  accFold.append(intro,claude,codex);accountArea.append(accFold);
  try{accFold.open=localStorage.getItem('cc_accounts_open')==='1'}catch(e){}
  accFold.addEventListener('toggle',()=>{try{localStorage.setItem('cc_accounts_open',accFold.open?'1':'0')}catch(e){}});
- const claudeFoot=el('div','fleet-group-footer'),claudeNote=el('span','fleet-group-note');claudeFoot.append(claudeNote,document.getElementById('optWrap'));claude.append(claudeFoot);
+ const claudeFoot=el('div','fleet-group-footer'),claudeNote=el('span','fleet-group-note');claudeFoot.append(claudeNote);claude.append(claudeFoot);
  const codexFoot=el('div','fleet-group-footer');codexFoot.append(rotation);codex.append(codexFoot);
  const noteFooter=el('div','fleet-design-note');noteFooter.innerHTML='<span aria-hidden="true">ⓘ</span><p>Проценты показывают использованный лимит. Плановая смена аккаунта — между ответами.</p>';accFold.append(noteFooter);
  for(const head of [ch,xh]){const count=el('span','fleet-count');head.querySelector('h2').after(count)}
@@ -1208,7 +1208,6 @@ JS = r'''
   else if(a.error||a.login_required||a.stale||a.lapsed){text='Нужна проверка';tone='problem';caption='Подробности в меню ⋯'}
   else if(isActive){text='Выбран';tone='active';caption='Сейчас в работе'}
   else if(a.reached||session?.pct>=100||week?.pct>=100){text='Лимит '+(week?.pct>=100?'недели':'сессии');tone='limited';caption='Время сброса указано выше'}
-  else if(engine==='codex'&&rotationData?.next===slot){text='Следующий';tone='next';caption='Кандидат для переключения'}
   else if(session?.pct==null&&week?.pct==null){text='Нет данных';caption='Ожидаем данные лимитов'}
   if(paused){const issue=!!(a.error||a.login_required||a.stale||a.lapsed);text=issue?'На паузе · нужна проверка':'На паузе · выбран';tone='paused';caption=issue?'Проверь данные в меню ⋯':'Агент на паузе';}
   const state=card.querySelector('.fleet-card-state');state.className='fleet-card-state'+(tone?' '+tone:'');putText(state,text);putText(card.querySelector('.fleet-card-caption'),caption);
@@ -1431,11 +1430,11 @@ JS = r'''
  const modalBody=el('div','cxpbody');while(modal.firstChild)modalBody.append(modal.firstChild);modal.replaceChildren(modalHeader,modalBody);
  function group(label,nodes,cls){const section=el('section','fleet-settings-group '+(cls||''));if(label)section.append(el('div','fleet-settings-group-title',label));for(const node of nodes)if(node)section.append(node);return section}
  // Одна схема у Claude и Codex: 1) переключение и лимиты, 2) модели в быстром меню, 3) свои настройки агента.
- const autoTitle=document.getElementById('autoHdr'),autoRow=document.getElementById('autoWrap').closest('.switchrow'),weekly=document.getElementById('wkPause').closest('label');
- autoTitle.hidden=true;document.getElementById('modelsHdr').hidden=true;for(const id of ['thrMinus','thrPlus'])document.getElementById(id).hidden=true;  // заголовки — у групп, пороги — полями
+ const weekly=document.getElementById('wkPause').closest('label');
+ document.getElementById('modelsHdr').hidden=true;
  const LIMIT_HINT='На этих порогах работа ждёт сброса лимита. Сессия — окно 5 часов, неделя — недельное окно.';
  const clLimits=el('div','fleet-cx-options');clLimits.id='fleetClLimits';clLimits.innerHTML='<label>Сессия, % <input id="fleetClThreshold" type="number" min="50" max="99" value="90"></label><label>Неделя, % <input id="fleetClCap" type="number" min="50" max="100" value="99"></label><button type="button" id="fleetClSave">Сохранить</button>';
- const autoGroup=group('Лимиты',[clLimits,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT),autoRow,document.getElementById('autoNote'),weekly,autoTitle],'fleet-claude-group');autoGroup.id='fleetClaudeLimits';
+ const autoGroup=group('Лимиты',[clLimits,el('div','fleet-catalog-note fleet-limit-hint',LIMIT_HINT),weekly],'fleet-claude-group');autoGroup.id='fleetClaudeLimits';
  const modelGroup=group('Модели в быстром меню',[document.getElementById('modelsHdr'),document.getElementById('modalSub'),document.getElementById('poolList'),document.getElementById('checkNew')],'fleet-claude-group');modelGroup.id='fleetClaudeModels';
  const claudeOwnAccounts=el('div','fleet-own-row');claudeOwnAccounts.id='fleetClOwnAcc';
  const claudeBackups=group('',[document.getElementById('bkHdr'),document.getElementById('bkBox')],'fleet-own-sub');
@@ -1449,7 +1448,7 @@ JS = r'''
   const thr=Math.round(Number(clThreshold.value)),cap=Math.round(Number(clCap.value));
   if(!(thr>=50&&thr<=99)||!(cap>=50&&cap<=100)){toast('⚠ Сессия — от 50 до 99 %, неделя — от 50 до 100 %');return}
   e.target.disabled=true;
-  try{await post('config',{threshold:thr,weekly_cap:cap});THR=thr;WCAP=cap;renderAutoLbl();toast('Пороги Claude сохранены: сессия '+thr+' %, неделя '+cap+' %');load()}
+  try{await post('config',{threshold:thr,weekly_cap:cap});THR=thr;WCAP=cap;renderLimitLabels();toast('Пороги Claude сохранены: сессия '+thr+' %, неделя '+cap+' %');load()}
   catch(err){toast('⚠ '+err.message)}finally{e.target.disabled=false}
  });
  function ownButton(text,action){const button=el('button','ghostbtn',text);button.type='button';button.addEventListener('click',action);return button}

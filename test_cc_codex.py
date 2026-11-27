@@ -137,8 +137,13 @@ class CodexTest(unittest.TestCase):
         os.environ["FAKE_CODEX_GATE"] = self.gate
         # защита: чистим только временную папку (при общем прогоне cc_codex уже импортирован другим модулем)
         assert os.path.realpath(cc_codex.PROFILES).startswith(os.path.realpath(tempfile.gettempdir()) + os.sep), cc_codex.PROFILES
-        for d in os.listdir(cc_codex.PROFILES) if os.path.isdir(cc_codex.PROFILES) else []:
-            shutil.rmtree(os.path.join(cc_codex.PROFILES, d), ignore_errors=True)
+        if os.path.isdir(cc_codex.PROFILES):
+            pin = os.path.join(cc_codex.PROFILES, ".account.json")
+            if os.path.isfile(pin):
+                os.unlink(pin)
+            for name in os.listdir(cc_codex.PROFILES):
+                if name.startswith("gpt"):
+                    shutil.rmtree(os.path.join(cc_codex.PROFILES, name), ignore_errors=True)
 
     def _wait(self, slot, want, t=8):
         end = time.time() + t
@@ -251,7 +256,7 @@ class CodexTest(unittest.TestCase):
         st = self._wait(d["slot"], "failed")
         self.assertIn("Код не подтверждён", st["message"])
         self.assertEqual(cc_codex.profile_slots(), [])
-        self.assertEqual(os.listdir(cc_codex.PROFILES), [])
+        self.assertEqual([name for name in os.listdir(cc_codex.PROFILES) if name.startswith("gpt")], [])
 
     def test_second_account_rejected_before_starting_login(self):
         self._add("first@example.com")
@@ -271,7 +276,7 @@ class CodexTest(unittest.TestCase):
         _w(self.gate, "user@example.com")
         self._wait(slot, "done")
         self.assertIn('model = "gpt-x"', _r(cfg))
-        self.assertEqual(sorted(os.listdir(cc_codex.PROFILES)), ["gpt1"])
+        self.assertEqual(sorted([name for name in os.listdir(cc_codex.PROFILES) if name.startswith("gpt")]), ["gpt1"])
 
     def test_relogin_other_email_refused(self):
         slot = self._add("a@example.com")
@@ -462,20 +467,25 @@ class CodexTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(p, "auth.json")))
         self.assertEqual(cc_codex.profile_slots(), [])
 
-    def test_delete_all_needs_word_and_wipes_every_legacy_slot(self):
+    def test_disconnect_keeps_saved_legacy_slot_inactive(self):
         s1 = self._add("a@example.com")
         s2 = "gpt2"
         shutil.copytree(cc_codex.profile_dir(s1), cc_codex.profile_dir(s2))
-        self.assertEqual(cc_codex.profile_slots(), [s1, s2])
+        self.assertEqual(cc_codex.profile_slots(), [s1])
         ok, msg, n = cc_codex.delete_all(self.bin, "нет")
         self.assertFalse(ok)
-        self.assertEqual((n, cc_codex.profile_slots()), (0, [s1, s2]))  # без слова не стёрто ничего
+        self.assertEqual((n, cc_codex.profile_slots()), (0, [s1]))  # без слова не стёрто ничего
         ok, msg, n = cc_codex.delete_all(self.bin, " Подтверждаю ")
         self.assertTrue(ok, msg)
-        self.assertEqual(n, 2)
+        self.assertEqual(n, 1)
+        self.assertTrue(os.path.isfile(os.path.join(cc_codex.profile_dir(s2), "auth.json")))
         self.assertEqual(cc_codex.profile_slots(), [])
         ok, msg, n = cc_codex.delete_all(self.bin, "confirm")  # стирать нечего — не ошибка
         self.assertEqual((ok, n), (True, 0))
+        os.unlink(self.gate)
+        new_slot = self._add("new@example.com")
+        self.assertEqual(cc_codex.profile_slots(), [new_slot])
+        self.assertNotEqual(new_slot, s2)
 
     def test_delete_rejects_bad_slot_and_symlink(self):
         self.assertFalse(cc_codex.delete_account(self.bin, "../etc", "confirm")[0])

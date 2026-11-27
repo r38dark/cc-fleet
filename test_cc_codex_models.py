@@ -25,6 +25,7 @@ class CatalogTests(unittest.TestCase):
         codex._models_cache.clear();codex._cache.clear()
         for slot in ['gpt1','gpt2']:
             (self.root/slot).mkdir();(self.root/slot/'auth.json').write_text('{}')
+        codex.select_existing('gpt1')
 
     def client(self,*pages):
         return types.SimpleNamespace(request=mock.Mock(side_effect=pages))

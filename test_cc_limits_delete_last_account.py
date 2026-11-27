@@ -69,11 +69,11 @@ class DeleteLastAccount(unittest.TestCase):
         snap = L.collect(force=True)  # не должно падать
         self.assertEqual(snap.get("accounts"), {})
         self.assertIsNone(snap.get("active"))
-        L.switch_policy_check(snap)  # autoswitch-ветка, не должно падать
+        L.notify_claude_limits(snap)  # autoswitch-ветка, не должно падать
         c = L.cfg()
         c["optimize"] = True
         L.jsave(L.CONFIG, c)
-        L.switch_policy_check(snap)  # optimize-ветка, тоже не должно падать
+        L.notify_claude_limits(snap)  # optimize-ветка, тоже не должно падать
         L.model_info()  # сводка моделей не должна зависеть от наличия аккаунтов
 
     def test_legacy_login_can_be_disconnected_without_automatic_switch(self):
@@ -90,7 +90,7 @@ class DeleteLastAccount(unittest.TestCase):
     def test_second_local_account_is_refused_before_oauth(self):
         from unittest.mock import patch
         make_account("acc1")
-        with patch.object(L.cc_remote, "members", return_value={}), patch.object(L, "relogin_start") as start:
+        with patch.object(L, "active_name", return_value="acc1"), patch.object(L.cc_remote, "members", return_value={}), patch.object(L, "relogin_start") as start:
             self.assertFalse(L.addacct_start("")[0])
             start.assert_not_called()
 

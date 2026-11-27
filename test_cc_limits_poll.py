@@ -139,9 +139,9 @@ class CollectPoll(unittest.TestCase):
 
             def clear(self):
                 pass
-        with mock.patch.object(L, "_POLL_WAKE", Wake()), \
+        with mock.patch.object(L.time, "sleep", Wake().wait), \
                 mock.patch.object(L, "collect", lambda force=False, force_account=None: {}), \
-                mock.patch.object(L, "switch_policy_check", lambda snap: None):
+                mock.patch.object(L, "notify_claude_limits", lambda snap: None):
             with self.assertRaises(Stop):
                 L.poll_loop()
         return waits[0]
@@ -150,11 +150,10 @@ class CollectPoll(unittest.TestCase):
         L.collect(force=True)
         st = self.state()
         now = time.time()
-        st["acc1"]["next"], st["acc2"]["next"], st["acc3"]["next"] = now + 40, now + 500, now + 500
+        st["acc1"]["next"] = now + 40
         L.jsave(L.POLL_STATE, st)
         self.assertTrue(38 <= self._loop_wait() <= 41)
         st["acc1"]["next"] = now + 900  # все сроки далеко — просыпаемся не реже SLEEP_MAX
-        st["acc2"]["next"] = st["acc3"]["next"] = now + 900
         L.jsave(L.POLL_STATE, st)
         self.assertEqual(self._loop_wait(), 120)
 
@@ -163,15 +162,14 @@ class CollectPoll(unittest.TestCase):
         self.assertEqual(self._loop_wait(), 77)
 
     # --- темп
-    def test_first_collect_polls_everyone_and_sets_schedule(self):
+    def test_first_collect_polls_only_current_account(self):
         L.collect(force=True)
-        self.assertEqual(len(usage_calls()), 3)
+        self.assertEqual(len(usage_calls()), 1)
         st = self.state()
-        self.assertEqual(set(st), set(ACCOUNTS))
+        self.assertEqual(set(st), {"acc1"})
         now = time.time()
         self.assertTrue(162 - 2 <= st["acc1"]["next"] - now <= 198 + 2, st["acc1"])  # активный: 180 ±10 %
-        self.assertTrue(270 - 2 <= st["acc2"]["next"] - now <= 330 + 2, st["acc2"])  # запасной: 300 ±10 %
-        self.assertTrue(st["acc1"]["active"] and not st["acc2"]["active"])
+        self.assertTrue(st["acc1"]["active"])
 
     def test_second_collect_makes_no_requests_and_keeps_numbers(self):
         s1 = L.collect(force=True)
@@ -184,9 +182,9 @@ class CollectPoll(unittest.TestCase):
     def test_only_due_account_is_polled(self):
         L.collect(force=True)
         Fake.calls.clear()
-        self.make_due("acc2")
+        self.make_due("acc1")
         L.collect(force=True)
-        self.assertEqual([c[1] for c in usage_calls()], ["tokB"])
+        self.assertEqual([c[1] for c in usage_calls()], ["tokA"])
 
     def test_still_numbers_slow_polling_down(self):
         L.collect(force=True)
@@ -209,13 +207,13 @@ class CollectPoll(unittest.TestCase):
     def test_force_account_bypasses_schedule_but_not_min_interval(self):
         L.collect(force=True)
         Fake.calls.clear()
-        L.collect(force=True, force_account="acc2")  # только что опрошен — рано
+        L.collect(force=True, force_account="acc1")  # только что опрошен — рано
         self.assertEqual(usage_calls(), [])
         st = self.state()
-        st["acc2"]["hist"] = [time.time() - 60]
+        st["acc1"]["hist"] = [time.time() - 60]
         L.jsave(L.POLL_STATE, st)
-        L.collect(force=True, force_account="acc2")
-        self.assertEqual([c[1] for c in usage_calls()], ["tokB"])
+        L.collect(force=True, force_account="acc1")
+        self.assertEqual([c[1] for c in usage_calls()], ["tokA"])
 
     def test_budget_caps_requests_per_hour(self):
         L.collect(force=True)
@@ -323,18 +321,6 @@ class CollectPoll(unittest.TestCase):
         L.collect(force=True)
         self.assertTrue(235 <= L.backoff_until["acc1"] - time.time() <= 241)  # прежние 2×poll_sec, Retry-After не читаем
 
-    def test_becoming_active_pulls_schedule_in(self):
-        L.collect(force=True)
-        st = self.state()
-        st["acc2"]["next"] = time.time() + 550
-        st["acc2"]["hist"] = [time.time() - 200]
-        L.jsave(L.POLL_STATE, st)
-        L.jsave(L.LIVE_CFG, {"oauthAccount": {"accountUuid": "u-acc2"}})  # переключились на acc2
-        L.jsave(L.LIVE_CREDS, {"claudeAiOauth": {"accessToken": "tokB", "refreshToken": "r-tokB",
-                                                 "expiresAt": int((time.time() + 86400) * 1000)}})
-        Fake.calls.clear()
-        L.collect(force=True)
-        self.assertEqual([c[1] for c in usage_calls()], ["tokB"])  # 200 с > базы активного 180
 
 
 if __name__ == "__main__":

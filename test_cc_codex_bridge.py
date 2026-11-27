@@ -1287,13 +1287,13 @@ class LimitAlerts(Base):
         self.assertIn("Лимит Codex", self.sent[0])
         self.assertEqual(br._state()["limits"]["gpt1"]["w300"], 90)
 
-    def test_tick_other_account_is_not_watched(self):
+    def test_tick_observes_connected_account_despite_obsolete_bridge_slot(self):
         s = br.load()
         s["slot"] = "gpt2"
         br._save(s)
         with unittest.mock.patch.object(cc_codex, "get_accounts", lambda b, force=False: [self.acc(p5=99)]):
             br.BRIDGE.limits_tick()
-        self.assertEqual(self.sent, [])
+        self.assertEqual(len(self.sent), 1)
 
 
 class LimitsThread(Base):

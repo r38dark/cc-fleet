@@ -9,7 +9,7 @@ import threading
 import time
 from urllib.parse import urlparse, parse_qs
 
-import cc_codex_rotation
+import cc_codex_limits
 import cc_codex_models
 import cc_overview
 
@@ -150,7 +150,7 @@ class ConsoleInput:
         uncertain = False
         try:
             if session == 'codex':
-                rotation=self.ns.get('FLEET_ROTATION')
+                rotation=self.ns.get('CODEX_LIMITS')
                 if rotation and rotation.limit_pause().get('active'):
                     result=self.ns['cc_codex_bridge'].BRIDGE.enqueue_console(payload,request_id)
                 else:result = self.ns['cc_codex_console'].send_input(payload)
@@ -212,7 +212,7 @@ class ConsoleInput:
     def key(self, session, key):
         if session == 'codex' and key == 'stop':
             return self.ns['cc_codex_bridge'].BRIDGE.stop_work()
-        rotation=self.ns.get('FLEET_ROTATION')
+        rotation=self.ns.get('CODEX_LIMITS')
         if session=='codex' and key!='escape' and rotation and rotation.limit_pause().get('active'):
             return False,'Codex на паузе по лимитам. Новые задания отправляй через поле сообщения: они сохранятся в очереди.'
         keys = {'escape': '\x1b', 'enter': '\r', 'up': '\x1b[A', 'down': '\x1b[B'}
@@ -231,13 +231,17 @@ class ConsoleInput:
 
 def install(ns):
     codex, console, bridge = ns['cc_codex'], ns['cc_codex_console'], ns['cc_codex_bridge']
-    # один аккаунт Codex — ротации нет: профиль Claude Full не ставит Codex на паузу (число аккаунтов смотрим при каждом обращении)
+    if ns.get('__name__') == '__main__':
+        last_slot = console._meta().get('slot')
+        selected = (last_slot if console._pid() else bridge.load().get('slot')) or last_slot
+        codex.select_existing(selected)
+    # При самостоятельной работе квота Codex контролируется отдельно.
     import cc_profile_state
     cc_profile_state.ProfileState.codex_independent = staticmethod(lambda: len(codex.profile_slots()) <= 1)
-    rotation = cc_codex_rotation.Rotation(ns['BASE'], codex, console, ns['codex_bin'], bridge, single_account=True)
+    rotation = cc_codex_limits.AccountLimits(ns['BASE'], codex, console, ns['codex_bin'], bridge)
     models = cc_codex_models.Discovery(codex, rotation, ns['codex_bin'])
     inputs = ConsoleInput(ns)
-    ns['FLEET_ROTATION'] = rotation
+    ns['CODEX_LIMITS'] = rotation
     import cc_codex_quota
     rotation.quota=cc_codex_quota.Guard(ns['BASE'],rotation,console,bridge.BRIDGE)
     bridge.LIMIT_PAUSE = rotation.limit_pause  # очередь моста ждёт сброса, если лимит исчерпан и переключаться некуда
@@ -257,7 +261,7 @@ def install(ns):
     class FleetHandler(original):
         def do_GET(self):
             parsed = urlparse(self.path)
-            if parsed.path not in ('/api/profiles', '/api/chatgpt/bridge', '/api/chatgpt/rotation', '/api/chatgpt', '/api/chatgpt/models'):
+            if parsed.path not in ('/api/profiles', '/api/chatgpt/bridge', '/api/chatgpt/limits', '/api/chatgpt', '/api/chatgpt/models'):
                 return original.do_GET(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
@@ -278,7 +282,7 @@ def install(ns):
             if path in ('/api/model','/api/effort') and not profiles.input_allowed('claude'):
                 if not self._authed():return self._send(403, {'ok':False})
                 return self._send(200, {'ok':False,'message':'Claude на паузе или меняется профиль. Повтори выбор модели после завершения переключения.'})
-            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/rotation/config', '/api/chatgpt/rotation/switch', '/api/chatgpt/models/check'):
+            if not path.startswith('/api/profiles/') and path not in ('/api/console/input', '/api/console/key', '/api/chatgpt/limits/config', '/api/chatgpt/models/check'):
                 return original.do_POST(self)
             if not self._authed():
                 return self._send(403, {'ok': False, 'message': 'forbidden'})
@@ -316,6 +320,9 @@ def install(ns):
                     if session == 'codex' and isinstance(value, str) and value.strip().lower() == '/stop':
                         ok, message = inputs.key(session, 'stop')
                         return self._send(200 if ok else 409, dict(ok=ok, message=message))
+                    remote = ns.get('cc_remote')
+                    if session == 'claude' and remote and remote.members():
+                        return self._send(409, dict(ok=False, message='Ввод доступен на подключённой вкладке Claude.'))
                     if session in ('claude','codex') and not profiles.console_allowed(session):
                         if profiles.transitioning or profiles.pending.exists():
                             return self._send(200, dict(ok=False, message='Идёт переключение профиля. Повтори чуть позже.'))
@@ -341,10 +348,8 @@ def install(ns):
                     ok, message = inputs.send(body.get('session'), body.get('text'), body.get('request_id'), side=side_now)
                 elif path == '/api/console/key':
                     ok, message = inputs.key(body.get('session'), body.get('key'))
-                elif path.endswith('/config'):
-                    ok, message = rotation.configure(body)
                 else:
-                    ok, message = rotation.switch(body.get('slot'), manual=True, reason='Ручной выбор')
+                    ok, message = rotation.configure(body)
                 return self._send(200 if ok else 409, {'ok': ok, 'message': message})
             except Exception as exc:
                 return self._send(500, {'ok': False, 'message': 'Действие не выполнено: '+type(exc).__name__})
@@ -354,8 +359,6 @@ def install(ns):
                 current=bridge.load()
                 if any(key in body and body[key]!=current.get(key) for key in ('mode','access','task_rights')):
                     return self._send(200,dict(ok=False,message='Сценарий и права выбираются через Full или Оркестратор в меню профилей.'))
-                if len(codex.profile_slots()) > 1 and 'slot' in body and body['slot'] not in (current.get('slot'), rotation.active()):
-                    return self._send(200, dict(ok=False, message='Для смены аккаунта Codex сначала отключи текущий.'))
             if action=='bridge/save' and profiles.transitioning:
                 return self._send(200, {'ok':False,'message':'Сейчас применяется профиль. Сохрани настройки после завершения переключения.'})
             if action=='prefs' and not profiles.input_allowed('codex'):
@@ -368,7 +371,7 @@ def install(ns):
             if action in ('delete', 'wipe'):
                 slot = body.get('slot')
                 if console.busy() and (action == 'wipe' or slot == rotation.active()):
-                    return self._send(200, {'ok': False, 'message': 'Codex сейчас отвечает. Удаление доступно после завершения ответа.'})
+                    return self._send(200, {'ok': False, 'message': 'Codex сейчас отвечает. Отключение доступно после завершения ответа.'})
                 if action == 'delete' and slot and slot != rotation.active():
                     history = console._meta().get('history_home')
                     if history and os.path.realpath(history) == os.path.realpath(codex.profile_dir(slot)):
@@ -428,7 +431,7 @@ def install(ns):
         cc_remote_setup.install(ns)
     except Exception as exc:
         print('remote: мастер второго сервера не подключён: %r' % (exc,), flush=True)
-    ns['FLEET_ROTATION'] = rotation
+    ns['CODEX_LIMITS'] = rotation
     ns['FLEET_INPUT'] = inputs
     bridge.PROFILE_APPLIED = console.apply_plan
     if ns.get('__name__') == '__main__':

@@ -776,7 +776,6 @@ class OldState(unittest.TestCase):
         p = pause_ctl.level_state()['pause']
         self.assertTrue(p['active'])
         self.assertNotIn('grace', p)   # отсчёта «доделывает» прежнего режима нет: обычная пауза
-        self.assertTrue(pause_ctl.release_for_remote())   # и снимается при передаче на PROD, как любая пауза по лимитам
 
 
 class Page(unittest.TestCase):

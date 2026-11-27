@@ -53,7 +53,12 @@ def jsave(path, data):
 
 def members():
     d = jload(MEMBERS_FILE, {})
-    return {k: v for k, v in d.items() if isinstance(v, dict) and v.get("host")} if isinstance(d, dict) else {}
+    rows = {k: v for k, v in d.items() if isinstance(v, dict) and v.get("host")} if isinstance(d, dict) else {}
+    state = jload(os.path.join(os.path.dirname(MEMBERS_FILE), "remote_mode.json"), {})
+    current = state.get("member") if isinstance(state, dict) else None
+    if current:
+        return {current: rows[current]} if current in rows else {}
+    return rows if len(rows) == 1 else {}
 
 
 MUX_DIR = os.path.join(BASE, "ssh-mux")   # сокеты общего ssh-соединения (каталог 0700)

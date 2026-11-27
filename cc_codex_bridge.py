@@ -49,7 +49,7 @@ PROFILE_NOTE = lambda: ""  # cc_limits/cc_profiles: строка-напомин�
 SOLO_PROFILE = lambda: False  # cc_limits: выбран самостоятельный профиль Codex Full
 TAKE_DRAFT_ALLOWED = lambda: True
 DISPATCH_ALLOWED = lambda: True  # profile coordinator: hold incoming work while the engine is paused
-LIMIT_PAUSE = lambda: {}  # пауза Codex по лимитам (cc_codex_rotation.Rotation.limit_pause, ставит cc_fleet)
+LIMIT_PAUSE = lambda: {}  # пауза Codex по лимитам (cc_codex_limits.Rotation.limit_pause, ставит cc_fleet)
 INPUT_QUEUE_PATH = None
 PROFILE_APPLIED = lambda: None  # cc_limits: обновить права и MCP-инструменты работающей консоли
 EMERGENCY = None  # cc_limits подставляет cc_codex_emergency: пока аварийный режим включён, права и папка заморожены
@@ -1051,7 +1051,7 @@ def run_codex(prompt, s=None):
     if not b:
         raise RunError("Codex не установлен на сервере.")
     slots = cc_codex.profile_slots()
-    slot = s.get("slot") or (slots[0] if slots else "")
+    slot = slots[0] if slots else ""
     if not slot or slot not in slots:
         raise RunError("Нет входа в ChatGPT: добавь аккаунт в карточке «ChatGPT».")
     sandbox, cwd = plan(s)
@@ -1141,9 +1141,8 @@ def _local_ts(ts):
 def limit_hold_text(lp, queued):
     """Одно сообщение на эпизод паузы Codex по лимитам: что исчерпано, когда сброс, что с очередью."""
     wins = ", ".join("окно " + n for n in lp.get("window_names") or []) or "сервис сообщил о лимите"
-    who = f" ({lp.get('label')})" if lp.get("multi") and lp.get("label") else ""
     at = _local_ts(lp["resume_at"]) if lp.get("resume_at") else ""
-    return (f"⏸ Codex на паузе по лимитам{who}: {wins}" + (f", сброс в {at}" if at else "") + ". Переключаться некуда — "
+    return (f"⏸ Codex на паузе по лимитам: {wins}" + (f", сброс в {at}" if at else "") + ". "
             + (f"сообщения ждут в очереди ({queued}) и уйдут сами после сброса." if queued else "новые сообщения подождут в очереди и уйдут сами после сброса.")
             + " /stop — очистить очередь.")
 
@@ -1992,7 +1991,7 @@ class Bridge:
             return
         s = load()
         slots = cc_codex.profile_slots()
-        slot = s.get("slot") or (slots[0] if slots else "")
+        slot = slots[0] if slots else ""
         acc = next((a for a in cc_codex.get_accounts(b) if a.get("slot") == slot), None)
         if not acc:
             return

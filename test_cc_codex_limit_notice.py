@@ -2,7 +2,7 @@
 import datetime,threading,time,unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
-import cc_codex_rotation as R
+import cc_codex_limits as R
 NOW=int(time.time())
 def iso(t):return datetime.datetime.fromtimestamp(t,datetime.timezone.utc).isoformat()
 def account(slot='gpt1',session=20,week=20,**extra):
@@ -13,11 +13,11 @@ def notice(rows,active='gpt1',pause=None):return R.limit_notice_state(rows,activ
 
 class LimitNotice(unittest.TestCase):
  def test_single_five_hour_warning_without_queue_pause(self):
-  rows=[account(session=100)];p=R.limit_pause_state(rows,'gpt1',False,NOW);n=notice(rows,pause=p)
-  self.assertTrue(p['active']);self.assertTrue(n['active']);self.assertTrue(n['paused']);self.assertTrue(n['single'])
+  rows=[account(session=100)];p=R.limit_pause_state(rows,'gpt1', NOW);n=notice(rows,pause=p)
+  self.assertTrue(p['active']);self.assertTrue(n['active']);self.assertTrue(n['paused'])
   self.assertEqual(n['windows'],[300]);self.assertAlmostEqual(n['resume_at'],NOW+3600)
  def test_single_week_warning_without_queue_pause(self):
-  rows=[account(week=100)];p=R.limit_pause_state(rows,'gpt1',False,NOW);n=notice(rows,pause=p)
+  rows=[account(week=100)];p=R.limit_pause_state(rows,'gpt1', NOW);n=notice(rows,pause=p)
   self.assertTrue(p['active']);self.assertTrue(n['active']);self.assertTrue(n['paused'])
   self.assertEqual(n['windows'],[10080]);self.assertAlmostEqual(n['resume_at'],NOW+86400)
  def test_two_full_windows_wait_for_both(self):
@@ -57,18 +57,13 @@ class LimitNotice(unittest.TestCase):
  def test_a_limit_on_another_account_does_not_block_the_current_one(self):
   self.assertFalse(notice([account(),account(slot='gpt2',session=100)])['active'])
  def test_candidate_does_not_hide_current_limit_warning(self):
-  rows=[account(session=100),account(slot='gpt2')];p=R.limit_pause_state(rows,'gpt1',True,NOW)
-  n=notice(rows,pause=p);self.assertTrue(n['active']);self.assertFalse(n['paused']);self.assertFalse(p['active'])
- def test_real_multi_account_pause_still_reports_queue_and_earliest_reset(self):
-  a=account(session=100,week=100);b=account(slot='gpt2',session=100)
-  p=R.limit_pause_state([a,b],'gpt1',False,NOW);n=notice([a,b],pause=p)
-  self.assertTrue(p['active']);self.assertTrue(n['active']);self.assertTrue(n['paused'])
-  self.assertEqual(n['resume_slot'],'gpt2');self.assertAlmostEqual(n['resume_at'],NOW+3600)
+  rows=[account(session=100),account(slot='gpt2')];p=R.limit_pause_state(rows,'gpt1', NOW)
+  n=notice(rows,pause=p);self.assertTrue(n['active']);self.assertTrue(n['paused']);self.assertTrue(p['active'])
  def test_invalid_percentages_are_unknown(self):
   for pct in (None,'unknown',float('nan'),float('inf')):
    self.assertFalse(notice([account(session=pct)])['active'])
  def test_public_api_exposes_notice_without_mutating_rotation_or_console(self):
-  rot=R.Rotation.__new__(R.Rotation);rot.lock=threading.RLock();rot.active=lambda:'gpt1'
+  rot=R.AccountLimits.__new__(R.AccountLimits);rot.lock=threading.RLock();rot.active=lambda:'gpt1'
   rot.accounts=[account(session=100)];rot.state=dict(optimize=True,threshold=90,weekly_cap=99)
   rot.console=SimpleNamespace(_pid=lambda:False,_meta=lambda:{},stop=Mock(),apply_plan=Mock())
   rot.codex=SimpleNamespace(profile_slots=lambda:['gpt1']);rot.message='fixture';rot.last_error='';rot.updated=NOW;rot.save=Mock()
@@ -76,7 +71,7 @@ class LimitNotice(unittest.TestCase):
   self.assertTrue(result['limit_notice']['paused']);rot.save.assert_not_called();rot.console.stop.assert_not_called();rot.console.apply_plan.assert_not_called()
   rot.codex.profile_slots=lambda:[];self.assertFalse(rot.limit_notice(now=NOW)['active'])
  def test_existing_queue_hold_remains_visible_when_usage_sample_ages(self):
-  rot=R.Rotation.__new__(R.Rotation);rot.lock=threading.RLock();rot.active=lambda:'gpt1'
+  rot=R.AccountLimits.__new__(R.AccountLimits);rot.lock=threading.RLock();rot.active=lambda:'gpt1'
   rot.codex=SimpleNamespace(profile_slots=lambda:['gpt1'])
   rot.accounts=[account(session=100,ts=NOW-200)]
   rot.limit_pause=lambda _now:dict(active=True,slot='gpt1',windows=[300],resume_at=NOW+3600)

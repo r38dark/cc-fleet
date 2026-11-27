@@ -225,7 +225,6 @@ class Wiring(unittest.TestCase):
             self.assertIn(part, src, part)
 
     def test_codex_rotation_does_not_make_noise_and_prod_is_wired(self):
-        self.assertIn("notify=False", (HERE / "cc_codex_rotation.py").read_text(encoding="utf-8"))
         self.assertIn('"Claude PROD", "claude"', (HERE / "cc_remote_mode.py").read_text(encoding="utf-8"))
         self.assertIn('def set_prefs(bin_path, slot, model, effort, fast, lang="ru", notify=True):', (HERE / "cc_codex.py").read_text(encoding="utf-8"))
 

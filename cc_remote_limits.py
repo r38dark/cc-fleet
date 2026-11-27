@@ -15,57 +15,51 @@ def public():
 
 
 def agent_limits(local, snapshot, remote, remote_pause=None, now=None):
-    """Отдельные состояния Claude; те же пороги/сводка, что у гейта. Без реквизитов аккаунтов."""
+    """Quota state for the single connected Claude, without account identifiers."""
     now = time.time() if now is None else now
-    threshold, cap = local.get("threshold", 90), local.get("weekly_cap", 99)
+    remote = remote or {}
+    engine = "prod" if remote or local.get("remote") else "claude"
     pause = local.get("pause") or {}
-    result = {}
-    unknown = {'claude': True, 'prod': True}
-    groups = (("claude", snapshot.get("accounts") or {}, {}), ("prod", {}, remote or {}))
-    for engine, accounts, members in groups:
-        if engine == "claude" and local.get("stale"):
-            continue
-        summary = cc_avail.fleet_summary(accounts, members, threshold, cap, now=now)
-        unknown[engine] = bool(not summary['accounts'] or summary['unknown'])
-        if not summary["all_blocked"]:
-            continue
-        nearest = summary.get("nearest") or {}
-        chosen_key = nearest.get("acc") or next(iter(summary["accounts"]), "")
-        chosen = summary["accounts"].get(chosen_key) or {}
-        held = nearest.get("held") or chosen.get("held") or ""
-        week = summary["all_week_capped"] or "неделя" in held
-        pct = chosen.get("wpct" if week else "pct")
-        hard = all((a.get("wpct" if week else "pct") or 0) >= 100 for a in summary["accounts"].values())
-        manual = engine == "claude" and local.get("level") == "manual"
-        # «отключена вручную» — отдельный флаг у каждого Claude (DEV: override, PROD: override_prod)
-        overridden = bool(pause.get("override_prod" if engine == "prod" else "override"))
-        waiting = hard or (not overridden and not manual and (not week or local.get("weekly_pause")))
-        active_row = accounts.get(local.get('active')) if engine == 'claude' else None
-        can_override = not cc_avail.dead(active_row) if active_row else not hard
-        result[engine] = dict(window="week" if week else "5h", pct=pct,
-                              threshold=cap if week else threshold,
-                              resume_at=cc_avail._ts(nearest.get("resets_at") or "") or 0,
-                              waiting=bool(waiting), override=overridden,
-                              manual=manual, can_override=can_override)
-        # Отдельные реальные сбросы выбранного ближайшего доступного аккаунта:
-        # общий resume_at может быть позднейшим из двух окон и не заменяет каждый.
-        row = (accounts if engine == 'claude' else members).get(chosen_key.partition(':')[2]) or {}
-        windows = []
-        for key, name, limit, enabled in (('five_hour', '5h', threshold, True),
-                                          ('seven_day', 'week', cap, bool(local.get('weekly_pause')))):
-            w = row.get(key) or {};value = w.get('pct')
-            if isinstance(value, (int, float)) and (value >= 100 or waiting and enabled and value >= limit):
-                windows.append(dict(window=name, resume_at=cc_avail._ts(w.get('resets_at') or '') or 0))
-        result[engine]['windows'] = windows
-    # Подтверждённая пауза не пропадает при устаревшем/неполном снимке процентов.
-    for engine, state, confirmed in (
-        ('claude', pause, pause.get('active') and not pause.get('override')),
-        ('prod', remote_pause or {}, all((remote_pause or {}).get(k) for k in ('enabled','applied','blocked'))),
-    ):
-        if confirmed and unknown[engine] and engine not in result:
-            result[engine]=dict(window='pause',pct=None,threshold=None,resume_at=state.get('resume_at') or 0,
-                                waiting=True,override=False,manual=False,can_override=False)
-    return result
+    state = (remote_pause or {}) if engine == "prod" else pause
+    threshold, cap = local.get("threshold", 90), local.get("weekly_cap", 99)
+    if engine == "prod":
+        row = next(iter(remote.values()), {})
+        try:
+            fresh = bool(row.get("online")) and 0 <= now - float(row.get("ts") or 0) <= 900
+        except (ValueError, TypeError):
+            fresh = False
+        confirmed = all(state.get(k) for k in ("enabled", "applied", "blocked"))
+    else:
+        row = (snapshot.get("accounts") or {}).get(snapshot.get("active") or local.get("active"), {})
+        fresh = not local.get("stale")
+        confirmed = bool(state.get("active") and not state.get("override"))
+
+    session = (row.get("five_hour") or {}).get("pct")
+    week_pct = (row.get("seven_day") or {}).get("pct")
+    known = fresh and not row.get("error") and all(isinstance(v, (float, int)) for v in (session, week_pct))
+    if not known:
+        return {engine: dict(window="pause", pct=None, threshold=None, resume_at=state.get("resume_at") or 0,
+                             waiting=True, override=False, can_override=False)} if confirmed else {}
+    available, until, held = cc_avail.availability(row, threshold, cap, now)
+    if available or row.get("plan") == "free":
+        return {}
+    weekly_pause = bool(local.get("weekly_pause"))
+    week = "неделя" in held
+    if session >= threshold and week_pct < 100 and not weekly_pause:
+        week = False
+        _, until, _ = cc_avail.availability(row, threshold, 100, now)
+    hard = cc_avail.dead(row)
+    overridden = bool(pause.get("override_prod" if engine == "prod" else "override"))
+    waiting = hard or (not overridden and (not week or weekly_pause))
+    windows = []
+    for key, label, limit, enabled in (("five_hour", "5h", threshold, True), ("seven_day", "week", cap, weekly_pause)):
+        window = row.get(key) or {}
+        value = window.get("pct")
+        if value >= 100 or waiting and enabled and value >= limit:
+            windows.append(dict(window=label, resume_at=cc_avail._ts(window.get("resets_at") or "") or 0))
+    return {engine: dict(window="week" if week else "5h", pct=week_pct if week else session,
+                         threshold=cap if week else threshold, resume_at=until or 0,
+                         waiting=waiting, override=overridden, can_override=not hard, windows=windows)}
 
 
 def policy(ns, row, enabled):

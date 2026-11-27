@@ -202,7 +202,7 @@ sudo ./install.sh
 ```
 
 The installer will ask: the name of the `screen` session Claude Code runs
-in, how many accounts to set up, the auto-switch threshold, whether you want
+in, the pause threshold, whether you want
 an nginx domain with Basic Auth, and whether you want Telegram
 notifications. Then it will, on its own:
 
@@ -246,102 +246,9 @@ screen -S claude -dm claude
 default). A live session picks up the token swap on the fly, no restart
 needed.
 
-## Onboarding accounts
+## Connecting accounts
 
-Either of two ways works — both save the account into
-`/root/.claude-profiles/accN/`:
-
-**Via the web "Log in again" button** (`/cc/` panel, if you installed
-nginx) — the installer prepared one empty slot
-(`oauth_account.json: {}`); the button starts `claude auth login` in an
-isolated temp HOME, hands you an OAuth link, you sign in in the browser
-under the account you want and paste the code back into the page.
-
-**Manually, if the panel isn't up yet:**
-
-```bash
-# inside the screen session from the step above — claude is already open there
-/login    # sign in under the account you want, inside the TUI
-```
-
-then in a regular shell:
-
-```bash
-cc-switch save 1   # saves the CURRENT live session as profile acc1
-```
-
-Run `cc-switch list` to check the saved account. To use a different account, disconnect the current one in the panel first.
-
-## Adding and deleting accounts (v1.19.0)
-
-**Why this became necessary.** An account can become unreachable: access to
-its mailbox or phone is lost and a fresh sign-in ("Log in again" asks for a
-confirmation in the browser) is no longer possible. A login lives ≈28 days from
-a real `/login` and is not extended (see the "login N d" chip on the card) —
-once it runs out the account starts failing with "Login expired" and there is
-nothing to log it in again with. The dead account stays in the rotation: a card
-with an error, wasted requests, warnings. Before, the only way to drop it was
-by hand on the file system. Now it is done from the panel, and a new account is
-added the same way without SSH.
-
-### Deleting an account for good
-
-The **"Delete"** button on a card → a window with a red **"This cannot be
-undone"** warning. The **"Delete for good"** button stays disabled until you
-type the word **"confirm"** (the Russian UI asks for «подтверждаю»); case and
-surrounding spaces do not matter. Both the page and the server check the word —
-an API request without it deletes nothing. Esc, "Cancel" and a click on the
-backdrop close the window without doing anything.
-
-- **What is wiped:** the whole profile folder `/root/.claude-profiles/accN/`
-  (the tokens live there), the account's rows in the snapshot, caches and
-  service state, and the "active" mark. There is no recycle bin and no undo: the
-  account disappears from the rotation and from the screen; the only way back
-  is adding it again (a fresh browser sign-in).
-- **The active account** can be deleted: the live session is first moved to
-  another suitable account (not Free, preferably with limit to spare). If there is nowhere
-  to move it, the deletion refuses and nothing is wiped.
-- **The last account** in the rotation cannot be deleted.
-- After a deletion `cc-switch` simply no longer sees the profile.
-
-### Adding an account
-
-The **"+"** button in the header (next to the "Models" gear, tooltip "Add an account") → a window:
-
-1. the account's email (optional — it pre-fills the sign-in page so you do not
-   have to type it again) → **"Get the sign-in link"**;
-2. open the link, sign in to the Claude account you want, paste the code from
-   the sign-in page → **"Add to rotation"**.
-
-A few seconds later there is a new card and the account takes part in
-auto-switching — nothing to configure by hand.
-
-- The sign-in runs in an isolated temp HOME (like "Log in again"), the live
-  Claude Code session is not touched.
-- The new profile takes the first empty installer slot, otherwise the next
-  `accN` number.
-- The same account cannot be added twice: "already in the rotation as accN".
-- A Free account is added but stays out of auto-switching until it is Pro
-  (Telegram warns about it). Since v1.23.0 it is also marked "inactive" and is not
-  polled at all until you press "I renewed".
-- An abandoned attempt (link fetched, code never entered) is dropped by itself
-  after about 10 minutes (checked on every limits poll) or by a new attempt.
-
-### Telegram and API
-
-If Telegram is set up, one message per action, for example:
-`🗑 Claude: аккаунт acc3 (…) удалён из ротации навсегда — …` and
-`➕ Claude: аккаунт acc4 (…, PRO) добавлен в ротацию. Теперь в ротации: 3
-(acc1, acc2, acc4).` (the bot's texts are Russian, as all of its messages).
-
-API (all with `?token=<hook_token>`, a JSON body; the optional `lang` field,
-`ru`/`en`, picks the language of the text in the response):
-
-| Request | What it does |
-|---|---|
-| `POST /api/account/delete` `{"account":"acc3","confirm":"confirm"}` | delete an account for good; without the right word — `ok:false`, nothing deleted |
-| `POST /api/account/add/start` `{"email":""}` | start a sign-in → `{url, slot}` |
-| `POST /api/account/add/submit` `{"slot":"acc4","code":"…"}` | finish the sign-in with the code from the page → the account is in the rotation |
+Connect Claude locally or over SSH in General settings. Connect Codex in its own settings. To change a sign-in, disconnect it and sign in again. Conversation history is retained.
 
 ## Background-job gate and limit pause (v1.2.0)
 
@@ -695,9 +602,7 @@ The commands need screen (`apt install screen`) and python3. To leave a console 
 
 | Command / URL | What it does |
 |---|---|
-| `cc-switch list` | which profiles exist, which one is active |
-| `cc-switch 1` | activate the saved Claude account |
-| `/cc/` (or `curl 127.0.0.1:8877/api/limits?token=<hook_token>`) | limits, auto-switch, console mirror |
+| `/cc/` (or `curl 127.0.0.1:8877/api/limits?token=<hook_token>`) | limits and console mirror |
 | `curl 127.0.0.1:8877/api/update?token=<hook_token>` | update state: installed and available version, mode, stage, result of the last update |
 | `curl 127.0.0.1:8877/api/pause?token=<hook_token>` | banner state: level (`none`/`gate`/`hard`/`week`/`weekrisk`), pause, nearest reset |
 | `python3 /opt/cc-limits/limits_gate.py` | may a background job start right now (rc `0`/`10`) |
@@ -789,7 +694,6 @@ cron line from `install.sh`, and restart the service.
 
 What the bot sends:
 
-- account auto-switches (and manual ones, including `cc-switch` from a shell);
 - "nothing to switch to" — every account above the threshold; at the weekly cap
   it says what happens: a pause or "the balancer won't stop it at 100%" (v1.21.0);
 - an account's week reached the 99% cap — one message per account per week,
@@ -853,6 +757,7 @@ really happens, and what to do about it — [ERRORS.en.md](ERRORS.en.md).
 - **v2.0.4** — A remembered Codex tab is not selected while Codex is unconnected and the Codex console does not start by itself without a ChatGPT login (it used to show "Not signed in to ChatGPT" on every page load).
 - **v2.0.3** — The split console and its part menus do not list Codex until it is connected; an unconnected Codex has no "Codex +" header button, the wizard opens from its ghost tile.
 - **v2.0.2** — The "Updates" block is now at the very top of the General settings window (above Claude, Codex and Telegram).
+- **v2.0.51** — One Claude and one Codex connection, quota holds, and a Codex Stop button.
 - **v2.0.50** — The Codex picker matches the running conversation; model and effort changes apply to the console with a clear pending state during replies.
 - **v2.0.49** — With the main Claude disconnected, the accounts strip no longer leaves an empty half: PROD spans the whole width.
 - **v2.0.48** — Without accounts on the main server, Claude DEV vanishes from the header, console tabs and accounts row. An abandoned, never-closed Codex turn no longer keeps the "Restart the Codex console" button grey.

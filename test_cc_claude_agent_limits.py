@@ -22,17 +22,14 @@ class States(unittest.TestCase):
     def states(self, local=None, remote=None, **policy):
         view = dict(threshold=90, weekly_cap=99, weekly_pause=True, pause={}, stale=False)
         view.update(policy)
-        return limits.agent_limits(view, dict(accounts=local or {}), remote or {}, now=NOW)
+        return limits.agent_limits(view, dict(accounts=local or {}, active=next(iter(local or {}), None)), remote or {}, now=NOW)
 
-    def test_two_claudes_keep_their_own_week_and_reset(self):
-        result = self.states({'a': row(100)}, {'r': row(99, reset=5 * 86400)})
-        self.assertEqual(set(result), {'claude', 'prod'})
-        self.assertEqual(result['claude']['pct'], 100)
+    def test_selected_remote_claude_ignores_older_local_snapshot(self):
+        result = self.states({'old': row(100)}, {'current': row(99, reset=5 * 86400)})
+        self.assertEqual(set(result), {'prod'})
         self.assertEqual(result['prod']['pct'], 99)
-        self.assertEqual(result['claude']['resume_at'], NOW + 7200)
         self.assertEqual(result['prod']['resume_at'], NOW + 5 * 86400)
-        self.assertTrue(all(s['waiting'] for s in result.values()))
-        self.assertFalse(result['claude']['can_override'])
+        self.assertTrue(result['prod']['waiting'])
         self.assertTrue(result['prod']['can_override'])
 
     def test_policy_threshold_is_not_hardcoded(self):
@@ -43,18 +40,9 @@ class States(unittest.TestCase):
         self.assertFalse(self.states(remote={'r': row(99)}, pause={'override_prod': True})['prod']['waiting'])
         self.assertFalse(self.states(remote={'r': row(99)}, weekly_pause=False)['prod']['waiting'])
         self.assertTrue(self.states(remote={'r': row(100)}, weekly_pause=False)['prod']['waiting'])
-        self.assertFalse(self.states({'a': row(99)}, level='manual')['claude']['waiting'])
+        self.assertFalse(self.states({'a': row(99)}, pause={'override': True})['claude']['waiting'])
         self.assertTrue(self.states(remote={'r':row(100)},pause={'override_prod':True})['prod']['waiting'])
 
-    def test_dev_and_prod_overrides_are_independent(self):
-        # регрессия: «отключить» на одном Claude снимало паузу и у второго
-        both = ({'a': row(99)}, {'r': row(99)})
-        dev_off = self.states(*both, pause={'override': True})
-        self.assertTrue(dev_off['claude']['override'] and not dev_off['claude']['waiting'])
-        self.assertTrue(not dev_off['prod']['override'] and dev_off['prod']['waiting'])
-        prod_off = self.states(*both, pause={'override_prod': True})
-        self.assertTrue(prod_off['prod']['override'] and not prod_off['prod']['waiting'])
-        self.assertTrue(not prod_off['claude']['override'] and prod_off['claude']['waiting'])
 
     def test_prod_guard_policy_carries_only_the_prod_override(self):
         # защита на сервере PROD получает флаг PROD, а не DEV
@@ -92,24 +80,16 @@ class States(unittest.TestCase):
             {'window':'5h','resume_at':NOW+9000}, {'window':'week','resume_at':NOW+7200}])
         self.assertNotIn('private', json.dumps(result))
 
-    def test_timers_come_from_the_same_nearest_account_not_different_accounts(self):
-        result=self.states({'a':row(100,session=100,reset=12000,session_reset=300),
-                            'b':row(100,session=100,reset=4000,session_reset=3000)})
-        self.assertEqual(result['claude']['windows'],[
-            {'window':'5h','resume_at':NOW+3000}, {'window':'week','resume_at':NOW+4000}])
 
     def test_confirmed_pause_remains_visible_without_fresh_percentages(self):
         remote_pause=dict(enabled=True,applied=True,blocked=True,resume_at=NOW+9000)
-        result=limits.agent_limits(dict(stale=True,pause=dict(active=True,resume_at=NOW+7200)),{}, {},remote_pause,now=NOW)
-        self.assertEqual(set(result),{'claude','prod'})
+        result=limits.agent_limits(dict(stale=True,remote=True,pause=dict(active=True,resume_at=NOW+7200)),{}, {},remote_pause,now=NOW)
+        self.assertEqual(set(result),{'prod'})
         self.assertEqual(result['prod']['window'],'pause')
         self.assertIsNone(result['prod']['pct'])
         remote_pause['applied']=False
         self.assertEqual(limits.agent_limits({}, {}, {},remote_pause,now=NOW),{})
 
-    def test_disabled_weekly_pause_does_not_claim_entire_pool_is_stopped(self):
-        result=self.states({'a':row(99),'b':row(100)},weekly_pause=False)
-        self.assertFalse(result['claude']['waiting'])
 
     def test_fresh_reset_removes_old_weekly_banner_while_prod_is_still_capped(self):
         result=self.states({'a':row(0)}, {'r':row(99)}, pause=dict(active=True,resume_at=NOW-10))

@@ -262,7 +262,7 @@ def _connect(fields):
     if R.local_claude_linked():
         return False, "Поддерживается один аккаунт Claude. Сначала отключи локальный аккаунт.", steps
     existing = R.members()
-    if existing and (len(existing) > 1 or not any(row.get("host") == f["host"] for row in existing.values())):
+    if existing and next(iter(existing.values())).get("host") != f["host"]:
         return False, "Сначала отключи уже подключённый сервер Claude.", steps
     back_host = f["back_host"] or default_back_host()
     if not back_host:
@@ -316,6 +316,11 @@ def _connect(fields):
         rec.pop("port", None)
     members[mid] = rec
     R.jsave(R.MEMBERS_FILE, members)
+    state_file = os.path.join(os.path.dirname(R.MEMBERS_FILE), "remote_mode.json")
+    state = R.jload(state_file, {}) or {}
+    if state.get("member") != mid:
+        state.update(member=mid, active=False, tg=True)
+        R.jsave(state_file, state)
     try:
         os.chmod(R.MEMBERS_FILE, 0o600)
     except OSError:
@@ -345,7 +350,11 @@ def _remove(member):
         auth_remove(k)
     auth_remove(MEMBER_ID)
     R.jsave(R.MEMBERS_FILE, members)
-    return True, "Второй сервер отключён: пара и ключ обратного входа убраны с этого сервера (на втором сервере ничего не удалялось)."
+    state_file = os.path.join(os.path.dirname(R.MEMBERS_FILE), "remote_mode.json")
+    state = R.jload(state_file, {}) or {}
+    state.update(active=False, member=ids[0], stage="")
+    R.jsave(state_file, state)
+    return True, "Сервер Claude отключён: пара и ключ обратного входа убраны с этого сервера (на втором сервере ничего не удалялось)."
 
 
 def status():

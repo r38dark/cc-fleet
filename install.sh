@@ -166,7 +166,7 @@ s2() {
   [ -f "$STATE_FILE" ] && [ "$NONINTERACTIVE" != "1" ] && { info "Нашёл ответы прошлой установки — они подставлены по умолчанию (Enter = оставить)."; . "$STATE_FILE"; }
   info "Ставим в $BASE, профили аккаунтов — в $PROFILES_DIR (стандартные пути)."
   ask SCREEN_SESSION "Имя screen-сессии, в которой живёт Claude Code" "$SCREEN_SESSION"
-  ask THRESHOLD "Порог авто-переключения, % занятости 5-часового окна" "$THRESHOLD"
+  ask THRESHOLD "Порог паузы, % занятости 5-часового окна" "$THRESHOLD"
   ask OWNER_NAME "Как к тебе обращаться (имя подставляется в записки агентам)" "${OWNER_NAME:-владелец}"
   [ -n "$TZ_NAME" ] || TZ_NAME="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
   ask TZ_NAME "Твой часовой пояс (IANA, например Europe/Moscow) — по нему показываются время сброса и записки" "${TZ_NAME:-UTC}"
@@ -309,8 +309,8 @@ s6() {
   CC_OWNER="$OWNER_NAME" python3 - "$BASE/config.json" "$HOOK_TOKEN" "$THRESHOLD" "$SCREEN_SESSION" "$PORT" "$SERVICE_NAME" "$TZ_NAME" "$WORK_DIR" "$BASE" "$BOT_TOKEN" "$CHAT_ID" "$([ "$WANT_NGINX" = y ] && echo "$DOMAIN")" "$([ "$WANT_HTTPS" = y ] && echo https || echo http)" "$INTERNAL_SECRET" <<'PYEOF'
 import json, os, sys
 path, token, threshold, screen, port, service, tz, work, base, bot, chat, domain, scheme, isecret = sys.argv[1:15]
-cfg = {"hook_token": token, "internal_secret": isecret, "autoswitch": True, "threshold": int(threshold), "poll_sec": 120, "switch_cooldown_sec": 300,
-       "optimize": False, "screen_session": screen, "port": int(port)}
+cfg = {"hook_token": token, "internal_secret": isecret, "threshold": int(threshold), "poll_sec": 120,
+       "screen_session": screen, "port": int(port)}
 if os.path.exists(path):
     try:
         old = json.load(open(path))
@@ -346,7 +346,7 @@ s7() {
   header 7
   cat > "/etc/systemd/system/$SERVICE_NAME.service" <<UNIT
 [Unit]
-Description=Claude accounts limits monitor + autoswitch (cc-fleet)
+Description=Claude and Codex usage monitor (cc-fleet)
 After=network-online.target
 
 [Service]

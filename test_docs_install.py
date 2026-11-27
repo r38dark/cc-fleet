@@ -85,7 +85,7 @@ class AgainstTheInstaller(unittest.TestCase):
             self.assertRegex(DOC, r"(?m)^## %s\. .*%s" % (n, topics[n]), "раздел %s не о «%s»" % (n, topics[n]))
 
     def test_installer_questions_are_all_in_the_doc(self):
-        for q in ("screen-сессии", "аккаунтов Claude", "Порог авто-переключения", "обращаться", "часовой пояс", "Рабочая папка", "nginx", "Telegram", "Codex", "Голос", "Хук очереди", "Стоп-кран"):
+        for q in ("screen-сессии", "аккаунтов Claude", "Порог паузы", "обращаться", "часовой пояс", "Рабочая папка", "nginx", "Telegram", "Codex", "Голос", "Хук очереди", "Стоп-кран"):
             self.assertIn(q.lower(), DOC.lower(), q)
 
     def test_paths_the_doc_mentions_exist_in_the_repository(self):
