@@ -76,26 +76,27 @@ class Base(unittest.TestCase):
         self.off_ok = {'ok': True}
         self.on_ok = {'ok': True}
 
-        def fake_off(reason, force, restore=True):
+        def fake_off():
+            restore = False
             self.calls.append(('off', restore))
             if self.off_ok.get('ok'):
                 M._save(active=False, member=None)
             return self.off_ok
 
-        def fake_on(mid, reason, queued, resume, tg_on=True, restore=True):
+        def fake_on(mid, telegram=True):
+            tg_on, restore = telegram, False
             self.calls.append(('on', tg_on, restore))
             if self.on_ok.get('ok'):
                 M._save(active=True, member=mid, tg=tg_on)
             return self.on_ok
 
-        self._orig = (M._off_job, M._on_job, M._prod_not_ready, M.ctl, M._local_busy)
-        M._off_job, M._on_job = fake_off, fake_on
-        M._prod_not_ready = lambda mid, force=False: self.prod_bad
+        self._orig = (M._stop_remote, M._start_remote, M.ctl, M._local_busy)
+        M._stop_remote, M._start_remote = fake_off, fake_on
         M.ctl = lambda m, args, timeout=150: {'ok': True, 'busy': self.prod_busy}
         M._local_busy = lambda: self.local_busy
 
     def tearDown(self):
-        M._off_job, M._on_job, M._prod_not_ready, M.ctl, M._local_busy = self._orig
+        M._stop_remote, M._start_remote, M.ctl, M._local_busy = self._orig
 
     def run_pair(self, kind, **kw):
         res = M.pair(kind, **kw)
@@ -168,7 +169,7 @@ class PairState(Base):
 
     def test_pair_locks_handoff_on_off(self):
         self.set_pair('orchestrator', 'executor')
-        for res in (M.handoff('dev'), M.on('prod'), M.off()):
+        for res in (M.handoff('dev'), M.handoff('codex')):
             self.assertFalse(res['ok'])
             self.assertIn('пара', res['message'])
         self.assertEqual(self.calls, [])
@@ -193,7 +194,7 @@ class PairFlows(Base):
     def test_prod_codex_from_dev(self):
         res = self.run_pair('prod_codex')
         self.assertTrue(res['started'])
-        self.assertEqual(self.calls, [('on', True, True)])
+        self.assertEqual(self.calls, [('on', True, False)])
         self.assertEqual(self.choices(), [{'claude': 'orchestrator', 'codex': 'executor'}])
         self.assertEqual(M.pair_kind(), 'prod_codex')
         self.assertEqual(M.mode().get('error'), '')
@@ -203,7 +204,7 @@ class PairFlows(Base):
         self.wk.profiles.scenario_result = {'ok': False, 'message': 'отказ'}
         self.run_pair('prod_codex')
         self.assertTrue(M.active())
-        self.assertIn('Работа осталась у Claude PROD', M.mode()['error'])
+        self.assertIn('отказ', M.mode()['error'])
 
     def test_prod_codex_prod_fails_to_start(self):
         self.on_ok = {'ok': False, 'message': 'нет'}
@@ -226,7 +227,7 @@ class PairFlows(Base):
 
     def test_codex_prod_from_dev(self):
         self.run_pair('codex_prod')
-        self.assertEqual(self.calls, [('on', False, True)])
+        self.assertEqual(self.calls, [('on', False, False)])
         self.assertEqual(self.choices(), [{'claude': 'executor', 'codex': 'orchestrator'}])
         self.assertEqual(M.pair_kind(), 'codex_prod')
         self.assertFalse(M.tg())
@@ -240,9 +241,9 @@ class PairFlows(Base):
     def test_codex_prod_scenario_fails_stops_prod(self):
         self.wk.profiles.scenario_result = {'ok': False, 'message': 'отказ'}
         self.run_pair('codex_prod')
-        self.assertEqual(self.calls, [('on', False, True), ('off', True)])
+        self.assertEqual(self.calls, [('on', False, False), ('off', False)])
         self.assertFalse(M.active())
-        self.assertIn('Claude на PROD остановлен', M.mode()['error'])
+        self.assertIn('отказ', M.mode()['error'])
 
     def test_off_from_prod_codex_keeps_prod_alone(self):
         self.set_pair('orchestrator', 'executor')
@@ -267,15 +268,6 @@ class PairFlows(Base):
         self.assertEqual(self.choices(), [])
         self.assertTrue(self.run_pair('off', force=True)['started'])
 
-    def test_not_active_checks_prod_and_local_busy(self):
-        self.prod_bad = 'PROD не готов: нет связи.'
-        self.assertFalse(M.pair('prod_codex')['ok'])
-        self.prod_bad = ''
-        self.local_busy = True
-        res = M.pair('codex_prod')
-        self.assertFalse(res['ok'])
-        self.assertTrue(res['busy'])
-        self.assertEqual(self.calls, [])
 
 
 class PairRoute(Base):

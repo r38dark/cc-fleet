@@ -1,6 +1,6 @@
-"""Мастер «Второй сервер»: подключение второго сервера, на который панель передаёт работу Claude (по ssh).
+"""Мастер «Подключение Claude»: подключение второго сервера, на который панель передаёт работу Claude (по ssh).
 
-Что делает мастер (кнопки в «Общие настройки» → «Второй сервер»):
+Что делает мастер (кнопки в «Общие настройки» → «Подключение Claude»):
   1. «Проверить»   — заходит на второй сервер по ключу панели и проверяет: вход по ssh, root, python3, tmux, rsync, Claude Code
                     (/usr/bin/claude), вход Claude (.credentials.json), Telegram-плагин. Нужное и недостающее показывает списком.
   2. «Установить недостающее» — apt-get install tmux rsync python3 (если на втором сервере есть apt).
@@ -162,14 +162,14 @@ def probe(m):
     elif other:
         hint = "Claude Code найден в %s, а панель ждёт /usr/bin/claude: выполни на втором сервере  ln -sf %s /usr/bin/claude" % (other, other)
     else:
-        hint = "Поставь Claude Code на втором сервере (см. инструкцию, раздел «Второй сервер»), затем проверь ещё раз."
+        hint = "Поставь Claude Code на втором сервере (см. инструкцию, раздел «Подключение Claude»), затем проверь ещё раз."
     checks.append({"id": "claude", "label": "Claude Code (/usr/bin/claude)", "ok": cl, "block": True, "hint": hint})
     login = info.get("login") == "yes"
     checks.append({"id": "login", "label": "Вход Claude на втором сервере", "ok": login, "block": False,
                    "hint": "" if login else "Не обязательно сейчас: после подключения нажми «Войти заново» на карточке второго сервера."})
     tg = bool(info.get("tg"))
     checks.append({"id": "tg", "label": "Telegram-плагин Claude", "ok": tg, "block": False,
-                   "hint": "" if tg else "Нужен, чтобы на втором сервере Claude отвечал в Telegram (инструкция: «Второй сервер» → Telegram)."})
+                   "hint": "" if tg else "Нужен, чтобы на втором сервере Claude отвечал в Telegram (инструкция: «Подключение Claude» → Telegram)."})
     ready = all(c["ok"] for c in checks if c.get("block"))
     return {"checks": checks, "ready": ready, "apt": apt, "missing": missing}
 
@@ -244,7 +244,12 @@ def auth_remove(member=MEMBER_ID):
 
 # ---------------------------------------------------------------- подключение
 def connect(fields):
-    """Подключает второй сервер. → (ok, сообщение, шаги [{"label", "ok"}])."""
+    """Connect the single Claude account on a remote server."""
+    with R.claude_account_lock():
+        return _connect(fields)
+
+
+def _connect(fields):
     steps = []
 
     def step(label, ok, extra=""):
@@ -254,6 +259,11 @@ def connect(fields):
     ok, msg, f = valid_fields(fields.get("host"), fields.get("port"), fields.get("user"), fields.get("tmux"), fields.get("back_host"))
     if not ok:
         return False, msg, steps
+    if R.local_claude_linked():
+        return False, "Поддерживается один аккаунт Claude. Сначала отключи локальный аккаунт.", steps
+    existing = R.members()
+    if existing and next(iter(existing.values())).get("host") != f["host"]:
+        return False, "Сначала отключи уже подключённый сервер Claude.", steps
     back_host = f["back_host"] or default_back_host()
     if not back_host:
         return False, "Не определил адрес этого сервера для второго: впиши его в поле «Адрес этого сервера».", steps
@@ -306,6 +316,11 @@ def connect(fields):
         rec.pop("port", None)
     members[mid] = rec
     R.jsave(R.MEMBERS_FILE, members)
+    state_file = os.path.join(os.path.dirname(R.MEMBERS_FILE), "remote_mode.json")
+    state = R.jload(state_file, {}) or {}
+    if state.get("member") != mid:
+        state.update(member=mid, active=False, tg=True)
+        R.jsave(state_file, state)
     try:
         os.chmod(R.MEMBERS_FILE, 0o600)
     except OSError:
@@ -319,6 +334,11 @@ def connect(fields):
 
 
 def remove(member=MEMBER_ID):
+    with R.claude_account_lock():
+        return _remove(member)
+
+
+def _remove(member):
     """Убирает пару и ключ обратного ssh с этого сервера. → (ok, сообщение)."""
     members = R.jload(R.MEMBERS_FILE, {})
     members = members if isinstance(members, dict) else {}
@@ -330,7 +350,11 @@ def remove(member=MEMBER_ID):
         auth_remove(k)
     auth_remove(MEMBER_ID)
     R.jsave(R.MEMBERS_FILE, members)
-    return True, "Второй сервер отключён: пара и ключ обратного входа убраны с этого сервера (на втором сервере ничего не удалялось)."
+    state_file = os.path.join(os.path.dirname(R.MEMBERS_FILE), "remote_mode.json")
+    state = R.jload(state_file, {}) or {}
+    state.update(active=False, member=ids[0], stage="")
+    R.jsave(state_file, state)
+    return True, "Сервер Claude отключён: пара и ключ обратного входа убраны с этого сервера (на втором сервере ничего не удалялось)."
 
 
 def status():
@@ -344,6 +368,7 @@ def status():
     except Exception as exc:
         pub, kerr = "", str(exc)[:160]
     return {"ok": True, "pub": pub, "key_error": kerr, "default_tmux": DEFAULT_TMUX, "back_host": default_back_host(),
+            "local_claude_linked": R.local_claude_linked(),
             "member": ({"host": m.get("host"), "port": m.get("port") or 22, "tmux": m.get("tmux") or DEFAULT_TMUX,
                         "back_host": m.get("back_host") or "", "label": m.get("label") or ""} if m else None)}
 
@@ -407,13 +432,14 @@ function list(items){return '<ul class="rs-list">'+items.map(function(c){var ic=
 function render(){
  if(!sec||!st)return;var body=sec.querySelector('[data-body]');
  if(st.member){
-  body.innerHTML='<div class="fleet-catalog-note">Подключён: <b>'+esc(st.member.host)+'</b>'+(st.member.port&&st.member.port!=22?':'+esc(st.member.port):'')+' · сессия tmux «'+esc(st.member.tmux)+'» · обратный адрес этого сервера: '+esc(st.member.back_host||'—')+'. Вход в Claude на втором сервере — кнопка «Войти заново» на его карточке.</div>'
+  body.innerHTML='<div class="fleet-catalog-note">Claude подключён по SSH · <b>'+esc(st.member.host)+'</b>'+(st.member.port&&st.member.port!=22?':'+esc(st.member.port):'')+' · сессия tmux «'+esc(st.member.tmux)+'» · обратный адрес этого сервера: '+esc(st.member.back_host||'—')+'. Вход в Claude на втором сервере — кнопка «Войти заново» на его карточке.</div>'
    +'<div class="rs-acts"><button type="button" class="ghostbtn" id="rsRecheck">Проверить связь</button><button type="button" class="ghostbtn" id="rsDrop">Отключить</button></div><div id="rsOut"></div><div class="rs-msg" id="rsMsg"></div>';
   $i('rsRecheck').onclick=function(){run('check',{host:st.member.host,port:st.member.port,back_host:st.member.back_host,tmux:st.member.tmux})};
   $i('rsDrop').onclick=function(){if(!confirm('Отключить второй сервер? Пара и ключ обратного входа уберутся с этого сервера, на втором ничего не удалится.'))return;api('remote/setup/remove',{}).then(function(d){msg(d.message,d.ok?'ok':'bad');if(d.ok)load()})};
   return}
+ if(st.local_claude_linked){body.innerHTML='<div class="fleet-catalog-note">Claude уже подключён на этом сервере. Чтобы использовать Claude на другом сервере, сначала отключи локальный аккаунт.</div>';return}
  var cmd="echo '"+st.pub+"' >> /root/.ssh/authorized_keys";
- body.innerHTML='<div class="fleet-catalog-note">Второй сервер — машина, на которую панель передаёт работу Claude (когда лимит кончился здесь). Нужен доступ по ssh под root.</div>'
+ body.innerHTML='<div class="fleet-catalog-note">Подключи Claude на другом сервере. Нужен доступ по SSH под root.</div>'
   +'<div class="rs-step"><i>1</i>Шаг 1 из 3 · Ключ панели — добавь на втором сервере</div>'
   +'<div class="fleet-catalog-note">Выполни на втором сервере эту команду (или вставь строку в /root/.ssh/authorized_keys):</div><pre id="rsKey">'+esc(cmd)+'</pre><div class="rs-acts"><button type="button" class="ghostbtn" id="rsCopy">Скопировать команду</button></div>'
   +'<div class="rs-step"><i>2</i>Шаг 2 из 3 · Адрес второго сервера и проверка</div>'
@@ -446,7 +472,7 @@ function poll(jid,what,f){api('remote/setup/job').then(function(j){
 function load(){return api('remote/setup').then(function(d){if(d&&d.ok){st=d;render()}})}
 function place(){var c=document.querySelector('#scrim .fleet-common-settings');if(!c)return false;
  if(!sec){sec=document.createElement('section');sec.className='fleet-settings-group';sec.id='fleetRemoteSetup';
-  sec.innerHTML='<div class="fleet-settings-group-title">Второй сервер</div><div data-body><div class="fleet-catalog-note">Загрузка…</div></div>';c.append(sec);load()}
+  sec.innerHTML='<div class="fleet-settings-group-title">Подключение Claude</div><div data-body><div class="fleet-catalog-note">Загрузка…</div></div>';c.append(sec);load()}
  else if(c.lastElementChild!==sec&&!c.contains(document.activeElement))c.append(sec);
  return true}
 var n=0;(function tryPlace(){if(!place()&&++n<40)setTimeout(tryPlace,250)})();
@@ -461,7 +487,7 @@ def inject(page):
 
 
 def install(ns):
-    """Маршруты /api/remote/setup* и блок «Второй сервер» в «Общие настройки»."""
+    """Маршруты /api/remote/setup* и блок «Подключение Claude» в «Общие настройки»."""
     base = ns["H"]
     posts = ("/api/remote/setup/check", "/api/remote/setup/fix", "/api/remote/setup/connect", "/api/remote/setup/remove")
 

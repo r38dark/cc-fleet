@@ -1,4 +1,6 @@
 """Удалённые Claude-аккаунты (на чужом сервере): запись, лимиты по ssh, состояние. Токены остаются на их сервере."""
+import contextlib
+import fcntl
 import json
 import os
 import re
@@ -14,6 +16,24 @@ LIMIT_SEC = 300      # 99–100 %: упёрлись в потолок — тол
 LINK_GRACE = 90.0   # обрыв ssh короче этого (дом/VPN моргнул) не показываем как «нет связи»: держим прежний вид
 LINK_RETRY = 20.0   # ...а перепроверяем через столько секунд, не через весь кэш
 USAGE_REMOTE = "/root/cc-remote/usage.py"
+
+
+@contextlib.contextmanager
+def claude_account_lock(base=None):
+    """Serialize local login writes, restores and remote registration, including CLI imports."""
+    lock_dir = base or os.path.dirname(MEMBERS_FILE) or "."
+    fd = os.open(os.path.join(lock_dir, ".claude-account-admission"), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def local_claude_linked(profiles=None):
+    """Empty installer slots and disconnected profiles do not occupy the Claude slot."""
+    import cc_backup
+    return bool(cc_backup.real_names(profiles or os.environ.get("CC_LIMITS_PROFILES", "/root/.claude-profiles")))
 
 
 def jload(path, default):
@@ -33,7 +53,12 @@ def jsave(path, data):
 
 def members():
     d = jload(MEMBERS_FILE, {})
-    return {k: v for k, v in d.items() if isinstance(v, dict) and v.get("host")} if isinstance(d, dict) else {}
+    rows = {k: v for k, v in d.items() if isinstance(v, dict) and v.get("host")} if isinstance(d, dict) else {}
+    state = jload(os.path.join(os.path.dirname(MEMBERS_FILE), "remote_mode.json"), {})
+    current = state.get("member") if isinstance(state, dict) else None
+    if current:
+        return {current: rows[current]} if current in rows else {}
+    return rows if len(rows) == 1 else {}
 
 
 MUX_DIR = os.path.join(BASE, "ssh-mux")   # сокеты общего ssh-соединения (каталог 0700)

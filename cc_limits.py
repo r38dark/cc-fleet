@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.50"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.0.51"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -34,7 +34,6 @@ TG_ENV = "/root/.claude/channels/telegram/.env"
 CONFIG = os.path.join(BASE, "config.json")
 SNAPSHOT = os.path.join(BASE, "snapshot.json")
 STATE = os.path.join(BASE, "state.json")
-SWITCH_LOG = os.path.join(BASE, "switch_log.jsonl")  # аудит forced-веток optimize_check
 POLL_STATE = os.path.join(BASE, "poll_state.json")  # расписание опроса по аккаунтам (cc_poll)
 FAIL_LOG = os.path.join(BASE, "usage_fail.jsonl")  # журнал сбоев опроса: подбирать константы cc_poll
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"  # публичный client_id Claude Code
@@ -192,7 +191,7 @@ def _codex_console_plan():
     """Права и папка консоли Codex — те же, что у моста Telegram (настройки «Доступ»/режим); → (песочница, папка, слот)."""
     s = cc_codex_bridge.load()
     sandbox, cwd = cc_codex_bridge.plan(s)
-    return sandbox, cwd, s.get("slot")
+    return sandbox, cwd, next(iter(cc_codex.profile_slots()), "")
 
 
 cc_codex_console.BASE = BASE
@@ -226,6 +225,8 @@ def profile_names():
 
 def active_name():
     uuid = (jload(LIVE_CFG, {}) or {}).get("oauthAccount", {}).get("accountUuid")
+    if not uuid:
+        return None
     for n in profile_names():
         oa = jload(f"{PROFILES}/{n}/oauth_account.json", {})
         if oa.get("accountUuid") == uuid:
@@ -322,7 +323,7 @@ def relogin_start(name, new_email=None):
     # вход нового аккаунта в свободный слот name (см. addacct_start)
     _relogin_sweep()
     if new_email is None:
-        if name not in profile_names():
+        if name != active_name() or cc_remote.members():
             return False, "неизвестный аккаунт", None
         oa = jload(f"{PROFILES}/{name}/oauth_account.json", {})
         email = oa.get("emailAddress", "")
@@ -377,32 +378,29 @@ def relogin_submit(name, code, new=False, lang="ru"):
         return False, _t(lang,
                          "Логин не завершился — код мог быть неверным, просроченным или ещё не подтверждён в браузере. Попробуй ещё раз (кнопка «Войти заново» заново) или проверь, что вход в браузере точно завершён.",
                          "Sign-in did not complete — the code may be wrong, expired, or not yet confirmed in the browser. Try again (the Log in again button) or make sure the browser sign-in really finished."), None
-    with lock:  # один захват на весь критический участок — collect() ниже lock уже не берёт
+    with lock, cc_remote.claude_account_lock(BASE):
         keep_login = False
         try:
             creds = jload(creds_path)
             oa = (jload(os.path.join(home, ".claude.json"), {}) or {}).get("oauthAccount")
+            saved_uuid = (jload(f"{PROFILES}/{name}/oauth_account.json", {}) or {}).get("accountUuid")
+            if not new and saved_uuid and (oa or {}).get("accountUuid") != saved_uuid:
+                return False, _t(lang, "Это другой аккаунт Claude. Для замены сначала отключи текущий.",
+                                 "This is a different Claude account. To replace it, disconnect the current one first."), None
             if new:
                 # без accountUuid профиль не опознать (ни в ротации, ни как активный)
                 if not (oa and oa.get("accountUuid")):
                     return False, _t(lang, "Вход прошёл, но Claude Code не вернул данные аккаунта — попробуй ещё раз.",
                                      "Signed in, but Claude Code returned no account data — try again."), None
-                dup = next((n for n in _real_names()
-                            if (jload(f"{PROFILES}/{n}/oauth_account.json", {}) or {}).get("accountUuid") == oa["accountUuid"]), None)
-                if dup:
-                    em = oa.get('emailAddress', '?')
-                    return False, _t(lang, f"Этот аккаунт ({em}) уже в ротации как {dup} — второй раз добавлять не нужно.",
-                                     f"This account ({em}) is already in the rotation as {dup} — no need to add it twice."), None
-                if name in _real_names():  # слот заняли, пока шёл вход
-                    return False, _t(lang, "Слот уже занят — начни добавление заново.",
-                                     "That slot has just been taken — start adding again."), None
+                if claude_account_connected():
+                    return False, claude_account_limit_message(lang), None
                 os.makedirs(f"{PROFILES}/{name}", exist_ok=True)
                 os.chmod(f"{PROFILES}/{name}", 0o700)  # слот установщика мог быть создан с 755
             jsave(f"{PROFILES}/{name}/credentials.json", creds)
             if oa:
                 jsave(f"{PROFILES}/{name}/oauth_account.json", oa)
             act = active_name()
-            if act == name:  # перелогинили АКТИВНЫЙ профиль — продублировать в live-файлы
+            if new or act == name:  # записываем подключение, которым пользуется Claude Code
                 try:
                     cc_lock.swap_live(LIVE_CREDS, creds, LIVE_CFG, oa,
                                       os.path.dirname(LIVE_CREDS), os.path.dirname(LIVE_CFG))
@@ -419,13 +417,11 @@ def relogin_submit(name, code, new=False, lang="ru"):
     row = (snap.get("accounts") or {}).get(name, {})
     email = row.get("email", name)
     if new:
-        cnt, names = _rotation_text()
         plan = row.get("plan")
         tg_notify(f"➕ Claude: аккаунт {name} ({email}" + (f", {plan.upper()}" if plan else "")
-                  + f") добавлен в ротацию. Теперь в ротации: {cnt} ({names})."
-                  + (" ⚠️ Сейчас это Free — в авто-переключении он не участвует, пока не станет Pro." if plan == "free" else ""))
-        return True, _t(lang, f"✅ {email} добавлен в ротацию как {name}.",
-                        f"✅ {email} added to the rotation as {name}."), snap
+                  + ") подключён.")
+        return True, _t(lang, f"✅ Аккаунт Claude {email} подключён.",
+                        f"✅ Claude account {email} is connected."), snap
     tg_notify(f"🔑 Claude: аккаунт {name} ({email}) перелогинен через сайт — токен обновлён.")
     return True, _t(lang, f"✅ {email} — вход выполнен, токен обновлён.",
                     f"✅ {email} — signed in, token refreshed."), snap
@@ -454,9 +450,13 @@ def _real_names():
     return [n for n in profile_names() if _is_real(n)]
 
 
-def _rotation_text():
-    names = _real_names()
-    return len(names), ", ".join(names) or "—"
+def claude_account_connected():
+    return bool(active_name() or cc_remote.members())
+
+
+def claude_account_limit_message(lang="ru"):
+    return _t(lang, "Поддерживается один аккаунт Claude. Сначала отключи текущее подключение.",
+              "Only one Claude account is supported. Disconnect Claude first.")
 
 
 def _free_slot():
@@ -478,35 +478,13 @@ def _free_slot():
 def addacct_start(email, lang="ru"):
     """→ (ok, url|message, slot, email). Почта необязательна: уходит в ссылку входа как подсказка."""
     email = (email or "").strip()
+    if claude_account_connected():
+        return False, claude_account_limit_message(lang), None, None
     if email and not _EMAIL_RE.match(email):
         return False, _t(lang, "Почта выглядит некорректно.", "The email looks invalid."), None, None
     slot = _free_slot()
     ok, url_or_msg, em = relogin_start(slot, new_email=email)
     return ok, url_or_msg, slot, em
-
-
-def _move_off(name):
-    """Активный аккаунт удаляют — сначала перевести живую сессию на другой. → (target|None, причина)."""
-    accs = (jload(SNAPSHOT) or {}).get("accounts") or {}
-    c = cfg()
-    thr, cap = c.get("threshold", 85), c.get("weekly_cap", 99)
-    cands = []
-    for n in _real_names():
-        if n == name:
-            continue
-        row = accs.get(n) or {}
-        if row.get("plan") == "free":
-            continue  # cc-switch на Free всё равно откажет
-        free_now = bool(row) and cc_avail.availability(row, thr, cap)[0]
-        fh = (row.get("five_hour") or {}).get("pct")
-        cands.append((0 if free_now else 1, fh if fh is not None else 101, n))
-    last = "нет другого пригодного аккаунта (остальные Free или без токенов)"
-    for _a, _b, n in sorted(cands):
-        ok, out = do_switch(n)
-        if ok:
-            return n, ""
-        last = out
-    return None, last
 
 
 def backup_status():
@@ -528,10 +506,9 @@ def delete_account(name, confirm, lang="ru"):
     if os.path.islink(pdir):
         return False, _t(lang, "Профиль — символическая ссылка, удалять не буду.",
                          "The profile is a symbolic link — refusing to delete it."), None
-    with lock:
+    with lock, cc_remote.claude_account_lock(BASE):
         oa = jload(f"{pdir}/oauth_account.json", {}) or {}
         email = oa.get("emailAddress") or ""
-        moved = None
         was_active = active_name() == name
         # Some CLI versions leave the token file without oauthAccount metadata.
         # Only compare non-empty tokens when no live identity is known.
@@ -549,12 +526,7 @@ def delete_account(name, confirm, lang="ru"):
         except (OSError, ValueError):
             return False, _t(lang, 'Не удалось безопасно прочитать авторизацию — отключение отменено.',
                              'Could not safely read authorization — disconnect cancelled.'), None
-        if was_active and len(_real_names()) > 1:
-            moved, why = _move_off(name)
-            if not moved:
-                return False, _t(lang, "Это активный аккаунт, а переключить сессию на другой не удалось — ничего не удалено. ",
-                                 "This is the active account and the session could not be moved to another one — nothing was deleted. ") + why, None
-        elif was_active:
+        if was_active:
             # The last login must not survive in a running process or in live credentials.
             scr = cfg().get('screen_session', 'claude')
             if _current_screen_pid(scr):
@@ -575,7 +547,7 @@ def delete_account(name, confirm, lang="ru"):
             return False, _t(lang, 'Не удалось исключить вход из восстановления резервных копий.',
                              'Could not exclude the login from backup restoration.'), None
         try:
-            if was_active and not moved:
+            if was_active:
                 with cc_lock.oauth_lock(os.path.dirname(LIVE_CREDS), os.path.dirname(LIVE_CFG)):
                     cc_disconnect.drop_keys(LIVE_CREDS, ('claudeAiOauth',))
                     with cc_lock.config_lock(LIVE_CFG):
@@ -597,10 +569,7 @@ def delete_account(name, confirm, lang="ru"):
                 st[k].pop(name, None)
         if (st.get("manual_hold") or {}).get("account") == name:
             st.pop("manual_hold", None)
-        if moved:
-            st["known_active"] = moved
-            st["last_switch_ts"] = time.time()
-        elif st.get("known_active") == name:
+        if st.get("known_active") == name:
             st["known_active"] = active_name()
         jsave(STATE, st)
         snap = jload(SNAPSHOT) or {}
@@ -609,13 +578,10 @@ def delete_account(name, confirm, lang="ru"):
             snap["active"] = None
         jsave(SNAPSHOT, snap)
         snap = snap_set_active()
-    cnt, names = _rotation_text()
-    who = f"{name} ({email})" if email else f"{name} ({_t(lang, 'пустой слот', 'empty slot')})"
-    tg_notify(f"Claude: аккаунт {who} отключён — вход удалён, история и файлы сохранены."
-              + (f" Живая сессия переведена на {moved}." if moved else "")
-              + f" В ротации осталось: {cnt} ({names}).")
-    return True, (_t(lang, f'{who} отключён. История и файлы сохранены.', f'{who} disconnected. History and files retained.')
-                  + (_t(lang, f" Сессия переведена на {moved}.", f" Session moved to {moved}.") if moved else "")), snap
+    who = f"{name} ({email})" if email else name
+    tg_notify(f"Claude: аккаунт {who} отключён — вход удалён, история и файлы сохранены.")
+    return True, _t(lang, f"{who} отключён. История и файлы сохранены.",
+                    f"{who} disconnected. History and files retained."), snap
 
 
 def fetch_usage(access):
@@ -749,7 +715,8 @@ def collect(force=False, force_account=None, renew_account=None):
     st_pre = jload(STATE, {}) or {}
     lapsed_pre = st_pre.get("lapsed") or {}
     plans_pre = st_pre.get("plans") or {}
-    for n in profile_names():
+    names = [act] if act and not cc_remote.members() else []
+    for n in names:
         oa = jload(f"{PROFILES}/{n}/oauth_account.json", {})
         row = {"email": oa.get("emailAddress", "?"), "active": n == act}
         # (lapsed) аккаунт, слетевший с Pro на Free (план подтверждён, см. блок ниже), не опрашиваем
@@ -889,17 +856,6 @@ def collect(force=False, force_account=None, renew_account=None):
     if ap:
         jsave(POLL_STATE, {k: v for k, v in sched.items() if k in accounts})
     jsave(GOOD, good)
-    # детект внешнего переключения: cc-switch из консоли мимо этого сервиса.
-    # Переключения через /api/switch и авто/оптимизацию сами обновляют
-    # known_active — сюда попадает только то, что сделали руками извне.
-    st0 = jload(STATE, {})
-    if st0.get("known_active") != act:
-        if st0.get("known_active") and act:
-            email = (accounts.get(act) or {}).get("email", "")
-            tg_notify("👆 Claude: аккаунт переключён извне (cc-switch из консоли): %s → %s (%s)."
-                      % (st0["known_active"], act, email))
-        st0["known_active"] = act
-        jsave(STATE, st0)
     # смена плана (Pro истёк / продлён) — уведомить и показать в снимке только
     # после 2 одинаковых подряд чтений. Anthropic у себя не мгновенно консистентен
     # на грани подписки (похоже на повторные попытки списания/отмены) — одиночные
@@ -941,7 +897,7 @@ def collect(force=False, force_account=None, renew_account=None):
         if p == "free":
             tg_notify(f"⛔ Claude: аккаунт {n} ({email}) слетел с Pro в Free — пора продлевать подписку. Из ротации исключён, опрос остановлен до нажатия «Я продлил».")
         else:
-            tg_notify(f"✅ Claude: аккаунт {n} ({email}) снова {p.upper()} — вернул в ротацию.")
+            tg_notify(f"✅ Claude: аккаунт {n} ({email}) снова {p.upper()} — лимиты снова доступны.")
             if was == "free":
                 # продление, замеченное фоном (кнопка «Я продлил» могла не
                 # дождаться Anthropic) — якорь таймера = момент нажатия, если был
@@ -992,7 +948,7 @@ def collect(force=False, force_account=None, renew_account=None):
         if n in lapsed:
             row["lapsed"] = True
             row["lapsed_since"] = (lapsed[n] or {}).get("since")
-    snap = {"ts": int(time.time()), "active": act, "accounts": accounts}
+    snap = {"ts": int(time.time()), "active": act, "accounts": accounts, "single_account": True}
     jsave(SNAPSHOT, snap)
     return snap
 
@@ -2044,9 +2000,8 @@ _SPINNER_RE = re.compile(
     r"^\s*(?:\S{1,2}\s+)?[A-Za-z][\w-]*(?:…|&|\.\.\.)\s*"
     r"\((?:(?:\d+h\s*)?(?:\d+m\s*)?\d+s\b|esc to interrupt)", re.M)
 # idle_n — сколько тиков сторожа подряд спиннера нет: один битый кадр hardcopy не
-# должен выглядеть паузой. defer_pending ставит optimize_check, пока ждёт паузу.
-_BUSY = {"idle_n": 99, "tick_ts": 0.0, "defer_pending": False, "wake_ts": 0.0}
-_POLL_WAKE = threading.Event()
+# должен выглядеть паузой.
+_BUSY = {"idle_n": 99, "tick_ts": 0.0}
 
 
 def _busy_tick(txt):
@@ -2056,11 +2011,6 @@ def _busy_tick(txt):
         _BUSY["idle_n"] = 0
         return
     _BUSY["idle_n"] += 1
-    # пауза только что началась, а плановое переключение ждёт её — будим poll_loop,
-    # не дожидаясь poll_sec (иначе короткую паузу между ходами можно проспать)
-    if _BUSY["idle_n"] == 2 and _BUSY["defer_pending"] and time.time() - _BUSY["wake_ts"] > 60:
-        _BUSY["wake_ts"] = time.time()
-        _POLL_WAKE.set()
 
 
 def session_busy():
@@ -2223,150 +2173,19 @@ def send_codex_setup(lang="ru"):
         return False, False
 
 
+def selected_snapshot(snap):
+    act = active_name() if not cc_remote.members() else None
+    row = (snap.get("accounts") or {}).get(act)
+    return dict(snap, active=act, accounts={act: dict(row, active=True)} if row else {})
+
+
 def snap_set_active():
-    # после переключения обновить в снапшоте только флаги active — без похода в API
-    snap = jload(SNAPSHOT) or {}
-    act = active_name()
-    snap["active"] = act
-    for n, row in (snap.get("accounts") or {}).items():
-        row["active"] = n == act
+    snap = selected_snapshot(jload(SNAPSHOT) or {})
     jsave(SNAPSHOT, snap)
     return snap
 
 
-def do_switch(target):
-    p = subprocess.run(["/usr/local/bin/cc-switch", target], capture_output=True, text=True, timeout=30)
-    ok = p.returncode == 0
-    return ok, (p.stdout + p.stderr).strip()
-
-
-def autoswitch_check(snap):
-    c = cfg()
-    if not c.get("autoswitch", True):
-        return
-    thr = c.get("threshold", 85)
-    st = jload(STATE, {})
-    act = snap.get("active")
-    accs = snap.get("accounts", {})
-    if not act or act not in accs:
-        return
-    cap = c.get("weekly_cap", 99)
-    act_free = accs[act].get("plan") == "free"
-    cur = (accs[act].get("five_hour") or {}).get("pct")
-    cur_w = (accs[act].get("seven_day") or {}).get("pct")
-    act_ok, _t, act_why = cc_avail.availability(accs[act], thr, cap)
-    if not act_free:
-        if act_ok:
-            st["all_high_notified"] = False
-            jsave(STATE, st)
-            return
-        # ручной выбор: человек сознательно взял забитый аккаунт (сессия выше порога или неделя
-        # на потолке) — не трогать до сброса этого окна или до 100%
-        if cc_avail.manual_pick(st.get("manual_hold"), act, accs[act]):
-            return
-    # кулдаун против пинг-понга; с мёртвого (100% сессии/недели) и с недельного потолка
-    # уходим без него: неделя держит днями, вернуться туда балансер не сможет
-    week_full = not act_free and cur_w is not None and cur_w >= cap
-    if (not _dead(accs[act]) and not week_full
-            and time.time() - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600)):
-        return
-    # кандидаты: не активный, без ошибок, пригодный сейчас (сессия и неделя ниже порогов, не Free)
-    cand = []
-    for n, row in accs.items():
-        if n == act or row.get("error"):
-            continue
-        fh = (row.get("five_hour") or {}).get("pct")
-        if fh is None:
-            continue
-        if cc_avail.availability(row, thr, cap)[0]:
-            cand.append((fh, n))
-    if not cand:
-        if _handoff_coming():
-            return  # работа уходит на Claude PROD: «некуда» неправда, флаг эпизода не ставим — если передача не выйдет, сообщение уйдёт на следующем проходе
-        text, lvl = _nowhere_text(accs, act, act_free)
-        if not st.get("all_high_notified") or _week_news(st, lvl):
-            _notice_send(text, lvl)
-            st["all_high_notified"] = True
-            st["nowhere_lvl"] = lvl
-            jsave(STATE, st)
-        return
-    cand.sort()
-    fh, target = cand[0]
-    ok, out = do_switch(target)
-    st["last_switch_ts"] = time.time()
-    st["all_high_notified"] = False
-    week_why = not act_free and "сессия" not in act_why
-    if ok:
-        st["known_active"] = target
-        if (st.get("manual_hold") or {}).get("account") == act:
-            st.pop("manual_hold", None)  # ручной выбор отработал: аккаунт дошёл до 100%
-        if week_why:
-            # это сообщение и есть предупреждение о недельном потолке — _week_cap_warn() второго не шлёт
-            st.setdefault("week_warned", {})[act] = _week_key(accs[act].get("seven_day") or {})
-    jsave(STATE, st)
-    email = accs[target].get("email", target)
-    wreset = (accs[act].get("seven_day") or {}).get("resets_at")
-    why = (f"аккаунт {act} слетел в Free" if act_free
-           else f"сессия {act} дошла до {cur}%" if not week_why
-           else f"неделя {act} дошла до {round(cur_w or 0)}% (потолок {cap:g}%), до сброса недели"
-                + (f" ({_local_dhm(wreset)})" if wreset else "") + " балансер его не берёт")
-    if ok:
-        tg_notify(f"🔄 Claude: {why} — авто-переключил на {target} ({email}, сессия {fh}%). Рестарт не нужен.")
-        snap_set_active()
-    else:
-        tg_notify(f"⚠️ Claude: авто-переключение на {target} не удалось: {out}")
-
-
-_dead = cc_avail.dead  # аккаунт упёрся в 100% сессии или недели — работать на нём нельзя совсем
-
-
-def _manual_until(row):
-    """До когда держать ручной выбор аккаунта: он не пригоден по сессии или неделе — до сброса
-    позднейшего из держащих окон (cc_avail знает, какие держат); пригоден или Free — 0, пина нет."""
-    c = cfg()
-    ok, ts, why = cc_avail.availability(row, c.get("threshold", 85), c.get("weekly_cap", 99))
-    if ok or why == "free" or row.get("error"):
-        return 0
-    return ts or time.time() + (5 * 3600 if why == "сессия" else 7 * 86400)
-
-
-def _hours_until(iso, default_h):
-    try:
-        from datetime import datetime
-        return max((datetime.fromisoformat(iso).timestamp() - time.time()) / 3600.0, 0.05)
-    except Exception:
-        return default_h
-
-
-def _fmt_hours(h):
-    if h >= 48:
-        return "%.0f д" % (h / 24)
-    if h >= 1:
-        return "%.0f ч" % h
-    return "%.0f мин" % (h * 60)
-
-
-def _opt_score(row):
-    # Сколько недельного запаса приходится на час до сброса недели аккаунта.
-    # Большой score = сброс скоро и/или запас большой — жечь выгоднее всего его
-    # (неистраченный к сбросу недельный лимит просто сгорает). Маленький score =
-    # впереди вся неделя — беречь.
-    sd = row.get("seven_day") or {}
-    pct = sd.get("pct")
-    pct = 0 if pct is None else pct
-    resets_at = sd.get("resets_at")
-    if resets_at is None:
-        # (starvation-fix 2026-07-17) Нет resets_at = аккаунт ни разу не использовался в
-        # текущем цикле, окна сброса ещё не существует. Дефолт 168ч (целая неделя) навсегда
-        # занижал score: у активных аккаунтов часы-до-сброса тикают вниз и score растёт со
-        # временем, а у нетронутого — нет, он никогда их не обгонит (долго нетронутый профиль вечно
-        # ~0.6 против ~1.5-1.9 у остальных, см. reference_cc_switch_accounts.md в памяти
-        # Claude). Трактуем отсутствие окна как максимальную срочность, чтобы аккаунт
-        # попал в ротацию хоть раз и получил реальный resets_at — после этого сюда больше
-        # не попадает (там дальше уже обычная ветка с реальным countdown).
-        return (100.0 - pct) / 4.0
-    return (100.0 - pct) / _hours_until(resets_at, 168.0)
-
+_dead = cc_avail.dead
 
 def _renewal_next(confirmed_ts):
     # Таймер до следующего ожидаемого обвала Pro→Free: якорь минус 30 мин
@@ -2437,118 +2256,12 @@ def _local_dhm(iso):
         return "?"
 
 
-def _accs_line(accs):
-    out = []
-    for n, row in sorted(accs.items()):
-        fh = row.get("five_hour") or {}
-        r = fh.get("resets_at")
-        sd = row.get("seven_day") or {}
-        rw = sd.get("resets_at")
-        out.append("%s: сессия %s%%%s, неделя %s%%%s" % (
-            n, fh.get("pct"), (" (сброс %s)" % _local_hm(r)) if r else "",
-            sd.get("pct"), (" (сброс %s)" % _local_hm(rw)) if rw else ""))
-    return "\n".join(out)
-
-
-def _nearest_reset(accs):
-    # кто раньше всех снова станет пригоден — с учётом и сессии, и недели
-    c = cfg()
-    nb = cc_avail.nearest(accs, c.get("threshold", 90), c.get("weekly_cap", 99))
-    if not nb:
-        return "неизвестно"
-    from datetime import datetime
-    return "%s в %s" % (nb[1], _local_hm(datetime.fromtimestamp(nb[0]).astimezone().isoformat()))
-
-
-WEEK_LEVELS = ("week", "weekrisk")
-
-
 def _pause_mod():
     import sys
     if BASE not in sys.path:
         sys.path.insert(0, BASE)
     import pause_ctl  # данные модуль читает с диска на каждый вызов — кэш не мешает
     return pause_ctl
-
-
-def _prod_hint():
-    """Claude PROD свободен, а у DEV лимит (pause_ctl.prod_hint) → {…}; нет PROD или сбой → {}."""
-    try:
-        return _pause_mod().prod_hint()
-    except Exception:
-        return {}
-
-
-def _prod_phrase(h):
-    return _pause_mod().prod_phrase(h)
-
-
-def _notice_send(text, key):
-    """Одно сообщение «упёрлись в лимит» на эпизод: пауза, балансер и очередь делят отметку (pause_ctl.notice_claim).
-    Раньше про один и тот же лимит приходило 3–4 сообщения подряд. Отметка недоступна — пишем как раньше."""
-    try:
-        if not _pause_mod().notice_claim(key):
-            print("notice %s: об эпизоде уже написали — второе сообщение не шлю" % key, flush=True)
-            return False
-    except Exception:
-        pass
-    return tg_notify(text)
-
-
-def _nowhere_text(accs, act, act_free=False):
-    """(текст, level) уведомления «переключаться некуда» — что будет дальше, по тому же
-    pause_ctl.level_state(), что и баннер. До v1.21.0 здесь всегда было «жду», хотя с
-    недельного потолка никто не уходил и аккаунт добивался до 100%."""
-    ls = pause_state()
-    lvl = ls.get("level") or "none"
-    override = bool((ls.get("pause") or {}).get("override"))
-    w = round(((accs.get(act) or {}).get("seven_day") or {}).get("pct") or 0)
-    cap = ls.get("weekly_cap") or cfg().get("weekly_cap", 99)
-    tail = "\n" + _accs_line(accs) + "\nРаньше всех освободится: " + _nearest_reset(accs)
-    # Claude PROD свободен, но работа к нему не уходит (автопередача выключена и т. п.): «переключаться некуда» было бы неправдой
-    prod = {} if act_free or lvl not in ("hard", "week") else _prod_hint()
-    nowhere = _prod_phrase(prod) if prod else "переключаться некуда"
-    who = "Claude DEV" if prod else "Claude"
-    if prod:
-        tail = ("\n" + _accs_line(accs) + "\nDEV поднимется сам: " + _nearest_reset(accs)
-                + ("" if prod.get("on") else "\nРаньше — передать работу на PROD: «Работа на PROD» на панели"
-                   + (" или включить «Автопередача» в «Настройки PROD»." if prod.get("why") == "автопередача выключена" else ".")))
-    if act_free:
-        head = f"⛔ Claude: {act} слетел в Free, остальные недоступны — переключаться некуда, жду, пока освободится другой."
-    elif lvl == "week" and not override:
-        head = (f"⏸ Claude: неделя {act} — {w}% (потолок {cap:.0f}%), {nowhere} — {who} встаёт на паузу. "
-                "Поднимется сам, когда освободится другой аккаунт или сбросится неделя"
-                # на 100% недели настоящий лимит исчерпан — отключать паузу бесполезно
-                + ("." if w >= 100 else "; продолжить сразу — «Отключить паузу» на панели."))
-    elif lvl in WEEK_LEVELS:
-        head = (f"⚠️ Claude: неделя {act} — {w}%, переключаться некуда. Балансер не остановит заполнение "
-                "до 100% — работаешь на свой страх и риск.")
-        head += ("\nПауза отключена вручную на панели." if override else
-                 f"\nОстановку на {cap:.0f}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».")
-    elif lvl == "hard" and not override:
-        head = f"⛔ Claude: {ls.get('why') or 'все аккаунты выше порога сессии'} — {who} встаёт на паузу до сброса окна."
-    elif lvl == "hard":
-        head = (f"⛔ Claude: {ls.get('why') or 'все аккаунты выше порога сессии'}. "
-                "Пауза отключена вручную: работа идёт до настоящего лимита аккаунта.")
-    else:
-        head = f"⛔ Claude: переключаться некуда — работа идёт дальше на {act} сверх порога, пока не освободится другой аккаунт."
-    return head + tail, lvl
-
-
-def _handoff_coming():
-    """[remote] Работа вот-вот уйдёт на Claude PROD (автопередача готова) или уже идёт там: «переключаться некуда» в Telegram не пишем —
-    о переходе скажет сама передача; не вышла — встанет обычная пауза со своим сообщением (владелец 62582, как баннер 62577)."""
-    try:
-        d = pause_state()
-        return bool(d.get("handoff") or d.get("remote"))
-    except Exception:
-        return False
-
-
-def _week_news(st, lvl):
-    """Эпизод «некуда» уже начался по сессии, а теперь упёрлись в недельный потолок —
-    об этом сообщаем отдельно (иначе флаг эпизода проглотит предупреждение о 100%)."""
-    return lvl in WEEK_LEVELS and st.get("nowhere_lvl") not in WEEK_LEVELS
 
 
 def _week_key(sd):
@@ -2561,292 +2274,30 @@ def _week_key(sd):
 
 
 def _week_cap_warn(snap):
-    """Неделя аккаунта дошла до потолка (weekly_cap, 99%) — ровно одно сообщение на аккаунт
-    за неделю, активный он или нет и есть ли куда переключиться. Где это уже сказало
-    сообщение балансера («авто-переключил… неделя», «переключаться некуда» на неделе),
-    второго не шлём. Активный, с которого балансер вот-вот уйдёт, ждёт ухода: тогда
-    сообщение скажет, куда ушли."""
-    c = cfg()
-    cap = c.get("weekly_cap", 99)
-    st = jload(STATE, {})
-    warned = dict(st.get("week_warned") or {})
-    accs = snap.get("accounts") or {}
-    act = (jload(SNAPSHOT) or {}).get("active") or snap.get("active")  # после переключения в этом же тике
-    now = time.time()
-    for n in list(warned):
-        w = ((accs.get(n) or {}).get("seven_day") or {}).get("pct")
-        if (warned[n] and now > warned[n] + 600) or (w is not None and w < cap - 5):
-            del warned[n]  # неделя сбросилась — следующий потолок снова предупредит
-    lvl = None
-    for n, row in sorted(accs.items()):
-        sd = row.get("seven_day") or {}
-        w = sd.get("pct")
-        if row.get("error") or row.get("plan") == "free" or w is None or w < cap:
-            continue
-        key = _week_key(sd)
-        if n in warned and abs(warned[n] - key) < 6 * 3600:
-            continue
-        reset = sd.get("resets_at")
-        head = f"⚠️ Claude: неделя {n} дошла до {round(w)}% (потолок {cap:g}%)."
-        text = None
-        if n != act:
-            # обычная смена аккаунта, а не пауза: «Пауза на недельном потолке» тут ни при чём
-            text = (f"ℹ️ Claude: неделя {n} — {round(w)}%, это потолок балансера"
-                    + (f" (последний {100 - cap:g}% — запас)" if cap < 100 else "") + "."
-                    + f" {n} отдыхает до сброса недели"
-                    + (f" — {_local_dhm(reset)}" if reset else "")
-                    + (f", работа идёт на {act}." if act else ".")
-                    + " Это обычная смена аккаунта, не пауза: «Пауза на недельном потолке»"
-                      " срабатывает, только когда переключаться некуда.")
-        else:
-            if lvl is None:
-                lvl = pause_state().get("level") or "none"
-            hold = st.get("manual_hold") or {}
-            if lvl in WEEK_LEVELS:
-                if not (st.get("all_high_notified") and st.get("nowhere_lvl") in WEEK_LEVELS):
-                    text = _nowhere_text(accs, act)[0]  # балансер выключен — «некуда» никто не сказал
-            elif not c.get("optimize") and not c.get("autoswitch", True):
-                text = (f"{head} Авто-переключение выключено — балансер не уведёт с {n}: "
-                        "переключись вручную, иначе он добьётся до 100%.")
-            elif not c.get("optimize") and hold.get("account") == n and now < hold.get("until", 0):
-                from datetime import datetime
-                text = (f"{head} {n} выбран вручную — балансер не уведёт с него до "
-                        f"{_local_dhm(datetime.fromtimestamp(hold['until']).astimezone().isoformat())} "
-                        "или до 100%; заполнение до 100% — на твой риск.")
-            else:
-                continue  # балансер уходит с него в ближайшие тики — предупредим, когда уйдёт
-        warned[n] = key
-        if text:
-            if n == act and lvl in WEEK_LEVELS:
-                _notice_send(text, lvl)  # это «некуда» на неделе — делит отметку с паузой и балансером
-            else:
-                tg_notify(text)
-    if warned != (st.get("week_warned") or {}):
-        st["week_warned"] = warned
-        jsave(STATE, st)
-
-
-def _log_switch_event(event, **kw):
-    # Аудит-лог forced-веток: state.json хранит только ПОСЛЕДНИЙ переключение
-    # (last_switch_ts), поэтому разобрать задним числом "почему не переключилось
-    # раньше" (гейт-баннер против cooldown, отсутствие кандидата и т.п.) нечем.
-    # Пишем по строке на каждый forced-момент — для последующей диагностики
-    # тайминга, не для логики самого переключения.
-    try:
-        rec = {"ts": time.time(), "event": event}
-        rec.update(kw)
-        with open(SWITCH_LOG, "a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-
-def optimize_check(snap):
-    # Режим «оптимизация переключений лимитов»: сервис сам рулит и порогами —
-    # настройки threshold/autoswitch здесь игнорируются (UI их гасит).
-    # Неделя: держим активным аккаунт с максимальным _opt_score (запас/час до
-    # сброса — неистраченное сгорает). Сессия: нагрузку размазываем, чтобы не
-    # оказаться со всеми забитыми сессиями разом — ранний уход с opt_ses_soft
-    # при свежем кандидате, аварийный форс с opt_ses_ceil, кандидаты штрафуются
-    # за забитую сессию. manual_hold игнорируем: ручные свитчи заблокированы.
-    c = cfg()
-    # аварийный уход: тот же порог, что и на слайдере/баннере (threshold), не
-    # отдельный ключ opt_ses_ceil — раньше он никогда не выставлялся install.sh
-    # и не был связан со слайдером, поэтому его правка ничего не меняла в режиме
-    # оптимизации, хотя визуально выглядела как рабочая настройка.
-    ses_ceil = c.get("threshold", c.get("opt_ses_ceil", 90))
-    ses_soft = c.get("opt_ses_soft", 70)      # ранний уход при свежем кандидате
-    ses_cand = c.get("opt_ses_cand_max", 85)  # кандидат: сессия не выше
-    ses_fresh = c.get("opt_ses_fresh", 50)    # «свежая» сессия для раннего ухода
-    # порог поднят с 95 до 99 (v1.9.7) — 95% недельного лимита ещё оставляет
-    # заметный запас, отсекать кандидата/форсить уход с этой отметки было
-    # слишком рано; используется и как порог форс-ухода (forced ниже), и
-    # как порог допуска кандидата в collect_cand()
-    cap = c.get("weekly_cap", 99)
-    ratio = c.get("optimize_ratio", 1.5)
-    _BUSY["defer_pending"] = False
-    st = jload(STATE, {})
-    act = snap.get("active")
-    accs = snap.get("accounts", {})
-    if not act or act not in accs:
+    name = snap.get("active")
+    row = (snap.get("accounts") or {}).get(name, {})
+    week = row.get("seven_day") or {}
+    pct = week.get("pct")
+    cap = cfg().get("weekly_cap", 99)
+    if row.get("error") or row.get("plan") == "free" or pct is None:
         return
-    a = accs[act]
-    act_free = a.get("plan") == "free"
-    fh = (a.get("five_hour") or {}).get("pct")
-    sd = (a.get("seven_day") or {}).get("pct")
-    forced = act_free or (fh is not None and fh >= ses_ceil) or (sd is not None and sd >= cap)
-    if forced:
-        _log_switch_event("forced_true", active=act, fh=fh, sd=sd, act_free=act_free)
-
-    def collect_cand(max_ses):
-        out = []
-        for n, row in accs.items():
-            if n == act or row.get("error") or row.get("plan") == "free":
-                continue
-            cfh = (row.get("five_hour") or {}).get("pct")
-            csd = (row.get("seven_day") or {}).get("pct")
-            if cfh is None or cfh >= max_ses or (csd is not None and csd >= cap):
-                continue
-            # недельный запас/час, взвешенный на свободу сессии кандидата
-            out.append((_opt_score(row) * (100.0 - cfh) / 100.0, cfh, n))
-        return out
-
-    cand = collect_cand(ses_cand)
-    if forced and not cand:
-        # аварийно допускаем и подзабитую сессию — лучше, чем стоять совсем
-        cand = collect_cand(97)
-    if forced and not cand:
-        # настоящий крайний случай: не прошёл никто даже с послаблением до 97%.
-        # Без потолка по СЕССИИ вообще берём наименее забитый живой (не-free)
-        # аккаунт — лишь бы он был реально лучше активного (иначе бессмысленный
-        # треш). Смысл: не дать всем трём одновременно упереться в 100% и
-        # застрять без единого рабочего окна — немного запаса лучше, чем совсем
-        # ноль. НО недельный потолок (cap) по-прежнему обязателен даже здесь —
-        # без этой проверки сюда мог попасть аккаунт со свежей сессией, но
-        # забитой под 100% неделей: переключались на него, а дальше выбраться
-        # некуда — его низкий five_hour% вечно выглядит "лучше" любого
-        # кандидата по этой же метрике, и балансер застревал на функционально
-        # мёртвом (по неделе) аккаунте навсегда (v1.10.0).
-        best = None
-        for n, row in accs.items():
-            if n == act or row.get("error") or row.get("plan") == "free":
-                continue
-            cfh = (row.get("five_hour") or {}).get("pct")
-            if cfh is None:
-                continue
-            csd = (row.get("seven_day") or {}).get("pct")
-            if csd is not None and csd >= cap:
-                continue
-            if best is None or cfh < best[0]:
-                best = (cfh, n)
-        if best and (fh is None or best[0] < fh):
-            now = time.time()
-            if _dead(a) or now - st.get("last_switch_ts", 0) >= c.get("switch_cooldown_sec", 600):
-                target = best[1]
-                trow = accs[target]
-                tfh = (trow.get("five_hour") or {}).get("pct")
-                tsd = (trow.get("seven_day") or {}).get("pct")
-                ok, out = do_switch(target)
-                st["last_switch_ts"] = now
-                st["opt_last_switch_ts"] = now
-                if ok:
-                    st["known_active"] = target
-                jsave(STATE, st)
-                email = trow.get("email", target)
-                _log_switch_event("extreme_switch", from_acc=act, to=target, fh=fh, target_fh=tfh, ok=ok)
-                if ok:
-                    # (30.07.26) уведомление о крайнем случае убрано - спамило в чат.
-                    # Переключение по-прежнему происходит, просто молча.
-                    snap_set_active()
-                else:
-                    tg_notify("⚠️ Claude (оптимизация): переключение на %s не удалось: %s" % (target, out))
-                return
-            else:
-                _log_switch_event("extreme_blocked_cooldown", active=act, fh=fh,
-                                   remaining_sec=round(c.get("switch_cooldown_sec", 600) - (now - st.get("last_switch_ts", 0))))
-    if not cand:
-        if forced:
-            _log_switch_event("forced_no_candidate", active=act, fh=fh, sd=sd,
-                              nearest=_nearest_reset(accs))
-        if forced and _handoff_coming():
-            return  # работа уходит на Claude PROD (см. autoswitch_check): «некуда» не пишем
-        text, lvl = _nowhere_text(accs, act, act_free) if forced else ("", "")
-        if forced and (not st.get("all_high_notified") or _week_news(st, lvl)):
-            # раньше уведомление отсюда убрали как спам, и «упёрлись ВСЕ аккаунты» стало
-            # происходить молча — пользователь может не понимать, почему сессия не работает,
-            # часами. Возвращаем ровно ОДНО сообщение на эпизод (флаг снимается только когда
-            # снова появился живой кандидат) и не чаще раза в 2 часа. Это не тот спам, что
-            # убирали: успешные переключения по-прежнему молчат.
-            # предупреждение о недельном потолке не глушим двухчасовым окном: без него
-            # человек не узнает, что аккаунт добивается до 100% (или что Claude встал)
-            if lvl in WEEK_LEVELS or time.time() - st.get("all_high_notified_ts", 0) >= 7200:
-                _notice_send(text, lvl)
-                st["all_high_notified_ts"] = time.time()
-            st["all_high_notified"] = True
-            st["nowhere_lvl"] = lvl
-            jsave(STATE, st)
+    state = jload(STATE, {})
+    warned = state.setdefault("week_warned", {})
+    if pct < cap:
+        if name in warned:
+            warned.pop(name)
+            jsave(STATE, state)
         return
-    if st.get("all_high_notified"):
-        st["all_high_notified"] = False
-        jsave(STATE, st)
-    cand.sort(reverse=True)
-    eff, tfh_c, target = cand[0]
-    now = time.time()
-    trow = accs[target]
-    tsd = (trow.get("seven_day") or {}).get("pct")
-    my_w = _opt_score(a)
-    my_eff = my_w * (100.0 - (fh or 0)) / 100.0
-    if forced:
-        if not _dead(a) and now - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
-            _log_switch_event("forced_blocked_cooldown", active=act, fh=fh, target=target,
-                               remaining_sec=round(c.get("switch_cooldown_sec", 600) - (now - st.get("last_switch_ts", 0))))
-            return
-        why = ("аккаунт %s слетел в Free" % act if act_free
-               else "сессия %s дошла до %s%% (аварийный потолок %s%%)" % (act, fh, ses_ceil)
-               if fh is not None and fh >= ses_ceil
-               else "неделя %s дошла до %s%%" % (act, sd))
-    elif (fh is not None and fh >= ses_soft and tfh_c <= ses_fresh
-          and _opt_score(trow) * ratio >= my_w):
-        # ранний уход: сессия активного прилично забита, у цели свежая сессия
-        # и неделя не сильно хуже — размазываем сессионную нагрузку
-        if now - st.get("last_switch_ts", 0) < c.get("switch_cooldown_sec", 600):
-            return
-        why = ("сессия %s уже %s%%, у %s свежая (%s%%) и неделя не хуже — размазываю сессионную нагрузку"
-               % (act, fh, target, tfh_c))
-    else:
-        # плановое переключение по неделе: не чаще optimize_min_switch_sec и
-        # только если взвешенный запас/час цели существенно лучше (гистерезис)
-        if now - st.get("opt_last_switch_ts", 0) < c.get("optimize_min_switch_sec", 1800):
-            return
-        if eff < my_eff * ratio:
-            return
-        t_resets = (trow.get("seven_day") or {}).get("resets_at")
-        t_hrs = _hours_until(t_resets, 168.0)
-        a_hrs = _hours_until((a.get("seven_day") or {}).get("resets_at"), 168.0)
-        if t_resets is None:
-            why = ("%s ни разу не использовался (нет окна сброса) — даю ему шанс, чтобы не застрял в вечном резерве; %s берегу (сброс через %s, запас %s%%)"
-                   % (target, act, _fmt_hours(a_hrs), round(100 - (sd or 0))))
-        else:
-            why = ("у %s сброс недели через %s (запас %s%%) — выгоднее жечь его; %s берегу (сброс через %s, запас %s%%)"
-                   % (target, _fmt_hours(t_hrs), round(100 - (tsd or 0)),
-                      act, _fmt_hours(a_hrs), round(100 - (sd or 0))))
-    # Смена аккаунта посреди хода сбрасывает кэш промпта (вся сессия перечитывается за
-    # счёт нового аккаунта), а у Sonnet 5.5 ещё и выкидывает рассуждения хода (thinking
-    # привязан к организации). Плановое переключение ждёт паузы между ходами, но не
-    # дольше opt_defer_max_sec; аварийное (forced) уходит сразу. 0 — не ждать.
-    dfr = st.get("defer") or {}
-    if dfr and now - dfr.get("seen", 0) > 300:
-        dfr = {}  # прошлое ожидание прервалось (переключение стало не нужно) — новый эпизод
-    defer_max = c.get("opt_defer_max_sec", 900)
-    if not forced and defer_max > 0 and session_busy() and now - dfr.get("since", now) < defer_max:
-        first = not dfr
-        st["defer"] = {"since": dfr.get("since", now), "seen": now, "to": target}
-        jsave(STATE, st)
-        _BUSY["defer_pending"] = True
-        if first:
-            _log_switch_event("deferred_busy", from_acc=act, to=target, fh=fh, why=why)
+    key = _week_key(week)
+    if name in warned and abs(warned[name] - key) < 6 * 3600:
         return
-    waited = round(now - dfr["since"]) if dfr else 0
-    st.pop("defer", None)
-    _BUSY["defer_pending"] = False
-    ok, out = do_switch(target)
-    st["last_switch_ts"] = now
-    st["opt_last_switch_ts"] = now
-    if ok:
-        st["known_active"] = target
-    jsave(STATE, st)
-    _log_switch_event("switch", forced=forced, from_acc=act, to=target, fh=fh, why=why, ok=ok,
-                      waited_sec=waited, busy=session_busy())
-    if ok:
-        # (04.08.26: "постоянно пишет переключился переключился переключился") —
-        # уведомление об успешном плановом/оптимизационном переключении убрано, спамило.
-        # Переключение по-прежнему происходит молча, известный активный акк обновляется.
-        snap_set_active()
-    else:
-        tg_notify("⚠️ Claude (оптимизация): переключение на %s не удалось: %s" % (target, out))
+    warned[name] = key
+    jsave(STATE, state)
+    suffix = f" Сброс {_local_dhm(week['resets_at'])}." if week.get("resets_at") else ""
+    tg_notify(f"⚠️ Claude: недельный лимит {round(pct)}% (порог {cap:g}%)." + suffix)
 
 
-LIM_WARN, LIM_CLEAR = 90, 80  # как у Codex (cc_codex_bridge): «подходит» с 90%, порог взводится снова ниже 80%
+LIM_WARN, LIM_CLEAR = 90, 80
 
 
 def _lim_at(iso):
@@ -2929,13 +2380,7 @@ def _claude_limit_tick(snap):
         tg_notify(m)
 
 
-def switch_policy_check(snap):
-    # оптимизация — отдельный режим, при включении полностью заменяет простой
-    # авто-порог (пороговые уходы с забитого аккаунта в неё встроены)
-    if cfg().get("optimize"):
-        optimize_check(snap)
-    else:
-        autoswitch_check(snap)
+def notify_claude_limits(snap):
     try:
         _week_cap_warn(snap)
     except Exception as e:
@@ -2953,7 +2398,7 @@ def poll_loop():
             with lock:
                 # 429-паузы — по аккаунтам, внутри collect(); здесь опрашиваем всегда
                 snap = collect(force=True)
-                switch_policy_check(snap)
+                notify_claude_limits(snap)
         except Exception as e:
             print(f"poll fail: {e}", flush=True)
         try:
@@ -2971,9 +2416,7 @@ def poll_loop():
             nr = cc_avail.next_reset_ts((snap or {}).get("accounts") or {})
             if nr is not None:
                 wait = min(wait, max(nr - time.time() + 15, 5))
-        # раньше срока будит _busy_tick: отложенное плановое переключение дождалось паузы
-        _POLL_WAKE.wait(wait)
-        _POLL_WAKE.clear()
+        time.sleep(wait)
 
 
 # ---------- HTTP ----------
@@ -3001,24 +2444,11 @@ def pause_state():
         rm = jload(os.path.join(BASE, "remote_mode.json"), {})
         rp = cc_remote_limits.public().get(rm.get("member")) or {}
         d["remote_pause"] = rp if d["remote"] and time.time() - float(rp.get("ts") or 0) < 600 else {}
-        # Общая сводка включает подключённые аккаунты. Сам локальный гейт,
-        # его уровень и время пробуждения остаются без изменений.
-        snapshot = jload(SNAPSHOT) or {}
-        d["fleet"] = cc_avail.fleet_summary(snapshot.get("accounts") or {}, cc_remote.cached(),
-                                             d.get("threshold", 90), d.get("weekly_cap", 99))
-        d["claude_limits"] = cc_remote_limits.agent_limits(d, snapshot, cc_remote.cached(), d["remote_pause"])
-        # [remote] «некуда» на DEV, но автопередача вот-вот отдаст работу Claude PROD (те же условия, что у хука паузы): баннер говорит «ищу», а не «некуда» (владелец 62577)
-        d["handoff"] = ""
-        # Claude PROD свободен, а у DEV лимит и работа к нему не уходит: баннер и тексты не говорят «переключаться некуда»
-        d["prod_free"] = _prod_hint() if d.get("level") in ("hard", "week") else {}
-        if not d["remote"] and d.get("level") in ("hard", "week", "weekrisk"):
-            try:
-                import cc_remote_auto
-                ok, why = cc_remote_auto.handoff_ready()
-                if ok:
-                    d["handoff"] = why
-            except Exception:
-                pass  # нет модуля или сбой — баннер как раньше
+        snapshot = selected_snapshot(jload(SNAPSHOT) or {})
+        remote = cc_remote.cached()
+        if remote:
+            d["stale"] = True
+        d["claude_limits"] = cc_remote_limits.agent_limits(d, snapshot, remote, d["remote_pause"])
         d["ok"] = True
         return d
     except Exception as e:
@@ -3048,6 +2478,8 @@ def claude_restart_info_remote(r):
 
 
 def claude_restart_local():
+    if cc_remote.members():
+        return {"ok": False, "error": "not_supported"}
     """Перезапуск Claude на этом сервере: остановить и запустить штатно (start_claude.sh) — НОВАЯ сессия. Не трогаем, если скрипт всё равно не запустит Claude
     (работа на PROD): иначе после остановки он так и остался бы выключенным."""
     wk = globals().get("WORKERS")
@@ -3235,23 +2667,18 @@ class H(BaseHTTPRequestHandler):
                 return self._send(403, {"error": "forbidden"})
             q = parse_qs(u.query)
             with lock:
-                snap = collect(force=True, force_account=active_name()) if q.get("refresh") else (jload(SNAPSHOT) or collect())
+                snap = collect(force=True, force_account=active_name()) if q.get("refresh") else selected_snapshot(jload(SNAPSHOT) or collect())
                 renewal = jload(STATE, {}).get("renewal", {})
             for n, row in (snap.get("accounts") or {}).items():
                 ts = (renewal.get(n) or {}).get("confirmed_ts")
                 if ts and _renewal_applicable(row):
                     row["renewal_next"] = _renewal_next(ts)
             act_n = active_name()
-            hold = jload(STATE, {}).get("manual_hold") or {}
             for n, row in (snap.get("accounts") or {}).items():
                 le = _login_expires(n, act_n)
                 if le:
                     row["login_expires"] = le
-                # подпись «выбран вручную» на карточке — пока балансер держит ручной выбор
-                if (n == snap.get("active") and not cfg().get("optimize")
-                        and cc_avail.manual_pick(hold, n, row)):
-                    row["manual_until"] = float(hold.get("until") or 0)
-            snap["config"] = {k: cfg().get(k) for k in ("autoswitch", "threshold", "optimize")}
+            snap["config"] = {"threshold": cfg().get("threshold"), "claude_account_connected": claude_account_connected()}
             snap["config"]["weekly_pause"] = bool(cfg().get("weekly_pause"))
             snap["config"]["weekly_cap"] = cfg().get("weekly_cap", 99)
             snap["config"]["codex_hidden"] = list(cfg().get("codex_hidden") or [])  # модели Codex, убранные из быстрого меню
@@ -3452,53 +2879,12 @@ class H(BaseHTTPRequestHandler):
             return self._send(403, {"error": "forbidden"})
         ln = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(ln) or b"{}") if ln else {}
-        if u.path == "/api/switch":
-            # при включённой оптимизации ручные переключения заблокированы —
-            # 200 + ok:false, чтобы страница/бот показали message как есть
-            # (409 бы потерялся: urlopen в прокси/боте кидает исключение)
-            if cfg().get("optimize"):
-                return self._send(200, {"ok": False, "blocked": True,
-                    "message": "Оптимизация переключений лимитов включена — ручное переключение заблокировано. Выключи тумблер оптимизации, чтобы переключать вручную."})
-            target = body.get("account", "next")
-            with lock:
-                prev_act = active_name()
-                ok, out = do_switch(target)
-                snap = snap_set_active()  # только флаги active, без похода в API (бережём rate-limit)
-                if ok:
-                    st = jload(STATE, {})
-                    st["last_switch_ts"] = time.time()
-                    # ручной выбор ЗАБИТОГО аккаунта (сессия ≥порога или неделя на потолке) —
-                    # пин до сброса того окна, что держит, или до 100%: авто не перебивает;
-                    # выбор свободного — обычный авто-режим
-                    act = snap.get("active")
-                    st["known_active"] = act  # чтобы poll не принял за внешнее переключение
-                    row = (snap.get("accounts") or {}).get(act, {})
-                    fh = (row.get("five_hour") or {}).get("pct")
-                    sd = (row.get("seven_day") or {}).get("pct")
-                    until = _manual_until(row)
-                    from datetime import datetime
-                    if until:
-                        st["manual_hold"] = {"account": act, "until": until}
-                        if sd is not None and sd >= cfg().get("weekly_cap", 99):
-                            # о потолке недели скажет это сообщение — _week_cap_warn() второго не шлёт
-                            st.setdefault("week_warned", {})[act] = _week_key(row.get("seven_day") or {})
-                    else:
-                        st.pop("manual_hold", None)
-                    jsave(STATE, st)
-                    email = row.get("email", act)
-                    tg_notify("👆 Claude: ручное переключение %s → %s (%s, сессия %s%%, неделя %s%%)."
-                              % (prev_act or "?", act, email,
-                                 fh if fh is not None else "?", sd if sd is not None else "?")
-                              + (" Выбран вручную: балансер не уведёт с него до %s или до 100%%."
-                                 % _local_dhm(datetime.fromtimestamp(until).astimezone().isoformat())
-                                 if until else ""))
-            return self._send(200 if ok else 500, {"ok": ok, "message": out, "snapshot": snap})
         if u.path == "/api/recheck":
             # мгновенная перепроверка плана одного аккаунта в обход 10-минутного
             # _plan_cache — для кнопки "Я продлил": после оплаты Pro на стороне
             # Anthropic план обновляется за секунды, не хочется ждать до 10 мин
             name = body.get("account", "")
-            if name not in profile_names():
+            if name != active_name() or cc_remote.members():
                 return self._send(400, {"ok": False, "message": "неизвестный аккаунт"})
             # аккаунт недавно словил 429 — повторный реальный запрос сейчас же его
             # только продлит; collect() с этого цикла сам отдаст кэш (force_account
@@ -3521,9 +2907,6 @@ class H(BaseHTTPRequestHandler):
             err = row.get("error")
             # plan и usage у Anthropic — независимые эндпоинты: план может уже
             # вернуться на Pro, пока usage-эндпоинт всё ещё 429-ит. Раньше отсюда
-            # шло "вернул в ротацию" по одному только plan, хотя autoswitch_check/
-            # optimize_check хард-скипают любой аккаунт с error — реально в
-            # ротацию он не попадал, сообщение вводило в заблуждение.
             if plan and plan != "free":
                 # якорь для таймера обратного отсчёта до следующего ожидаемого
                 # обвала Pro→Free — момент, когда пользователь подтвердил
@@ -3536,7 +2919,7 @@ class H(BaseHTTPRequestHandler):
                     jsave(STATE, st)
             if plan and plan != "free" and not err:
                 return self._send(200, {"ok": True, "plan": plan,
-                    "message": f"✅ снова {plan.upper()} — вернул в ротацию."})
+                    "message": f"✅ снова {plan.upper()} — лимиты снова доступны."})
             if plan and plan != "free" and err:
                 return self._send(200, {"ok": False, "plan": plan,
                     "message": f"План снова {plan.upper()}, но данные по использованию ещё недоступны ({err}) — в ротацию пока не включён."})
@@ -3605,15 +2988,20 @@ class H(BaseHTTPRequestHandler):
             res = cc_backup.make(PROFILES, BACKUP_DIR)
             return self._send(200, dict(backup_status(), ok=res.get("ok", False), why=res.get("why", ""), name=res.get("name", "")))
         if u.path == "/api/backup/restore":  # «Восстановить недостающие»: живые профили не трогаются
-            res = cc_backup.restore_missing(PROFILES, BACKUP_DIR)
+            with lock, cc_remote.claude_account_lock(BASE):
+                if _real_names() or claude_account_connected():
+                    return self._send(200, dict(backup_status(), ok=False, restored=[],
+                                                message=claude_account_limit_message(body.get("lang"))))
+                res = cc_backup.restore_missing(PROFILES, BACKUP_DIR, limit=1)
             return self._send(200, dict(backup_status(), ok=True, restored=res["restored"]))
         if u.path in ("/api/claude-cli/update", "/api/claude-cli/rollback", "/api/claude-cli/restart"):  # «Обновить» / «Вернуть» Claude Code (⚙ Настройки Claude)
             return self._send(200, claude_cli_action(u.path.rsplit("/", 1)[1], body))
         if u.path == "/api/config":
             c = cfg()
-            for k in ("autoswitch", "threshold", "optimize"):
-                if k in body:
-                    c[k] = body[k]
+            for key in ("autoswitch", "optimize", "switch_cooldown_sec", "optimize_ratio", "optimize_min_switch_sec"):
+                c.pop(key, None)
+            if "threshold" in body:
+                c["threshold"] = body["threshold"]
             if body.get("update_mode") in ("manual", "auto"):
                 c["update_mode"] = body["update_mode"]
             if isinstance(body.get("update_check"), bool):
@@ -3658,8 +3046,7 @@ class H(BaseHTTPRequestHandler):
                     c["model_hidden"] = sorted(hidden)
             jsave(CONFIG, c)
             UPDATER.kick()  # сменили режим обновлений — пусть петля пересмотрит сразу
-            return self._send(200, {"ok": True, "autoswitch": c.get("autoswitch"),
-                                    "threshold": c.get("threshold"), "optimize": c.get("optimize"),
+            return self._send(200, {"ok": True, "threshold": c.get("threshold"),
                                     "weekly_cap": c.get("weekly_cap", 99), "codex_hidden": list(c.get("codex_hidden") or []),
                                     "model": model_info()})
         if u.path == "/api/models/candidates":
@@ -3799,6 +3186,8 @@ button:disabled{opacity:.35;cursor:default}
 .ctabs[hidden],.ctstop[hidden],.ctab[hidden]{display:none}
 html:root:root .ctab[hidden]{display:none!important}
 html.no-dev:root #wkAgents .wk-seg[data-ag="claude"],html.no-dev:root .fleet-console-toolbar #ctClaude,html.no-dev:root .fleet-compact-account.claude{display:none!important}
+html.claude-linked #addAcct,html.claude-linked #wkGenClAdd,
+html.codex-linked .fleet-add-codex,html.codex-linked #wkGenCxAdd,html.codex-linked #cx .cxhead,
 html.no-prod #ctProd,html.no-prod .wk-seg[data-ag="prod"],html.no-prod .fleet-live-account.prod,html.no-prod .fleet-compact-account.prod,html.no-prod .fleet-acc[data-engine="prod"],html.no-prod .wk-h3.t-prod,html.no-prod .rm-hand[data-target="prod"],html.no-prod .tpmi[data-k="prod"]{display:none!important}
 @media(max-width:520px){.ctab .ctlong{display:none}}
 .ctacts{display:contents}  /* кнопки действий Codex: на телефоне уходят второй строкой */
@@ -4171,8 +3560,6 @@ html:root:root .hdr{display:flex;flex-wrap:wrap;justify-content:flex-start;align
 html:root:root .hdrl{display:contents}
 html:root:root h1{font-size:16px;order:1;min-width:0}
 html:root:root #termDot{order:2;margin-right:auto}
-html:root:root #optWrap{order:3;flex:1 1 150px;min-width:0;align-items:center;gap:8px;font-size:12px}
-html:root:root #optWrap label{line-height:1.25}
 html:root:root .hdrbtns{order:3;gap:8px!important}
 html:root:root .hdrctl{order:4;margin-left:auto;gap:8px!important}
 html:root:root .termwrap{margin-bottom:10px}
@@ -4473,14 +3860,14 @@ html:root:root .cxmodn{display:none}
 html:root:root .hdrgear.cxmodbtn svg{display:block}
 }
 </style></head><body>
-<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><button type="button" class="ccli-badge" id="ccliBadge" hidden aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg><b>0</b></button><div class="ccli-pop" id="ccliPop" role="dialog" hidden></div><span class="switchrow" id="optWrap"><input type="checkbox" id="opt"> <label for="opt" id="optLbl">Оптимизация переключений лимитов</label></span><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
+<div class="hdr"><div class="hdrl"><h1 id="h1">⚡ Claude — лимиты аккаунтов</h1><span class="termdot" id="termDot"></span><button type="button" class="ccli-badge" id="ccliBadge" hidden aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg><b>0</b></button><div class="ccli-pop" id="ccliPop" role="dialog" hidden></div><div class="hdrbtns" style="display:flex;align-items:center;gap:10px"><button id="rfBtn" class="hdrgear" title="Обновить сейчас" aria-label="Обновить сейчас"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button><button id="gear" class="hdrgear" title="Модели"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><button id="addAcct" class="hdrgear" title="Добавить аккаунт" aria-label="Добавить аккаунт" onclick="acctAdd()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div></div><div class="hdrctl" style="display:flex;align-items:center;gap:10px"><button id="cxInst" class="hdrgear cxinst" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><span class="cxinstn" id="cxInstN">Codex</span><span class="cxinstp" aria-hidden="true">+</span></button><div class="cxgrp" id="cxGrp" hidden><button id="cxBtn" class="hdrgear cxbtn" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"/><path d="M7 9.5l3 2.5-3 2.5"/><path d="M12.5 15h4.5"/></svg><i class="cxdot" id="cxDot"></i><span class="cxbtnname" id="cxBtnName"></span><span class="cxlim" id="cxLim"></span><svg class="cxcar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><button id="cxMod" class="hdrgear cxmodbtn" type="button" aria-haspopup="dialog" aria-expanded="false" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span class="cxmodn" id="cxModN"></span><span class="cxmode" id="cxModE"></span></button><button id="cxGear" class="hdrgear cxgbtn" type="button" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div></div>
 <div class="ccpause" id="updBanner" hidden></div>
 <div class="ccpause" id="ccPause" hidden></div>
 <div class="ccpause" id="ccPauseDev" hidden></div>
 <div class="ccpause" id="ccPauseProd" hidden></div>
 <div class="ccpause lvl-pause" id="cxPause" hidden></div>
 <div class="termwrap">
- <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude"><span class="ctlong">Claude </span>DEV</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden><span class="ctlong">Claude </span>PROD</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctRedraw" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button></span></div>
+ <div class="ctabs" id="cTabs" role="tablist" hidden><button type="button" class="iconbtn ctab on" id="ctClaude" role="tab" aria-selected="true" data-s="claude">Claude</button><button type="button" class="iconbtn ctab" id="ctProd" role="tab" aria-selected="false" data-s="prod" hidden>Claude</button><button type="button" class="iconbtn ctab" id="ctCodex" role="tab" aria-selected="false" data-s="codex">Codex</button><span class="ctacts"><button type="button" class="iconbtn ctstop" id="ctCompact" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctNew" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg></button><button type="button" class="iconbtn ctstop" id="ctRedraw" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button></span></div>
  <div class="tzoom"><button type="button" class="iconbtn" id="tzMinus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="tzval" id="tzVal">100%</button><button type="button" class="iconbtn" id="tzPlus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" class="iconbtn" id="splitBtn" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg></button><button type="button" class="iconbtn" id="fsBtn"><svg class="fsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="fsx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button></div>
  <pre class="termbox" id="termBox"><span id="termHistory"></span>
 <span id="termCurrent">Загрузка…</span><div class="termidle" id="termIdle" hidden><span id="termIdleTxt"></span><button type="button" id="termIdleGo" hidden></button></div></pre>
@@ -4512,9 +3899,6 @@ html:root:root .hdrgear.cxmodbtn svg{display:block}
 <div id="scrim" class="scrim" hidden>
  <div class="modal">
   <h3 id="modalTitle">Настройки</h3>
-  <div class="modalh" id="autoHdr">Авто-переключение</div>
-  <div class="switchrow"><span id="autoWrap"><input type="checkbox" id="auto"> <label for="auto" id="autoLbl">Авто-переключение при <span id="thrLbl">85</span>% сессии</label></span><button type="button" class="thrbtn" id="thrMinus" aria-label="−"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button><button type="button" class="thrbtn" id="thrPlus" aria-label="+"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
-  <div class="modalsub" id="autoNote" hidden></div>
   <label class="updchk wkchk"><input type="checkbox" id="wkPause"><span id="wkLbl">Пауза на недельном потолке</span></label>
   <div class="modalh" id="updHdr">Обновления</div>
   <div id="updBox"></div>
@@ -4536,9 +3920,6 @@ const I18N={
   title:'Claude — лимиты аккаунтов',
   h1:'⚡ Claude — лимиты аккаунтов',
   loading:'Загрузка…',
-  autoLbl:thr=>'Авто-переключение при <span id="thrLbl">'+thr+'</span>% сессии',
-  optLbl:'Автовыбор',
-  optDisabledTitle:'Не действует: включён «Автовыбор» в «Управление аккаунтами» — он сам выбирает аккаунт по этим порогам',
   refresh:'Обновить сейчас',
   updated:'Обновлено',
   active:'АКТИВНЫЙ',
@@ -4546,18 +3927,17 @@ const I18N={
   week:'Неделя',
   resetIn:(h,mm,clock)=>`сброс через ${h?h+' ч ':''}${mm} мин (${clock})`,
   usingNow:'Используется сейчас',
-  optimizeRules:'Рулит автовыбор',
   switchTo:'Переключиться',
   switchBlockedTitle:'Заблокировано: включён автовыбор аккаунта',
   extended:'Я продлил',
   lapsedTag:'НЕАКТИВНЫЙ',
   lapsedTitle:'Аккаунт неактивный',
-  lapsedNote:'подписка закончилась, в ротации не участвует. Опрос остановлен, пока не нажмёшь «Я продлил»',
+  lapsedNote:'подписка закончилась, опрос остановлен, пока не нажмёшь «Я продлил»',
   lapsedSince:t=>` (с ${t})`,
   relogin:'🔑 Войти заново',
   addBtnTitle:'Добавить аккаунт',
-  addTitle:'Добавить аккаунт в ротацию',
-  addSub:'Войди в Claude под нужным аккаунтом — после входа он сам встанет в ротацию, настраивать вручную ничего не нужно.',
+  addTitle:'Подключить аккаунт Claude',
+  addSub:'Войди в аккаунт Claude, который будет работать в балансере.',
   addEmailLbl:'Почта аккаунта (необязательно)',
   addEmailHint:'Подставится на странице входа, чтобы не набирать её заново.',
   addGetLink:'Получить ссылку для входа',
@@ -4568,7 +3948,7 @@ const I18N={
   addCopied:'Скопировано ✓',
   addStep2:'Вставь код, который покажет страница после входа',
   addCodePh:'Код со страницы входа',
-  addSubmit:'Добавить в ротацию',
+  addSubmit:'Подключить',
   addChecking:'Проверяю вход…',
   addRestart:'Начать заново',
   addNeedCode:'Вставь код со страницы входа.',
@@ -4576,7 +3956,6 @@ const I18N={
   delBtnTitle:"Отключить аккаунт, сохранив историю и файлы",
   delTitle:"Отключить аккаунт?",
   delWarn:"Авторизация будет удалена, аккаунт исчезнет из балансера. Установленная программа, история, настройки и файлы останутся на сервере. Для повторного подключения понадобится новый вход.",
-  delActive:"Активная сессия сначала перейдёт на другой аккаунт.",
   delLast:"Это единственный аккаунт Claude: его свободная консоль будет остановлена, вход удалён. История сохранится.",
   delWord:'подтверждаю',
   delType:w=>'Чтобы подтвердить, введи слово «'+w+'»',
@@ -4605,16 +3984,12 @@ const I18N={
   confirmModel:n=>`Сменить модель на ${n}?`,
   confirmEffort:l=>`Изменить effort на «${l}»?`,
   autoOn:'Авто-переключение включено',autoOff:'Авто-переключение выключено',
-  wkLbl:cap=>`<b>Пауза на недельном потолке</b> — остановить Claude на ${cap}% недели, если переключаться некуда. Выключено — балансер не остановит заполнение до 100%.`,
+  wkLbl:cap=>`<b>Пауза на недельном потолке</b> — остановить Claude на ${cap}% недели. Выключено — балансер не остановит заполнение до 100%.`,
   wkOn:'Пауза на недельном потолке включена',wkOff:'Пауза на недельном потолке выключена',
-  ccpWeekTitle:'⏸ Неделя на потолке — <b>переключаться некуда</b>',
-  ccpFleetWeekTitle:'⏸ Неделя на потолке у <b>всех аккаунтов Claude</b>',
-  ccpFleetHardTitle:'⏸ Нет доступных аккаунтов Claude',
-  ccpFleetSub:'Учтены этот сервер и подключённые серверы. Таймер — до доступности ближайшего аккаунта.',
-  ccpWeekSub:(n,w,cap,na)=>`${n}: неделя <span class="num">${w}</span> (потолок ${cap}%), остальные аккаунты недоступны. Включена «Пауза на недельном потолке» — Claude встанет на паузу на следующем шаге и продолжит сам, когда `+(na?`освободится <b>${na}</b>.`:'освободится другой аккаунт или сбросится неделя.'),
+  ccpWeekTitle:'⏸ Неделя на потолке',
   ccpRiskTitle:'⚠ Неделя на потолке — <b>балансер не остановит заполнение до 100%</b>',
-  ccpRiskSub:(n,w,cap)=>`${n}: неделя <span class="num">${w}</span>, переключаться некуда — работаешь на свой страх и риск. Остановку на ${cap}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».`,
-  ccpWeekReason:(n,w,cap)=>`неделя ${n} на ${w}% (потолок ${cap}%), переключаться некуда`,
+  ccpRiskSub:(n,w,cap)=>`${n}: неделя <span class="num">${w}</span> — работаешь на свой страх и риск. Остановку на ${cap}% можно включить: ⚙ Настройки → «Пауза на недельном потолке».`,
+  ccpWeekReason:(n,w,cap)=>`неделя ${n} на ${w}% (потолок ${cap}%)`,
   ccpHintWeekOff:'работа пойдёт до 100% недели',
   ccpBtnSettings:'Открыть настройки',ccpHintSettings:'опция «Пауза на недельном потолке»',
   thrSet:v=>'Порог: '+v+'%',
@@ -4729,14 +4104,10 @@ const I18N={
   ccpPauseTitle:'⏸ Claude на <b>паузе по лимитам</b> — подъём автоматический',
   ccpDefReason:'лимиты сессионного окна',
   ccpPauseSub:(reason,at)=>'Причина: '+reason+(at?`. Будильник на <span class="num">${at}</span>: окно перепроверяется само, команда не нужна.`:'.'),
-  ccpHardTitle:'⛔ Уперлись в лимиты — <b>переключаться некуда</b>',
-  ccpHardAll:thr=>`Все аккаунты упёрлись в сессионное окно (порог ${thr}%).`,
-  ccpHardSome:(n,why,rest)=>`${n}: ${why}, а остальные не годятся: ${rest}.`,
-  ccpHardSub:(head,na,self)=>head+' Фоновые задачи не стартуют, чтобы не добить окно. '+(na?`Раньше всех освободится <b>${na}</b>`+(self?' — после сброса сессии работа продолжится на нём.':' — балансер переключится на него сразу после сброса.'):'Балансер переключится, как только освободится ближайший.'),
+  ccpHardTitle:'⛔ Уперлись в лимиты',
   ccpWhySes:(p,thr)=>`сессия <span class="num">${p}</span> (порог ${thr}%)`,
   ccpWhyWeek:(w,cap)=>`неделя <span class="num">${w}</span> — на потолке ${cap}%`,
   ccpWhyWeekOk:w=>`неделя <span class="num">${w}</span>`,
-  ccpHeldSes:p=>`сессия ${p}`,ccpHeldWeek:w=>`неделя ${w}`,ccpHeldErr:'ошибка',
   ccpOffTitle:'▶ Пауза <b>отключена вручную</b> — Claude работает сверх порога',
   ccpOffSub:(na,at)=>'Входящие сообщения доходят сразу, инструменты не блокируются — до настоящего лимита аккаунта. Пауза включится сама, как только освободится окно'+(na&&at?` (раньше всех — <b>${na}</b> в <span class="num">${at}</span>)`:'')+', или по кнопке.',
   ccpBtnOff:'Отключить паузу',
@@ -4763,20 +4134,9 @@ const I18N={
   cxlnTitle:'⚠ Лимит Codex <b>исчерпан</b>',
   cxlnSub:(n,why,at,left)=>`Достигнут лимит Codex${n?` <b>${n}</b>`:''}: ${why}.`+(at?` Сброс в <span class="num">${at}</span>.`:left?` Сброс через <span class="num">${left}</span>.`:' Время сброса пока неизвестно.'),
   cxlnHint:'После освобождения лимита повторите запрос. Профиль и права Codex сохранены.',
-  cxlnHintMulti:'Можно выбрать другой доступный аккаунт в настройках Codex или повторить запрос после сброса.',
   ccpHintOnHard:'окно забито — пауза встанет сразу',
   ccpHintOnFree:'окно уже свободно — пауза просто снова начнёт работать',
   ccpErr:e=>'не получилось: '+e,
-  ccpGateTitle:'⏸ Активный аккаунт забит — <b>фоновые задачи приостановлены</b>',
-  ccpGateWeekTitle:'⏸ Неделя активного аккаунта <b>на потолке</b>',
-  ccpProdSes:p=>'сессия '+p+'%',ccpProdWeek:w=>'неделя '+w+'%',ccpProdFree:'свободен',
-  ccpProdTitle:'⏸ Claude DEV в лимите — <b>Claude PROD свободен</b>',
-  ccpProdSub:(n,why,prod,on,off)=>`${n}: ${why}. ${prod}`+(on?', передача на него включена.':off?', но автопередача выключена. DEV ждёт сброса окна; передать работу сейчас — «Работа на PROD» или «Автопередача» в «Настройки PROD».':', но передача на него не готова.'),
-  ccpSearchTitle:'🔎 Ищу свободный аккаунт — <b>переключусь сам</b>',
-  ccpSearchSub:(n,why)=>`${n}: ${why}. Свободного аккаунта здесь нет — смотрю Claude PROD. Если там есть лимит, работа перейдёт туда сама в течение минуты; если нет — здесь встанет пауза.`,
-  ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'Свободный аккаунт есть — балансер переключится на следующем тике'+(bg?', после него задачи пойдут сами.':'.'):'Свободный аккаунт есть, но авто-переключение выключено — переключись вручную.'),
-  ccpManTitle:n=>`✋ ${n} <b>выбран вручную</b> — балансер не уводит с него`,
-  ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Работа идёт до 100% или до сброса окна`+(at?` в <span class="num">${at}</span>`:'')+' — паузы не будет. Вернуть авто-выбор — переключиться на свободный аккаунт.'+(bg?' Фоновые задачи не стартуют, пока сессия выше порога.':''),
   ccpTillMan:'до сброса окна',
   manTag:'Выбран вручную',manTagTitle:at=>`Выбран вручную — балансер не уведёт с него до ${at} или до 100%`,
   ccpWeek:w=>` · нед ${w}%`,
@@ -4801,7 +4161,7 @@ const I18N={
   modelsHdr:'Модели',
   modelsSub:'Отмеченные модели показываются в быстром меню плитки Claude. Применяется сразу.',
   tzMinusTitle:'Шрифт консоли меньше',tzPlusTitle:'Шрифт консоли крупнее',tzResetTitle:'Размер шрифта консоли — клик вернёт 100%',
-  fsTitle:'Только консоль, во весь экран',fsExitTitle:'Вернуться к обычному виду (Esc)',dockTab:'Аккаунты',dockSes:'Сессия 5ч',dockWeek:'Неделя',autoHdr:'Авто-переключение',optHint:'Автовыбор: сервис сам выбирает аккаунт, ручные кнопки блокируются',
+  fsTitle:'Только консоль, во весь экран',fsExitTitle:'Вернуться к обычному виду (Esc)',dockTab:'Аккаунты',dockSes:'Сессия 5ч',dockWeek:'Неделя',
   modelsDone:'Готово',
   noModelsEnabled:'Ни одна модель не включена — открой ⚙',
   efName:k=>({low:'низкий',medium:'средний',high:'высокий',xhigh:'очень высокий',max:'максимум'})[k]||k,
@@ -4827,8 +4187,10 @@ const I18N={
   redrawTitle:'Перерисовать консоль (если пропал кусок экрана, например полоски лимитов)',
   confirmNewSession:'Начать новую сессию Claude (/clear)? Текущий разговор уйдёт в фон на диск, вернуться можно через /resume в консоли. Продолжить?',
   cxTitle:'ChatGPT (Codex)',
-  cxHint:'Отдельные аккаунты, модели и оптимизация лимитов Codex',
-  cxAddTitle:'Добавить аккаунт ChatGPT',
+  cxHint:'Отдельный вход Codex, выбор модели и контроль лимитов',
+  oneClaude:'Сначала отключи текущий аккаунт Claude.',
+  oneCodex:'Сначала отключи текущий аккаунт Codex.',
+  cxAddTitle:'Подключить аккаунт ChatGPT',
   cxAddSub:'Пароль и почту вводить не нужно — вход по коду устройства. Сначала включи его в ChatGPT → Настройки → Безопасность («вход по коду устройства для Codex»); в рабочем пространстве это делает администратор. Если страница входа не принимает код — причина почти всегда в этом.',
   cxLabelLbl:'Название (необязательно)',
   cxLabelPh:'например, «Основной»',
@@ -5029,7 +4391,6 @@ const I18N={
   cxbRDev:'Дев — правки и коммиты на деве',
   cxbRFull:'Полные — включая прод',
   cxbSlot:'Аккаунт ChatGPT',
-  cxbSlotAuto:'первый подходящий',
   cxbTokLbl:'Telegram-бот',
   cxbTokPh:'Токен нового бота от @BotFather',
   cxbConnect:'Подключить',
@@ -5049,7 +4410,6 @@ const I18N={
   cxbDelAcct:"Отключить аккаунт",
   cxbDelTip:"Отключить выбранный аккаунт ChatGPT, сохранив историю",
   cxbDelPick:'Сначала выбери аккаунт в поле «Аккаунт ChatGPT» выше',
-  cxbNoSlot:'Нет аккаунта ChatGPT — сначала добавь его выше.',
   cxcOff:'Консоль Codex не запущена',
   cxcSub:(sb,cwd)=>'Ввод — под выбранной консолью. Права — '+sb+(cwd?' · папка '+cwd:'')+'. Меняются в окне Codex (мост Telegram).',
   cxcStart:'Запустить',
@@ -5072,9 +4432,6 @@ const I18N={
   title:'Claude — Account Limits',
   h1:'⚡ Claude — Account Limits',
   loading:'Loading…',
-  autoLbl:thr=>'Auto-switch at <span id="thrLbl">'+thr+'</span>% of session',
-  optLbl:'Auto-pick',
-  optDisabledTitle:'Inactive: Auto-pick in Account management chooses the account by these thresholds',
   refresh:'Refresh now',
   updated:'Updated',
   active:'ACTIVE',
@@ -5082,18 +4439,17 @@ const I18N={
   week:'Week',
   resetIn:(h,mm,clock)=>`resets in ${h?h+'h ':''}${mm}m (${clock})`,
   usingNow:'In use now',
-  optimizeRules:'Auto-pick active',
   switchTo:'Switch to this',
   switchBlockedTitle:'Blocked: Auto-pick is on',
   extended:'I renewed',
   lapsedTag:'INACTIVE',
   lapsedTitle:'Account inactive',
-  lapsedNote:'the subscription has ended, so it is out of the rotation. Polling is stopped until you press “I renewed”',
+  lapsedNote:'the subscription has ended. Polling is stopped until you press “I renewed”',
   lapsedSince:t=>` (since ${t})`,
   relogin:'🔑 Log in again',
   addBtnTitle:'Add an account',
-  addTitle:'Add an account to the rotation',
-  addSub:'Sign in to Claude with the account you want — once you are in, it joins the rotation by itself, no manual setup.',
+  addTitle:'Connect a Claude account',
+  addSub:'Sign in to the Claude account you will use in the balancer.',
   addEmailLbl:'Account email (optional)',
   addEmailHint:'Pre-fills the sign-in page so you do not have to type it again.',
   addGetLink:'Get the sign-in link',
@@ -5104,7 +4460,7 @@ const I18N={
   addCopied:'Copied ✓',
   addStep2:'Paste the code the page shows after sign-in',
   addCodePh:'Code from the sign-in page',
-  addSubmit:'Add to rotation',
+  addSubmit:'Connect',
   addChecking:'Checking sign-in…',
   addRestart:'Start over',
   addNeedCode:'Paste the code from the sign-in page.',
@@ -5112,7 +4468,6 @@ const I18N={
   delBtnTitle:"Disconnect the account, retaining history and files",
   delTitle:"Disconnect this account?",
   delWarn:"Authorization will be removed and the account will disappear from the balancer. The installed program, history, settings and files stay on the server. Reconnecting requires a fresh sign-in.",
-  delActive:"The active session will move to another account first.",
   delLast:"This is the only Claude account: its idle console will stop and its login will be removed. History is retained.",
   delWord:'confirm',
   delType:w=>'To confirm, type the word “'+w+'”',
@@ -5144,7 +4499,6 @@ const I18N={
   wkLbl:cap=>`<b>Pause at the weekly cap</b> — stop Claude at ${cap}% of the week when there is nothing to switch to. Off — the balancer won't stop the account from filling up to 100%.`,
   wkOn:'Pause at the weekly cap enabled',wkOff:'Pause at the weekly cap disabled',
   ccpWeekTitle:'⏸ Weekly cap reached — <b>nothing to switch to</b>',
-  ccpWeekSub:(n,w,cap,na)=>`${n}: week <span class="num">${w}</span> (cap ${cap}%), the other accounts are unavailable. “Pause at the weekly cap” is on — Claude pauses at the next step and resumes by itself when `+(na?`<b>${na}</b> frees up.`:'another account frees up or the week resets.'),
   ccpRiskTitle:'⚠ Weekly cap reached — <b>the balancer won\'t stop it at 100%</b>',
   ccpRiskSub:(n,w,cap)=>`${n}: week <span class="num">${w}</span>, nothing to switch to — you work at your own risk. To stop at ${cap}%, turn on ⚙ Settings → “Pause at the weekly cap”.`,
   ccpWeekReason:(n,w,cap)=>`week of ${n} at ${w}% (cap ${cap}%), nothing to switch to`,
@@ -5263,16 +4617,9 @@ const I18N={
   ccpDefReason:'session window limits',
   ccpPauseSub:(reason,at)=>'Reason: '+reason+(at?`. Alarm at <span class="num">${at}</span>: the window is re-checked automatically, no command needed.`:'.'),
   ccpHardTitle:'⛔ Limits reached — <b>nothing to switch to</b>',
-  ccpFleetWeekTitle:'⏸ All Claude accounts reached the weekly cap',
-  ccpFleetHardTitle:'⏸ No Claude accounts available',
-  ccpFleetSub:'Includes this server and connected servers. The timer shows when the first account becomes available.',
-  ccpHardAll:thr=>`Every account is out of its session window (threshold ${thr}%).`,
-  ccpHardSome:(n,why,rest)=>`${n}: ${why}, and none of the others will do: ${rest}.`,
-  ccpHardSub:(head,na,self)=>head+" Background jobs stay down so they don't burn the rest of the window. "+(na?`<b>${na}</b> frees up first`+(self?' — work continues on it once its session resets.':' — the balancer switches to it right after the reset.'):'The balancer switches as soon as the nearest one frees up.'),
   ccpWhySes:(p,thr)=>`session <span class="num">${p}</span> (threshold ${thr}%)`,
   ccpWhyWeek:(w,cap)=>`week <span class="num">${w}</span> — at the ${cap}% cap`,
   ccpWhyWeekOk:w=>`week <span class="num">${w}</span>`,
-  ccpHeldSes:p=>`session ${p}`,ccpHeldWeek:w=>`week ${w}`,ccpHeldErr:'error',
   ccpOffTitle:'▶ Pause <b>disabled manually</b> — Claude works past the threshold',
   ccpOffSub:(na,at)=>'Incoming messages go straight through and tools are not blocked — up to the real account limit. The pause re-arms by itself once a window frees up'+(na&&at?` (first: <b>${na}</b> at <span class="num">${at}</span>)`:'')+', or with the button.',
   ccpBtnOff:'Disable pause',
@@ -5299,20 +4646,9 @@ const I18N={
   cxlnTitle:'⚠ Codex <b>limit reached</b>',
   cxlnSub:(n,why,at,left)=>`Codex account${n?` <b>${n}</b>`:''} has reached the ${why}.`+(at?` Resets at <span class="num">${at}</span>.`:left?` Resets in <span class="num">${left}</span>.`:' The reset time is not known yet.'),
   cxlnHint:'Retry after the limit resets. The Codex profile and permissions are retained.',
-  cxlnHintMulti:'Choose another available account in Codex settings or retry after the reset.',
   ccpHintOnHard:'window is full — the pause starts right away',
   ccpHintOnFree:'window is already free — the pause simply works again',
   ccpErr:e=>'failed: '+e,
-  ccpGateTitle:'⏸ Active account is full — <b>background jobs paused</b>',
-  ccpGateWeekTitle:'⏸ Active account <b>at the weekly cap</b>',
-  ccpProdSes:p=>'session '+p+'%',ccpProdWeek:w=>'week '+w+'%',ccpProdFree:'is free',
-  ccpProdTitle:'⏸ Claude DEV hit its limit — <b>Claude PROD is free</b>',
-  ccpProdSub:(n,why,prod,on,off)=>`${n}: ${why}. ${prod}`+(on?', handoff to it is on.':off?', but auto handoff is off. DEV waits for the window reset; to move the work now use "Work on PROD" or "Auto handoff" in "PROD settings".':', but handoff to it is not ready.'),
-  ccpSearchTitle:'🔎 Looking for a free account — <b>will switch by itself</b>',
-  ccpSearchSub:(n,why)=>`${n}: ${why}. No free account here — checking Claude PROD. If it has room, work moves there by itself within a minute; if not, a pause starts here.`,
-  ccpGateSub:(n,why,auto,bg)=>`${n}: ${why}. `+(auto?'A free account exists — the balancer switches on the next tick'+(bg?', after that jobs resume by themselves.':'.'):'A free account exists, but auto-switching is off — switch manually.'),
-  ccpManTitle:n=>`✋ ${n} <b>picked manually</b> — the balancer keeps it`,
-  ccpManSub:(n,why,at,bg)=>`${n}: ${why}. Work goes on up to 100% or until the window resets`+(at?` at <span class="num">${at}</span>`:'')+' — no pause. To bring back automatic choice, switch to a free account.'+(bg?' Background jobs stay down while the session is above the threshold.':''),
   ccpTillMan:'until the window resets',
   manTag:'Picked manually',manTagTitle:at=>`Picked manually — the balancer keeps it until ${at} or 100%`,
   ccpWeek:w=>` · wk ${w}%`,
@@ -5337,7 +4673,7 @@ const I18N={
   modelsHdr:'Models',
   modelsSub:'Checked models show in the Claude tile quick menu. Applies instantly.',
   tzMinusTitle:'Smaller console font',tzPlusTitle:'Larger console font',tzResetTitle:'Console font size — click to reset to 100%',
-  fsTitle:'Console only, full screen',fsExitTitle:'Back to the normal view (Esc)',dockTab:'Accounts',dockSes:'Session 5h',dockWeek:'Week',autoHdr:'Auto-switch',optHint:'Auto-pick: the service chooses the account, manual buttons are blocked',
+  fsTitle:'Console only, full screen',fsExitTitle:'Back to the normal view (Esc)',dockTab:'Accounts',dockSes:'Session 5h',dockWeek:'Week',
   modelsDone:'Done',
   noModelsEnabled:'No models enabled — open ⚙',
   efName:k=>({low:'low',medium:'medium',high:'high',xhigh:'extra high',max:'maximum'})[k]||k,
@@ -5363,8 +4699,10 @@ const I18N={
   redrawTitle:'Redraw console (if part of the screen is missing, e.g. the limit bars)',
   confirmNewSession:'Start a new Claude session (/clear)? The current conversation moves to disk in the background — resume it with /resume in the console. Continue?',
   cxTitle:'ChatGPT (Codex)',
-  cxHint:'A separate program with its own sign-in — not part of the Claude rotation',
-  cxAddTitle:'Add a ChatGPT account',
+  cxHint:'Codex sign-in, model settings and quota limits',
+  oneClaude:'Disconnect the current Claude account first.',
+  oneCodex:'Disconnect the current Codex account first.',
+  cxAddTitle:'Connect a ChatGPT account',
   cxAddSub:'No password or email needed — sign-in by device code. Turn it on first in ChatGPT → Settings → Security (the device-code switch for Codex); in a workspace an admin does it. If the sign-in page does not accept the code, this is almost always the reason.',
   cxLabelLbl:'Name (optional)',
   cxLabelPh:'e.g. "Main"',
@@ -5565,7 +4903,6 @@ const I18N={
   cxbRDev:'Dev — edits and commits on dev',
   cxbRFull:'Full — including production',
   cxbSlot:'ChatGPT account',
-  cxbSlotAuto:'first available',
   cxbTokLbl:'Telegram bot',
   cxbTokPh:'Token of a new bot from @BotFather',
   cxbConnect:'Connect',
@@ -5585,7 +4922,6 @@ const I18N={
   cxbDelAcct:"Disconnect account",
   cxbDelTip:"Disconnect the selected ChatGPT account, retaining history",
   cxbDelPick:'First pick an account in the “ChatGPT account” field above',
-  cxbNoSlot:'No ChatGPT account — add one above first.',
   cxcOff:'The Codex console is not running',
   cxcSub:(sb,cwd)=>'Use the input below the selected console. Access — '+sb+(cwd?' · folder '+cwd:'')+'. Change it in the Codex window (Telegram bridge).',
   cxcStart:'Start',
@@ -5611,22 +4947,20 @@ try{const q=new URLSearchParams(location.search).get('lang');if(q==='ru'||q==='e
 function tr(k,...a){const v=I18N[LANG][k];return typeof v==='function'?v(...a):v;}
 let THR=85,lastSnap=null,lastModel=null;
 let WCAP=99;
-function renderAutoLbl(){$('#autoLbl').innerHTML=tr('autoLbl',THR);$('#wkLbl').innerHTML=tr('wkLbl',WCAP);}
+function renderLimitLabels(){$('#wkLbl').innerHTML=tr('wkLbl',WCAP);}
 function applyI18n(){
  document.title=tr('title');document.documentElement.lang=LANG;
  if(!$('#h1').querySelector('.fleet-brand-name'))$('#h1').textContent=tr('h1');
- $('#optLbl').textContent=tr('optLbl');$('#rfBtn').title=tr('refresh');$('#rfBtn').setAttribute('aria-label',tr('refresh'));
- renderAutoLbl();
+ $('#rfBtn').title=tr('refresh');$('#rfBtn').setAttribute('aria-label',tr('refresh'));
+ renderLimitLabels();
  $('#gear').title=tr('modelsBtnTitle');$('#addAcct').title=tr('addBtnTitle');$('#addAcct').setAttribute('aria-label',tr('addBtnTitle'));$('#modalTitle').textContent=tr('modelsTitle');
  $('#modelsHdr').textContent=tr('modelsHdr');
  $('#tzMinus').title=tr('tzMinusTitle');$('#tzPlus').title=tr('tzPlusTitle');$('#tzVal').title=tr('tzResetTitle');
  $('#updHdr').textContent=tr('updHdr');$('#bkHdr').textContent=tr('bkHdr');
- $('#autoHdr').textContent=tr('autoHdr');$('#optWrap').title=tr('optHint');$('#dockTabLbl').textContent=tr('dockTab');
- $('#autoNote').textContent=tr('optDisabledTitle');setConly(document.documentElement.classList.contains('conly'),false);
+ $('#dockTabLbl').textContent=tr('dockTab');
+ setConly(document.documentElement.classList.contains('conly'),false);
  if(typeof updRender==='function'){updRender();updSettingsRender();if(typeof bkRender==='function')bkRender();$('#ccliHdr').textContent=tr('ccliHdr');if(typeof ccliRender==='function'){ccliRender();ccliBadgeRender();}}  // смена языка перерисовывает баннер и блок настроек
  $('#modalSub').textContent=tr('modelsSub');$('#modalDone').textContent=tr('modelsDone');$('#checkNew').textContent=tr('checkNewModels');
- const opt=!!(lastSnap&&lastSnap.config&&lastSnap.config.optimize);
- $('#auto').parentElement.title=opt?tr('optDisabledTitle'):'';
  if(typeof ccpRender==='function')ccpRender();
  if(typeof cxlpRender==='function')cxlpRender();  // смена языка перерисовывает баннер без запроса
  if(lastSnap){
@@ -5686,12 +5020,13 @@ function idleUi(P,d,dot,txt,who,go){
  if(go){b.textContent=go.label;b.disabled=!!go.disabled;b.dataset.go=go.id;}
 }
 try{const _ct=localStorage.getItem('cc_contab');if(_ct==='codex'||_ct==='prod')CONS=_ct;}catch(e){}
-function prodAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_prod')==='1';return !!(lastSnap.remote&&Object.keys(lastSnap.remote).length)}catch(e){return false}}  // снимка ещё нет (первые секунды после обновления страницы): по запомненному cc_has_prod, иначе вкладка PROD на миг откатывается на DEV
+function prodAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_prod')==='1';return !!Object.keys(lastSnap.remote||{}).length&&(!Object.keys(lastSnap.accounts||{}).length||!!lastSnap.remote_mode?.active)}catch(e){return false}}  // снимка ещё нет (первые секунды после обновления страницы): по запомненному cc_has_prod, иначе вкладка PROD на миг откатывается на DEV
 // второй сервер не подключён — прячем всё, что с ним связано (вкладка, плашка шапки, карточка, кнопки передачи); запоминаем, чтобы страница не мигала при загрузке
 // основной Claude (DEV) отключён в балансере (в снимке нет ни одного аккаунта): его вкладки в консоли нет; запоминаем, чтобы страница не мигала
-function devAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_dev')!=='0';return !!(lastSnap.accounts&&Object.keys(lastSnap.accounts).length)}catch(e){return true}}
+function devAvail(){try{if(!lastSnap)return localStorage.getItem('cc_has_dev')!=='0';return !!Object.keys(lastSnap.accounts||{}).length&&!prodAvail()}catch(e){return true}}
 let DEVAV=null;
 function devSync(){const v=devAvail();document.documentElement.classList.toggle('no-dev',!v);if(v===DEVAV)return;DEVAV=v;try{localStorage.setItem('cc_has_dev',v?'1':'0')}catch(e){}consTabs();}
+function claudeLinked(){return !!(lastSnap?.config?.claude_account_connected||Object.keys(lastSnap?.accounts||{}).length||Object.keys(lastSnap?.remote||{}).length)}
 function noProdSync(){const hp=prodAvail();document.documentElement.classList.toggle('no-prod',!hp);try{localStorage.setItem('cc_has_prod',hp?'1':'0')}catch(e){}}
 // запомненная вкладка Codex не выбирается, пока Codex не подключён (призрачная плитка), и консоль Codex сама не стартует без входа в ChatGPT — иначе при каждой загрузке страницы «Нет входа в ChatGPT» (владелец 62657)
 function baseCur(){const cxo=cxAvail()&&!document.documentElement.classList.contains('ag-unlinked-codex');let k=CONS==='prod'&&prodAvail()?'prod':CONS==='codex'&&cxo?'codex':'claude';if(k==='claude'&&!devAvail())k=prodAvail()?'prod':cxo?'codex':'claude';return k;}
@@ -5873,6 +5208,7 @@ document.addEventListener('keydown',e=>{
 document.documentElement.removeAttribute('data-skin');{const box=$('#termBox');box.scrollTop=box.scrollHeight;}
 function consTabs(){
  const av=cxAvail(),pv=prodAvail(),cur=consCur(),ks=splitEff()||[];
+ const stop=$('#fleetConsoleForm [data-console-key=stop]');if(stop)stop.hidden=cur!=='codex';
  $('#ctClaude').hidden=!devAvail();$('#cTabs').hidden=!(av||pv);$('.termwrap').classList.toggle('hastabs',av||pv);$('#ctProd').hidden=!pv;$('#ctCodex').hidden=!av;  // Codex недоступен — его вкладки нет
  [['claude','#ctClaude'],['prod','#ctProd'],['codex','#ctCodex']].forEach(([k,id])=>{
   const b=$(id),on=k===cur;
@@ -5909,7 +5245,7 @@ function newPane(){
 const DRAFTS={};  // черновик по модели: переставили части местами — текст ушёл вместе с моделью
 function compMake(P){
  const w=document.createElement('div');w.className='tpcw';
- w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="up">↑</button><button type="button" class="tpkey" data-console-key="down">↓</button><button type="button" class="tpkey" data-console-key="enter">⏎</button><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form>';
+ w.innerHTML='<form class="tpcomp"><textarea rows="1"></textarea><button type="button" class="tpkey" data-console-key="up">↑</button><button type="button" class="tpkey" data-console-key="down">↓</button><button type="button" class="tpkey" data-console-key="enter">⏎</button><button type="button" class="tpkey" data-console-key="escape">Esc</button><button type="button" class="tpkey" data-console-key="stop" hidden>Стоп</button><button type="submit" class="tpsend"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></button></form>';
  const form=w.children[0],input=form.children[0],send=form.querySelector('.tpsend'),stat=document.createElement('span');  // строки «Ввод в …» у части нет: статус отправки пишется в невидимый узел, ошибки показывает toast
  P.comp={w:w,form:form,input:input,send:send,stat:stat,model:null};
  input.addEventListener('input',()=>{DRAFTS[P.k]=input.value;});
@@ -5924,7 +5260,7 @@ function compSync(P,on){
  if(c.model!==P.k){
   c.model=P.k;c.input.value=DRAFTS[P.k]||'';
   c.input.placeholder=(LANG==='en'?'Message to ':'Сообщение в ')+n+'…';c.input.setAttribute('aria-label',c.input.placeholder);
-  c.send.title=LANG==='en'?'Send':'Отправить';c.form.querySelectorAll('.tpkey').forEach(b=>{const k=b.dataset.consoleKey;b.title=LANG==='en'?({up:'Arrow up',down:'Arrow down',enter:'Enter (select)',escape:'Esc'}[k]+' to console'):({up:'Стрелка вверх в консоль',down:'Стрелка вниз в консоль',enter:'Enter в консоль (выбрать пункт)',escape:'Esc в консоль'}[k]);b.setAttribute('aria-label',b.title);});
+  c.send.title=LANG==='en'?'Send':'Отправить';c.form.querySelectorAll('.tpkey').forEach(b=>{const k=b.dataset.consoleKey;if(k==='stop'){b.hidden=P.k!=='codex';b.textContent=LANG==='en'?'Stop':'Стоп';}b.title=LANG==='en'?({up:'Arrow up',down:'Arrow down',enter:'Enter (select)',escape:'Esc',stop:'Stop Codex and clear waiting requests'}[k]):({up:'Стрелка вверх в консоль',down:'Стрелка вниз в консоль',enter:'Enter в консоль (выбрать пункт)',escape:'Esc в консоль',stop:'Прервать запрос Codex и очистить очередь'}[k]);b.setAttribute('aria-label',b.title);});
  }
 }
 function placeFrame(ks){
@@ -6214,7 +5550,6 @@ function frac(iso,windowSec){if(!iso)return 0;const remain=(new Date(iso)-Date.n
 function ring(o,windowSec,size){o=o||{};size=size||34;const sw=Math.max(3,Math.round(size*.1));const rad=size/2-sw/2;const circ=2*Math.PI*rad;const f=frac(o.resets_at,windowSec);const uc=urgCol(f);const dash=(f*circ).toFixed(1);const c=size/2;
  return `<div class="ring" style="width:${size}px;height:${size}px" title="${rst(o.resets_at)}"><svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"><circle cx="${c}" cy="${c}" r="${rad}" fill="none" stroke="#242b38" stroke-width="${sw}"/><circle cx="${c}" cy="${c}" r="${rad}" fill="none" stroke="${uc}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${dash} ${circ.toFixed(1)}" transform="rotate(-90 ${c} ${c})"/></svg><span class="ringtxt" style="font-size:${Math.round(size*.26)}px">${Math.round(f*100)}%</span></div>`}
 function renderCards(d){
- const opt=!!(d.config&&d.config.optimize);
  $('#cards').innerHTML=Object.entries(d.accounts).map(([n,a])=>{
   const plan=a.plan==='free'?'<span class="tag free">FREE</span> ':a.plan?'<span class="tag plan">'+a.plan.toUpperCase()+'</span> ':'';
   const icons=a.active?`<div class="iconrow">
@@ -6231,7 +5566,7 @@ function renderCards(d){
    <div class="top"><span class="email">${a.email} ${plan}${lpTag}${a.renewal_next?renewChip(a.renewal_next):''}</span><div class="hdrright">${r}${icons}</div></div>
    ${lpNote}
    ${a.error&&!lp?`<div class="err">⚠ ${a.error}${a.stale_ts?tr('staleAt',new Date(a.stale_ts*1000).toLocaleTimeString(LANG==='en'?'en-GB':'ru',{hour:'2-digit',minute:'2-digit'})):''}</div>`:''}${a.five_hour&&!lp?bar(tr('session5'),a.five_hour)+bar(tr('week'),a.seven_day):''}
-   <div class="acts">${lp&&!a.active?'':`<button class="btn-sw" onclick="sw('${n}')" ${a.active||opt?'disabled':''} ${opt&&!a.active?'title="'+tr('switchBlockedTitle')+'"':a.manual_until?'title="'+ccpEsc(tr('manTagTitle',ccpAt(a.manual_until*1000)))+'"':''}>${a.active?(a.manual_until?'✋ '+tr('manTag'):tr('usingNow')):opt?tr('optimizeRules'):tr('switchTo')}</button>`}
+   <div class="acts">
    ${a.plan==='free'?`<button class="btn-renew" onclick="recheck('${n}',this)"><i class="rn-ic">✅</i> <span class="rn-t">${tr('extended')}</span></button>`:''}
    ${loginChip(a.login_expires)}<button class="btn-relogin" onclick="reloginAsk('${n}',this)">${tr('relogin')}</button>
    <button class="btn-del" title="${tr('delBtnTitle')}" aria-label="${tr('delBtn')}" onclick="acctDel('${n}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 11v6m4-6v6"/></svg><span class="dl">${tr('delBtn')}</span></button></div>
@@ -6244,14 +5579,11 @@ function setUpd(ts){const t=tr('updated')+' '+new Date(ts*1000).toLocaleTimeStri
 async function load(refresh){
  const r=await fetch(API+'limits?token='+TOKEN+(refresh?'&refresh=1':''));const d=await r.json();
  lastSnap=d;noProdSync();devSync();consFollow(d);
- $('#auto').checked=!!(d.config&&d.config.autoswitch);
- const opt=!!(d.config&&d.config.optimize);$('#opt').checked=opt;
- $('#auto').disabled=opt;$('#autoWrap').style.opacity=opt?'.5':'';
- $('#autoWrap').title=opt?tr('optDisabledTitle'):'';$('#autoNote').hidden=!opt;
+ document.documentElement.classList.toggle('claude-linked',claudeLinked());
  if(d.config&&d.config.threshold)THR=d.config.threshold;
  if(d.config&&d.config.weekly_cap)WCAP=Math.round(d.config.weekly_cap);
  $('#wkPause').checked=!!(d.config&&d.config.weekly_pause);
- renderAutoLbl();renderCards(d);
+ renderLimitLabels();renderCards(d);
  setUpd(d.ts);
  renderModel(d.model);
 }
@@ -6377,11 +5709,6 @@ $('#gear').addEventListener('click',()=>{$('#scrim').hidden=false});
 $('#modalDone').addEventListener('click',()=>{$('#scrim').hidden=true;poolScanned=false;renderPool();});
 $('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim'){$('#scrim').hidden=true;poolScanned=false;renderPool();}});
 function toast(t){const m=$('#msg');m.textContent=t;m.style.display='block';setTimeout(()=>m.style.display='none',4000)}
-async function sw(n){
- if(!confirm(tr('confirmSwitch',n)))return;
- const r=await fetch(API+'switch?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:n})});
- const d=await r.json();toast(d.ok?'✅ '+d.message.split('\n')[0]:'⚠ '+d.message);load();
-}
 async function sessionCmd(cmd,btn){
  if(cmd==='compact'&&!await window.fleetAsk(btn,tr('askCompact'),tr('askYes')))return;
  if(cmd==='new'&&!confirm(tr('confirmNewSession')))return;
@@ -6390,29 +5717,9 @@ async function sessionCmd(cmd,btn){
   const d=await r.json();toast(d.ok?'✅ '+d.message:'⚠ '+(d.message||''));
  }catch(e){toast('⚠ '+e)}
 }
-$('#auto').addEventListener('change',async e=>{
- await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoswitch:e.target.checked})});
- toast(e.target.checked?tr('autoOn'):tr('autoOff'));
-});
-async function setThr(v){
- v=Math.max(50,Math.min(99,v));
- if(v===THR)return;
- THR=v;renderAutoLbl();
- await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:THR})});
- toast(tr('thrSet',THR));
-}
 $('#wkPause').addEventListener('change',async e=>{
  await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({weekly_pause:e.target.checked})});
  toast(e.target.checked?tr('wkOn'):tr('wkOff'));ccpLoad();
-});
-$('#thrMinus').addEventListener('click',()=>setThr(THR-5));
-$('#thrPlus').addEventListener('click',()=>setThr(THR+5));
-$('#opt').addEventListener('change',async e=>{
- const box=e.target,on=box.checked;box.checked=!on;
- if(!await window.fleetAsk(box.closest('label,.switchrow')||box,tr(on?'askOptOn':'askOptOff'),tr('askYes')))return;
- box.checked=on;
- await fetch(API+'config?token='+TOKEN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({optimize:on})});
- toast(on?tr('optOn'):tr('optOff'));load();
 });
 async function recheck(n,btn){
  btn.disabled=true;const orig=btn.innerHTML;btn.innerHTML='<span class="rn-t">'+tr('checking')+'</span>';
@@ -6501,7 +5808,7 @@ function acctDel(n){
  const word=tr('delWord');
  acctShow(`<h3>${tr('delTitle')}</h3>
   <div class="modalsub"><b>${acctEsc(isReal?a.email:n)}</b> · ${acctEsc(n)}</div>
-  <div class="dlgwarn">${tr('delWarn')}${a.active?'<br><br>'+tr('delActive'):''}${last?'<br><br>'+tr('delLast'):''}</div>
+  <div class="dlgwarn">${tr('delWarn')}${last?'<br><br>'+tr('delLast'):''}</div>
   <label class="dlglbl" for="delInp">${tr('delType',word)}</label>
   <input id="delInp" class="dlginp" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${word}">
   <div class="dlgerr" id="acctErr" hidden></div>
@@ -6523,6 +5830,7 @@ function acctDel(n){
  setTimeout(()=>inp.focus(),30);
 }
 function acctAdd(){
+ if(claudeLinked()){toast(tr('oneClaude'));return;}
  acctShow(`<h3>${tr('addTitle')}</h3>
   <div class="modalsub">${tr('addSub')}</div>
   <label class="dlglbl" for="addEmail">${tr('addEmailLbl')}</label>
@@ -6643,6 +5951,7 @@ function cxCard(a){
 }
 function cxRender(){
  const el=$('#cx'),d=cxData;
+ document.documentElement.classList.toggle('codex-linked',!!d?.accounts?.length);
  if(!d||!d.available){el.hidden=true;el.innerHTML='';return;}
  // открытый выпадающий список перерисовка закрыла бы под рукой — отложим до ухода фокуса
  const f=document.activeElement;
@@ -6665,13 +5974,11 @@ function cxbSync(){
  $('#cxbDirRow').hidden=b.mode!=='self';
  cxbDelSync();
 }
-// «Удалить аккаунт» в карточке моста — тот аккаунт, что выбран в поле «Аккаунт ChatGPT»; «первый подходящий» — неясно какой, кнопка неактивна
 function cxbDelSync(){
  const btn=$('#cxbDel');if(!btn)return;
- const sel=$('#cxbSlot'),has=!!(sel&&sel.value);
- btn.disabled=!has;btn.title=tr(has?'cxbDelTip':'cxbDelPick');
+ btn.disabled=!cxLimAcc();btn.title=tr('cxbDelTip');
 }
-function cxbDelAcct(){const sel=$('#cxbSlot');if(sel&&sel.value)cxDel(sel.value);}
+function cxbDelAcct(){const a=cxLimAcc();if(a)cxDel(a.slot);}
 function cxbStatus(b){
  const st=(b.running?'🟢 <b>'+tr('cxbRunning')+'</b>':'⚪ '+tr('cxbOff'))+(b.busy?tr('cxbBusy'):'')+(b.pending?tr('cxbPending'):'');
  const ts=(b.tasks||[]).map(t=>'#'+t.n+' '+(CXB_ST[t.state]||t.state)+' '+acctEsc(t.rights)).join(' · ');
@@ -6682,10 +5989,7 @@ function cxbRender(force){
  if(!d||!d.available){el.hidden=true;el.innerHTML='';return;}
  const f=document.activeElement;
  if(!force&&f&&el.contains(f)&&/^(INPUT|SELECT)$/.test(f.tagName)){const s=$('#cxbStat');if(s)s.innerHTML=cxbStatus(d.bridge);return;}
- const b=d.bridge,o=(v,l,cur)=>`<option value="${v}"${cur===v?' selected':''}>${acctEsc(l)}</option>`;
- const slots=(b.slots||[]).length
-  ?`<select class="dlginp" id="cxbSlot" onchange="cxbDelSync()">${o('',tr('cxbSlotAuto'),b.slot)}${b.slots.map(s=>o(s,s+((cxAcc(s)||{}).email?' · '+cxAcc(s).email:''),b.slot)).join('')}</select>`
-  :`<div class="cxsub" style="margin-top:8px">${tr('cxbNoSlot')}</div>`;
+ const b=d.bridge;
  // профиль «Codex»: рабочая папка (где он может всё) идёт первой, проект — только чтение; в «Оркестраторе» видно только проект
  const self=b.mode==='self';
  const projBlock=`<label class="dlglbl" for="cxbProj"${self?' style="margin-top:14px"':''}>${tr(self?'cxbProjectSelf':'cxbProject')}</label>
@@ -6697,9 +6001,6 @@ function cxbRender(force){
  el.hidden=false;
  el.innerHTML=`<div class="cxsub" style="margin:10px 0 8px">${tr('cxbHint')}</div>
  <div class="card">
-  <div class="cxbgrid">
-   <div><label class="dlglbl" for="cxbSlot">${tr('cxbSlot')}</label>${slots}</div>
-  </div>
   ${self?dirBlock+projBlock:projBlock+dirBlock}
   <label class="dlglbl" for="cxbTok" style="margin-top:14px">${tr('cxbTokLbl')}</label>
   ${b.token_set
@@ -6727,7 +6028,7 @@ async function cxbSave(){
  const btn=$('#cxbSave');btn.disabled=true;
  try{
   const on=$('#cxbOn'),b=(cxbData&&cxbData.bridge)||{},pj=cxbVal('cxbProj').trim();
-  const body={slot:cxbVal('cxbSlot'),workdir:cxbVal('cxbDir').trim(),chat_id:cxbVal('cxbChat').trim(),enabled:!!(on&&on.checked)};
+  const body={workdir:cxbVal('cxbDir').trim(),chat_id:cxbVal('cxbChat').trim(),enabled:!!(on&&on.checked)};
   if(pj!==cxbProjVal(b))body.project=pj;  // проект уходит, только если его поменяли
   const r=await acctPost('chatgpt/bridge/save',body);
   toast(r.ok?tr('cxbSaved'):'⚠ '+r.message);
@@ -6824,13 +6125,7 @@ function cxHdr(){
  $('#cxPopX').title=tr('cxpClose');$('#cxPopX').setAttribute('aria-label',tr('cxpClose'));
 }
 // ---- счётчики лимитов в кнопке шапки: 5 ч · неделя в одну строку, цвет по занятости, при исчерпании — когда сбросится ----
-// Берём аккаунт, которым работает мост (слот из настроек, иначе первый). Время — местное время браузера.
-function cxLimAcc(){
- const as=(cxData&&cxData.accounts)||[],b=cxbData&&cxbData.bridge;
- if(!as.length)return null;
- const slot=(b&&b.slot)||(b&&b.slots&&b.slots[0])||as[0].slot;
- return as.find(a=>a.slot===slot)||as[0];
-}
+function cxLimAcc(){return (cxData?.accounts||[])[0]||null;}
 function cxLoc(){return LANG==='en'?'en-GB':'ru';}
 function cxClock(iso){
  const d=new Date(iso);if(isNaN(d))return'';
@@ -7422,6 +6717,7 @@ function cxAdd(slot){
   cxStart(slot,'',`<h3>${tr('cxRelTitle')}</h3><div class="modalsub"><b>${acctEsc(a.email||slot)}</b> · ${acctEsc(slot)}</div>`);
   return;
  }
+ if(cxData?.accounts?.length){toast(tr('oneCodex'));return;}
  acctShow(`<h3>${tr('cxAddTitle')}</h3><div class="modalsub">${tr('cxAddSub')}</div>
   <label class="dlglbl" for="cxLabel">${tr('cxLabelLbl')}</label>
   <input id="cxLabel" class="dlginp" maxlength="60" autocomplete="off" spellcheck="false" placeholder="${tr('cxLabelPh')}">
@@ -7561,15 +6857,6 @@ function ccpWhy(a,thr,wcap){
  if(h.includes('неделя'))out.push(tr('ccpWhyWeek',w,wcap));else out.push(tr('ccpWhyWeekOk',w));
  return out.join(', ');
 }
-// то же коротко, для списка «остальные не годятся»: «неделя 100%», «сессия 91%, неделя 98%»
-function ccpHeld(a){
- const h=a.held||'',out=[];
- if(a.error)return tr('ccpHeldErr');
- if(h==='free')return 'Free';
- if(h.includes('сессия'))out.push(tr('ccpHeldSes',a.pct==null?'?':Math.round(a.pct)+'%'));
- if(h.includes('неделя'))out.push(tr('ccpHeldWeek',a.wpct==null?'?':Math.round(a.wpct)+'%'));
- return out.join(', ')||'?';
-}
 function ccpAgents(d){
  const states=(d&&d.claude_limits)||{};let count=0;
  for(const [key,id,name] of [['claude','ccPauseDev','Claude DEV'],['prod','ccPauseProd','Claude PROD']]){
@@ -7578,7 +6865,7 @@ function ccpAgents(d){
   const until=(s.resume_at||0)*1000;
   const at=until?new Date(until).toLocaleString(LANG==='en'?'en-GB':'ru',{timeZone:window.FLEET_TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
   const title=tr(s.window==='pause'?'ccpaPause':s.window==='week'?'ccpaWeek':'ccpaSession',name,s.pct==null?'?':Math.round(s.pct),at);
-  const sub=s.override?tr('ccpaOverride'):s.manual?tr('ccpaManual'):s.window==='pause'?tr('ccpaKnownPause'):tr(s.waiting?'ccpaWait':'ccpaWarn',s.threshold);
+  const sub=s.override?tr('ccpaOverride'):s.window==='pause'?tr('ccpaKnownPause'):tr(s.waiting?'ccpaWait':'ccpaWarn',s.threshold);
   const toggle=s.override?'on':!s.manual&&s.waiting&&s.can_override?'off':'';
   const action=toggle?'<div class="ccp-actions"><button type="button" class="ccp-btn" onclick="ccpToggle(\''+toggle+'\',this,\''+key+'\')">'+tr(toggle==='on'?'ccpBtnOn':'ccpBtnOff')+'</button></div>':'';
   el.className='ccpause lvl-'+(s.waiting?'pause':'hard');el.hidden=false;
@@ -7593,7 +6880,7 @@ function ccpRender(){
  const pause=(d&&d.pause)||{},lvl=(d&&d.level)||'none';
  // Два Claude показываются независимо: работа на PROD/Codex не скрывает лимиты DEV.
  const agentCount=ccpAgents(d);
- if(agentCount&&!d.handoff&&!d.manual){el.hidden=true;el.innerHTML='';return;}
+ if(agentCount){el.hidden=true;el.innerHTML='';return;}
  // Локальная пауза и активный PROD не скрывают исчерпание всей пары.
  const rp=d&&d.remote_pause;
  if(rp&&rp.enabled&&rp.applied&&rp.blocked){
@@ -7607,20 +6894,6 @@ function ccpRender(){
    +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)+'</div><div class="l">'+tr('ccpTillWake')+'</div></div>':'');
   return;
  }
- const fleet=d&&d.fleet;
- if(fleet&&fleet.remote_count&&fleet.all_blocked){
-  const next=fleet.nearest||{},until=next.resets_at?new Date(next.resets_at).getTime():0;
-  const chips=Object.values(fleet.accounts||{}).map(a=>'<span class="ccp-chip hot">'+ccpEsc(a.label)
-   +' <b>'+(a.pct==null?'?':Math.round(a.pct)+'%')+'</b>'
-   +(a.wpct!=null?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
-  el.className='ccpause lvl-pause';el.hidden=false;
-  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'
-   +tr(fleet.all_week_capped?'ccpFleetWeekTitle':'ccpFleetHardTitle')+'</div><div class="ccp-sub">'+tr('ccpFleetSub')
-   +'</div><div class="ccp-meta">'+chips+'</div></div>'
-   +(until?'<div class="ccp-timer" data-until="'+until+'"><div class="t">'+ccpLeft(until)
-     +'</div><div class="l">'+tr('ccpTillFree',ccpEsc(next.label||next.acc||''))+'</div></div>':'');
-  return;
- }
  if(!d||d.stale||(lvl==='none'&&!pause.active&&!pause.override)){el.hidden=true;return;}
  // приоритет: пауза отключена кнопкой > пауза (в ней уже есть будильник) >
  // переключаться некуда > активный забит
@@ -7631,20 +6904,7 @@ function ccpRender(){
  const near=(d.nearest&&d.nearest.resets_at)?new Date(d.nearest.resets_at).getTime():0;
  const thr=Math.round(d.threshold||90),wcap=Math.round(d.weekly_cap||99);
  let title,sub,timer=null,tlabel='',action=null;
- // автопередача вот-вот отдаст работу Claude PROD: «некуда» пока не правда — «ищу свободный аккаунт»; красный баннер и пауза — только если искать негде (владелец 62577)
- const search=!!d.handoff&&['hard','week','weekrisk'].includes(mode);
- if(search){
-  const a=(d.accounts||{})[d.active]||{};
-  title=tr('ccpSearchTitle');sub=tr('ccpSearchSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap));
- }else if(d.prod_free&&['hard','week'].includes(mode)){
-  // DEV упёрся, а Claude PROD свободен и работа к нему не уходит (автопередача выключена): «переключаться некуда» — неправда
-  const pf=d.prod_free,a=(d.accounts||{})[d.active]||{};
-  title=tr('ccpProdTitle');
-  const nums=[pf.pct==null?'':tr('ccpProdSes',Math.round(pf.pct)),pf.wpct==null?'':tr('ccpProdWeek',Math.round(pf.wpct))].filter(Boolean).join(', ');
-  sub=tr('ccpProdSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),ccpEsc(pf.label||'Claude PROD')+(nums?' ('+nums+')':'')+' '+tr('ccpProdFree'),!!pf.on,!pf.on&&pf.why==='автопередача выключена');
-  if(near){timer=near;tlabel=tr('ccpTillNearest');}
-  action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintHardOff')};
- }else if(mode==='off'){
+ if(mode==='off'){
   const na=d.nearest&&d.nearest.acc;
   const full=lvl==='hard'||lvl==='week';
   title=tr('ccpOffTitle');sub=tr('ccpOffSub',full&&na?ccpEsc(na):'',full&&near?ccpAt(near):'');
@@ -7662,7 +6922,7 @@ function ccpRender(){
   const na=d.nearest&&d.nearest.acc,a=(d.accounts||{})[d.active]||{};
   const n=ccpEsc(d.active||'?'),w=a.wpct==null?'?':Math.round(a.wpct)+'%';
   if(mode==='week'){
-   title=tr('ccpWeekTitle');sub=tr('ccpWeekSub',n,w,wcap,na?ccpEsc(na):'');
+   title=tr('ccpWeekTitle');sub=tr('ccpWeekReason',n,w,wcap);
    action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintWeekOff')};
   }else{
    title=tr('ccpRiskTitle');sub=tr('ccpRiskSub',n,w,wcap);
@@ -7671,27 +6931,11 @@ function ccpRender(){
   if(near){timer=near;tlabel=na?tr('ccpTillFree',ccpEsc(na)):tr('ccpTillNearest');}
  }else if(mode==='hard'){
   const na=d.nearest&&d.nearest.acc,accs=d.accounts||{},a=accs[d.active]||{};
-  // все сессии забиты — старый текст; иначе называем, что держит каждый из остальных
-  const allSes=!Object.values(accs).some(x=>x.ses_ok);
-  const rest=Object.entries(accs).filter(([n])=>n!==d.active).sort(([x],[y])=>x<y?-1:1)
-   .map(([n,x])=>ccpEsc(n)+' — '+ccpHeld(x)).join(', ');
   title=tr('ccpHardTitle');
-  sub=tr('ccpHardSub',allSes?tr('ccpHardAll',thr):tr('ccpHardSome',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),rest),
-   na?ccpEsc(na):'',na&&na===d.active);
+  sub=ccpEsc(ccpWhy(a,thr,wcap));
   if(near){timer=near;tlabel=na?tr('ccpTillFree',ccpEsc(na)):tr('ccpTillNearest');}
   action={act:'off',label:tr('ccpBtnOff'),hint:tr('ccpHintHardOff')};
- }else if(mode==='manual'){
-  const a=(d.accounts||{})[d.active]||{},n=ccpEsc(d.active||'?'),upMs=((d.manual||{}).until||0)*1000;
-  title=tr('ccpManTitle',n);
-  sub=tr('ccpManSub',n,ccpWhy(a,thr,wcap),upMs?ccpAt(upMs):'',!a.ses_ok);
-  if(upMs){timer=upMs;tlabel=tr('ccpTillMan');}
- }else{
-  const a=(d.accounts||{})[d.active]||{},ses=(a.held||'').includes('сессия');
-  // фоновые задачи гейт держит только по сессии — на недельном потолке они идут
-  title=tr(ses?'ccpGateTitle':'ccpGateWeekTitle');
-  // без таймера: сброс окна активного тут ни при чём — балансер уходит на свободный сразу
-  sub=tr('ccpGateSub',ccpEsc(d.active||'?'),ccpWhy(a,thr,wcap),d.autoswitch!==false,ses);
- }
+ }else{el.hidden=true;return;}
  // у активного исчерпан настоящий лимит (сессия или неделя 100%) — «Отключить паузу» ничего не даст: кнопку прячем
  const aa=(d.accounts||{})[d.active]||{};
  if(action&&action.act==='off'&&(aa.pct>=100||aa.wpct>=100))action={act:'',label:'',hint:tr('ccpHintLimitOut')};
@@ -7699,7 +6943,7 @@ function ccpRender(){
   '<span class="ccp-chip'+(a.usable===false?' hot':'')+'">'+ccpEsc(n)
   +(a.active?tr('ccpActive'):'')+' <b>'+(a.pct==null?'?':a.pct+'%')+'</b>'
   +(a.wpct!=null&&a.wpct>=90?tr('ccpWeek',Math.round(a.wpct)):'')+'</span>').join('');
- el.className='ccpause lvl-'+(search?'gate':({week:'pause',weekrisk:'hard',manual:'gate'}[mode]||mode));el.hidden=false;
+ el.className='ccpause lvl-'+({week:'pause',weekrisk:'hard'}[mode]||mode);el.hidden=false;
  el.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">'+title+'</div>'
   +'<div class="ccp-sub">'+sub+'</div><div class="ccp-meta">'+chips
   +(pause.active&&pause.checks?'<span class="ccp-chip">'+tr('ccpChecks',pause.checks)+'</span>':'')
@@ -7736,7 +6980,7 @@ async function ccpLoad(){
  ccpRender();
 }
 
-// ---- Codex: предупреждение о лимитах отдельно от паузы очереди (/api/chatgpt/rotation → limit_notice) ----
+// ---- Codex: предупреждение о лимитах отдельно от паузы очереди (/api/chatgpt/limits → limit_notice) ----
 let cxlpData=null,cxlpOpen=false,cxlpLoadedAt=0;
 function cxlpRender(){
  const el=$('#cxPause');if(!el)return;
@@ -7757,15 +7001,15 @@ function cxlpRender(){
   +'<span class="ccp-title">'+(policy?ccpEsc(tr('cxqpBrief',why,override)):p.hard&&(p.windows||[]).length?ccpEsc(tr('cxqpLimitBrief',why)):paused?(at?tr('cxlpBrief',at):tr('cxlpBriefNoAt')):ccpEsc(tr('cxlnBrief',why,at)))+'</span>'+timer
   +'<svg viewBox="0 0 24 24" class="fleet-pause-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>'
   +'<div class="fleet-pause-content"><div class="ccp-body"><div class="ccp-title">'+tr(policy?'cxqpTitle':paused?'cxlpTitle':'cxlnTitle')+'</div>'
-  +'<div class="ccp-sub">'+(policy?ccpEsc(tr(override?'cxqpOff':'cxqpSub',p.threshold,p.weekly_cap)):paused?tr('cxlpSub',p.multi?ccpEsc(p.label):'',why,at,p.multi&&p.resume_label&&p.resume_slot!==p.slot?ccpEsc(p.resume_label):''):tr('cxlnSub',p.multi?ccpEsc(p.label):'',why,at,upMs?ccpLeft(upMs):''))+'</div>'
+  +'<div class="ccp-sub">'+(policy?ccpEsc(tr(override?'cxqpOff':'cxqpSub',p.threshold,p.weekly_cap)):paused?tr('cxlpSub','',why,at,''):tr('cxlnSub',p.multi?ccpEsc(p.label):'',why,at,upMs?ccpLeft(upMs):''))+'</div>'
   +'<div class="ccp-meta">'+chips+'</div>'
-  +'<div class="ccp-actions">'+(override||p.can_override?'<button type="button" class="ccp-btn" onclick="cxlpToggle('+(!override)+',this)">'+tr(override?'ccpBtnOn':'ccpBtnOff')+'</button>':'')+'<span class="ccp-hint">'+ccpEsc(tr(policy?'cxqpHint':p.hard?'cxqpHardHint':paused?'cxlpHint':p.multi?'cxlnHintMulti':'cxlnHint',p.queued||0))+'</span></div></div></div></details>';
+  +'<div class="ccp-actions">'+(override||p.can_override?'<button type="button" class="ccp-btn" onclick="cxlpToggle('+(!override)+',this)">'+tr(override?'ccpBtnOn':'ccpBtnOff')+'</button>':'')+'<span class="ccp-hint">'+ccpEsc(tr(policy?'cxqpHint':p.hard?'cxqpHardHint':paused?'cxlpHint':'cxlnHint',p.queued||0))+'</span></div></div></div></details>';
  el.querySelector('details').addEventListener('toggle',e=>{cxlpOpen=e.target.open});
 }
 async function cxlpToggle(off,btn){
  if(btn)btn.disabled=true;
  try{
-  const r=await fetch(API+'chatgpt/rotation/config',{method:'POST',headers:{'X-CC-Token':TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pause_override:off})}),d=await r.json();
+  const r=await fetch(API+'chatgpt/limits/config',{method:'POST',headers:{'X-CC-Token':TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pause_override:off})}),d=await r.json();
   if(!r.ok||d.ok===false)throw new Error(d.message||'HTTP '+r.status);
   await cxlpLoad();
  }catch(e){if(btn)btn.disabled=false;toast(tr('ccpErr',e.message));}
@@ -7778,7 +7022,7 @@ function cxlpTick(){
 async function cxlpLoad(){
  if(document.hidden&&cxlpData!==null)return;
  cxlpLoadedAt=Date.now();
- try{const r=await fetch(API+'chatgpt/rotation',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_notice||d.limit_pause||{active:false};cxlpData.queued=(d.quota||{}).queued||0;}catch(e){return;}
+ try{const r=await fetch(API+'chatgpt/limits',{headers:{'X-CC-Token':TOKEN}});if(!r.ok)return;const d=await r.json();cxlpData=d.limit_notice||d.limit_pause||{active:false};cxlpData.queued=(d.quota||{}).queued||0;}catch(e){return;}
  cxlpRender();
 }
 

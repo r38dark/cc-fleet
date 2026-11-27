@@ -140,7 +140,7 @@ class Workers:
             if remote_on and e == 'claude':
                 st, label = 'pause', 'Claude DEV · на паузе (работает Claude PROD)'
             if e=='codex':
-                rotation=self.ns.get('FLEET_ROTATION')
+                rotation=self.ns.get('CODEX_LIMITS')
                 quota=rotation.limit_pause() if rotation and hasattr(rotation,'limit_pause') else {}
                 if quota.get('active'):
                     st='limit' if quota.get('hard') else 'pause';label+=' · '+('лимит исчерпан' if st=='limit' else 'пауза по лимитам')
@@ -794,8 +794,8 @@ html.wk-nosub .fleet-brand-sub{display:none!important}
 var api=(typeof API!=='undefined'?API:location.origin+'/cc-hook/')+'workers',tok=(typeof TOKEN!=='undefined'?TOKEN:''),st=null,pop=null,popAnchor=null,toastT=0,timer=0;
 var names={claude:'Claude DEV',prod:'Claude PROD',codex:'Codex'};
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-var AGS=[['claude','Claude DEV','DEV'],['prod','Claude PROD','PROD'],['codex','Codex','Codex']];
-var bar=document.createElement('div');bar.id='wkAgents';bar.className='wk-ag';bar.setAttribute('role','group');bar.setAttribute('aria-label','Агенты: Claude DEV, Claude PROD, Codex');
+var AGS=[['claude','Claude DEV','Claude'],['prod','Claude PROD','Claude'],['codex','Codex','Codex']];
+var bar=document.createElement('div');bar.id='wkAgents';bar.className='wk-ag';bar.setAttribute('role','group');bar.setAttribute('aria-label','Агенты: Claude и Codex');
 bar.innerHTML=AGS.map(function(a){return '<button type="button" class="wk-seg s-off" data-ag="'+a[0]+'"><span class="wk-dot"></span><span class="wk-nm"><span class="wk-full">'+a[1]+'</span><span class="wk-short">'+a[2]+'</span></span><span class="wk-st"></span></button>'}).join('');
 var LEVELS=['','nost','nost short','nost short nosub','nost short nosub sm','nost short nosub sm xs','nost short nosub sm xs mini'];
 function place(){var rf=document.getElementById('rfBtn');if(rf&&rf.parentNode){rf.parentNode.insertBefore(bar,rf)}else{bar.style.cssText='position:fixed;left:12px;bottom:12px;z-index:9999';document.body.appendChild(bar)}}
@@ -835,22 +835,23 @@ function openPop(html,wide,anchor,cls){closePop();pop=document.createElement('di
 // Кнопка передачи: работа не у этого агента — «Передать работу в <он>»; работа у него — блок из кнопок остальных агентов.
 // Причина, почему кнопка серая, — строкой под блоком.
 function hand3(own,md,rm){var NMS={dev:'Claude DEV',prod:'Claude PROD',codex:'Codex'},why='';
- var bs=['dev','prod','codex'].filter(function(t){return t!==own}).map(function(t){var h=rm.handInfo(t,md);if(h.dis&&!why)why=h.tt;
+ var bs=['dev','prod','codex'].filter(function(t){
+  return t!==own&&(t!=='dev'||typeof devAvail!=='function'||devAvail())&&(t!=='prod'||typeof prodAvail!=='function'||prodAvail());
+ }).map(function(t){var h=rm.handInfo(t,md);if(h.dis&&!why)why=h.tt;
   return '<button type="button" class="wk-h3 t-'+t+'" data-t="'+t+'"'+(h.dis?' disabled':'')+' title="'+esc(h.tt)+'"><span class="wk-bl">'+NMS[t]+'</span></button>'}).join('');
  return '<div class="wk-hand3"><span class="wk-h3t">Передать работу в:</span>'+bs+(why?'<span class="wk-h3n">'+esc(why)+'</span>':'')+'</div>'}
 function thrNow(){try{return typeof THR==='number'&&THR>0?THR:90}catch(e){return 90}}
 function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'dev',prod:'prod',codex:'codex'}[k],wk=md.worker||'dev',
   act=wk===own,hi=act?null:rm.handInfo(own,md),pair=k==='claude'||k==='prod',
-  ao=!!((rm.auto&&rm.auto()||{}).enabled),run=['run','lead','exec'].indexOf(gp.state)>=0,
+  run=['run','lead','exec'].indexOf(gp.state)>=0,
   ic=gp.state==='pause'?'<svg viewBox="0 0 14 14" fill="currentColor"><rect x="2.5" y="1.5" width="3" height="11" rx="1"/><rect x="8.5" y="1.5" width="3" height="11" rx="1"/></svg>':run?'<svg viewBox="0 0 14 14" fill="currentColor"><path d="M3.5 1.8v10.4a.6.6 0 0 0 .9.5l8-5.2a.6.6 0 0 0 0-1l-8-5.2a.6.6 0 0 0-.9.5z"/></svg>':'<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h8"/></svg>',
   xi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
   oi='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"/><path d="M6 8h8M11 5l3 3-3 3"/></svg>',
   base=esc((gp.label||names[k]).replace(/ · /g,' - ')),
-  thr=thrNow(),autoTxt=(ao?'При '+thr+'% лимита работа сама перейдёт на второй аккаунт.':'Авто выключено: при '+thr+'% лимита работа сама не перейдёт.')+' <a href="#" class="wk-lnk2">Изменить порог</a>.',
-  txt=k==='prod'?base+'. Это Claude на втором сервере (PROD). '+autoTxt
-   :base+'.'+(pair?' '+autoTxt:'')+' Сменить профиль — в <a href="#" class="wk-lnk">Выборе профиля</a>.',
+  thr=thrNow(),limitTxt='При '+thr+'% сессии Claude ждёт сброса лимита. <a href="#" class="wk-lnk2">Изменить порог</a>.',
+  txt=k==='prod'?base+'. '+limitTxt
+   :base+'.'+(pair?' '+limitTxt:'')+' Сменить профиль — в <a href="#" class="wk-lnk">Выборе профиля</a>.',
   rowh='<button type="button" class="wk-no">'+xi+'<span class="wk-bl">Закрыть</span></button>'
-   +(pair?'<button type="button" class="wk-auto" role="switch" aria-checked="'+ao+'"><span class="wk-sw"></span><span class="wk-bl">Включить авто</span></button>':'')
    +(act?hand3(own,md,rm):'<button type="button" class="wk-yes"'+(hi.dis?' disabled':'')+' title="'+esc(hi.tt)+'">'+oi+'<span class="wk-bl">'+esc(hi.txt)+'</span></button>');
   var pp=openPop('<div class="wk-ph"><span class="wk-pi '+(gp.state==='pause'?'':run?'run':'off')+'">'+ic+'</span><b>'+esc(({claude:'Claude DEV',prod:'Claude PROD',codex:'Codex'})[k])+(gp.text?' - '+esc(gp.text):'')+'</b></div><p>'+txt+'</p><div class="wk-row">'+rowh+'</div>',false,anchor,'ag-'+k+' rich');
   pp.classList.add('ag-'+k,'rich');
@@ -858,14 +859,7 @@ function richPop(k,anchor,rm){var md=rm.mode()||{},gp=agState(k),own={claude:'de
   pp.querySelectorAll('.wk-h3').forEach(function(b){b.onclick=function(){var t=this.dataset.t;closePop();rm.hand(t,anchor)}});
   var lk=pp.querySelector('.wk-lnk');if(lk)lk.onclick=function(e){e.preventDefault();closePop();var c=document.getElementById('cxBtn');if(c)c.click()};
   var ls=pp.querySelector('.wk-lnk2');if(ls)ls.onclick=function(e){e.preventDefault();closePop();var g=document.getElementById('gear');if(g)g.click()};
-  // подтверждение «авто» — прямо в этом же окне (отдельное окно подтверждения рисовалось ПОД ним, владелец 62664)
-  var au=pp.querySelector('.wk-auto');if(au)au.onclick=function(){var on=!((rm.auto()||{}).enabled),row=pp.querySelector('.wk-row');if(pp.querySelector('.wk-cfm'))return;
-   var c=document.createElement('div');c.className='wk-cfm';var w=on?'Включить':'Выключить';
-   c.innerHTML='<p class="wk-cq">'+w+' автопередачу работы на PROD при лимитах?</p><div class="wk-row"><button type="button" class="wk-no wk-cn"><span class="wk-bl">Отмена</span></button><button type="button" class="wk-yes wk-cy"><span class="wk-bl">'+w+'</span></button></div>';
-   row.style.display='none';row.after(c);
-   c.querySelector('.wk-cn').onclick=function(){c.style.display='none';row.style.display='';placePop();setTimeout(function(){c.remove()},0)};   // убираем после клика: удалённая кнопка выглядела бы для «клика мимо» и закрыла бы окно
-   c.querySelector('.wk-cy').onclick=function(){closePop();rm.setAuto(on).then(function(j){toast(j&&j.message||'Готово')}).catch(function(){toast('Панель не ответила')})};
-   placePop()}}
+}
 function agentPop(k,anchor){if(window.fleetRemote&&window.fleetRemote.handInfo&&(k==='prod'||k==='claude'||k==='codex'))return richPop(k,anchor,window.fleetRemote);
  var g=agState(k),nm=names[k];var p=openPop('<b>'+esc(nm)+(g.text?' · '+esc(g.text):'')+'</b><p>'+esc(g.label||nm)+'. Сменить профиль — в «Выборе профиля».</p><div class="wk-row"><button type="button" class="wk-no">Закрыть</button><button type="button" class="wk-yes">Выбор профиля</button></div>',false,anchor,'ag-'+k);p.classList.add('ag-'+k);
  p.querySelector('.wk-no').onclick=closePop;p.querySelector('.wk-yes').onclick=function(){closePop();var c=document.getElementById('cxBtn');if(c)c.click()}}
@@ -1135,10 +1129,10 @@ function paintClaude(){var g=G(),s=g.snap||{},accs=s.accounts||{},ks=Object.keys
  if(!mn||/^(Модель|<)/.test(mn)){mn=(m.session&&m.session.charAt(0)!=='<'?m.session_name:m.default_name)||'';me=m.effort||me}me=EFN[String(me).toLowerCase()]||me;
  chip('wkGenClaude',role(e.label,'Claude'));
  put('wkGenClaude',grid([
-  ['Аккаунты',ks.length?esc(ks.length+' в ротации')+' · сейчас <strong>'+esc(act||'—')+'</strong>'+(a.email?' · '+esc(a.email):'')+(a.plan?' · '+esc(plan(a.plan)):''):bad('нет ни одного — нажми «Добавить аккаунт»')],
+  ['Аккаунт',ks.length?'<strong>'+esc(act||'—')+'</strong>'+(a.email?' · '+esc(a.email):'')+(a.plan?' · '+esc(plan(a.plan)):''):bad('нет ни одного — нажми «Добавить аккаунт»')],
   a.login_expires?['Вход',esc('действует до '+dd(a.login_expires))]:null,
   ['Модель',mn?'<strong>'+esc(mn)+'</strong>'+(me?' · '+esc(me):''):mut('—')],
-  ['Переключение',(cf.autoswitch?dot(1,'авто при '+(cf.threshold||90)+'% сессии'):dot(0,'выключено — только вручную'))+' · '+esc(cf.weekly_pause?'пауза на '+(cf.weekly_cap||99)+'% недели':'без недельной паузы')],
+  ['Лимиты',esc('5 ч '+(cf.threshold||90)+'% · неделя '+(cf.weekly_cap||99)+'%')],
   ['Telegram',esc('общий чат'+(tg?' · бот @'+tg:''))+' '+mut('· плагин telegram')]]))}
 function paintCodex(){var g=G(),d=g.cx,b=(g.cxb&&g.cxb.bridge)||{},e=eng('codex'),ok=typeof cxAvail==='function'?cxAvail():!!(d&&d.available);
  ['wkGenCxGear','wkGenCxAdd'].forEach(function(id){var x=$i(id);if(x)x.hidden=!ok});var ins=$i('wkGenCxInst');if(ins)ins.hidden=ok;
@@ -1148,30 +1142,28 @@ function paintCodex(){var g=G(),d=g.cx,b=(g.cxb&&g.cxb.bridge)||{},e=eng('codex'
  var br=!b.token_set?dot(0,'бот не подключён')+' '+mut('— по желанию, Codex работает и без него'):dot(b.enabled&&b.running,b.enabled?(b.running?'работает':'включён, но не запущен'):'выключен')+esc(' · свой бот'+(b.bot?' @'+b.bot:'')+' → чат '+(b.chat_id||'не задан'))+(b.last_error?' '+bad('· '+b.last_error):'');
  chip('wkGenCodex',role(e.label,'Codex'));
  put('wkGenCodex',grid([
-  ['Аккаунты',as.length?esc(as.length+' в ротации')+' · сейчас <strong>'+esc(a.label||a.slot||'—')+'</strong>'+(a.email?' · '+esc(a.email):'')+(a.plan?' · '+esc(plan(a.plan)):'')+(a.sub_until?' '+mut('· подписка до '+dd(a.sub_until)):''):bad('нет ни одного — нажми «Добавить аккаунт»')],
+  ['Аккаунт',as.length?'<strong>'+esc(a.label||a.slot||'—')+'</strong>'+(a.email?' · '+esc(a.email):'')+(a.plan?' · '+esc(plan(a.plan)):'')+(a.sub_until?' '+mut('· подписка до '+dd(a.sub_until)):''):bad('нет ни одного — нажми «Добавить аккаунт»')],
   ['Модель',mn&&!/^Модель/.test(mn)?'<strong>'+esc(mn)+'</strong>'+(me?' · '+esc(me):''):mut('по умолчанию')],
-  ['Пороги',thr||cap?esc('переключение при '+(thr||'—')+'% сессии · потолок недели '+(cap||'—')+'%'):mut('—')],
+  ['Пороги',thr||cap?esc('пауза при '+(thr||'—')+'% сессии · потолок недели '+(cap||'—')+'%'):mut('—')],
   ['Мост Telegram',br],
   pr?['Профиль',esc(pr.title||pr.id)]:null]))}
 var HOW_CL='<details data-k="chow"><summary>Подробно: что, где, как и почему</summary>'
- +'<p><b>Что это.</b> Claude Code — агент Anthropic в консоли этого сервера (вкладка Claude). Работает по подписке Claude Pro или Max. У каждой подписки два лимита: окно 5 часов и неделя. Панель держит несколько аккаунтов и переключает их, чтобы работа не вставала.</p>'
- +'<p><b>Где в панели.</b> Плитка Claude в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Claude» сверху вниз: 1) «Переключение и лимиты» — % сессии и % недели, авто-переключение, недельная пауза; 2) «Модели в быстром меню» и проверка новых моделей; 3) «Свои настройки Claude» — аккаунты, Telegram, копии аккаунтов. «Управление аккаунтами» — карточки: до какого числа подписка и вход, переключить, войти заново, удалить.</p>'
+ +'<p><b>Что это.</b> Claude Code — агент Anthropic в консоли этого сервера (вкладка Claude). Работает по подписке Claude Pro или Max. У каждой подписки два лимита: окно 5 часов и неделя. Панель показывает лимиты подключённого Claude.</p>'
+ +'<p><b>Где в панели.</b> Плитка Claude в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Claude» сверху вниз: 1) «Лимиты» — % сессии и % недели, недельная пауза; 2) «Модели в быстром меню» и проверка новых моделей; 3) «Свои настройки Claude» — аккаунты, Telegram, копии аккаунтов. «Управление аккаунтами» — карточки: до какого числа подписка и вход, войти заново или отключить.</p>'
  +'<p><b>Как подключить с нуля</b></p><ol>'
  +'<li>Нажми «Добавить аккаунт». Почту можно вписать — она подставится на странице входа. Нажми «Получить ссылку для входа».</li>'
  +'<li>Открой ссылку, войди в нужный аккаунт Claude, скопируй код со страницы и вставь в окно панели. Аккаунт сам встанет в ротацию.</li>'
  +'<li>Повтори для каждого аккаунта.</li>'
- +'<li>В «⚙ Настройки Claude» → «Переключение и лимиты» задай пороги (обычно сессия 90 %, неделя 99 %), нажми «Сохранить» и включи «Авто-переключение». «Пауза на недельном потолке» — если не хочешь сжечь неделю, когда переключаться уже некуда.</li>'
+ +'<li>В «⚙ Настройки Claude» → «Лимиты» задай пороги (обычно сессия 90 %, неделя 99 %), нажми «Сохранить» и включи «Авто-переключение». «Пауза на недельном потолке» — если не хочешь сжечь неделю, когда переключаться уже некуда.</li>'
  +'<li>Модель и рассуждения выбери в плитке Claude.</li>'
  +'<li>Telegram — в блоке «Telegram · общий чат» ниже.</li></ol>'
- +'<p><b>Почему так.</b> Панель переключает аккаунт заранее, на 90% окна, — Claude не обрывается посреди задачи на лимите. Недельная пауза останавливает Claude на 99% недели, если у всех аккаунтов неделя на исходе: лучше дождаться сброса, чем застрять на полпути.</p></details>';
 var HOW_CX='<details data-k="xhow"><summary>Подробно: что, где, как и почему</summary>'
  +'<p><b>Что это.</b> Codex — агент OpenAI в консоли этого сервера (вкладка Codex). Работает по подписке ChatGPT Plus или Pro, со своими лимитами: 5 часов и неделя. Запускается от отдельного пользователя сервера, поэтому его вход и файлы не смешиваются с Claude.</p>'
- +'<p><b>Где в панели.</b> Плитка Codex в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Codex» сверху вниз: 1) «Переключение и лимиты» — % сессии и % недели; 2) «Модели в быстром меню» и проверка новых моделей; 3) «Свои настройки Codex» — аккаунты, мост Telegram (бот, режим, права), удаление Codex. Кнопка «Codex+» в шапке видна, пока подключение не закончено.</p>'
+ +'<p><b>Где в панели.</b> Плитка Codex в «Активных аккаунтах» — модель и рассуждения. «⚙ Настройки Codex» сверху вниз: 1) «Лимиты» — % сессии и % недели; 2) «Модели в быстром меню» и проверка новых моделей; 3) «Свои настройки Codex» — аккаунты, мост Telegram (бот, режим, права), удаление Codex. Кнопка «Codex+» в шапке видна, пока подключение не закончено.</p>'
  +'<p><b>Как подключить с нуля</b></p><ol>'
  +'<li>«Установить Codex» (или «Codex+» в шапке): мастер ставит Node.js и Codex на сервер. Можно поручить это Claude кнопкой в мастере.</li>'
  +'<li>Вход в ChatGPT по коду устройства: панель покажет ссылку и код. Открой ссылку в браузере, войди в ChatGPT и введи код. Пароль в панель вводить не нужно.</li>'
- +'<li>Ещё аккаунты — «Добавить аккаунт» здесь или в «⚙ Настройки Codex» → «Свои настройки Codex». Они встанут в ротацию.</li>'
- +'<li>Пороги: при каком % сессии переключать аккаунт и на каком % недели остановиться. «⚙ Настройки Codex» → «Переключение и лимиты» → «Сохранить».</li>'
+ +'<li>Пороги: при каком % сессии ждать сброса и на каком % недели остановиться. «⚙ Настройки Codex» → «Лимиты» → «Сохранить».</li>'
  +'<li>Telegram (по желанию): создай отдельного бота у @BotFather (команда /newbot) и скопируй токен. В «⚙ Настройки Codex» → «Свои настройки Codex» → «Мост Telegram» вставь токен и свой id чата (узнать — у @userinfobot), включи мост.</li>'
  +'<li>Там же — режим моста (сам, посредник, оркестратор) и права (чтение, запись, полный доступ). Профиль работы выбирается в шапке.</li></ol>'
  +'<p><b>Почему так.</b> У Codex свой бот, потому что Telegram отдаёт сообщения бота только одному получателю. Общий бот слушает Claude, а Codex со своим ботом работает параллельно и ему не мешает.</p></details>';
@@ -1186,7 +1178,7 @@ function paintTg(){var s=(data&&data.status)||{},b=((G().cxb||{}).bridge)||{},ce
   ['Codex',b.token_set?esc('свой бот'+(b.bot?' @'+b.bot:'')+' → чат '+(b.chat_id||'—')+' · мост '+(b.enabled?'включён':'выключен')):mut('без бота — только консоль и панель')]]))}
 function paintGen(){try{paintClaude()}catch(e){console.warn('gen claude',e)}try{paintCodex()}catch(e){console.warn('gen codex',e)}try{paintTg()}catch(e){console.warn('gen tg',e)}}
 var HOW_TG='<details data-k="thow"><summary>Подробно: что, где, как и почему</summary>'
- +'<p><b>Как устроено.</b> Один бот и один чат — общие для Claude. Отвечает Claude там, где сейчас работа: на этом сервере или на втором (PROD). Уведомления панели о лимитах и переключениях приходят в этот же чат. У Codex — свой бот.</p>'
+ +'<p><b>Как устроено.</b> Один бот и один чат — общие для Claude. Подключённый Claude отвечает в этом чате. Уведомления панели о лимитах и переключениях приходят в этот же чат. У Codex — свой бот.</p>'
  +'<p><b>Как подключить с нуля</b></p><ol>'
  +'<li>В Telegram открой @BotFather, отправь /newbot, задай имя и адрес бота. BotFather пришлёт токен вида '+code('123456789:AAH…')+' — копируй целиком.</li>'
  +'<li>Плагину нужен Bun на сервере: '+code('curl -fsSL https://bun.sh/install | bash')+'.</li>'

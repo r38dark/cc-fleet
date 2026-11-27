@@ -81,7 +81,7 @@ def profile_dir(slot):
     return os.path.join(PROFILES, slot)
 
 
-def profile_slots():
+def _stored_slots():
     """Заведённые профили (есть auth.json), по номеру."""
     out = []
     if os.path.isdir(PROFILES):
@@ -89,6 +89,28 @@ def profile_slots():
             if _SLOT_RE.match(d) and os.path.isfile(os.path.join(PROFILES, d, "auth.json")):
                 out.append(d)
     return sorted(out, key=lambda s: int(s[3:]))
+
+
+def _active_path():
+    return os.path.join(PROFILES, ".account.json")
+
+
+def select_existing(preferred=""):
+    """Pin the actual existing connection on upgrade, leaving saved files in place."""
+    with _lock:
+        slots = _stored_slots()
+        if slots and jload(_active_path(), None) is None:
+            slot = preferred if preferred in slots else slots[0] if len(slots) == 1 else ""
+            _jsave(_active_path(), {"slot": slot})
+
+
+def profile_slots():
+    slots = _stored_slots()
+    pin = jload(_active_path(), None)
+    if pin is None:
+        return slots if len(slots) == 1 else []
+    slot = pin.get("slot") if isinstance(pin, dict) else None
+    return [slot] if slot in slots else []
 
 
 def meta(slot):
@@ -229,6 +251,9 @@ def login_start(bin_path, slot=None, label="", lang="ru"):
             if not _SLOT_RE.match(slot or "") or slot not in profile_slots():
                 return False, _t(lang, "Неизвестный аккаунт.", "Unknown account.")
         else:
+            if profile_slots():
+                return False, _t(lang, "Поддерживается один аккаунт Codex. Сначала отключи текущий.",
+                                 "Only one Codex account is supported. Disconnect the current account first.")
             slot = _free_slot()
         _login_drop(slot)  # брошенная попытка — начинаем чисто
         os.makedirs(PROFILES, exist_ok=True)
@@ -317,12 +342,10 @@ def _login_watch(slot, st):
         st["email"], st["plan"] = cl.get("email"), cl.get("plan")
         final = profile_dir(slot)
         if st["new"]:
-            em = (cl.get("email") or "").lower()
-            dup = next((s for s in profile_slots() if em and (meta(s).get("email") or "").lower() == em), None)
-            if dup:
+            if profile_slots():
                 st["state"], st["err"] = "failed", (
-                    f"Этот аккаунт ({cl.get('email')}) уже подключён как {dup} — второй раз добавлять не нужно.",
-                    f"This account ({cl.get('email')}) is already connected as {dup} — no need to add it twice.")
+                    "Поддерживается один аккаунт Codex. Сначала отключи текущий.",
+                    "Only one Codex account is supported. Disconnect the current account first.")
                 shutil.rmtree(st["home"], ignore_errors=True)
                 return
             if os.path.exists(final):
@@ -336,12 +359,13 @@ def _login_watch(slot, st):
             _jsave(os.path.join(final, "meta.json"),
                    {"label": st["label"], "email": cl.get("email"), "added": int(time.time())})
             own(final, tree=True)
+            _jsave(_active_path(), {"slot": slot})
         else:
             old = (meta(slot).get("email") or "").lower()
             if old and cl.get("email") and old != cl["email"].lower():
                 st["state"], st["err"] = "failed", (
-                    f"Это другой аккаунт ({cl['email']}), а в карточке {meta(slot).get('email')}. Для него нужна новая карточка кнопкой «+».",
-                    f"That is a different account ({cl['email']}), the card holds {meta(slot).get('email')}. Add it as a new card with \"+\".")
+                    "Это другой аккаунт Codex. Чтобы заменить аккаунт, сначала отключи текущий.",
+                    "This is a different Codex account. To replace the account, disconnect the current one first.")
                 shutil.rmtree(st["home"], ignore_errors=True)
                 return
             os.chmod(auth, 0o600)
@@ -962,6 +986,7 @@ def _disconnect_account(bin_path, slot, confirm, lang, before):
     except OSError:
         return False, _t(lang, 'Не удалось удалить авторизацию.', 'Could not remove authorization.')
     with _lock:
+        _jsave(_active_path(), {"slot": ""})
         _cache.pop(slot, None)
         _models_cache.pop(slot, None)
     return True, _t(lang, 'Аккаунт ChatGPT отключён. История и файлы сохранены.',

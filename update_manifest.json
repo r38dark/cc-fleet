@@ -1,5 +1,5 @@
 {
-  "version": "2.0.50",
+  "version": "2.0.51",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -92,16 +92,11 @@
       "mode": "755"
     },
     {
-      "src": "cc-switch",
-      "dst": "/usr/local/bin/cc-switch",
-      "mode": "755"
-    },
-    {
       "src": "cc_session.py",
       "mode": "644"
     },
     {
-      "src": "cc_codex_rotation.py",
+      "src": "cc_codex_limits.py",
       "mode": "644"
     },
     {
@@ -158,14 +153,6 @@
     },
     {
       "src": "cc_remote.py",
-      "mode": "644"
-    },
-    {
-      "src": "cc_remote_auto.py",
-      "mode": "644"
-    },
-    {
-      "src": "cc_remote_split.py",
       "mode": "644"
     },
     {
@@ -233,6 +220,23 @@
     },
     {
       "src": "cc_cli_notice.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc-switch",
+      "dst": "/usr/local/bin/cc-switch",
+      "mode": "755"
+    },
+    {
+      "src": "cc_codex_rotation.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote_auto.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_remote_split.py",
       "mode": "644"
     }
   ]

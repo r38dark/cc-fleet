@@ -144,8 +144,7 @@ class Panel(unittest.TestCase):
         return dict(ok=True) if cmd=="guard-config" else dict(self.info)
 
     def test_pause_is_independent_of_auto_transfer(self):
-        with patch("cc_remote_auto.load", return_value=dict(enabled=False)):
-            L.tick(self.ns)
+        L.tick(self.ns)
         self.assertTrue(L.public()["remote"]["blocked"])
         self.assertEqual(len(self.sent),1)
 

@@ -64,55 +64,6 @@ class TestAlerts(unittest.TestCase):
         self.assertEqual(len(sent), 1)
 
 
-class NowhereTelegram(unittest.TestCase):
-    """Telegram «переключаться некуда» не пишется, пока работа уходит на Claude PROD (владелец 62582, как баннер 62577)."""
-
-    SNAP = {"active": "a", "accounts": {"a": acc(91, 10)}}   # единственный аккаунт выше порога сессии — кандидатов нет
-    HARD = {"level": "hard", "why": "все аккаунты выше порога сессии", "pause": {}, "weekly_cap": 99, "handoff": "", "remote": False}
-
-    def setUp(self):
-        if os.path.exists(L.STATE):
-            os.remove(L.STATE)
-        pc = L._pause_mod()
-        p = mock.patch.object(pc, "NOTICE_FILE", os.path.join(TMP0, "pause_notice.json")); p.start(); self.addCleanup(p.stop)
-        self.pc = pc
-        self.sent = []
-        p = mock.patch.object(L, "tg_notify", self.sent.append); p.start(); self.addCleanup(p.stop)
-
-    def run_both(self, state):
-        """autoswitch_check и optimize_check (оптимизация: свои пути) при заданном состоянии паузы; возвращает сообщения."""
-        out = []
-        for check, extra in ((L.autoswitch_check, {}), (L.optimize_check, {"optimize": True})):
-            if os.path.exists(L.STATE):
-                os.remove(L.STATE)
-            self.pc.notice_clear()   # два независимых прогона: отметка эпизода первого не должна глушить второй
-            del self.sent[:]
-            cfg = {"tz": "Asia/Irkutsk", "autoswitch": True, "threshold": 90, "weekly_cap": 99}
-            cfg.update(extra)
-            with mock.patch.object(L, "cfg", return_value=cfg), mock.patch.object(L, "pause_state", return_value=dict(self.HARD, **state)):
-                check(self.SNAP)
-            out.append((check.__name__, list(self.sent), (L.jload(L.STATE, {}) or {}).get("all_high_notified")))
-        return out
-
-    def test_nowhere_message_when_there_is_really_nowhere(self):
-        for name, sent, flag in self.run_both({}):
-            self.assertEqual(len(sent), 1, name)
-            self.assertIn("встаёт на паузу", sent[0], name)   # текст как был
-            self.assertTrue(flag, name)
-
-    def test_silent_while_handoff_to_prod_is_coming(self):
-        for name, sent, flag in self.run_both({"handoff": "у Claude DEV нет лимита, на Claude PROD есть"}):
-            self.assertEqual(sent, [], name)
-            self.assertFalse(flag, name)   # эпизод не начат: не вышла передача — сообщение уйдёт на следующем проходе
-
-    def test_silent_while_work_is_on_prod(self):
-        for name, sent, flag in self.run_both({"remote": True}):
-            self.assertEqual(sent, [], name)
-            self.assertFalse(flag, name)
-
-    def test_helper_survives_a_broken_state(self):
-        with mock.patch.object(L, "pause_state", side_effect=RuntimeError("нет файла")):
-            self.assertFalse(L._handoff_coming())
 
 
 if __name__ == "__main__":

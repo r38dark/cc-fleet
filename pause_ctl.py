@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # Пауза по лимитам — состояние на диске + будильник, переживающий сессию.
 #
-# Зачем: когда все аккаунты упёрлись в 5-часовое окно, переключаться некуда и
-# единственное разумное поведение — встать на паузу до ближайшего сброса. Если
+# Зачем: когда Claude достиг порога окна, очередь ждёт сброса. Если
 # будильник поставить внутри самой сессии Claude Code, он умрёт вместе с ней
 # (перезапуск, /clear, ребут). Поэтому состояние лежит в JSON рядом со снапшотом,
 # а будит его системный cron: раз в минуту дёргает `wake --if-due`.
@@ -19,8 +18,7 @@
 #
 # Пауза ставится по сессионному (5-часовому) окну. Недельный потолок ставит её, только
 # если включён ключ "weekly_pause" (⚙ Настройки → «Пауза на недельном потолке», v1.21.0):
-# активный дошёл до weekly_cap и переключаться некуда — стоим, пока не освободится другой
-# аккаунт или не сбросится неделя. Ключ выключен — неделя паузу не ставит, панель и
+# при weekly_cap очередь ждёт недельного сброса. Ключ выключен — неделя паузу не ставит, панель и
 # Telegram предупреждают, что заполнение до 100% никто не остановит.
 # «Отключена вручную» (override) переживает все автоматические постановки паузы
 # (очередь входящих, хук инструментов) и снимается сама, когда окно отпустит,
@@ -118,27 +116,18 @@ def accounts():
         d = json.load(open(SNAP))
     except Exception:
         return {}, "", 0.0
-    return (d.get("accounts") or {}), (d.get("active") or ""), float(d.get("ts") or 0)
+    rows = d.get("accounts") or {}
+    active = d.get("active") or ""
+    rows = {active: rows[active]} if active in rows else {}
+    return rows, active, float(d.get("ts") or 0)
 
 
 NO_WEEK = float("inf")  # сессионной паузе недельный потолок не нужен — см. шапку
 
 
 def _nearest(week=False):
-    """(iso, имя, что держит) — когда снова будет где работать. week=True — пауза на недельном
-    потолке: неделю смотрим у всех. week=False — сессионная пауза: активный ждёт только сброса
-    своей сессии, а другой аккаунт — и сессии, и недели: на аккаунт с неделей на потолке
-    балансер не переключает, его пустая сессия работы не даст."""
-    accs, active, _ts = accounts()
-    thr, cap = _threshold(), _weekly_cap()
-    if week:
-        nb = cc_avail.nearest(accs, thr, cap)
-    else:
-        nbs = [cc_avail.nearest(accs, thr, cap, exclude=(active,))]
-        if active in accs:
-            nbs.append(cc_avail.nearest({active: accs[active]}, thr, NO_WEEK))
-        nbs = [x for x in nbs if x]
-        nb = min(nbs) if nbs else None
+    accs, _, _ = accounts()
+    nb = cc_avail.nearest(accs, _threshold(), _weekly_cap() if week else NO_WEEK)
     if not nb:
         return "", "", ""
     return datetime.fromtimestamp(nb[0], tz=timezone.utc).isoformat(), nb[1], nb[2]
@@ -150,116 +139,14 @@ def nearest_reset(week=False):
     return iso, who
 
 
-def _auto_state(now):
-    """(включена ли передача на PROD, почему нет) — только настройки и пульс потока, БЕЗ level_state():
-    cc_remote_auto.handoff_ready() сам зовёт level_state(), а тот — причину паузы, то есть сюда (был бы круг)."""
-    import cc_remote_auto as A
-    cfg = A.load()
-    if not cfg["enabled"] or cfg["dry_run"]:
-        return False, "автопередача выключена"
-    hb = A._jfile(A.HB_FILE)
-    if now - float(hb.get("ts") or 0) > A.HB_MAX:
-        return False, "поток автопередачи не отвечает"
-    if now - max(float(hb.get("last_return") or 0), 0.0) < float(cfg.get("cooldown") or 0):
-        return False, "рано после переключения с PROD"
-    return True, ""
-
-
-def prod_hint(now=None):
-    """Claude PROD свободен, а у Claude DEV упёрлись лимиты: {"label", "pct", "wpct", "on", "why"} или {}.
-    on — передача на PROD включена и готова (тогда работа уйдёт туда); why — почему она не сработает.
-    Нет PROD, нет свежих цифр, он тоже забит или работа уже там — {}: «переключаться некуда» остаётся правдой."""
-    now = _now() if now is None else now
-    try:
-        if _remote_active():
-            return {}
-        import cc_remote_auto as A
-        members = A.R.members()
-        mid = next(iter(members), "")
-        row = A.R.cached().get(mid) if mid else None
-        if not row or now - float(row.get("ts") or 0) > A.PROD_FRESH:
-            return {}
-        if not A.prod_state(row, _threshold(), _weekly_cap(), now).get("usable"):
-            return {}
-        on, why = _auto_state(now)
-        return dict(label=str((members.get(mid) or {}).get("label") or "Claude PROD"),
-                    pct=(row.get("five_hour") or {}).get("pct"),
-                    wpct=(row.get("seven_day") or {}).get("pct"), on=on, why=why)
-    except Exception:
-        return {}
-
-
-def prod_unknown_phrase(now=None):
-    """Токен Claude PROD устарел — лимиты PROD не видны: «Claude PROD: токен устарел, лимит неизвестен» или "".
-    Не «свободен» и не «закончился»: цифры, что остались от прошлой проверки, живыми не выдаём (15.11)."""
-    try:
-        if _remote_active():
-            return ""
-        import cc_remote_auto as A
-        members = A.R.members()
-        mid = next(iter(members), "")
-        row = A.R.cached().get(mid) if mid else None
-        if row and row.get("online") and row.get("error") == "token_expired":
-            return "%s: токен устарел, лимиты не видны, свободен ли он — неизвестно (запуск Claude PROD обновит токен)" % (
-                str((members.get(mid) or {}).get("label") or "Claude PROD"))
-    except Exception:
-        pass
-    return ""
-
-
-def prod_phrase(h):
-    """«Claude PROD свободен (сессия 0%, неделя 11%), но автопередача выключена» — вместо «переключаться некуда»."""
-    nums = ", ".join(x for x in (
-        "сессия %.0f%%" % h["pct"] if isinstance(h.get("pct"), (int, float)) else "",
-        "неделя %.0f%%" % h["wpct"] if isinstance(h.get("wpct"), (int, float)) else "") if x)
-    out = "%s свободен%s" % (h.get("label") or "Claude PROD", " (%s)" % nums if nums else "")
-    if h.get("on"):
-        return out + ", передача работы на него включена"
-    why = h.get("why") or ""
-    return out + (", но " + why if why == "автопередача выключена" else ", но передача на него не готова: " + (why or "?"))
-
-
 def _week_reason(s):
-    """Причина паузы на недельном потолке — человеческим текстом."""
-    a = s["accounts"].get(s.get("active")) or {}
-    h = prod_hint()
-    return "неделя %s на %.0f%% (потолок %.0f%%), %s" % (
-        s.get("active"), a.get("wpct") or 0, s.get("weekly_cap") or _weekly_cap(),
-        prod_phrase(h) if h else (prod_unknown_phrase() or "переключаться некуда"))
-
-
-def _held_text(a):
-    """Что держит аккаунт: «сессия 91%», «неделя 100%», «сессия 93%, неделя 99%», «Free»."""
-    if a.get("error"):
-        return "ошибка"
-    held = a.get("held") or ""
-    if held == "free":
-        return "Free"
-    out = []
-    if "сессия" in held:
-        out.append("сессия %.0f%%" % (a.get("pct") or 0))
-    if "неделя" in held:
-        out.append("неделя %.0f%%" % (a.get("wpct") or 0))
-    return ", ".join(out) or "?"
+    row = s["accounts"].get(s.get("active"), {})
+    return "Недельный лимит Claude %.0f%% (порог %.0f%%)" % (row.get("wpct") or 0, s["weekly_cap"])
 
 
 def _hard_reason(s):
-    """Причина паузы «переключаться некуда» — что держит каждый аккаунт."""
-    accs = s.get("accounts") or {}
-    h = prod_hint()
-    unk = "" if h else prod_unknown_phrase()
-    if not any(a.get("ses_ok") for a in accs.values()):
-        if h or unk:
-            return "аккаунты DEV выше порога сессии (%s); %s" % (s.get("line") or "?", prod_phrase(h) if h else unk)
-        return "все аккаунты выше порога сессии (%s), переключаться некуда" % (s.get("line") or "?")
-    act = s.get("active")
-    a = accs.get(act) or {}
-    rest = ", ".join("%s — %s" % (n, _held_text(r)) for n, r in sorted(accs.items()) if n != act)
-    if h or unk:
-        return "%s: сессия %.0f%% (порог %.0f%%), остальные аккаунты DEV не годятся: %s; %s" % (
-            act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest, prod_phrase(h) if h else unk)
-    return "%s: сессия %.0f%% (порог %.0f%%), переключаться некуда: %s" % (
-        act, a.get("pct") or 0, s.get("threshold") or _threshold(), rest)
+    row = s["accounts"].get(s.get("active"), {})
+    return "Лимит Claude за 5 ч %.0f%% (порог %.0f%%)" % (row.get("pct") or 0, s["threshold"])
 
 
 def session_blocked():
@@ -305,22 +192,7 @@ def week_blocked():
 
 
 def level_state():
-    """Сводка для баннера на веб-панели — считается по тем же файлам, что и гейт,
-    но без запуска подпроцесса (страницу опрашивают часто).
-
-    level: hard — активный выше порога сессии, и переключаться некуда: каждый другой
-                  аккаунт выше порога сессии, на недельном потолке, Free или с ошибкой —
-                  здесь встаёт пауза (неделя самого активного не участвует);
-           manual — активный не пригоден, но выбран вручную (state.json → manual_hold):
-                  балансер не уводит с него до сброса окна или до 100%, паузы нет;
-           week — активный дошёл до недельного потолка, пригодных нет, и включена
-                  «Пауза на недельном потолке» — здесь тоже встаёт пауза;
-           weekrisk — то же, но опция выключена: паузы нет, заполнение до 100% никто
-                  не остановит — панель и Telegram предупреждают;
-           gate — активный не пригоден (сессия или неделя), но пригодный есть (балансер
-                  вот-вот уйдёт, фоновые задачи в это время не стартуют);
-           none — рабочее состояние.
-    """
+    """Состояние лимитов и паузы текущего Claude."""
     accs, active, ts = accounts()
     thr = _threshold()
     st = load()
@@ -338,12 +210,9 @@ def level_state():
         "checks": st.get("checks") or 0,
         "kind": st.get("kind") or "session",
     }
-    c = _cfg()
     out = {"pause": pause, "threshold": thr, "level": "none", "accounts": {},
            "active": active, "stale": bool(not accs or (_now() - ts) > 900),
-           "weekly_cap": _weekly_cap(), "weekly_pause": _weekly_pause(),
-           # уйдёт ли балансер с забитого сам: выключенное авто-переключение не уводит
-           "autoswitch": bool(c.get("optimize") or c.get("autoswitch", True))}
+           "weekly_cap": _weekly_cap(), "weekly_pause": _weekly_pause()}
     if out["stale"]:
         return out
 
@@ -364,28 +233,12 @@ def level_state():
     a = accs.get(active) or {}
     aw = (a.get("seven_day") or {}).get("pct")
     week_full = a.get("plan") != "free" and aw is not None and aw >= cap
-    # уйти есть куда — пригодный аккаунт без ошибки (на ошибочный балансер не переключает)
-    other_ok = any(ok for n, ok in usable.items() if n != active and not accs[n].get("error"))
-    # ручной выбор забитого аккаунта балансер уважает (при оптимизации ручных переключений нет)
-    try:
-        hold = (json.load(open(CC_STATE)) or {}).get("manual_hold") or {}
-    except Exception:
-        hold = {}
-    if (active in usable and not usable[active] and not c.get("optimize")
-            and cc_avail.manual_pick(hold, active, a)):
-        out["manual"] = {"account": active, "until": float(hold.get("until") or 0)}
-    # до v1.21.6 «некуда» считалось только по сессиям: аккаунт с пустой сессией, но неделей
-    # на потолке сходил за свободный — паузы не было, и активный добивался до 100%
     out["line"] = ", ".join("%s %.0f%%" % (n, p) for n, p in sorted(pcts.items()))
-    if out.get("manual"):
-        out["level"] = "manual"  # выбор человека: работа идёт до 100%, паузы нет
-    elif active in ses_ok and not ses_ok[active] and not other_ok:
+    if active in ses_ok and not ses_ok[active]:
         out["level"] = "hard"
         out["why"] = _hard_reason(out)
-    elif week_full and not other_ok:
+    elif week_full:
         out["level"] = "week" if out["weekly_pause"] else "weekrisk"
-    elif active in usable and not usable[active]:
-        out["level"] = "gate"
     iso, who, held = _nearest(out["level"] in ("week", "weekrisk"))
     out["nearest"] = {"acc": who, "resets_at": iso, "held": held}
     return out
@@ -515,50 +368,12 @@ def notice_clear():
         pass
 
 
-def _handoff_instead():
-    """(True, причина) — вместо паузы идёт передача на Claude PROD (cc_remote_auto.request_handoff). Любой сбой — (False, ""): пауза как раньше."""
-    try:
-        import cc_remote_auto
-        return cc_remote_auto.request_handoff()
-    except Exception as e:
-        _log("передача на PROD вместо паузы недоступна (%s)" % e)
-        return False, ""
-
-
-def handoff_pending():
-    """Запрос на передачу вместо паузы отправлен и ждёт панель (для ответа отправителю в очереди)."""
-    try:
-        import cc_remote_auto
-        return cc_remote_auto.pending()
-    except Exception:
-        return False
-
-
-def release_for_remote():
-    """Передача на PROD началась: уже стоящую паузу по лимитам снимаем — Claude DEV остановит передача, будить его будильником нечем.
-    → True, если пауза стояла и снята."""
-    st = load()
-    if not st.get("active"):
-        return False
-    st.update(active=False, cleared_at=_now(), released_for="remote")
-    st.pop("remote_hold", None)
-    save(st)
-    _log("пауза снята: работа передана на Claude PROD")
-    return True
-
-
 def cmd_set(a):
     if load().get("override"):
         # паузу отключили кнопкой — автоматические постановки (очередь, хук) молчат,
         # пока её не включат обратно или окно не отпустит само (см. cmd_wake)
         _log("пауза отключена вручную — не ставлю (%s)" % (a.reason or "лимиты"))
         return 0
-    if not getattr(a, "no_handoff", False):
-        # автопередача включена и Claude PROD свободен — пауза не нужна: просим панель передать работу сразу
-        handed, why = _handoff_instead()
-        if handed:
-            _log("пауза не ставится — работа уходит на Claude PROD (%s)" % why)
-            return 0
     ls = level_state()
     week = not ls.get("stale") and ls.get("level") == "week"
     iso, who = (a.resume_at, "") if a.resume_at else nearest_reset(week)
@@ -861,7 +676,7 @@ def main():
     s.add_argument("--reason", default="")
     s.add_argument("--resume-at", default="", dest="resume_at")
     s.add_argument("--note", default="")
-    s.set_defaults(fn=cmd_set, no_handoff=True)  # пауза вручную из консоли — ровно пауза; «вместо паузы на PROD» — только для хуков и очереди
+    s.set_defaults(fn=cmd_set)
 
     s = sub.add_parser("status")
     s.add_argument("--json", action="store_true")

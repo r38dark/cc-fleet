@@ -53,49 +53,14 @@ def main():
         print("snapshot недоступен (%s) — гейт пропускает" % e)
         return 0
 
-    accs = d.get("accounts") or {}
-    age = time.time() - float(d.get("ts") or 0)
-    if not accs or age > MAX_AGE:
-        print("snapshot протух (%.0f с) — гейт пропускает" % age)
+    active = d.get("active")
+    row = (d.get("accounts") or {}).get(active)
+    if not row or time.time() - float(d.get("ts") or 0) > MAX_AGE:
+        print("Нет свежих лимитов Claude, запуск разрешён.")
         return 0
-
-    # Неделя гейт не держит (v1.15.1): пауза фоновых прогонов — только по сессии, как и
-    # пауза живой сессии; с аккаунта у потолка недели уходит балансер
-    cap = float("inf")
-    pcts, usable = {}, {}
-    for name, row in accs.items():
-        fh = row.get("five_hour") or {}
-        pct = fh.get("pct")
-        # неизвестный процент = считаем аккаунт живым, блокировать не на чем
-        pcts[name] = float(pct if pct is not None else 0.0)
-        # пригоден = сессия ниже порога (неделю не смотрим, см. выше)
-        usable[name] = cc_avail.availability(row, ceil, cap)[0]
-
-    line = ", ".join("%s %.0f%%/нед %s%%" % (n, p, (accs[n].get("seven_day") or {}).get("pct"))
-                     for n, p in sorted(pcts.items()))
-
-    # Порог смотрим и на АКТИВНОМ аккаунте, а не только «на всех сразу»: пауза здесь
-    # короткая — балансер уходит с аккаунта на том же пороге, после переключения
-    # активным станет свежий и гейт откроется сам на следующем тике.
-    active = d.get("active") or ""
-    if active in usable and not usable[active]:
-        # уйти некуда, если у остальных забита сессия или неделя (на аккаунт с неделей на
-        # потолке балансер не переключает) — тогда ждать переключения бессмысленно
-        wcap = _weekly_cap()
-        other = any(cc_avail.availability(r, ceil, wcap)[0] for n, r in accs.items()
-                    if n != active and not r.get("error"))
-        print("активный %s не пригоден (%s) — %s" % (
-            active, line, "жду переключения балансера" if other else "переключаться некуда"))
-        return 10
-
-    if any(usable.values()):
-        print("ок (%s)" % line)
-        return 0
-
-    nb = cc_avail.nearest(accs, ceil, cap)
-    nearest = ("%s в %s" % (nb[1], datetime.fromtimestamp(nb[0]).astimezone().strftime("%H:%M"))) if nb else "неизвестно"
-    print("все аккаунты упёрлись в сессию (%s), раньше всех освободится: %s" % (line, nearest))
-    return 10
+    available, _, reason = cc_avail.availability(row, ceil, float("inf"))
+    print("Лимиты Claude доступны." if available else "Claude ждёт сброса лимита: " + str(reason))
+    return 0 if available else 10
 
 
 if __name__ == "__main__":

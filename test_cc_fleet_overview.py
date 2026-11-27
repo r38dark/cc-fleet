@@ -13,7 +13,7 @@ from unittest import mock
 
 import cc_codex
 import cc_codex_console as console
-import cc_codex_rotation as rotation
+import cc_codex_limits as rotation
 import cc_fleet
 import cc_session
 
@@ -126,13 +126,7 @@ class Console(unittest.TestCase):
 
 
 class Policy(unittest.TestCase):
-    def test_available_known_limits_and_model_are_required(self):
-        self.assertTrue(rotation.eligible(account('gpt1'),MODEL,'high'))
-        for row in [account('gpt1',login_required=True),account('gpt1',stale=True),account('gpt1',usage_allowed=False),account('gpt1',session=100),account('gpt1',week=99),dict(account('gpt1'),windows=[]),dict(account('gpt1'),ts=1),dict(account('gpt1'),models=[])]:
-            self.assertFalse(rotation.eligible(row,MODEL,'high'),row)
 
-    def test_near_reset_with_headroom_is_preferred(self):
-        self.assertGreater(rotation.score(account('soon',hours=2)),rotation.score(account('later',hours=120)))
 
     def fixture(self):
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
@@ -144,37 +138,27 @@ class Policy(unittest.TestCase):
         con=types.SimpleNamespace(active_settings=lambda:dict(settings),_pid=lambda:'fake-pid',_meta=lambda:{'slot':'gpt1'},
             _meta_path=lambda:os.path.join(temp.name,'console.json'),busy=lambda:False,current_turn_open=lambda:False,
             _ask_lock=threading.Lock(),stop=mock.Mock(return_value=(True,'')),start=mock.Mock(return_value=(True,'')),request_settings=mock.Mock(),apply_plan=mock.Mock(),verify_ready=mock.Mock(return_value=(True,'')))
-        obj=rotation.Rotation(temp.name,codex,con,lambda:'/fake-codex',bridge);obj.accounts=[account('gpt1'),account('gpt2')]
+        obj=rotation.AccountLimits(temp.name,codex,con,lambda:'/fake-codex',bridge);obj.accounts=[account('gpt1'),account('gpt2')]
         return obj,con,codex,bridge_state
 
-    def test_switch_preserves_exact_model_effort_and_thread(self):
-        obj,con,codex,bridge=self.fixture();obj.state['optimize']=False
-        self.assertTrue(obj.switch('gpt2',manual=True)[0]);self.assertEqual(bridge['slot'],'gpt2')
-        self.assertEqual(codex.set_prefs.call_args.args[2:4],(MODEL,'high'))
-        self.assertEqual(json.loads(Path(con._meta_path()).read_text())['pending_settings']['thread_id'],TID)
 
-    def test_busy_turn_prevents_switch(self):
-        obj,con,_,bridge=self.fixture();con.busy=lambda:True
-        self.assertFalse(obj.switch('gpt2')[0]);self.assertEqual(bridge['slot'],'gpt1');con.stop.assert_not_called()
+    def test_one_account_keeps_quota_pause_even_with_a_legacy_spare(self):
+        obj, con, _, _ = self.fixture()
+        obj.accounts = [account('gpt1', session=95), account('gpt2', session=5)]
+        self.assertTrue(obj.limit_pause()['active'])
+        self.assertNotIn('next', obj.public())
+        con.stop.assert_not_called()
 
-    def test_busy_turn_rechecked_after_preference_write(self):
-        obj,con,_,bridge=self.fixture();con.current_turn_open=lambda:True
-        self.assertFalse(obj.switch('gpt2')[0]);self.assertEqual(bridge['slot'],'gpt1');con.stop.assert_not_called()
 
-    def test_start_failure_rolls_back_account(self):
-        obj,con,_,bridge=self.fixture();con.start.side_effect=[(False,'failed'),(True,'restored')]
-        self.assertFalse(obj.switch('gpt2')[0]);self.assertEqual(bridge['slot'],'gpt1');self.assertEqual(con.start.call_count,2)
-        self.assertNotIn('history',obj.state)
+
 
     def test_profile_transition_suspends_rotation_and_plan_refresh(self):
         obj,con,_,bridge=self.fixture();obj.suspended=lambda:True;obj.state['optimize']=False
-        self.assertFalse(obj.switch('gpt2',manual=True)[0]);obj.tick();con.stop.assert_not_called();con.apply_plan.assert_not_called();self.assertEqual(bridge['slot'],'gpt1')
+        obj.tick();con.stop.assert_not_called();con.apply_plan.assert_not_called();self.assertEqual(bridge['slot'],'gpt1')
 
-    def test_manual_choice_requires_optimization_off(self):
-        obj,con,_,bridge=self.fixture();self.assertFalse(obj.switch('gpt2',manual=True)[0]);con.stop.assert_not_called()
 
     def test_invalid_config_does_not_partially_change_policy(self):
-        obj,_,_,_=self.fixture();self.assertFalse(obj.configure({'optimize':False,'threshold':10})[0]);self.assertTrue(obj.state['optimize'])
+        obj,_,_,_=self.fixture();self.assertFalse(obj.configure({'threshold':10})[0]);self.assertEqual(obj.state['threshold'],90)
 
     def test_snapshot_does_not_wait_for_account_network(self):
         obj,_,codex,_=self.fixture();gate=threading.Event();self.addCleanup(gate.set)
@@ -243,11 +227,6 @@ class Extra(unittest.TestCase):
         obj=cc_fleet.ConsoleInput({'cc_codex_console':con})
         obj.send('codex','message','retry123');obj.send('codex','message','retry123');self.assertEqual(con.send_input.call_count,1)
 
-    def test_native_modal_blocks_account_commit_and_rolls_back(self):
-        obj,con,_,bridge=Policy.fixture(self)
-        con.verify_ready.side_effect=[(False,'open elsewhere'),(True,'')]
-        self.assertFalse(obj.switch('gpt2')[0]);self.assertEqual(bridge['slot'],'gpt1')
-        self.assertEqual(con.start.call_count,2);self.assertNotIn('history',obj.state)
 
     def test_new_profile_is_visible_before_network_refresh(self):
         obj,_,codex,_=Policy.fixture(self);codex.profile_slots=lambda:['gpt1','gpt2','gpt3'];obj.updated=time.time()
@@ -294,9 +273,9 @@ class Routes(unittest.TestCase):
         return h,ns
 
     def test_new_routes_require_authentication_before_body_read(self):
-        for path in ['/api/profiles/scenario/apply','/api/profiles/claude/apply','/api/profiles/task/confirm','/api/console/input','/api/console/key','/api/chatgpt/rotation/config','/api/chatgpt/rotation/switch','/api/chatgpt/models/check']:
+        for path in ['/api/profiles/scenario/apply','/api/profiles/claude/apply','/api/profiles/task/confirm','/api/console/input','/api/console/key','/api/chatgpt/limits/config','/api/chatgpt/models/check']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_POST()[0],403);self.assertEqual(h.rfile.tell(),0)
-        for path in ['/api/profiles','/api/chatgpt/bridge','/api/chatgpt','/api/chatgpt/rotation','/api/chatgpt/models']:
+        for path in ['/api/profiles','/api/chatgpt/bridge','/api/chatgpt','/api/chatgpt/limits','/api/chatgpt/models']:
             h,_=self.fixture(path,authed=False);self.assertEqual(h.do_GET()[0],403)
 
     def test_existing_routes_still_delegate(self):
@@ -321,7 +300,7 @@ class Routes(unittest.TestCase):
 
     def test_quota_input_is_queued_once_and_not_sent_to_native_console(self):
         h,ns=self.fixture('/api/console/input',{'session':'codex','text':'waiting task','request_id':'quota-req-1'})
-        ns['FLEET_ROTATION'].accounts=[account('gpt1',session=94)]
+        ns['CODEX_LIMITS'].accounts=[account('gpt1',session=94)]
         ns['cc_codex_console'].send_input=mock.Mock()
         self.assertEqual(h.do_POST(),(200,{'ok':True,'message':'queued'}))
         ns['cc_codex_bridge'].BRIDGE.enqueue_console.assert_called_once_with('waiting task','quota-req-1')

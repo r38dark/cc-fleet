@@ -278,7 +278,7 @@ class Api(Base):
         with urllib.request.urlopen(req, timeout=20) as r:
             return json.loads(r.read())
 
-    def test_status_now_restore_and_switch(self):
+    def test_restore_cannot_recreate_a_second_account(self):
         self.acc("acc1")
         self.acc("acc2")
         st = self.call("/api/backup")
@@ -290,8 +290,11 @@ class Api(Base):
         shutil.rmtree(self.prof + "/acc2")
         self.assertEqual(self.call("/api/backup")["missing"], ["acc2"])
         r = self.call("/api/backup/restore", {})
-        self.assertEqual((r["ok"], r["restored"], r["missing"]), (True, ["acc2"], []))
-        self.assertEqual(B.real_names(self.prof), ["acc1", "acc2"])
+        self.assertEqual((r["ok"], r["restored"], r["missing"]), (False, [], ["acc2"]))
+        self.assertEqual(B.real_names(self.prof), ["acc1"])
+        shutil.rmtree(self.prof + "/acc1")
+        r = self.call("/api/backup/restore", {})
+        self.assertEqual((r["ok"], r["restored"], r["missing"]), (True, ["acc1"], ["acc2"]))
         self.call("/api/config", {"profile_backup": False})
         self.assertFalse(self.call("/api/backup")["enabled"])
         self.call("/api/config", {"profile_backup": True})

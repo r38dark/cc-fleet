@@ -296,12 +296,14 @@ def missing(profiles, dest):
     return sorted(_wanted(profiles, dest))
 
 
-def restore_missing(profiles, dest):
+def restore_missing(profiles, dest, limit=None):
     """Вернуть из копий профили, которых сейчас нет (или слот пуст). Живые не трогает. → {"restored": [...]}."""
     with _lock:
         want = _wanted(profiles, dest)
         restored = []
         for name, path in sorted(want.items()):
+            if limit is not None and len(restored) >= limit:
+                break
             if is_real(profiles, name):
                 continue  # пока шли — профиль появился (вошли заново): живой важнее копии
             try:

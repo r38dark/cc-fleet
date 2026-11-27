@@ -71,7 +71,7 @@ class AgainstTheInstaller(unittest.TestCase):
         self.assertEqual(sorted(in_doc - in_install), [], "в инструкции переменные, которых нет в установщике")
 
     def test_defaults_in_the_table_are_the_real_ones(self):
-        for var, default in (("PORT", "8877"), ("ACCOUNTS", "2"), ("THRESHOLD", "85"), ("SCREEN", "claude"), ("CODEX_USER", "codex"), ("BASE", "/opt/cc-limits"),
+        for var, default in (("PORT", "8877"), ("THRESHOLD", "85"), ("SCREEN", "claude"), ("CODEX_USER", "codex"), ("BASE", "/opt/cc-limits"),
                              ("PROFILES", "/root/.claude-profiles"), ("SERVICE_NAME", "cc-limits")):
             self.assertIn('CC_FLEET_%s:-%s}' % (var, default), INSTALL.replace('"', ""), var)
             row = re.search(r"(?m)^\|[^\n]*`CC_FLEET_%s`[^\n]*" % var, DOC)
@@ -79,13 +79,13 @@ class AgainstTheInstaller(unittest.TestCase):
             self.assertIn(default, row.group(0), "в таблице у CC_FLEET_%s не тот умолчательный: %s" % (var, row.group(0)))
 
     def test_sections_the_installer_points_to_exist(self):
-        topics = {"2": "Установка одной командой", "3": "Аккаунты Claude", "4": "Telegram", "5": "Codex", "6": "Второй сервер"}
+        topics = {"2": "Установка одной командой", "3": "Аккаунты Claude", "4": "Telegram", "5": "Codex", "6": "Подключение Claude"}
         for n in sorted(set(re.findall(r"docs/INSTALL\.md, раздел (\d)", INSTALL))):
             self.assertIn(n, topics, "установщик ссылается на раздел %s" % n)
             self.assertRegex(DOC, r"(?m)^## %s\. .*%s" % (n, topics[n]), "раздел %s не о «%s»" % (n, topics[n]))
 
     def test_installer_questions_are_all_in_the_doc(self):
-        for q in ("screen-сессии", "аккаунтов Claude", "Порог авто-переключения", "обращаться", "часовой пояс", "Рабочая папка", "nginx", "Telegram", "Codex", "Голос", "Хук очереди", "Стоп-кран"):
+        for q in ("screen-сессии", "аккаунтов Claude", "Порог паузы", "обращаться", "часовой пояс", "Рабочая папка", "nginx", "Telegram", "Codex", "Голос", "Хук очереди", "Стоп-кран"):
             self.assertIn(q.lower(), DOC.lower(), q)
 
     def test_paths_the_doc_mentions_exist_in_the_repository(self):
@@ -97,9 +97,9 @@ class AgainstTheInstaller(unittest.TestCase):
 
 class AgainstThePanel(unittest.TestCase):
     def test_button_and_field_labels_exist_in_the_code(self):
-        labels = ["Добавить аккаунт", "Получить ссылку для входа", "Названия серверов", "Переключение и лимиты", "Авто-переключение", "Пауза на недельном потолке",
+        labels = ["Добавить аккаунт", "Получить ссылку для входа", "Лимиты", "Пауза на недельном потолке",
                   "Установить Codex", "Мост Telegram", "Свои настройки Codex", "Аккаунты и лимиты ChatGPT",
-                  "Второй сервер", "Установить недостающее", "Скопировать команду", "Войти заново", "Включить авто", "Изменить порог", "Передать работу в"]
+                  "Подключение Claude", "Установить недостающее", "Скопировать команду", "Войти заново", "Изменить порог", "Передать работу в"]
         for label in labels:
             self.assertIn(label, DOC, "подпись «%s» не упомянута в инструкции" % label)
             self.assertIn(label, PANEL, "в инструкции подпись «%s», а в коде панели её нет" % label)

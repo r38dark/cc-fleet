@@ -75,7 +75,7 @@ JS = r"""
 var compact=null,tile=null;
 function $i(id){return document.getElementById(id)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
-function mem(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}var r=s&&s.remote;if(!r)return null;var k=Object.keys(r)[0];return k?Object.assign({id:k},r[k]):null}
+function mem(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}var r=s&&s.remote;if(!r||(typeof prodAvail==='function'&&!prodAvail()))return null;var k=Object.keys(r)[0];return k?Object.assign({id:k},r[k]):null}
 var WD=new Intl.DateTimeFormat('ru',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ});
 var CK=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ}),DY=new Intl.DateTimeFormat('ru',{day:'2-digit',month:'2-digit',timeZone:window.FLEET_TZ});
 function clk(t){var d=DY.format(t),c=CK.format(t);return d===DY.format(new Date())?c:d+' '+c}   // время сброса 5 ч по Иркутску
@@ -109,10 +109,8 @@ var hp=null,hAnchor=null,hTarget='',hForce=false,hMine=false,wasBusy=false,hRaf=
 function worker(){return rmode().worker||'dev'}
 function sToast(t){try{typeof toast==='function'&&toast(t)}catch(e){}}
 function hSteps(src,tg){
- if(src==='codex'||tg==='codex')return ['Отправитель продолжит работать в своей консоли',NM[tg]+' получит контекст; если консоль не запущена — запустится','Чаты Claude и Codex остаются раздельными; паузы по собственным лимитам сохраняются'];
- var stop={dev:'Claude DEV остановится',prod:'Claude PROD остановится'},start={dev:'Claude DEV запустится заново',prod:'Claude PROD возьмёт работу (лимиты аккаунта друга)'};
- var l=[stop[src],start[tg],'Telegram перейдёт к '+NM[tg]];
- return l}
+ return ['Отправитель продолжит работать в своей консоли',NM[tg]+' получит контекст', 'Паузы по лимитам сохраняются'];
+}
 function hPaint(warn){if(!hp)return;var src=worker();
  hp.style.setProperty('--rm-c',ACC[hTarget]||'var(--fleet-claude)');
  hp.querySelector('.cxpbody').innerHTML='<h3>'+(hForce?'Claude на PROD отвечает':'Передать работу в '+esc(NM[hTarget])+'?')+'</h3>'
@@ -140,16 +138,17 @@ function hGo(){var tg=hTarget,y=hp.querySelector('.rm-hyes');if(y)y.disabled=tru
   if(j.answering&&!hForce){hForce=true;hPaint('Claude на PROD сейчас отвечает: ответ может оборваться.');hPlace();return}
   hClose();hMine=false;sToast('⚠ '+(j.message||'Не получилось'))
  }).catch(function(){hClose();hMine=false;sToast('⚠ Панель не ответила')})}
-function handLabel(md){var w=(md||rmode()).worker||'dev';if(locked(md))return 'Передача закрыта: пара';return 'Передать работу в '+NM[w==='prod'?'dev':'prod']}
-function toggleHand(){if(locked()){sToast(rmode().handoff_message||(rmode().pair||{}).message);return}var tg=worker()==='prod'?'dev':'prod';hOpen(tg,document.querySelector('.rm-hand[data-target="'+tg+'"]'))}
+function handLabel(md){var w=(md||rmode()).worker||'dev';if(locked(md))return 'Передача закрыта: пара';return 'Передать работу в '+NM[w==='codex'?(mem()?'prod':'dev'):'codex']}
+function toggleHand(){if(locked()){sToast(rmode().handoff_message||(rmode().pair||{}).message);return}var tg=worker()==='codex'?(mem()?'prod':'dev'):'codex';hOpen(tg,document.querySelector('.rm-hand[data-target="'+tg+'"]'))}
 function ensureHand(){document.querySelectorAll('#fleetLiveRows .fleet-live-account').forEach(function(t){var tg=null;for(var k in TG)if(t.classList.contains(k)){tg=TG[k];break}
  if(!tg||t.querySelector(':scope>.rm-hand'))return;var b=document.createElement('button');b.type='button';b.className='rm-hand';b.dataset.target=tg;t.appendChild(b)})}
 // Состояние кнопки передачи работы в tg: одно для кнопок плиток и для окон значков в шапке (текст, подсказка, доступность)
 function handInfo(tg,md){md=md||rmode();var w=md.worker||'dev',busy=!!md.busy,to=md.to||'',m=mem(),bad=!!(m&&(!m.online||m.error)),lk=locked(md);
  var here=tg===w&&!busy,going=busy&&tg===to,off=tg==='prod'&&bad&&w!=='prod'&&!busy,lock=lk&&!here&&!busy;
  var txt=here?'Работа здесь':going?'Идёт: '+(md.stage||'…'):'Передать работу в '+NM[tg];
+ var sameEngine=tg!=='codex'&&w!=='codex'&&!here;
  var tt=here?'Сейчас работает '+NM[tg]:going?'Передача в '+NM[tg]+' идёт':busy?'Идёт передача работы':lock?md.handoff_message||(md.pair||{}).message:off?'PROD сейчас недоступен: '+status(m):w==='codex'||tg==='codex'?'Передать контекст в '+NM[tg]+': отправитель продолжит работать, чаты и лимиты раздельные':'Передать работу в '+NM[tg]+': Telegram перейдёт к '+NM[tg]+', '+NM[w]+' остановится';
- return {here:here,going:going,off:off,lock:lock,busy:busy,txt:txt,tt:tt,dis:here||busy||off||lock}}
+ return {here:here,going:going,off:off,lock:lock,busy:busy,txt:txt,tt:tt,dis:here||busy||off||lock||sameEngine}}
 function paintHand(){var md=rmode(),w=md.worker||'dev',busy=!!md.busy;
  document.querySelectorAll('.rm-hand,.rm-act').forEach(function(b){var h=handInfo(b.dataset.target,md);
   if(b.textContent!==h.txt)b.textContent=h.txt;
@@ -178,7 +177,7 @@ function pPaint(note){if(!pp)return;var d=rmode(),opts=pOpts();
   +opts.map(function(o){var dis=o.dis||o.cur;return '<button type="button" class="rm-popt'+(o.cur?' on':'')+(o.id===pSel?' sel':'')+'" role="radio" aria-checked="'+(o.cur||o.id===pSel)+'" data-kind="'+o.id+'"'+(dis?' disabled':'')+'><i></i><b>'+esc(o.name)+'</b><em>'+(o.cur?'Действующий':'')+'</em><span>'+esc(o.desc)+'</span></button>'}).join('')+'</div>';
  if(pSel)body+='<ul>'+pSteps(pSel).map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';
  if(note)body+='<p class="rm-hnote bad rm-hint">'+esc(note)+'</p>';
- else if(pSel&&pSel!=='off'&&!pKind())body+='<p class="rm-hnote rm-hint">Пока пара включена, передача работы между DEV и PROD закрыта. Занимает около минуты.</p>';
+ else if(pSel&&pSel!=='off'&&!pKind())body+='<p class="rm-hnote rm-hint">Пока пара включена, передача работы на другой сервер недоступна. Занимает около минуты.</p>';
  else if(pSel)body+='<p class="rm-hnote rm-hint">Занимает около минуты.</p>';
  body+='<div class="rm-hbtns"><button type="button" class="rm-hno">Отмена</button><button type="button" class="rm-hyes"'+(pSel&&!pBusy?'':' disabled')+'>'+(pForce?'Всё равно применить':'Применить')+'</button></div>';
  pp.querySelector('.cxpbody').innerHTML=body}
@@ -208,11 +207,7 @@ document.addEventListener('click',function(e){var b=e.target.closest&&e.target.c
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-hand,.rm-act');if(!b||b.disabled)return;e.stopPropagation();hOpen(b.dataset.target||'prod',b)});
 // «Войти заново» на карточке Claude PROD: то же окно со ссылкой и кодом, что у обычных аккаунтов, но вход идёт на втором сервере
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-relogin');if(!b||b.disabled)return;e.stopPropagation();if(typeof reloginAsk==='function')reloginAsk('prod',b,true)});
-document.addEventListener('change',function(e){var c=e.target;if(c&&c.classList&&c.classList.contains('rm-auto')){var on=c.checked;c.checked=!on;window.fleetAsk(c,(on?'Включить':'Выключить')+' автопередачу работы на PROD при лимитах?',on?'Включить':'Выключить').then(function(ok){if(!ok)return;c.checked=on;c.disabled=true;setAuto(on).then(function(){c.disabled=false}).catch(function(){c.checked=!on;c.disabled=false})})}});
-// для шапки (cc_workers): состояние и переключение передачи
-function autoState(){var s=null;try{s=typeof lastSnap!=='undefined'?lastSnap:null}catch(e){}return s&&s.remote_mode&&s.remote_mode.auto||{}}
-function setAuto(on){return post('remote/auto',{enabled:!!on}).then(function(j){try{if(lastSnap&&lastSnap.remote_mode&&j.auto)lastSnap.remote_mode.auto=j.auto}catch(e){}paint();try{window.wkReload&&window.wkReload()}catch(e){}return j})}
-window.fleetRemote={mode:rmode,toggle:toggleHand,label:handLabel,handInfo:handInfo,hand:hOpen,auto:autoState,setAuto:setAuto,model:function(){var m=mem();return m?{id:m.model||'',name:modelName(m.model),effort:m.effort||''}:null},account:mem};
+window.fleetRemote={mode:rmode,toggle:toggleHand,label:handLabel,handInfo:handInfo,hand:hOpen,model:function(){var m=mem();return m?{id:m.model||'',name:modelName(m.model),effort:m.effort||''}:null},account:mem};
 function row(label,win,week){var p=pct(win),t=when(win,week);
  return '<div class="row" data-fleet-tone="'+tone(p)+'"><div class="lbl"><span>'+label+'</span><b style="color:'+color(p)+'">'+(p==null?'—':p+'%')+'</b><span title="'+esc(t)+'">'+esc(t)+'</span></div><div class="bar"><div class="fill" data-t="'+(p==null?'ok':p>=99?'bad':p>=85?'warn':'ok')+'" style="width:'+(p==null?0:Math.min(100,p))+'%"></div></div></div>'}
 var SVG_TERM='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="4"></rect><path d="M7 9.5l3 2.5-3 2.5"></path><path d="M12.5 15h4.5"></path></svg>';
@@ -244,7 +239,7 @@ function buildStrip(){
  rows.appendChild(tile);return true}
 function paintStrip(m){
  if(!buildStrip())return;var wins=[m&&m.five_hour,m&&m.seven_day],st=m?status(m):'нет данных';
- var name='Claude PROD',mail=m&&m.email||'',mname=m?modelName(m.model):'—',eff=m&&m.effort||'—';
+ var name='Claude',mail=m&&m.email||'',mname=m?modelName(m.model):'—',eff=m&&m.effort||'—';
  compact.dataset.state=m&&m.online&&!m.error?'ready':'warning';compact.dataset.online=m&&m.online?'1':'0';
  compact.querySelector('.fleet-compact-name').title=name+(mail?' · '+mail:'')+(m&&m.plan?' · '+m.plan.toUpperCase():'');
  compact.querySelector('.rm-cmodel').textContent=mname;compact.querySelector('.rm-ceffort').textContent=eff;
@@ -257,21 +252,20 @@ function paintStrip(m){
  tile.querySelector('.fleet-live-name').textContent=name;tile.querySelector('.fleet-live-email').textContent=(mail||'почта не получена')+(m&&m.plan?' · '+m.plan.toUpperCase():'');
  var dot=tile.querySelector('.cxdot');dot.classList.toggle('err',!!(m&&(!m.online||m.error)));
  var mn=tile.querySelector('.rm-model');mn.querySelector('.cxmodn').textContent=mname;mn.querySelector('.cxmode').textContent=m&&m.effort||'';
- var tt='Модель Claude на PROD: '+mname+(m&&m.effort?' · '+m.effort:'')+'. Нажми, чтобы сменить.';mn.title=tt;mn.setAttribute('aria-label',tt);
+ var tt='Модель Claude: '+mname+(m&&m.effort?' · '+m.effort:'')+'. Нажми, чтобы сменить.';mn.title=tt;mn.setAttribute('aria-label',tt);
  var md=rmode(),pb=tile.querySelector('.rm-prof'),pn=md.pair?md.pair.name:'PROD Full · самостоятельно',pt=md.busy?'Идёт операция: профиль сменить нельзя.':md.pair?'Профиль PROD: '+pn+'. Нажми, чтобы сменить или снять пару.':'Профиль PROD: Full — самостоятельно. Нажми, чтобы включить пару с Codex.';
  var pl=pb.querySelector('.cxbtnname');if(pl.textContent!==pn)pl.textContent=pn;pb.title=pt;pb.setAttribute('aria-label',pt);if(md.busy)pb.setAttribute('aria-disabled','true');else pb.removeAttribute('aria-disabled');
  tile.dataset.state=compact.dataset.state}
 function paintCard(m){
  var box=$i('cards');if(!box)return;var old=box.querySelector('.fleet-remote-card');
  if(!m){if(old){old.remove();if(window.fleetClaudeCount)window.fleetClaudeCount()}return}
- var md=rmode(),sig=JSON.stringify([autoState().enabled,m.email,m.plan,m.model,m.effort,m.five_hour,m.seven_day,m.subscription_since,m.login_expires,m.online,m.error,md.active,md.worker,md.to,md.busy,md.stage,md.error,md.pair&&md.pair.kind,md.tg,Math.floor(Date.now()/60000)]);
+ var md=rmode(),sig=JSON.stringify([m.email,m.plan,m.model,m.effort,m.five_hour,m.seven_day,m.subscription_since,m.login_expires,m.online,m.error,md.active,md.worker,md.to,md.busy,md.stage,md.error,md.pair&&md.pair.kind,md.tg,Math.floor(Date.now()/60000)]);
  if(old&&old.dataset.sig===sig)return;
  var el=document.createElement('div');el.className='card fleet-remote-card';el.dataset.sig=sig;el.dataset.remote=m.id;
  var st=status(m),bad=st!=='онлайн';
  el.innerHTML='<div class="top"><div class="fleet-identity"><div class="fleet-titleline"><strong class="fleet-account-name" title="Claude PROD">Claude PROD</strong>'+(m.plan?'<span class="tag plan">'+esc(m.plan.toUpperCase())+'</span>':'')+'</div><span class="email" title="'+esc(m.email||'')+'">'+esc(m.email||'почта не получена')+'</span></div></div>'
   +'<span class="fleet-card-state'+(bad&&!md.active?' off':' active')+'" title="'+esc(statusHint(m))+'">'+esc(md.active?'Работает здесь':st.charAt(0).toUpperCase()+st.slice(1))+'</span>'
   +row('Сессия 5ч',m.five_hour,false)+row('Неделя',m.seven_day,true)
-  +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD). Вручную переключённая работа остаётся там, куда её переключили. Codex переключается вручную."><input type="checkbox" class="rm-auto"'+(autoState().enabled?' checked':'')+'> <span>Автопередача при лимитах</span></label>'
   +'<div class="fleet-card-footer"><span class="fleet-card-caption">'+esc(md.error||(md.pair?md.pair.name:md.active?'Telegram у Claude на PROD':bad?(m.error==='token_expired'?'Токен устарел: цифр лимита нет':'Проверь сервер PROD'):'Claude на сервере PROD · токен остаётся там'))+'</span>'
   +'<button type="button" class="btn-relogin fleet-footer-relogin rm-relogin" title="Новый вход в Claude на сервере PROD: ссылка и код, токен останется там">\ud83d\udd11 Войти заново</button>'
   +'</div>';   // кнопки «Передать работу» в этой карточке нет: она живёт в плитке «Активные аккаунты»
@@ -317,8 +311,7 @@ function sBuild(){
   +'<div class="cxpbody"><section class="fleet-settings-group"><div class="fleet-settings-group-title">Переключение и лимиты</div>'
   +'<div class="fleet-cx-options"><label>Сессия, % <input class="rm-thr" type="number" min="50" max="99"></label><label>Неделя, % <input class="rm-cap" type="number" min="50" max="100"></label><button type="button" class="rm-ssave">Сохранить</button></div>'
   +'<div class="fleet-catalog-note fleet-limit-hint">Пороги общие с Claude DEV: PROD берётся в работу, пока окно 5 часов и неделя ниже них. Сессия — с какого % окна 5 часов аккаунт считается занятым. Неделя — потолок недели.</div>'
-  +'<label class="fleet-card-auto" title="Если переключаться некуда, Claude останавливается на недельном потолке и не расходует остаток."><input type="checkbox" class="rm-wk"><span>Пауза на недельном потолке: остановить Claude на пороге недели, если переключаться некуда</span></label>'
-  +'<label class="fleet-card-auto" title="Когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой (DEV ↔ PROD)."><input type="checkbox" class="rm-auto"><span>Автопередача: когда лимит заканчивается у аккаунта, где идёт работа, она сама переключается на другой</span></label>'
+  +'<label class="fleet-card-auto" title="Claude останавливается на недельном потолке и не расходует остаток."><input type="checkbox" class="rm-wk"><span>Пауза на недельном потолке: остановить Claude на пороге недели, если переключаться некуда</span></label>'
   +'<div class="fleet-catalog-note">Codex переключается вручную.</div></section>'
   +'<section class="fleet-settings-group"><div class="fleet-settings-group-title">Модели в быстром меню</div><div class="fleet-catalog-note">Отмеченные модели показываются в быстром меню Claude и PROD; список общий. Применяется сразу.</div><div class="rm-smbox"></div></section></div>';
  document.body.appendChild(sp);
@@ -340,7 +333,7 @@ document.addEventListener('change',function(e){var c=e.target;if(!c||!c.classLis
  post('config',{weekly_pause:c.checked}).then(function(j){if(j&&j.error)throw new Error(j.error);try{if(lastSnap&&lastSnap.config)lastSnap.config.weekly_pause=c.checked}catch(e){}sToast(c.checked?'Пауза на недельном потолке включена':'Пауза на недельном потолке выключена')})
   .catch(function(){c.checked=!c.checked;sToast('⚠ Не сохранилось')}).then(function(){c.disabled=false})});
 function sPlace(){if(!sp||!spBtn)return;if(window.fleetPlace)return window.fleetPlace(sp,spBtn,580)}
-function sSync(){if(!sp)return;var a=sp.querySelector('.rm-auto'),w=sp.querySelector('.rm-wk'),on=false;if(a&&document.activeElement!==a)a.checked=!!autoState().enabled;
+function sSync(){if(!sp)return;var w=sp.querySelector('.rm-wk'),on=false;
  try{on=!!(lastSnap&&lastSnap.config&&lastSnap.config.weekly_pause)}catch(e){}if(w&&document.activeElement!==w)w.checked=on}
 function sOpen(){
  ['cxQClose','cxPopClose','cxMenuClose'].forEach(function(f){try{typeof window[f]==='function'&&window[f]()}catch(_){}});qClose();pClose();
@@ -354,29 +347,7 @@ function sClose(){if(!sp||sp.hidden)return;sp.hidden=true;if(spBtn)spBtn.setAttr
  if(spMoved){var g=$i('fleetClaudeModels');if(g)[$i('poolList'),$i('checkNew')].forEach(function(n){if(n)g.append(n)});spMoved=false}
  mdata=null}
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('.rm-gear');if(!b||!tile||!tile.contains(b))return;e.stopPropagation();spBtn=b;if(sp&&!sp.hidden)sClose();else sOpen()});
-var spEl=null,spBusy=false,spNote='';
-function paintSplit(){var s=rmode().split||{};
- if(!s.on){if(spEl)spEl.hidden=true;spNote='';return}
- if(!spEl){var a=$i('ccPause');if(!a||!a.parentNode)return;spEl=document.createElement('div');spEl.id='rmSplit';spEl.setAttribute('role','alert');spEl.hidden=true;a.parentNode.insertBefore(spEl,a)}
- var mins=Math.max(1,Math.round((Date.now()/1000-s.since)/60)),sig=[mins,spBusy,spNote].join('|');
- spEl.className='ccpause lvl-hard';
- if(spEl.dataset.sig!==sig){spEl.dataset.sig=sig;var dis=spBusy?' disabled':'';
-  spEl.innerHTML='<span class="ccp-dot"></span><div class="ccp-body"><div class="ccp-title">Двойная работа: режим «Claude PROD», а Claude DEV запущен</div>'
-   +'<div class="ccp-sub">Claude DEV с Telegram работает уже '+mins+' мин, хотя работа числится на PROD. Оба слушают одного бота: ответы могут дублироваться или теряться. Панель ничего не переключала — выбери, где будет работа.</div>'
-   +(spNote?'<div class="ccp-sub"><b>'+esc(spNote)+'</b></div>':'')
-   +'<div class="ccp-actions"><button type="button" class="ccp-btn" data-split="work_dev"'+dis+'>Работа на DEV</button><button type="button" class="ccp-btn sec" data-split="work_prod"'+dis+'>Работа на PROD</button></div>'
-   +'<div class="ccp-sub"><b>Работа на DEV:</b> Claude PROD остановится, память и беседа с него скопируются сюда (около минуты).<br><b>Работа на PROD:</b> панель проверит PROD. Не запущен — запустит его с беседой и карточкой DEV (1–2 минуты) и только потом остановит DEV; уже работает — остановит только DEV. Не получится — Claude DEV останется как есть.</div></div>'}
- spEl.hidden=false}
-function splitGo(act,force){spBusy=true;spNote='';paintSplit();
- post('remote/split',{action:act,force:!!force}).then(function(j){j=j||{};
-  try{if(j.state&&lastSnap)lastSnap.remote_mode=j.state}catch(e){}
-  spBusy=false;
-  if(j.answering&&!force){paintSplit();window.fleetAsk(spEl,act==='work_dev'?'Claude на PROD сейчас отвечает. Остановить его посреди ответа и всё равно оставить работу на DEV?':'Claude на PROD сейчас отвечает. Перезапустить его посреди ответа и передать ему работу с DEV?','Всё равно').then(function(ok){if(ok)splitGo(act,true)});return}
-  spNote=j.ok?'':(j.message||'Не выполнено.');if(j.ok&&j.message)sToast(j.message);paint();poll()})
- .catch(function(){spBusy=false;spNote='Нет связи с панелью.';paintSplit()})}
-document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#rmSplit [data-split]');if(!b||spBusy)return;var act=b.dataset.split,keep=act==='work_dev';
- window.fleetAsk(b,keep?'Работа на DEV? Память и беседа с PROD скопируются сюда, Claude PROD остановится, переключатели встанут на DEV. Около минуты.':'Работа на PROD? Если PROD не запущен, он стартует с беседой и карточкой DEV, и только потом остановится Claude DEV (его текущий ответ оборвётся). Если PROD уже работает, остановится только DEV. Не получится — DEV останется как есть.',keep?'Работа на DEV':'Работа на PROD').then(function(ok){if(ok)splitGo(act,false)})});
-function paint(){var m=mem();paintStrip(m);paintCard(m);ensureHand();paintHand();paintSplit();sSync();if(pp&&!pp.hidden&&rmode().busy&&!pBusy)pClose();var has=!!m;if(has!==hadTab){hadTab=has;try{typeof consTabs==='function'&&consTabs()}catch(e){}}}
+function paint(){var m=mem();paintStrip(m);paintCard(m);ensureHand();paintHand();sSync();if(pp&&!pp.hidden&&rmode().busy&&!pBusy)pClose();var has=!!m;if(has!==hadTab){hadTab=has;try{typeof consTabs==='function'&&consTabs()}catch(e){}}}
 try{var prev=renderCards;renderCards=function(d){prev(d);try{paint()}catch(e){}}}catch(e){}
 setInterval(function(){if(!document.hidden)try{paint()}catch(e){}},15000);
 (function wait(n){if(buildStrip()){paint();try{new MutationObserver(function(){if(hRaf)return;hRaf=requestAnimationFrame(function(){hRaf=0;ensureHand();paintHand()})}).observe($i('fleetLiveRows'),{childList:true,subtree:true})}catch(e){}}else if(n<40)setTimeout(function(){wait(n+1)},250)})(0);

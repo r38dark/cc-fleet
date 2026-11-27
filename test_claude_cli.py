@@ -702,7 +702,8 @@ class ClaudeRestart(unittest.TestCase):
         wk = mock.Mock()
         wk.side_running.return_value, wk.stop_claude.return_value, wk.start_claude.return_value = side, stop, start
         with mock.patch.object(L, "WORKERS", wk, create=True), mock.patch.object(L.cc_fleet, "claude_alive", return_value=alive), \
-                mock.patch("pause_ctl._remote_active", return_value=remote):
+                mock.patch("pause_ctl._remote_active", return_value=remote), \
+                mock.patch.object(L.cc_remote, "members", return_value={}):
             r = L.claude_restart_local()
         return r, [c[0] for c in wk.mock_calls]
 

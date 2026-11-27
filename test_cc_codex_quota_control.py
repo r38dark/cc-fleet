@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock,patch
 
 import cc_codex_quota as Q
-import cc_codex_rotation as R
+import cc_codex_limits as R
 import cc_codex_bridge as B
 import cc_profiles
 from cc_input_queue import InputQueue
@@ -25,7 +25,7 @@ def account(session=94,week=15):
 
 class Policy(unittest.TestCase):
     def rotation(self,row):
-        r=R.Rotation.__new__(R.Rotation);r.lock=threading.RLock();r.state=dict(optimize=True,threshold=90,weekly_cap=99)
+        r=R.AccountLimits.__new__(R.AccountLimits);r.lock=threading.RLock();r.state=dict(optimize=True,threshold=90,weekly_cap=99)
         r.accounts=[row];r.active=lambda:'a';r.codex=SimpleNamespace(profile_slots=lambda:['a']);r.save=Mock()
         return r
 

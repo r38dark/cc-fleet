@@ -43,8 +43,8 @@ class Lapsed(unittest.TestCase):
                     {"accountUuid": "u-" + n, "emailAddress": n + "@example.com"})
         L.LIVE_CREDS = os.path.join(TMP, "live_credentials.json")
         L.LIVE_CFG = os.path.join(TMP, "live_claude.json")
-        L.jsave(L.LIVE_CREDS, {"claudeAiOauth": {"accessToken": "tok-acc1", "refreshToken": "r-acc1", "expiresAt": far}})
-        L.jsave(L.LIVE_CFG, {"oauthAccount": {"accountUuid": "u-acc1"}})
+        L.jsave(L.LIVE_CREDS, {"claudeAiOauth": {"accessToken": "tok-acc2", "refreshToken": "r-acc2", "expiresAt": far}})
+        L.jsave(L.LIVE_CFG, {"oauthAccount": {"accountUuid": "u-acc2"}})
         L.jsave(L.CONFIG, {"threshold": 90, "weekly_cap": 99, "adaptive_poll": False})
         L.backoff_until.clear()
         L._plan_cache.clear()
@@ -96,7 +96,7 @@ class Lapsed(unittest.TestCase):
         self.assertTrue(row.get("lapsed"))
         self.assertTrue(row.get("lapsed_since"))
         self.assertEqual(row["plan"], "free")
-        self.assertFalse(snap["accounts"]["acc1"].get("lapsed"))
+        self.assertNotIn("acc1", snap["accounts"])
         self.assertIn("acc2", (L.jload(L.STATE) or {}).get("lapsed", {}))
         self.assertTrue(any("слетел с Pro" in m and "опрос остановлен" in m for m in self.notes), self.notes)
 
@@ -118,7 +118,7 @@ class Lapsed(unittest.TestCase):
         self.assertNotIn("acc2", self.calls["access"], "refresh токена слетевшего не нужен")
         self.assertNotIn("acc2", self.calls["plan"], "profile слетевшего не нужен")
         self.assertNotIn("tok-acc2", self.calls["usage"], "usage слетевшего не нужен")
-        self.assertIn("acc1", self.calls["plan"], "остальные аккаунты опрашиваются как прежде")
+        self.assertNotIn("acc1", self.calls["plan"])
 
     def test_force_account_and_refresh_do_not_wake_lapsed(self):
         self.drop_to_free()

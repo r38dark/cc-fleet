@@ -2,7 +2,7 @@
 import datetime, os, sys, time, unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import cc_codex_rotation as R  # noqa: E402
+import cc_codex_limits as R  # noqa: E402
 import cc_codex_bridge as br  # noqa: E402
 
 NOW = 1_800_000_000.0
@@ -17,44 +17,25 @@ def acc(slot, ses, week, ses_reset=NOW + 3600, week_reset=NOW + 86400, **kw):
 
 class TestState(unittest.TestCase):
     def test_free_account_no_pause(self):
-        self.assertFalse(R.limit_pause_state([acc('a', 50, 50)], 'a', False, NOW)['active'])
+        self.assertFalse(R.limit_pause_state([acc('a', 50, 50)], 'a', NOW)['active'])
 
     def test_single_account_pauses_on_its_own_threshold(self):
         for a in (acc('a',0,99),acc('a',90,10),acc('a',70,10,reached=True)):
-            self.assertTrue(R.limit_pause_state([a],'a',False,NOW)['active'])
-        self.assertFalse(R.limit_pause_state([acc('a',100,10,ses_reset=NOW-300)],'a',False,NOW)['active'])
+            self.assertTrue(R.limit_pause_state([a],'a', NOW)['active'])
+        self.assertFalse(R.limit_pause_state([acc('a',100,10,ses_reset=NOW-300)],'a', NOW)['active'])
 
-    def test_week_full_all_accounts(self):
-        p = R.limit_pause_state([acc('a', 0, 100), acc('b', 0, 100, week_reset=NOW + 90000)], 'a', False, NOW)
-        self.assertTrue(p['active']); self.assertEqual(p['windows'], [10080]); self.assertEqual(p['window_names'], ['неделя'])
-        self.assertAlmostEqual(p['resume_at'], NOW + 86400, delta=1); self.assertTrue(p['multi'])
-        self.assertEqual(p['accounts'][0]['week'], 100)
 
     def test_candidate_or_unknown_no_pause(self):
-        self.assertFalse(R.limit_pause_state([acc('a', 100, 10), acc('b', 10, 10)], 'a', True, NOW)['active'])
-        self.assertFalse(R.limit_pause_state([acc('a', 100, 10, stale=True), acc('b', 100, 10)], 'a', False, NOW)['active'])
-        self.assertFalse(R.limit_pause_state([acc('a', 100, 10, login_required=True), acc('b', 100, 10)], 'a', False, NOW)['active'])
-        self.assertFalse(R.limit_pause_state([], 'a', False, NOW)['active'])
+        self.assertTrue(R.limit_pause_state([acc('a', 100, 10), acc('b', 10, 10)], 'a', NOW)['active'])
+        self.assertFalse(R.limit_pause_state([acc('a', 100, 10, stale=True), acc('b', 100, 10)], 'a', NOW)['active'])
+        self.assertFalse(R.limit_pause_state([acc('a', 100, 10, login_required=True), acc('b', 100, 10)], 'a', NOW)['active'])
+        self.assertFalse(R.limit_pause_state([], 'a', NOW)['active'])
 
     def test_reached_flag_without_pct(self):
-        p = R.limit_pause_state([acc('a', 70, 10, reached=True), acc('b', 100, 10)], 'a', False, NOW)
+        p = R.limit_pause_state([acc('a', 70, 10, reached=True), acc('b', 100, 10)], 'a', NOW)
         self.assertTrue(p['active']); self.assertEqual(p['windows'], [])
 
-    def test_nearest_free_account_and_grace(self):
-        p = R.limit_pause_state([acc('a', 100, 10, ses_reset=NOW + 7200), acc('b', 10, 100, week_reset=NOW + 600)], 'a', False, NOW)
-        self.assertTrue(p['active']); self.assertEqual(p['resume_slot'], 'b'); self.assertTrue(p['multi'])
-        late = R.limit_pause_state([acc('a', 100, 10, ses_reset=NOW - 300), acc('b', 100, 10, ses_reset=NOW - 300)], 'a', False, NOW)
-        self.assertFalse(late['active']); self.assertTrue(late['expired'])  # сброс прошёл, цифры не обновились — пробуем
 
-    def test_rotation_method_uses_candidates(self):
-        rot = R.Rotation.__new__(R.Rotation)
-        import threading
-        rot.lock = threading.RLock(); rot.state = {'threshold': 90, 'weekly_cap': 99}
-        rot.active = lambda: 'a'
-        rot.accounts = [acc('a', 100, 10), acc('b', 20, 20)]
-        self.assertFalse(rot.limit_pause(now=NOW)['active'])  # есть куда переключиться
-        rot.accounts = [acc('a', 100, 10), acc('b', 95, 20)]
-        self.assertTrue(rot.limit_pause(now=NOW)['active'])   # кандидат выше порога ротации — ждём
 
 
 class TestBridge(unittest.TestCase):
@@ -79,9 +60,6 @@ class TestBridge(unittest.TestCase):
             self.assertFalse(self.b._limit_hold())
         self.assertEqual(self.sent, [])
 
-    def test_text_multi(self):
-        t = br.limit_hold_text({'window_names': ['5 ч'], 'label': 'B', 'multi': True}, 0)
-        self.assertTrue(t.startswith('⏸ Codex на паузе по лимитам (B): окно 5 ч. Переключаться некуда — новые сообщения'))
 
 
 if __name__ == '__main__':

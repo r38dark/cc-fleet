@@ -45,12 +45,12 @@ class Page(unittest.TestCase):
         self.assertLess(foot.index('id="cxbSave"'), foot.index('id="cxbDel"'))
         self.assertIn('onclick="cxbDelAcct()"', foot)
         self.assertIn("{margin-left:auto}", page[page.index(".cxbfoot .btn-del"):][:60])
-        # удаляется аккаунт из поля «Аккаунт ChatGPT»; «первый подходящий» — кнопка неактивна; подтверждение — то же окно, что у «Удалить» в карточке
+        # Кнопка действует на единственный подключённый аккаунт.
         m = re.search(r"function cxbDelAcct\(\)\{(.*?)\}\n", page)
         self.assertTrue(m)
-        self.assertIn("cxDel(sel.value)", m.group(1))
-        self.assertIn("btn.disabled=!has", page)
-        self.assertIn('onchange="cxbDelSync()"', page)
+        self.assertIn("cxDel(a.slot)", m.group(1))
+        self.assertIn("btn.disabled=!cxLimAcc()", page)
+        self.assertNotIn('id="cxbSlot"', page)
 
     def test_wipe_button_is_last_in_gear_popup(self):
         # «Удалить Codex целиком» — в самом низу окна ⚙, после секции аккаунтов; подтверждение словом, как у удаления аккаунта
@@ -123,7 +123,7 @@ class Page(unittest.TestCase):
     def test_header_buttons_left_and_codex_right(self):
         # ↻ ⚙ + стоят слева, у «Оптимизации»; блок Codex — в правой группе, последним
         page = L.PAGE
-        order = [page.index(k) for k in ('id="optWrap"', 'id="rfBtn"', 'id="gear"', 'id="addAcct"', 'id="cxGrp"')]
+        order = [page.index(k) for k in ('id="rfBtn"', 'id="gear"', 'id="addAcct"', 'id="cxGrp"')]
         self.assertEqual(order, sorted(order))
         self.assertLess(page.index('class="hdrbtns"'), page.index('class="hdrctl"'))
         self.assertGreater(page.index('id="rfBtn"'), page.index('class="hdrbtns"'))
@@ -365,9 +365,9 @@ class NoComposer(unittest.TestCase):
         self.assertNotIn("cxpc", menu)
         self.assertEqual(page.count('id="cxLim"'), 1)
 
-    def test_bridge_form_keeps_slot_folders_token_chat_switch(self):
+    def test_bridge_form_keeps_folders_token_chat_switch(self):
         page = L.PAGE
-        for need in ('id="cxbSlot"', 'id="cxbProj"', 'id="cxbDir"', 'id="cxbTok"', 'id="cxbChat"', 'id="cxbOn"'):
+        for need in ('id="cxbProj"', 'id="cxbDir"', 'id="cxbTok"', 'id="cxbChat"', 'id="cxbOn"'):
             self.assertIn(need, page, need)
 
     def test_save_sends_no_mode_fields(self):
@@ -460,8 +460,8 @@ class Counters(unittest.TestCase):
         self.assertNotIn("cxLimPlan", self.o["freeHtml"])         # аккаунт, который Free и был, не краснеет
         self.assertIn("cxLimLogin", self.o["lapsedLogin"])        # нужен вход — сначала он
 
-    def test_account_is_the_one_bridge_uses(self):
-        self.assertEqual(self.o["pickB"], "b")
+    def test_bridge_limits_show_the_selected_account(self):
+        self.assertEqual(self.o["pickB"], "a")
         self.assertEqual(self.o["pickFirst"], "a")
         self.assertIsNone(self.o["none"])
 

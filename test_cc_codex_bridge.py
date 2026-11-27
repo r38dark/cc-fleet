@@ -931,8 +931,28 @@ class ConsoleChat(Base):
         br.BRIDGE.handle_update({"update_id": 2, "message": {"chat": {"id": 100200300}, "text": "/stop"}})
         br.BRIDGE.worker.join(10)
         self.assertEqual(self.con.interrupted, 1)
-        self.assertEqual(self.sent, ["Остановил."], "ни «⚠️», ни пустого ответа")
+        self.assertEqual(self.sent, ["Остановка отправлена в консоль."], "ни «⚠️», ни пустого ответа")
         self.assertFalse(br.BRIDGE.in_console)
+
+    def test_stop_from_console_drains_waiting_inputs_and_interrupts_native_turn(self):
+        self.con.hold = threading.Event()
+        br.BRIDGE.enqueue_work(("text", "первый"))
+        self.assertTrue(self.con.started.wait(5))
+        br.BRIDGE.enqueue_work(("text", "второй"))
+        worker = br.BRIDGE.worker
+        ok, message = br.BRIDGE.stop_work()
+        worker.join(5)
+        self.assertTrue(ok)
+        self.assertIn("Удалено из очереди: 1.", message)
+        self.assertEqual(self.con.interrupted, 1)
+        self.assertEqual(self.con.asked, ["первый"])
+        self.assertEqual(self.sent, [])
+
+    def test_telegram_stop_can_interrupt_a_turn_started_in_the_panel(self):
+        self.con.current_turn_open = lambda: True
+        self.say("/stop")
+        self.assertEqual(self.con.interrupted, 1)
+        self.assertEqual(self.sent, ["Остановка отправлена в консоль."])
 
     def test_stop_with_nothing_running(self):
         self.say("/stop")
@@ -1267,13 +1287,13 @@ class LimitAlerts(Base):
         self.assertIn("Лимит Codex", self.sent[0])
         self.assertEqual(br._state()["limits"]["gpt1"]["w300"], 90)
 
-    def test_tick_other_account_is_not_watched(self):
+    def test_tick_observes_connected_account_despite_obsolete_bridge_slot(self):
         s = br.load()
         s["slot"] = "gpt2"
         br._save(s)
         with unittest.mock.patch.object(cc_codex, "get_accounts", lambda b, force=False: [self.acc(p5=99)]):
             br.BRIDGE.limits_tick()
-        self.assertEqual(self.sent, [])
+        self.assertEqual(len(self.sent), 1)
 
 
 class LimitsThread(Base):

@@ -291,7 +291,7 @@ class NativeProfiles:
 
     def availability(self):
         claude=claude_status(self.ns['pause_state']())
-        rotation=self.ns['FLEET_ROTATION'];rows=rotation.snapshot().get('accounts') or [];now=time.time();good=[]
+        rotation=self.ns['CODEX_LIMITS'];rows=rotation.snapshot().get('accounts') or [];now=time.time();good=[]
         for row in rows:
             if row.get('loading') or row.get('stale') or row.get('error') or now-float(row.get('ts') or 0)>180:return dict(claude=claude,codex='unknown')
             good.append(not(row.get('login_required') or row.get('lapsed') or row.get('reached') or row.get('usage_allowed') is False or any(float(w.get('pct') or 0)>=100 for w in row.get('windows') or [])))
@@ -421,7 +421,7 @@ class Profiles:
         return [e for e in ENGINES if self.native.plan(before,e)!=self.native.plan(after,e)]
 
     def transition(self,candidate,message,force=None,recover_blocked=False,handoff_engine=None):
-        rotation=getattr(self.native,'ns',{}).get('FLEET_ROTATION')
+        rotation=getattr(self.native,'ns',{}).get('CODEX_LIMITS')
         with rotation.lock if rotation else nullcontext():
             return self._transition(candidate,message,force,recover_blocked,handoff_engine)
 
@@ -598,7 +598,7 @@ def bind(ns, inputs):
         except Exception:pass
         return ['-c','sandbox_workspace_write.writable_roots='+json.dumps([str(profiles.exchange('codex')/'outbox')]+native.bridge.extra_writable_roots()),'-c','developer_instructions='+json.dumps(native.prompt(profiles.state,'codex'),ensure_ascii=False)]
     console.MCP=codex_mcp;bridge.MCP_ARGS=codex_mcp
-    ns['FLEET_ROTATION'].suspended=lambda:not profiles.input_allowed('codex')
+    ns['CODEX_LIMITS'].suspended=lambda:not profiles.input_allowed('codex')
     console.PRESERVE_THREAD=lambda:profiles.managed['codex']
     console.INPUT_ALLOWED=lambda:profiles.console_allowed('codex')  # ввод человека; мосты и ротация ниже остаются на input_allowed
     console.PAUSED=lambda:profiles.paused('codex') and not profiles.side_active('codex')

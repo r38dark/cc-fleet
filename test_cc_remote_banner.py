@@ -34,7 +34,6 @@ JS = "\n".join([
     _cut(r"^function ccpLeft\(untilMs\)\{.*?^\}$", "ccpLeft"),
     _cut(r"^function ccpAt\(ms\)\{.*?\}$", "ccpAt"),
     _cut(r"^function ccpWhy\(a,thr,wcap\)\{.*?^\}$", "ccpWhy"),
-    _cut(r"^function ccpHeld\(a\)\{.*?^\}$", "ccpHeld"),
     _cut(r"^function ccpAgents\(d\)\{.*?^\}$", "ccpAgents"),
     _cut(r"^function ccpRender\(\)\{.*?^\}$", "ccpRender"),
 ])
@@ -75,7 +74,7 @@ class Banner(unittest.TestCase):
             d[k] = v
         return d
 
-    def test_hard_without_remote_still_shows_nowhere(self):
+    def test_hard_without_remote_shows_pause(self):
         r = render([self.case()])[0]
         self.assertFalse(r["hidden"])
         self.assertIn("ccpHardTitle", r["html"])
@@ -113,54 +112,11 @@ class Banner(unittest.TestCase):
 
 
     # владелец 62577: пока автопередача вот-вот отдаст работу Claude PROD, «некуда» не правда — баннер говорит «ищу»
-    def test_search_banner_while_handoff_is_coming(self):
-        for lvl in ("hard", "week", "weekrisk"):
-            r = render([self.case(level=lvl, handoff="у Claude DEV нет лимита, на Claude PROD есть")])[0]
-            self.assertFalse(r["hidden"], lvl)
-            self.assertIn("ccpSearchTitle", r["html"], lvl)
-            self.assertNotIn("ccpHardTitle", r["html"], lvl)
-            self.assertNotIn("ccp-btn", r["html"], lvl)    # «Отключить паузу» не нужна: паузы нет
-            self.assertNotIn("ccp-timer", r["html"], lvl)  # таймера «до сброса» тоже: ждать сброса не придётся
 
-    def test_no_handoff_keeps_nowhere_banner(self):
-        for h in ("", None):
-            r = render([self.case(handoff=h)])[0]
-            self.assertIn("ccpHardTitle", r["html"])
-            self.assertNotIn("ccpSearchTitle", r["html"])
 
-    def test_real_pause_banner_wins_over_search(self):
-        pz = {"active": True, "override": False, "kind": "session", "reason": "лимиты", "resume_at": 0}
-        r = render([self.case(handoff="ok", pause=pz)])[0]
-        self.assertIn("ccpPauseTitle", r["html"])
-        self.assertNotIn("ccpSearchTitle", r["html"])
 
 
 class PauseState(unittest.TestCase):
-    def state(self, lvl, ready, remote=False):
-        import cc_remote_auto
-        with mock.patch.object(pause_ctl, "level_state", return_value={"level": lvl, "pause": {"active": False}}), \
-                mock.patch.object(pause_ctl, "_remote_active", return_value=remote), \
-                mock.patch.object(cc_remote_auto, "handoff_ready", **ready):
-            return L.pause_state()
-
-    def test_handoff_flag_only_when_nowhere_to_go_and_handoff_is_ready(self):
-        ok = {"return_value": (True, "у Claude DEV нет лимита, на Claude PROD есть")}
-        no = {"return_value": (False, "автопередача выключена")}
-        for lvl in ("hard", "week", "weekrisk"):
-            self.assertTrue(self.state(lvl, ok)["handoff"], lvl)
-            self.assertEqual(self.state(lvl, no)["handoff"], "", lvl)
-        for lvl in ("none", "gate", "manual"):  # работа есть где вести — «ищу» не нужно
-            self.assertEqual(self.state(lvl, ok)["handoff"], "", lvl)
-
-    def test_no_handoff_flag_when_work_is_already_on_prod(self):
-        self.assertEqual(self.state("hard", {"return_value": (True, "ок")}, remote=True)["handoff"], "")
-
-    def test_handoff_check_failure_keeps_old_banner(self):
-        d = self.state("hard", {"side_effect": RuntimeError("нет файла")})
-        self.assertTrue(d["ok"])
-        self.assertEqual(d["handoff"], "")
-        self.assertEqual(d["level"], "hard")
-
     def test_api_pause_reports_remote_flag(self):
         for active in (True, False):
             with mock.patch.object(pause_ctl, "level_state", return_value={"level": "hard", "pause": {"active": False}}), \

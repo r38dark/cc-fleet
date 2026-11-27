@@ -90,21 +90,21 @@ class Handoff(unittest.TestCase):
         self.off_ok = {'ok': True}
         self.on_ok = {'ok': True}
 
-        def fake_off(reason, force, restore=True, **options):
+        def fake_off():
+            restore = False
             self.calls.append(('off', restore))
             if self.off_ok.get('ok'):
                 M._save(active=False, member=None)
             return self.off_ok
 
-        def fake_on(mid, reason, queued, resume, **options):
+        def fake_on(mid, telegram=True):
             self.calls.append(('prod_on', mid))
             if self.on_ok.get('ok'):
                 M._save(active=True, member=mid)
             return self.on_ok
 
-        self._orig = (M._off_job, M._on_job, M._prod_not_ready, M.ctl, M.brief, cc_remote.ssh_run, M.rsync, cc_remote.ctl)
-        M._off_job, M._on_job = fake_off, fake_on
-        M._prod_not_ready = lambda mid, force=False: self.prod_bad
+        self._orig = (M._stop_remote, M._start_remote, M.ctl, M.brief, cc_remote.ssh_run, M.rsync, cc_remote.ctl)
+        M._stop_remote, M._start_remote = fake_off, fake_on
         M.ctl = lambda m, args, timeout=150: {'ok': True, 'busy': self.prod_busy}
         M.brief = lambda *a, **kw: 'fixture context'
         cc_remote.ssh_run = lambda *a, **kw: (0, '')
@@ -114,7 +114,7 @@ class Handoff(unittest.TestCase):
         M.rsync = lambda *a, **kw: self.copies.append((a,kw)) or True
 
     def tearDown(self):
-        M._off_job, M._on_job, M._prod_not_ready, M.ctl, M.brief, cc_remote.ssh_run, M.rsync, cc_remote.ctl = self._orig
+        M._stop_remote, M._start_remote, M.ctl, M.brief, cc_remote.ssh_run, M.rsync, cc_remote.ctl = self._orig
 
     def run_handoff(self, target, **kw):
         res = M.handoff(target, **kw)
@@ -168,11 +168,6 @@ class Handoff(unittest.TestCase):
         self.assertEqual(M.public()['to'], '')
         self.assertFalse(M.busy())
 
-    def test_prod_to_dev_restores_claude(self):
-        M._save(active=True, member='prod')
-        self.run_handoff('dev')
-        self.assertEqual(self.calls, [('off', True)])
-        self.assertEqual(self.choices(), [])
 
     def test_prod_to_codex_does_not_wake_native_claude(self):
         M._save(active=True, member='prod')
@@ -185,46 +180,22 @@ class Handoff(unittest.TestCase):
         self.assertEqual(self.wk.started, 0)
 
     def test_codex_to_prod_keeps_codex_and_does_not_start_dev(self):
+        M._save(active=True, member='prod')
         self.wk.profiles.paused_for = {'claude'}
         self.run_handoff('prod')
         self.assertEqual(self.choices(), [])
         self.assertEqual(self.wk.profiles.resumed, ['claude'])
-        self.assertEqual(self.calls, [('prod_on', 'prod')])
+        self.assertEqual(self.calls, [])
 
     def test_codex_to_dev_preserves_codex_profile(self):
+        os.unlink(cc_remote.MEMBERS_FILE)
         self.wk.profiles.paused_for = {'claude'}
         self.run_handoff('dev')
         self.assertEqual(self.choices(), [])
         self.assertEqual(self.wk.profiles.resumed, ['claude'])
         self.assertEqual(self.calls, [])
 
-    def test_prod_not_ready_allows_expired_token_but_not_missing_login(self):
-        import time
-        M._prod_not_ready = self._orig[2]
-        future = time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime(time.time() + 3600))
-        past = time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime(time.time() - 3600))
-        rows = {}
-        original = cc_remote.fetch_limits
-        self.addCleanup(setattr, cc_remote, 'fetch_limits', original)   # оригинал сохраняем ДО подмены
-        cc_remote.fetch_limits = lambda mid, force=False: rows
-        rows.update(online=True, error='token_expired', five_hour={'pct': 40.0, 'resets_at': future}, seven_day={'pct': 10.0, 'resets_at': future})
-        self.assertEqual(M._prod_not_ready('prod'), '')                       # токен обновится при запуске Claude
-        rows.update(error='no_login')
-        self.assertIn('не готов', M._prod_not_ready('prod'))
-        rows.update(error='token_expired', five_hour={'pct': 100.0, 'resets_at': future})
-        self.assertIn('исчерпан', M._prod_not_ready('prod'))                  # цифры старые, но окно ещё не сбросилось
-        rows.update(five_hour={'pct': 100.0, 'resets_at': past})
-        self.assertEqual(M._prod_not_ready('prod'), '')                       # окно с тех пор сбросилось
-        rows.update(online=False, error='ssh')
-        self.assertIn('не готов', M._prod_not_ready('prod'))
 
-    def test_prod_not_ready_blocks_before_any_step(self):
-        self.prod_bad = 'PROD не готов: нет связи.'
-        res = self.run_handoff('prod')
-        self.assertFalse(res['ok'])
-        self.assertEqual(res['message'], self.prod_bad)
-        self.assertEqual(self.choices(), [])
-        self.assertEqual(self.calls, [])
 
     def test_prod_answering_does_not_block_non_stopping_handoff_to_codex(self):
         M._save(active=True, member='prod')
@@ -301,6 +272,7 @@ class Handoff(unittest.TestCase):
 
 
     def test_remote_refusal_is_not_treated_as_delivered(self):
+        M._save(active=True, member='prod')
         self.wk.profiles.paused_for = {'claude'}
         self.remote_receipt = {'ok': False, 'error': 'not_running'}
         self.run_handoff('prod')
@@ -323,10 +295,6 @@ class Handoff(unittest.TestCase):
         self.assertEqual(self.wk.profiles.resumed, [])
         self.assertTrue(M.public()['handoff_lock'])
 
-    def test_on_off_routes_still_work(self):
-        res = M.off()
-        self.assertTrue(res['ok'])
-        self.assertEqual(self.calls, [])
 
 
 if __name__ == '__main__':

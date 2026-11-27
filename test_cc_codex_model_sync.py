@@ -9,14 +9,14 @@ import types
 import unittest
 from unittest import mock
 
-import cc_codex_rotation
+import cc_codex_limits
 import cc_limits
 import test_cc_fleet_overview as fleet_tests
 
 
 class RuntimeSnapshot(unittest.TestCase):
     def fixture(self, running=True, pending=None):
-        obj = cc_codex_rotation.Rotation.__new__(cc_codex_rotation.Rotation)
+        obj = cc_codex_limits.AccountLimits.__new__(cc_codex_limits.AccountLimits)
         obj.lock = threading.RLock()
         obj.refresh = mock.Mock()
         obj.accounts = [{'slot': 'gpt1', 'model': None, 'effort': 'low', 'models': []}]
@@ -64,7 +64,7 @@ class PreferenceRouting(unittest.TestCase):
         codex._lock = threading.RLock()
         codex._cache = {'gpt1': {'data': {'models': catalog}}}
         console.request_settings.return_value = (True, 'waiting for reply', True)
-        ns['FLEET_ROTATION'].refresh = mock.Mock()
+        ns['CODEX_LIMITS'].refresh = mock.Mock()
         response = handler._chatgpt_post('prefs', dict(slot='gpt1', model=model, effort=effort, fast=False))
         return response, console.request_settings.call_args.args[0]
 

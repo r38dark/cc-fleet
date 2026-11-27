@@ -35,7 +35,9 @@ class ConsoleKeysTest(unittest.TestCase):
         # кнопка отправки ищется по классу: индекс ребёнка сдвигается при добавлении кнопок
         self.assertIn("send=form.querySelector('.tpsend')", s)
         self.assertNotIn("send=form.children[2]", s)
-        self.assertNotIn("b.hidden=", s[s.index("function compSync(P,on){"):s.index("function placeFrame(ks){")])   # ↑ ↓ ⏎ Esc у каждой части
+        sync = s[s.index("function compSync(P,on){"):s.index("function placeFrame(ks){")]
+        self.assertIn("if(k==='stop'){b.hidden=P.k!=='codex'", sync)
+        self.assertEqual(sync.count("b.hidden="), 1)   # ↑ ↓ ⏎ Esc остаются у каждой части
 
     def test_server_accepts_the_four_keys(self):
         s = src("cc_fleet.py")

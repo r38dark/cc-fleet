@@ -27,29 +27,9 @@ QUEUE = os.path.join(BASE, "tg_queue.jsonl")
 CONFIG = os.path.join(BASE, "config.json")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Ответ отправителю, когда вместо паузы работа уходит на Claude PROD (автопередача): сообщение уедет туда вместе с передачей.
-HANDOFF_ACK_MSG = ("Принято. Лимит Claude DEV закончился, передаю работу на Claude PROD: сообщение ушло с передачей, "
-                   "продолжит он (~1 минута).")
-
-# Ответ отправителю, пока идёт пауза. Переопределяется ключом "queue_ack_message"
-# в config.json; подставляются {n} — сколько сообщений ждёт, {line} — проценты окон,
-# {when} — время планового подъёма.
-# {state} — что с лимитами: по умолчанию «все окна выбраны», а если Claude PROD свободен — прямо об этом (раньше ответ врал).
 ACK_MSG = ("Got it, queued ({n} waiting). {state}; "
            "I will be back around {when} and work through them in order.")
-STATE_BURNT = "All limit windows are burnt ({line})"
-STATE_PROD_FREE = "This server's limit window is burnt ({line}); {prod}"
-
-
-def _prod_state_en(h):
-    """«Claude PROD is free (session 0%, week 11%), but auto handoff is off» — по pause_ctl.prod_hint()."""
-    nums = ", ".join(x for x in (
-        "session %.0f%%" % h["pct"] if isinstance(h.get("pct"), (int, float)) else "",
-        "week %.0f%%" % h["wpct"] if isinstance(h.get("wpct"), (int, float)) else "") if x)
-    out = "%s is free%s" % (h.get("label") or "Claude PROD", " (%s)" % nums if nums else "")
-    if h.get("on"):
-        return out + ", the work is handed over to it"
-    return out + (", but auto handoff is off" if h.get("why") == "автопередача выключена" else ", but handoff is not ready")
+STATE_BURNT = "Claude is waiting for its limit reset ({line})"
 
 
 def _cfg():
@@ -176,16 +156,8 @@ def cmd_enqueue(a):
     resume = (pc.load() or {}).get("resume_at") or 0
     if resume:
         when = _hm(resume)
-    if not (pc.load() or {}).get("active") and pc.handoff_pending():
-        tmpl = _cfg().get("queue_ack_handoff_message") or HANDOFF_ACK_MSG
-    else:
-        tmpl = _cfg().get("queue_ack_message") or ACK_MSG
-    try:
-        hint = pc.prod_hint()
-    except Exception:
-        hint = {}
-    state = (STATE_PROD_FREE.format(line=line or "?", prod=_prod_state_en(hint)) if hint
-             else STATE_BURNT.format(line=line or "?"))
+    tmpl = _cfg().get("queue_ack_message") or ACK_MSG
+    state = STATE_BURNT.format(line=line or "?")
     try:
         ack = tmpl.format(n=n, line=line or "?", when=when or "?", state=state)
     except Exception:

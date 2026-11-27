@@ -155,7 +155,7 @@ class Wiring(unittest.TestCase):
         panel = (HERE / "cc_remote_mode.py").read_text(encoding="utf-8")
         self.assertNotIn("голос .ogg", panel)
         self.assertNotIn("как требует CLAUDE.md", panel)
-        self.assertIn("отвечай владельцу через telegram reply.", panel)     # остальное указание гостю на месте
+        self.assertIn("Контекст передан из Codex.", panel)
 
 
 if __name__ == "__main__":

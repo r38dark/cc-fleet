@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.0.51",
+      "date": "2026-11-27",
+      "ru": {
+        "t": "Один Claude и один Codex",
+        "p": [
+          "У каждого сервиса одно подключение. Claude одинаково называется при локальной работе и при работе через SSH.",
+          "Удалены переключение аккаунтов и перенос работы между установками Claude. Лимиты, очередь и обмен контекстом между Claude и Codex сохранены.",
+          "Кнопка «Стоп» и команда /stop прерывают запрос Codex и снимают ожидающие сообщения."
+        ]
+      },
+      "en": {
+        "t": "One Claude and one Codex connection",
+        "p": [
+          "Each service uses a single connection. Claude has the same name whether it runs locally or over SSH.",
+          "Removed account switching and transfers between Claude installations. Limits, queues and context handoff between Claude and Codex remain available.",
+          "Stop and /stop interrupt the current Codex request and clear waiting messages."
+        ]
+      }
+    },
+    {
       "v": "2.0.50",
       "date": "2026-11-26",
       "ru": {

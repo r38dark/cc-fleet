@@ -69,25 +69,36 @@ class DeleteLastAccount(unittest.TestCase):
         snap = L.collect(force=True)  # не должно падать
         self.assertEqual(snap.get("accounts"), {})
         self.assertIsNone(snap.get("active"))
-        L.switch_policy_check(snap)  # autoswitch-ветка, не должно падать
+        L.notify_claude_limits(snap)  # autoswitch-ветка, не должно падать
         c = L.cfg()
         c["optimize"] = True
         L.jsave(L.CONFIG, c)
-        L.switch_policy_check(snap)  # optimize-ветка, тоже не должно падать
+        L.notify_claude_limits(snap)  # optimize-ветка, тоже не должно падать
         L.model_info()  # сводка моделей не должна зависеть от наличия аккаунтов
 
-    def test_second_real_account_still_requires_a_move_when_active(self):
-        # контроль: если альтернатива ЕСТЬ, но переключиться на неё не вышло (тут её просто
-        # нет в снимке лимитов) — старое поведение "нельзя удалить активный без переноса" цело
+    def test_legacy_login_can_be_disconnected_without_automatic_switch(self):
         make_account("acc1")
         make_account("acc2")
         os.makedirs(os.path.dirname(L.LIVE_CFG), exist_ok=True)
         with open(L.LIVE_CFG, "w") as f:
             json.dump({"oauthAccount": {"accountUuid": "uuid-acc1"}}, f)
         ok, msg, _ = L.delete_account("acc1", "подтверждаю")
-        self.assertFalse(ok)
-        self.assertIn("переключить", msg)
-        self.assertEqual(sorted(L.profile_names()), ["acc1", "acc2"])  # ничего не удалено
+        self.assertTrue(ok, msg)
+        self.assertIsNone(L.active_name())
+        self.assertEqual(L.profile_names(), ["acc2"])
+
+    def test_second_local_account_is_refused_before_oauth(self):
+        from unittest.mock import patch
+        make_account("acc1")
+        with patch.object(L, "active_name", return_value="acc1"), patch.object(L.cc_remote, "members", return_value={}), patch.object(L, "relogin_start") as start:
+            self.assertFalse(L.addacct_start("")[0])
+            start.assert_not_called()
+
+    def test_remote_account_occupies_the_same_claude_slot(self):
+        from unittest.mock import patch
+        with patch.object(L.cc_remote, "members", return_value={"prod": {}}), patch.object(L, "relogin_start") as start:
+            self.assertFalse(L.addacct_start("")[0])
+            start.assert_not_called()
 
     def test_wrong_confirm_word_still_blocks(self):
         make_account("acc1")

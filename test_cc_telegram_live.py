@@ -161,7 +161,7 @@ class LiveInput(unittest.TestCase):
     def test_stop_clears_unsubmitted_inputs_without_second_reply(self):
         self.send('первое');self.wait(lambda:len(self.inputs)==1)
         self.send('/stop');self.bridge.worker.join(2)
-        self.assertEqual(self.answers,[]);self.assertTrue(any('Остановил' in s for s in self.notices));C.interrupt.assert_called_once()
+        self.assertEqual(self.answers,[]);self.assertTrue(any('Остановка отправлена' in s for s in self.notices));C.interrupt.assert_called_once()
 
     def test_collapsed_blank_line_in_photo_prompt_is_acknowledged(self):
         def transport(text):
