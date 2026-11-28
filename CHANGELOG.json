@@ -2,6 +2,22 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.6",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Устойчивость очереди при занятой консоли Antigravity",
+        "p": [
+          "Если Antigravity в момент отправки сообщения из Telegram дорабатывает предыдущий запрос (из веб-консоли или до перезапуска службы), мост автоматически ждёт завершения активного хода вместо ложного таймаута «35 сек»."
+        ]
+      },
+      "en": {
+        "t": "Resilient queue handling while Antigravity console is busy",
+        "p": [
+          "When Telegram delivers a message while the Antigravity console is finishing another active turn (e.g. from web input or across service restarts), the bridge pauses the 35s startup timer instead of failing prematurely."
+        ]
+      }
+    },
+    {
       "v": "2.1.5",
       "date": "2026-11-28",
       "ru": {

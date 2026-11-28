@@ -721,11 +721,16 @@ def ask(prompt, abort=None, timeout=600, workdir=None, conv_id=None, on_conv_id=
                             return content, active_cid
 
             if not seen_input:
-                if not retried_enter and now > sent_at + ENTER_RETRY:
-                    retried_enter = True
-                    _ctl(["-S", NAME, "-p", "0", "-X", "stuff", "\r"])
-                if now > start_deadline:
-                    raise ConsoleError("Antigravity не начал обработку запроса за 35 сек. Проверьте консоль.")
+                if _tui_busy():
+                    # TUI is busy finishing an active turn (e.g. web input or pre-restart turn); wait for queue dequeue
+                    start_deadline += dt_step
+                    turn_deadline += dt_step
+                else:
+                    if not retried_enter and now > sent_at + ENTER_RETRY:
+                        retried_enter = True
+                        _ctl(["-S", NAME, "-p", "0", "-X", "stuff", "\r"])
+                    if now > start_deadline:
+                        raise ConsoleError("Antigravity не начал обработку запроса за 35 сек. Проверьте консоль.")
 
             if now > turn_deadline:
                 interrupt()
@@ -848,38 +853,55 @@ def frozen_snapshot(want_history=False):
     return dict(data)
 
 
+def _feed_live_locked(pid):
+    """Ensure live pyte screen matches current screen geometry and advance it to latest log bytes."""
+    cols, rows = _dims(pid)
+    log_path = _log()
+    if _m["pid"] != pid or _m["screen"] is None or _m["geom"] != (cols, rows):
+        scr = pyte.HistoryScreen(cols, rows, history=HISTORY_LINES)
+        stream = pyte.ByteStream(scr)
+        _m.update(pid=pid, screen=scr, stream=stream, offset=0, geom=(cols, rows))
+    try:
+        size = os.path.getsize(log_path)
+        if size < _m["offset"]:
+            _m["offset"] = 0
+        with open(log_path, "rb") as fh:
+            fh.seek(_m["offset"])
+            chunk = fh.read()
+        if chunk:
+            _m["stream"].feed(chunk)
+            _m["offset"] += len(chunk)
+        if _m["offset"] > LOG_MAX:
+            try:
+                with open(log_path, "wb"):
+                    pass
+                _m["offset"] = 0
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return cols, rows
+
+
+def _tui_busy():
+    """Return True when agy TUI footer shows an in-progress turn (`esc to cancel`) instead of idle prompt."""
+    pid = _pid()
+    if not pid or pyte is None:
+        return False
+    with _mlock:
+        _feed_live_locked(pid)
+        tail = "\n".join(_m["screen"].display[-8:]).lower()
+    return ("esc to cancel" in tail or "queued" in tail) and "for shortcuts" not in tail
+
+
 def snapshot(want_history=False):
     pid = _pid()
     if not pid:
         return frozen_snapshot(want_history=want_history)
     if pyte is None:
         return {"ok": True, "running": True, "html": "(pyte не установлен)", "cols": COLS, "rows": ROWS}
-    cols, rows = _dims(pid)
-    log_path = _log()
     with _mlock:
-        if _m["pid"] != pid or _m["screen"] is None or _m["geom"] != (cols, rows):
-            scr = pyte.HistoryScreen(cols, rows, history=HISTORY_LINES)
-            stream = pyte.ByteStream(scr)
-            _m.update(pid=pid, screen=scr, stream=stream, offset=0, geom=(cols, rows))
-        try:
-            size = os.path.getsize(log_path)
-            if size < _m["offset"]:
-                _m["offset"] = 0
-            with open(log_path, "rb") as fh:
-                fh.seek(_m["offset"])
-                chunk = fh.read()
-            if chunk:
-                _m["stream"].feed(chunk)
-                _m["offset"] += len(chunk)
-            if _m["offset"] > LOG_MAX:
-                try:
-                    with open(log_path, "wb"):
-                        pass
-                    _m["offset"] = 0
-                except OSError:
-                    pass
-        except OSError:
-            pass
+        cols, rows = _feed_live_locked(pid)
         html_cur, hist = _render_screen(_m["screen"], want_history=want_history)
         return {
             "ok": True,

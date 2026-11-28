@@ -299,6 +299,7 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         import cc_agy_console
         src = Path(cc_agy_console.__file__).read_text(encoding="utf-8")
         self.assertIn('if ev.get("status") == "DONE" and not tcs and content:', src)
+        self.assertIn("if _tui_busy():", src)
 
 
 if __name__ == "__main__":
