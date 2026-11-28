@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.10",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Компактные двухстрочные вкладки консолей со шкалами лимитов для десктопа и мобильных",
+        "p": [
+          "Шкалы 5-часового и недельного лимитов размещены второй компактной строкой внутри каждой вкладки (CSS Grid) в пределах прежней высоты 50 px — за счёт этого кнопки действий и масштабирование всегда помещаются в одну строку и не налезают друг на друга даже на узких окнах.",
+          "Проверен и отлажен мобильный вид (360–390 px): видны оба индикатора (5ч и н), верхняя шапка агентов и панель ввода со всеми кнопками помещаются без обрезания и горизонтальной прокрутки."
+        ]
+      },
+      "en": {
+        "t": "Compact two-line console tabs with limit gauges on desktop and mobile",
+        "p": [
+          "Placed 5h and weekly quota gauges as a compact second row inside each console tab (CSS Grid) within the existing 50px toolbar height, keeping action and zoom buttons on one clean line without overlap on narrow desktop windows.",
+          "Verified mobile layout (360–390px) with Playwright: both 5h and weekly limit bars, header status pills, and console action keys fit cleanly without clipping or horizontal overflow."
+        ]
+      }
+    },
+    {
       "v": "2.1.9",
       "date": "2026-11-28",
       "ru": {
