@@ -26,6 +26,7 @@ BASE = "/opt/cc-limits"
 BRAIN_DIR = Path("/root/.gemini/antigravity-cli/brain")
 SETTINGS_PATH = Path("/root/.gemini/antigravity-cli/settings.json")
 JETSKI_STATE_PATH = Path("/root/.gemini/antigravity-cli/jetski_state.pbtxt")
+ONBOARDING_CACHE_PATH = Path("/root/.gemini/antigravity-cli/cache/onboarding.json")
 GEMINI_MD_PATH = Path("/root/.gemini/config/GEMINI.md")
 DEFAULT_BIN = "/root/.local/bin/agy"
 DEFAULT_SUB_UNTIL = ""
@@ -571,8 +572,8 @@ def _onboarding_action(visible_text):
     if "select login method" in low or "authorization code" in low:
         return None
     if "[done]" in low or "[next]" in low or "terms of service" in low or "select a theme" in low or "choose a theme" in low:
-        # Right arrow moves focus from [Previous] to [Next]/[Done] (no-op if already rightmost), then Enter confirms.
-        return (b"\x1b[C", b"\r")
+        # Tab + Right arrow reliably move focus to [Next]/[Done] (rightmost button), then Enter confirms.
+        return (b"\t", b"\x1b[C", b"\r")
     if "trust this workspace" in low or "do you trust" in low:
         return (b"\r",)
     return None
@@ -642,6 +643,21 @@ def ensure_bootstrap_config(workdir="/root", force_full_access=True):
         except OSError:
             pass
         changed.append("jetski_state.pbtxt")
+
+    # 2b. cache/onboarding.json (direct flag read by agy to skip theme/ToS onboarding wizard)
+    ONBOARDING_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ob_cur = jload(str(ONBOARDING_CACHE_PATH), {})
+    if not isinstance(ob_cur, dict) or not (ob_cur.get("onboardingComplete") and ob_cur.get("consumerOnboardingComplete")):
+        jsave(
+            str(ONBOARDING_CACHE_PATH),
+            {
+                "consumerOnboardingComplete": True,
+                "enterpriseOnboardingComplete": bool(isinstance(ob_cur, dict) and ob_cur.get("enterpriseOnboardingComplete")),
+                "onboardingComplete": True,
+            },
+            mode=0o600,
+        )
+        changed.append("onboarding.json")
 
     # 3. ~/.gemini/config/GEMINI.md (formatting & Telegram media rules)
     GEMINI_MD_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1015,3 +1031,51 @@ def login_submit(code):
         _login["state"] = "verifying"
         _login["message"] = "Проверяю код авторизации…"
     return True, "Код отправлен, проверяю…"
+
+
+def uninstall():
+    """Completely remove Antigravity CLI, local CLI state, and cached metadata for a clean reinstall."""
+    install_cancel()
+    login_cancel()
+    removed = []
+    # Remove agy binary
+    for cand in (find_bin(), DEFAULT_BIN):
+        if cand and os.path.isfile(cand):
+            try:
+                os.unlink(cand)
+                removed.append(cand)
+            except OSError:
+                pass
+    # Remove CLI state dir (~/.gemini/antigravity-cli)
+    cli_dir = SETTINGS_PATH.parent
+    if cli_dir.exists():
+        try:
+            shutil.rmtree(str(cli_dir))
+            removed.append(str(cli_dir))
+        except OSError:
+            pass
+    # Remove balancer-local metadata/console/limits caches (preserving agy_bridge.json token unless cleared)
+    for rel in ("agy_meta.json", "agy_limits_state.json", "agy_quota_state.json", "agy_console"):
+        p = Path(BASE) / rel
+        if p.is_dir():
+            try:
+                shutil.rmtree(str(p))
+                removed.append(str(p))
+            except OSError:
+                pass
+        elif p.exists():
+            try:
+                p.unlink()
+                removed.append(str(p))
+            except OSError:
+                pass
+    with _lock:
+        _cache["data"] = None
+        _cache["ts"] = 0.0
+        _models_cache["models"] = None
+        _models_cache["ts"] = 0.0
+    with _inst_lock:
+        _inst["state"] = "idle"
+        _inst["message"] = ""
+        _inst["log"] = []
+    return True, "Antigravity удалён. Можно установить заново через «Antigravity +»."

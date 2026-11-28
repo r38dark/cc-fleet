@@ -244,15 +244,20 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="test-agy-boot-") as td:
             sp = Path(td) / "settings.json"
             jp = Path(td) / "jetski_state.pbtxt"
+            ob = Path(td) / "cache" / "onboarding.json"
             gp = Path(td) / "config" / "GEMINI.md"
             gp.parent.mkdir(parents=True, exist_ok=True)
             gp.write_text("# My Custom Rule\n- keep me\n", encoding="utf-8")
             with mock.patch.object(cc_agy, "SETTINGS_PATH", sp), \
                  mock.patch.object(cc_agy, "JETSKI_STATE_PATH", jp), \
+                 mock.patch.object(cc_agy, "ONBOARDING_CACHE_PATH", ob), \
                  mock.patch.object(cc_agy, "GEMINI_MD_PATH", gp):
                 ok, changed = cc_agy.ensure_bootstrap_config(workdir=td)
                 self.assertTrue(ok)
-                self.assertEqual(set(changed), {"settings.json", "jetski_state.pbtxt", "GEMINI.md"})
+                self.assertEqual(set(changed), {"settings.json", "jetski_state.pbtxt", "onboarding.json", "GEMINI.md"})
+                ob_data = json.loads(ob.read_text(encoding="utf-8"))
+                self.assertTrue(ob_data["onboardingComplete"])
+                self.assertTrue(ob_data["consumerOnboardingComplete"])
                 cfg = json.loads(sp.read_text(encoding="utf-8"))
                 self.assertTrue(cfg["allowNonWorkspaceAccess"])
                 self.assertEqual(cfg["toolPermission"], "always-proceed")
@@ -267,7 +272,7 @@ class TestAgyBridgeAndUI(unittest.TestCase):
                 self.assertTrue(ok2)
                 self.assertEqual(changed2, [])
 
-        self.assertEqual(cc_agy._onboarding_action("Terms of Service\n> Previous   [Done]Confirm"), (b"\x1b[C", b"\r"))
+        self.assertEqual(cc_agy._onboarding_action("Terms of Service\n> Previous   [Done]Confirm"), (b"\t", b"\x1b[C", b"\r"))
         self.assertEqual(cc_agy._onboarding_action("Do you trust this workspace?"), (b"\r",))
         self.assertIsNone(cc_agy._onboarding_action("? for shortcuts"))
 

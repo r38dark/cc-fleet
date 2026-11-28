@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.2",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Полный пропуск onboarding Antigravity (onboarding.json) и удаление в один клик",
+        "p": [
+          "Добавлена автозапись ~/.gemini/antigravity-cli/cache/onboarding.json (onboardingComplete: true) — первичный мастер выбора темы и Terms of Service полностью пропускается, консоль сразу запускается в рабочем режиме.",
+          "В настройках Antigravity (⚙) добавлена кнопка «🗑 Удалить Antigravity» для полного удаления CLI и состояния и чистой переустановки через «Antigravity +».",
+          "В панель клавиш консоли Antigravity добавлена клавиша Tab (рядом с ← и →)."
+        ]
+      },
+      "en": {
+        "t": "Complete Antigravity onboarding skip (onboarding.json) and one-click uninstall",
+        "p": [
+          "Auto-writes ~/.gemini/antigravity-cli/cache/onboarding.json (onboardingComplete: true) so the first-run theme/ToS wizard is completely skipped and the console boots ready for prompts.",
+          "Added an «Uninstall Antigravity» button in settings (⚙) to cleanly remove CLI and state and reinstall from scratch via «Antigravity +».",
+          "Added Tab alongside ← and → to the Antigravity console key bar."
+        ]
+      }
+    },
+    {
       "v": "2.1.1",
       "date": "2026-11-28",
       "ru": {

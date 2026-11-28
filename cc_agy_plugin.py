@@ -249,6 +249,22 @@ def install(ns):
                     key = str(body.get("key") or "").strip().lower()
                     ok, msg = cc_agy_console.send_key(key)
                     return self._send(200, {"ok": ok, "message": msg})
+                if path == "/api/agy/uninstall":
+                    try:
+                        cc_agy_console.stop()
+                    except Exception:
+                        pass
+                    try:
+                        cc_agy_bridge.save_settings({"enabled": False})
+                    except Exception:
+                        pass
+                    ok, msg = cc_agy.uninstall()
+                    try:
+                        limits.accounts = []
+                        limits.refresh(force=False)
+                    except Exception:
+                        pass
+                    return self._send(200, {"ok": ok, "message": msg})
                 return self._send(404, {"ok": False, "message": "unknown agy route"})
             except Exception as exc:
                 return self._send(500, {"ok": False, "message": "Ошибка Antigravity: " + type(exc).__name__})

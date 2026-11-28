@@ -261,14 +261,18 @@ window.agyConsStart=async function(P){
   if(!lr){
    var bL=document.createElement('button');bL.type='button';bL.id='agyKeyLeft';bL.className='fleet-key fk-arrow';bL.textContent='←';bL.title='Стрелка влево (Antigravity)';bL.hidden=true;
    var bR=document.createElement('button');bR.type='button';bR.id='agyKeyRight';bR.className='fleet-key fk-arrow';bR.textContent='→';bR.title='Стрелка вправо (Antigravity)';bR.hidden=true;
+   var bT=document.createElement('button');bT.type='button';bT.id='agyKeyTab';bT.className='fleet-key';bT.textContent='Tab';bT.title='Tab (Antigravity)';bT.hidden=true;
+   downBtn.insertAdjacentElement('afterend',bT);
    downBtn.insertAdjacentElement('afterend',bR);
    downBtn.insertAdjacentElement('afterend',bL);
    bL.addEventListener('click',async function(e){e.preventDefault();var r=await apiPost('agy/console/key',{key:'left'});if(!r.ok)sToast('⚠ '+r.message);});
    bR.addEventListener('click',async function(e){e.preventDefault();var r=await apiPost('agy/console/key',{key:'right'});if(!r.ok)sToast('⚠ '+r.message);});
+   bT.addEventListener('click',async function(e){e.preventDefault();var r=await apiPost('agy/console/key',{key:'tab'});if(!r.ok)sToast('⚠ '+r.message);});
    lr=bL;
   }
   $i('agyKeyLeft').hidden=!show;
   $i('agyKeyRight').hidden=!show;
+  $i('agyKeyTab').hidden=!show;
  }
  if(typeof window.ccConsole==='function'){
   var _ccConsole=window.ccConsole;
@@ -620,6 +624,7 @@ function openSettings(anchor){
   +'<button type="button" class="agy-btn" id="agyRefLimBtn">📊 Обновить квоты</button>'
   +'<button type="button" class="agy-btn" id="agyBootstrapBtn">✨ Доступ и стиль</button>'
   +'<button type="button" class="agy-btn" id="agyReloginBtn">🔑 Войти заново (Google)</button>'
+  +'<button type="button" class="agy-btn danger" id="agyUninstallBtn">🗑 Удалить Antigravity</button>'
   +'</div></div>';
 
  $i('agySaveLim').onclick=async function(){
@@ -649,6 +654,15 @@ function openSettings(anchor){
  $i('agyRefLimBtn').onclick=async function(){sToast('🔄 Обновляю квоты Antigravity...');await loadAll(true);sToast('✅ Квоты обновлены');};
  $i('agyBootstrapBtn').onclick=async function(){var r=await apiPost('agy/bootstrap',{});sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);};
  $i('agyReloginBtn').onclick=function(e){e.stopPropagation();openInstallWizard($i('agyGear')||anchor,true);};
+ $i('agyUninstallBtn').onclick=async function(e){
+  e.stopPropagation();
+  var ok=window.fleetAsk?await window.fleetAsk(e.currentTarget,'Удалить Antigravity CLI, авторизацию и локальное состояние? После удаления можно установить заново через «Antigravity +».','Удалить'):confirm('Удалить Antigravity CLI и авторизацию, чтобы установить заново?');
+  if(!ok)return;
+  var r=await apiPost('agy/uninstall',{});
+  sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);
+  closeAgyPopovers();
+  await loadAll(false);
+ };
 
  p.hidden=false;
  if(anchor)anchor.setAttribute('aria-expanded','true');
