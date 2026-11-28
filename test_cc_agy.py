@@ -165,7 +165,8 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         self.assertIn("<b>Заголовок</b>", html_out)
         self.assertIn("<b>жирный</b>", html_out)
         self.assertIn("<code>код</code>", html_out)
-        self.assertIn("<code>f.py</code>", html_out)
+        self.assertIn("f.py", html_out)
+        self.assertNotIn("<code>f.py</code>", html_out)
 
         img_path = Path(self.tmp) / "pic.png"
         buf = io.BytesIO()

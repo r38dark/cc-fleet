@@ -2,6 +2,24 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.7",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Чистое оформление ответов Antigravity в Telegram без лишнего «кодового» шрифта",
+        "p": [
+          "Локальные ссылки на файлы больше не превращаются в моноширинные плашки в Telegram.",
+          "В инструкции стиля ответов (GEMINI.md) добавлен запрет выделять кодом обычные слова, названия моделей, версии и числа — моноширинный шрифт остаётся только для команд."
+        ]
+      },
+      "en": {
+        "t": "Cleaner Telegram formatting for Antigravity without excessive code spans",
+        "p": [
+          "Local file links no longer render as monospace code boxes in Telegram.",
+          "Updated GEMINI.md formatting rules so ordinary English words, model names, versions, and numbers render cleanly as normal text instead of inline code."
+        ]
+      }
+    },
+    {
       "v": "2.1.6",
       "date": "2026-11-28",
       "ru": {

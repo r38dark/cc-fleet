@@ -192,7 +192,7 @@ def markdown_to_telegram_html(text):
         label, url = m.group(1), m.group(2)
         if url.startswith(("http://", "https://")):
             return put(f'<a href="{html.escape(url, quote=True)}">{html.escape(label, quote=False)}</a>')
-        return put(f"<code>{html.escape(label, quote=False)}</code>")
+        return put(html.escape(label, quote=False))
 
     work = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
     work = _CODE_BLOCK_RE.sub(repl_code, work)
