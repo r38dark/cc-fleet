@@ -293,6 +293,7 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         self.assertIn("window.ccpsWindows", out)
         self.assertIn("window.ccliPvInfo", out)
         self.assertIn("agy/models/check", out)
+        self.assertIn("'gemini-4-hydrogen-high':'4 Hydrogen'", out)
 
 
 if __name__ == "__main__":

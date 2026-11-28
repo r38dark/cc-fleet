@@ -9,7 +9,8 @@ html.conly #agyPause{display:none!important}
 .dchip.dx.agy .ddot{background:var(--fleet-agy)}
 .fleet-live-account.agy,.fleet-compact-account.agy{--live-accent:var(--fleet-agy)}
 html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-acc[data-engine="agy"]{grid-column:1/-1}
-html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.agy{--cses:128px}
+html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.agy{--cmod:155px;--cses:128px}
+@media(min-width:1380px) and (max-width:1579px){html:root:root:root #fleetActiveAccounts.fleet-acc-mode .fleet-compact-account.agy{--cmod:148px}}
 .fleet-live-account[data-provider="agy"]{border-color:color-mix(in srgb,var(--fleet-agy) 38%,var(--fleet-line));background:linear-gradient(120deg,var(--fleet-agy-soft),var(--card) 60%)}
 .fleet-live-account[data-provider="agy"] .mirror-profile-button{border-color:color-mix(in srgb,var(--fleet-agy) 40%,var(--fleet-line))}
 .fleet-live-account.agy .mirror-profile-button .cxdot{background:var(--fleet-agy)}
@@ -138,16 +139,29 @@ function shortModel(raw){
  if(!raw)return 'По умолчанию';
  var s=String(raw).trim();
  var map={
-  'gemini-4-neon-high':'Gemini 4 Neon',
-  'gemini-4-neon-medium':'Gemini 4 Neon',
-  'gemini-4-neon-low':'Gemini 4 Neon',
-  'gemini-4-carbon-high':'Gemini 4 Carbon',
-  'gemini-4-carbon-medium':'Gemini 4 Carbon',
-  'gemini-4-hydrogen-high':'Gemini 4 Hydrogen',
-  'gemini-pro-orchestrator-neon':'Orchestrator Neon'
+  'gemini-4-neon-high':'4 Neon',
+  'gemini-4-neon-xhigh':'4 Neon',
+  'gemini-4-neon-medium':'4 Neon',
+  'gemini-4-neon-low':'4 Neon',
+  'gemini-4-carbon-high':'4 Carbon',
+  'gemini-4-carbon-medium':'4 Carbon',
+  'gemini-4-carbon-low':'4 Carbon',
+  'gemini-4-argon-high':'4 Argon',
+  'gemini-4-argon-medium':'4 Argon',
+  'gemini-4-argon-low':'4 Argon',
+  'gemini-4-hydrogen-high':'4 Hydrogen',
+  'gemini-4-hydrogen-xhigh':'4 Hydrogen',
+  'gemini-4-hydrogen-medium':'4 Hydrogen',
+  'gemini-4-hydrogen-low':'4 Hydrogen',
+  'gemini-3.8-flash-high':'3.8 Flash',
+  'gemini-3.8-flash-medium':'3.8 Flash',
+  'gemini-3.8-flash-low':'3.8 Flash',
+  'gemini-pro-orchestrator-neon':'Orchestrator Neon',
+  'gemini-pro-orchestrator':'Orchestrator Carbon',
+  'gemini-pro-orchestrator-argon':'Orchestrator Argon'
  };
  if(map[s.toLowerCase()])return map[s.toLowerCase()];
- return s.replace(/\s*\((high|medium|low|xhigh)\)\s*$/i,'').trim()||s;
+ return s.replace(/^gemini[\s-]+/i,'').replace(/\s*\((high|medium|low|xhigh|max)\)\s*$/i,'').trim()||s;
 }
 function gearIcon(){var g=$i('gear'),s=g&&g.querySelector('svg');return s?s.outerHTML:SVG_GEAR}
 
@@ -550,10 +564,22 @@ function openQuickModel(anchor){
  var curM=(rt.model||acc.model||'');
  var curE=(rt.effort||acc.effort||'high');
  var rawModels=(acc.models&&acc.models.length)?acc.models.filter(function(m){return m&&m.id&&m.id.indexOf('gemini-')===0;}):[];
- var models=rawModels.length?rawModels:[
-  {id:'gemini-4-neon-high',name:'Gemini 4 Neon'},
-  {id:'gemini-4-carbon-high',name:'Gemini 4 Carbon'},
-  {id:'gemini-4-hydrogen-high',name:'Gemini 4 Hydrogen'},
+ var dedup=[];
+ if(rawModels.length){
+  var byDisp={};
+  rawModels.forEach(function(m){
+   var d=shortModel(m.name||m.id),isCurEff=m.id.toLowerCase().indexOf('-'+curE)>=0,isHigh=m.id.toLowerCase().indexOf('-high')>=0;
+   if(!byDisp[d]||(isCurEff&&byDisp[d].p<2)||(isHigh&&byDisp[d].p<1)){
+    byDisp[d]={m:m,d:d,p:isCurEff?2:isHigh?1:0};
+   }
+  });
+  Object.keys(byDisp).forEach(function(d){dedup.push({id:byDisp[d].m.id,name:d});});
+ }
+ var models=dedup.length?dedup:[
+  {id:'gemini-4-neon-high',name:'4 Neon'},
+  {id:'gemini-4-carbon-high',name:'4 Carbon'},
+  {id:'gemini-4-argon-high',name:'4 Argon'},
+  {id:'gemini-4-hydrogen-high',name:'4 Hydrogen'},
   {id:'gemini-pro-orchestrator-neon',name:'Orchestrator Neon'}
  ];
  var html='<div class="cxqh"><b>Модель Antigravity</b></div><div class="cxqlist">';
