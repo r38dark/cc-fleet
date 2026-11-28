@@ -302,6 +302,15 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         self.assertIn('if ev.get("status") == "DONE" and not tcs and content:', src)
         self.assertIn("if _tui_busy():", src)
 
+    def test_desktop_console_fit_and_top_tab_limit_bars_injected(self):
+        out = cc_agy_ui.inject("<html><head></head><body></body></html>")
+        self.assertIn("fitDesktopConsole", out)
+        self.assertIn("--agy-desk-term-h", out)
+        self.assertIn("--agy-desk-split-h", out)
+        self.assertIn("renderTabLimits", out)
+        self.assertIn("agy-tab-lim", out)
+        self.assertIn("syncWkAgy", out)
+
 
 if __name__ == "__main__":
     unittest.main()

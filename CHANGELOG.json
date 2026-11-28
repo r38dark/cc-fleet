@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.8",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Адаптивная высота консоли на всю высоту экрана и шкалы лимитов в верхней шапке",
+        "p": [
+          "На широких экранах (Full HD и других настольных разрешениях) высота консоли теперь динамически подстраивается под свободное место до нижнего края окна — даже когда сверху открывается один или несколько баннеров паузы по лимитам.",
+          "На вкладках консолей Claude, Codex и Antigravity в верхней панели появились компактные индикаторы 5-часового и недельного лимитов, которые заполняются в цвете по мере расхода квоты, не требуя прокрутки вниз.",
+          "В верхний переключатель агентов шапки добавлен статус Antigravity рядом с Claude и Codex."
+        ]
+      },
+      "en": {
+        "t": "Dynamic full-height desktop console sizing and top-bar limit meters",
+        "p": [
+          "On desktop viewports (Full HD and up), the console now dynamically adjusts its height so its bottom edge stays aligned with the viewport even when limit pause banners expand above it.",
+          "Console tabs (Claude, Codex, Antigravity) now show compact 5-hour and weekly quota fill bars directly in the top bar without needing to scroll down.",
+          "Added Antigravity status pill to the top header agent switcher alongside Claude and Codex."
+        ]
+      }
+    },
+    {
       "v": "2.1.7",
       "date": "2026-11-28",
       "ru": {
