@@ -206,8 +206,63 @@ PY
             connected_pid=$current_pid
         done
         ;;
+    agw)
+        need_screen
+        inside_screen && exit 1
+        sname="${1:-cc-agy}"
+        case "$sname" in *[!A-Za-z0-9_-]*|"") exit 2 ;; esac
+        base="$(dirname "$self")"
+        agy_pid() {
+            screen -ls 2>/dev/null | sed '/Dead/d' | sed -nE "s/^[[:space:]]*([0-9]+)\.${sname}[[:space:]].*/\1/p" | head -n 1
+        }
+        agy_restarting() {
+            python3 - "$base/agy_console/console.json" "$connected_pid" <<'PY'
+import json, sys
+try:
+    meta = json.load(open(sys.argv[1], encoding="utf-8"))
+    restarting = bool(meta.get("restarting"))
+    npid = str(meta.get("pid") or "")
+    replaced = npid.isdigit() and npid != sys.argv[2]
+except Exception:
+    sys.exit(1)
+sys.exit(0 if restarting or replaced else 1)
+PY
+        }
+        connected_pid=$(agy_pid)
+        if [ -z "$connected_pid" ]; then
+            echo "Консоль Antigravity не запущена (screen $sname нет)."
+            echo "Запусти её на странице балансера: вкладка Antigravity → «Запустить». Потом снова agw."
+            exit 1
+        fi
+        trap 'exit 129' HUP
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        while :; do
+            echo "Подключаюсь к $sname (Antigravity). Выйти, не останавливая agy: Ctrl+A, потом d."
+            screen -xR "$connected_pid.$sname"
+            attach_status=$?
+            current_pid=$(agy_pid)
+            [ "$current_pid" = "$connected_pid" ] && exit "$attach_status"
+            agy_restarting || exit "$attach_status"
+            echo "Сессия Antigravity перезапускается — переподключаюсь…"
+            deadline=$((SECONDS + 15))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+                current_pid=$(agy_pid)
+                if [ -n "$current_pid" ] && [ "$current_pid" != "$connected_pid" ]; then
+                    break
+                fi
+                current_pid=""
+                sleep 0.25
+            done
+            if [ -z "$current_pid" ]; then
+                echo "Новая консоль Antigravity не запустилась."
+                exit 1
+            fi
+            connected_pid=$current_pid
+        done
+        ;;
     *)
-        echo "cc-cmd: команды cl, cla, cln, clw (Claude) и cxw (Codex). Запускай их по имени, например: cl"
+        echo "cc-cmd: команды cl, cla, cln, clw (Claude), cxw (Codex) и agw (Antigravity). Запускай их по имени, например: cl"
         exit 2
         ;;
 esac

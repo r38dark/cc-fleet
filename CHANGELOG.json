@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.0",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Antigravity (agy) — третий независимый исполнитель",
+        "p": [
+          "Добавлена вкладка консоли Antigravity с live-зеркалом, управлением вводом, режимом Split, командами /compact, /new и входом по SSH (agw), а также мастер установки «Antigravity +» с входом в Google прямо из браузера.",
+          "Добавлены плитка в «Активных аккаунтах» и карточка с лимитами Gemini (5ч и неделя), датой подписки, выбором модели/effort, паузой по порогам и кнопкой «Отключить паузу (до 100%)».",
+          "Встроен Telegram-мост Antigravity с HTML-форматированием, приёмом и отправкой картинок, PNG-карточкой лимитов и очередью сообщений на время паузы."
+        ]
+      },
+      "en": {
+        "t": "Antigravity (agy) as a third independent executor",
+        "p": [
+          "Added an Antigravity console tab with a live mirror, web input, Split view, /compact and /new controls, the agw SSH shortcut, and an «Antigravity +» setup wizard with in-browser Google OAuth login.",
+          "Added an Active Accounts tile and account card showing Gemini 5-hour and weekly limits, subscription date, model/effort picker, quota pause, and a manual override up to 100%.",
+          "Added an integrated Antigravity Telegram bridge with HTML formatting, image upload/preview support, a dark PNG limits card, and an incoming queue during quota pauses."
+        ]
+      }
+    },
+    {
       "v": "2.0.51",
       "date": "2026-11-27",
       "ru": {

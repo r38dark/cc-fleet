@@ -225,7 +225,7 @@ s2() {
 c3() { python3 -c 'import pyte, pexpect, dateutil' 2>/dev/null && command -v screen >/dev/null && command -v curl >/dev/null; }
 s3() {
   header 3
-  local pkgs="python3 python3-pyte python3-pexpect python3-dateutil screen curl openssl ca-certificates"
+  local pkgs="python3 python3-pyte python3-pexpect python3-dateutil python3-pil screen curl openssl ca-certificates"
   yes_ "$WANT_NGINX" && pkgs="$pkgs nginx apache2-utils"
   yes_ "$WANT_HTTPS" && pkgs="$pkgs certbot python3-certbot-nginx"
   log "Ставлю пакеты: $pkgs"
@@ -573,6 +573,7 @@ s13() {
   echo "  ☐ Запустить Claude Code в screen-сессии: $BASE/start_claude.sh (или кнопка «Запустить» в панели)"
   yes_ "$WANT_TG" || echo "  ☐ Подключить Telegram: docs/INSTALL.md, раздел 4"
   yes_ "$WANT_CODEX" && echo "  ☐ Codex: панель → «Codex +» → мастер (docs/INSTALL.md, раздел 5)" || echo "  ☐ Codex (по желанию): запусти установщик снова и ответь «y» на вопрос про Codex"
+  echo "  ☐ Antigravity (по желанию): панель → «Antigravity +» → установка CLI и вход в Google прямо в браузере"
   echo "  ☐ Claude через SSH (по желанию): панель → ⚙ Общие настройки → «Подключение Claude» (docs/INSTALL.md, раздел 6)"
   echo
   echo "Проверить установку в любой момент: sudo ./install.sh --check"

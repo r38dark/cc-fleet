@@ -1,5 +1,5 @@
 {
-  "version": "2.0.51",
+  "version": "2.1.0",
   "needs_install": true,
   "install_since": "2.0.8",
   "files": [
@@ -237,6 +237,34 @@
     },
     {
       "src": "cc_remote_split.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_agy.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_agy_limits.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_agy_quota.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_agy_console.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_agy_bridge.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_agy_ui.py",
+      "mode": "644"
+    },
+    {
+      "src": "cc_agy_plugin.py",
       "mode": "644"
     }
   ]

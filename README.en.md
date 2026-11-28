@@ -2,9 +2,9 @@
 
 [🇷🇺 Русский](README.md) · 🇬🇧 English
 
-**Self-hosted dashboard for one Claude account and one Codex account.**
+**Self-hosted dashboard for Claude, Codex, and Antigravity (`agy`).**
 
-Shows 5-hour and weekly limits, live consoles, and work profiles. Claude can run on the panel host or a separate server. When a configured quota threshold is reached, work waits for the limit to reset.
+Shows 5-hour and weekly limits, live consoles, Telegram bridges, and work profiles. Claude can run on the panel host or a separate server; Codex and Antigravity run as independent executors. When a configured quota threshold is reached, work waits for the limit to reset (with a manual override to use remaining quota up to 100%).
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Shell: bash](https://img.shields.io/badge/installer-bash-89e051.svg)](install.sh)
@@ -75,7 +75,8 @@ gear, a "Delete" button on every card and the windows for both flows
 
 ## Features
 
-- 📊 **Claude and Codex quota monitoring** — 5-hour and weekly limits with reset countdowns. One account per provider.
+- 📊 **Claude, Codex, and Antigravity quota monitoring** — 5-hour and weekly limits with reset countdowns and subscription tracking.
+- 🚀 **Antigravity (`agy`) as a third independent executor (v2.1.0)** — dedicated live console tab (and `agw` SSH helper), Active Accounts tile with model/effort picker, 5-hour/weekly quota pause with manual override up to 100%, and an integrated Telegram bridge with a dark PNG limits card, FIFO pause queue, and media support.
 - ⏳ **Quota pauses** — tasks wait for the usage window to reset when the configured threshold is reached.
 - 🖥 **Live console mirror** — the same `screen` session visible in your
   terminal, streamed to the browser in real time (read-only).

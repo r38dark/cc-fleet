@@ -60,7 +60,7 @@ class Links(unittest.TestCase):
 
     def test_creates_all_and_is_idempotent(self):
         r = L.ensure_cmd_links(self.bin)
-        self.assertEqual(set(r), {"cl", "cla", "cln", "clw", "cxw"})
+        self.assertEqual(set(r), {"cl", "cla", "cln", "clw", "cxw", "agw"})
         self.assertEqual(set(r.values()), {"создана"})
         for n in r:
             self.assertEqual(os.readlink(os.path.join(self.bin, n)), os.path.join(self.base, "cc-cmd"))

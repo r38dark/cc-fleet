@@ -433,6 +433,11 @@ def install(ns):
         print('remote: мастер второго сервера не подключён: %r' % (exc,), flush=True)
     ns['CODEX_LIMITS'] = rotation
     ns['FLEET_INPUT'] = inputs
+    try:  # независимый 3-й исполнитель Antigravity (agy): консоль, лимиты, пауза/override, Telegram-мост, UI
+        import cc_agy_plugin
+        cc_agy_plugin.install(ns)
+    except Exception as exc:
+        print('agy: модуль не подключён: %r' % (exc,), flush=True)
     bridge.PROFILE_APPLIED = console.apply_plan
     if ns.get('__name__') == '__main__':
         rotation.start()

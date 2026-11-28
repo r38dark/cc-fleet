@@ -20,7 +20,7 @@ import cc_poll
 import cc_update
 import pexpect
 
-VERSION = "2.0.51"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
+VERSION = "2.1.0"  # равна версии релиза; cc_update сверяет её с манифестом перед заменой файлов
 
 # BASE/PROFILES переопределяемы через env только для изолированного тестирования
 # инсталлятора (install.sh их не трогает — на реальном сервере это фиксированные пути,
@@ -66,8 +66,8 @@ def cfg():
     return jload(CONFIG, {})
 
 
-# консольные команды балансера (cl, cla, cln, clw — Claude; cxw — Codex): один скрипт cc-cmd, имена — ссылки на него
-CMD_NAMES = ("cl", "cla", "cln", "clw", "cxw")
+# консольные команды балансера (cl, cla, cln, clw — Claude; cxw — Codex; agw — Antigravity): один скрипт cc-cmd, имена — ссылки на него
+CMD_NAMES = ("cl", "cla", "cln", "clw", "cxw", "agw")
 
 
 def ensure_cmd_links(bin_dir="/usr/local/bin"):
