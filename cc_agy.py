@@ -14,6 +14,7 @@ import tempfile
 import termios
 import threading
 import time
+import uuid
 from pathlib import Path
 
 try:
@@ -24,9 +25,21 @@ except ImportError:
 BASE = "/opt/cc-limits"
 BRAIN_DIR = Path("/root/.gemini/antigravity-cli/brain")
 SETTINGS_PATH = Path("/root/.gemini/antigravity-cli/settings.json")
+JETSKI_STATE_PATH = Path("/root/.gemini/antigravity-cli/jetski_state.pbtxt")
+GEMINI_MD_PATH = Path("/root/.gemini/config/GEMINI.md")
 DEFAULT_BIN = "/root/.local/bin/agy"
 DEFAULT_SUB_UNTIL = ""
 SLOT = "agy1"
+
+TELEGRAM_GUIDELINES_MARKER = "# Telegram Media & Formatting Guidelines"
+TELEGRAM_GUIDELINES_BLOCK = (
+    "# Telegram Media & Formatting Guidelines\n\n"
+    "- **Входящие картинки и файлы из Telegram**: когда Telegram-мост присылает путь к сохранённому изображению или файлу в `/opt/cc-limits/agy_inbox/`, обязательно открой его инструментом `read_file` по указанному абсолютному пути.\n"
+    "- **Отправка картинок в Telegram**: чтобы отправить пользователю картинку (скриншот, график, сгенерированное изображение), сохрани её как PNG/JPEG и вставь в финальный ответ **отдельной строкой** (не внутри блока кода):\n"
+    "  `![описание](/абсолютный/путь/к/файлу.png)`\n"
+    "  Telegram-мост автоматически вырежет эту строку и отправит изображение как фото (с превью, не документом).\n"
+    "- **Оформление ответов**: используй понятные абзацы, короткие списки и аккуратные иконки статусов (`✅`, `⚠️`, `❌`, `📌`, `🛠`), без лишней стены текста.\n"
+)
 
 INFO_TTL = 90.0
 MODELS_TTL = 600.0
@@ -308,6 +321,10 @@ def probe_usage(binary, timeout_sec=20.0):
         return {"error": "Antigravity CLI (agy) не установлен.", "windows": [], "ts": time.time()}
     if pyte is None:
         return {"error": "pyte не установлен.", "windows": [], "ts": time.time()}
+    try:
+        ensure_bootstrap_config()
+    except Exception:
+        pass
 
     with _probe_lock:
         master_fd, slave_fd = pty.openpty()
@@ -358,6 +375,16 @@ def probe_usage(binary, timeout_sec=20.0):
                         os.write(master_fd, b"/usage\r")
                         sent_usage = True
                         usage_sent_at = time.time()
+                    else:
+                        step = _onboarding_action(visible)
+                        if step:
+                            for seq in step:
+                                try:
+                                    os.write(master_fd, seq)
+                                except OSError:
+                                    break
+                                time.sleep(0.15)
+                            time.sleep(0.35)
                 else:
                     if (
                         "GEMINI MODELS" in visible
@@ -534,6 +561,104 @@ def set_prefs(model=None, effort=None, sub_until=None, label=None):
     return True, "Настройки Antigravity сохранены."
 
 
+# ---------- Auto-bootstrap (full access, skip onboarding, GEMINI.md formatting rules) ----------
+
+def _onboarding_action(visible_text):
+    """Return sequence of bytes to advance an interactive agy first-run onboarding screen, or None."""
+    if not visible_text or "for shortcuts" in visible_text:
+        return None
+    low = visible_text.lower()
+    if "select login method" in low or "authorization code" in low:
+        return None
+    if "[done]" in low or "[next]" in low or "terms of service" in low or "select a theme" in low or "choose a theme" in low:
+        # Right arrow moves focus from [Previous] to [Next]/[Done] (no-op if already rightmost), then Enter confirms.
+        return (b"\x1b[C", b"\r")
+    if "trust this workspace" in low or "do you trust" in low:
+        return (b"\r",)
+    return None
+
+
+def ensure_bootstrap_config(workdir="/root", force_full_access=True):
+    """Pre-configure agy for headless cc-fleet operation:
+    1. settings.json: full access (always-proceed, allowNonWorkspaceAccess, trustedWorkspaces, quiet tips).
+    2. jetski_state.pbtxt: mark post-onboarding steps completed so first-run wizard is skipped.
+    3. ~/.gemini/config/GEMINI.md: install Telegram media & concise formatting guidelines (preserving user rules).
+    """
+    changed = []
+    # 1. settings.json
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    cur = jload(str(SETTINGS_PATH), {})
+    if not isinstance(cur, dict):
+        cur = {}
+    before = json.dumps(cur, sort_keys=True)
+    if force_full_access:
+        cur["allowNonWorkspaceAccess"] = True
+        cur["toolPermission"] = "always-proceed"
+        cur["artifactReviewPolicy"] = "always-proceed"
+    else:
+        cur.setdefault("allowNonWorkspaceAccess", True)
+        cur.setdefault("toolPermission", "always-proceed")
+        cur.setdefault("artifactReviewPolicy", "always-proceed")
+    cur.setdefault("showTips", False)
+    cur.setdefault("showFeedbackSurvey", False)
+    trusted = [str(x) for x in (cur.get("trustedWorkspaces") or []) if x]
+    for cand in ("/root", str(workdir or "").strip(), BASE):
+        if cand and os.path.isdir(cand) and cand not in trusted:
+            trusted.append(cand)
+    if not trusted:
+        trusted = ["/root"]
+    cur["trustedWorkspaces"] = trusted
+    if json.dumps(cur, sort_keys=True) != before:
+        jsave(str(SETTINGS_PATH), cur, mode=0o600)
+        changed.append("settings.json")
+
+    # 2. jetski_state.pbtxt (skip first-run onboarding wizard)
+    JETSKI_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    pb_text = ""
+    try:
+        if JETSKI_STATE_PATH.is_file():
+            pb_text = JETSKI_STATE_PATH.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        pb_text = ""
+    if "POST_ONBOARDING_STEP_TYPE_ADD_WORKSPACE" not in pb_text:
+        m_uuid = re.search(r'installation_uuid:\s*"([^"]+)"', pb_text)
+        inst_uuid = m_uuid.group(1) if m_uuid else str(uuid.uuid4())
+        new_pb = (
+            "post_onboarding: {\n"
+            "  completed_steps: POST_ONBOARDING_STEP_TYPE_MANAGER_WELCOME\n"
+            "  completed_steps: POST_ONBOARDING_STEP_TYPE_USAGE_MODE\n"
+            "  completed_steps: POST_ONBOARDING_STEP_TYPE_AGENT_CONFIGURATION\n"
+            "  completed_steps: POST_ONBOARDING_STEP_TYPE_ADD_WORKSPACE\n"
+            "}\n"
+            f'installation_uuid: "{inst_uuid}"\n'
+            "migrations: {\n  key: 3\n  value: MIGRATION_STATUS_COMPLETED\n}\n"
+            "migrations: {\n  key: 4\n  value: MIGRATION_STATUS_COMPLETED\n}\n"
+            "migrations: {\n  key: 5\n  value: MIGRATION_STATUS_COMPLETED\n}\n"
+            "migrations: {\n  key: 11\n  value: MIGRATION_STATUS_COMPLETED\n}\n"
+        )
+        JETSKI_STATE_PATH.write_text(new_pb, encoding="utf-8")
+        try:
+            os.chmod(str(JETSKI_STATE_PATH), 0o600)
+        except OSError:
+            pass
+        changed.append("jetski_state.pbtxt")
+
+    # 3. ~/.gemini/config/GEMINI.md (formatting & Telegram media rules)
+    GEMINI_MD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    existing_md = ""
+    try:
+        if GEMINI_MD_PATH.is_file():
+            existing_md = GEMINI_MD_PATH.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        existing_md = ""
+    if TELEGRAM_GUIDELINES_MARKER not in existing_md:
+        sep = "\n\n" if existing_md.strip() else ""
+        GEMINI_MD_PATH.write_text(existing_md.rstrip() + sep + TELEGRAM_GUIDELINES_BLOCK, encoding="utf-8")
+        changed.append("GEMINI.md")
+
+    return True, changed
+
+
 # ---------- One-click CLI installer & interactive browser Google OAuth login ----------
 
 INSTALL_SCRIPT_URL = "https://antigravity.google/cli/install.sh"
@@ -650,11 +775,16 @@ def install_start():
                         _inst["log"] = _inst["log"][-40:]
             rc = proc.wait(timeout=300)
             b = find_bin()
+            if rc == 0 and b:
+                try:
+                    ensure_bootstrap_config()
+                except Exception:
+                    pass
             with _inst_lock:
                 _inst["proc"] = None
                 if rc == 0 and b:
                     _inst["state"] = "done"
-                    _inst["message"] = f"Antigravity CLI установлен ({b}). Теперь войдите в Google-аккаунт."
+                    _inst["message"] = f"Antigravity CLI установлен ({b}), полный доступ и стиль ответов настроены. Теперь войдите в Google-аккаунт."
                 else:
                     _inst["state"] = "error"
                     _inst["message"] = f"Установка завершилась с кодом {rc}."
@@ -733,6 +863,10 @@ def login_start():
         proc = None
         tok_backup = None
         try:
+            try:
+                ensure_bootstrap_config()
+            except Exception:
+                pass
             if OAUTH_TOKEN_PATH.is_file():
                 tok_backup = OAUTH_TOKEN_PATH.with_suffix(".bak_relogin")
                 try:
@@ -803,12 +937,26 @@ def login_start():
                                 _login["state"] = "url"
                                 _login["message"] = "Откройте ссылку, войдите в Google и вставьте полученный код ниже."
                 else:
-                    if "for shortcuts" in vis or OAUTH_TOKEN_PATH.is_file():
+                    step = _onboarding_action(vis)
+                    if step:
+                        for seq in step:
+                            try:
+                                os.write(master_fd, seq)
+                            except OSError:
+                                break
+                            time.sleep(0.15)
+                        time.sleep(0.4)
+                        continue
+                    if "for shortcuts" in vis or (OAUTH_TOKEN_PATH.is_file() and (time.time() - _login["started"]) > 6 and not _onboarding_action(vis)):
                         if tok_backup and tok_backup.exists():
                             try:
                                 tok_backup.unlink()
                             except OSError:
                                 pass
+                        try:
+                            ensure_bootstrap_config()
+                        except Exception:
+                            pass
                         with _lock:
                             _cache["data"] = None
                             _cache["ts"] = 0.0
@@ -816,7 +964,7 @@ def login_start():
                             _close_login_locked()
                             _login["state"] = "done"
                             _login["url"] = ""
-                            _login["message"] = "Вход в Google выполнен! Загружаю лимиты…"
+                            _login["message"] = "Вход в Google выполнен! Полный доступ и оформление настроены."
                         return
                     low = vis.lower()
                     if "invalid" in low and ("code" in low or "grant" in low or "token" in low):

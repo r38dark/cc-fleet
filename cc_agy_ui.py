@@ -250,7 +250,25 @@ window.agyConsStart=async function(P){
    }
    var stopBtn=document.querySelector('#fleetConsoleForm [data-console-key=stop]');
    if(stopBtn&&cur==='agy')stopBtn.hidden=false;
+   syncAgyArrows(cur==='agy');
   };
+ }
+ function syncAgyArrows(show){
+  var form=$i('fleetConsoleForm');if(!form)return;
+  var downBtn=form.querySelector('[data-console-key=down]');
+  if(!downBtn)return;
+  var lr=$i('agyKeyLeft');
+  if(!lr){
+   var bL=document.createElement('button');bL.type='button';bL.id='agyKeyLeft';bL.className='fleet-key fk-arrow';bL.textContent='←';bL.title='Стрелка влево (Antigravity)';bL.hidden=true;
+   var bR=document.createElement('button');bR.type='button';bR.id='agyKeyRight';bR.className='fleet-key fk-arrow';bR.textContent='→';bR.title='Стрелка вправо (Antigravity)';bR.hidden=true;
+   downBtn.insertAdjacentElement('afterend',bR);
+   downBtn.insertAdjacentElement('afterend',bL);
+   bL.addEventListener('click',async function(e){e.preventDefault();var r=await apiPost('agy/console/key',{key:'left'});if(!r.ok)sToast('⚠ '+r.message);});
+   bR.addEventListener('click',async function(e){e.preventDefault();var r=await apiPost('agy/console/key',{key:'right'});if(!r.ok)sToast('⚠ '+r.message);});
+   lr=bL;
+  }
+  $i('agyKeyLeft').hidden=!show;
+  $i('agyKeyRight').hidden=!show;
  }
  if(typeof window.ccConsole==='function'){
   var _ccConsole=window.ccConsole;
@@ -381,7 +399,7 @@ async function paintInstallWizard(anchor,forceLogin){
  var h='';
  if(!installed){
   h+='<div class="agy-sec"><h4>Шаг 1. Установка Antigravity CLI (agy)</h4>'
-   +'<div class="agy-msg">Скачивает официальный бинарник Google Antigravity CLI в <code>/root/.local/bin/agy</code>. После установки появится вход в Google-аккаунт.</div>';
+   +'<div class="agy-msg">Скачивает официальный бинарник Google Antigravity CLI в <code>/root/.local/bin/agy</code>. Автоматически настраивает полный доступ (<code>always-proceed</code>), пропуск первичного мастера и правила оформления/картинок (<code>GEMINI.md</code>).</div>';
   if(ins.message)h+='<div class="agy-msg" style="color:'+(ins.state==='error'?'var(--warn)':'var(--txt)')+'">'+esc(ins.message)+'</div>';
   if(ins.log&&ins.log.length)h+='<pre class="agy-log">'+esc(ins.log.join('\n'))+'</pre>';
   h+='<div class="agy-actions">'
@@ -600,6 +618,7 @@ function openSettings(anchor){
   +'<button type="button" class="agy-btn" id="agyRestartBtn">🔄 Перезапустить</button>'
   +'<button type="button" class="agy-btn danger" id="agyStopBtn">⏹ Остановить</button>'
   +'<button type="button" class="agy-btn" id="agyRefLimBtn">📊 Обновить квоты</button>'
+  +'<button type="button" class="agy-btn" id="agyBootstrapBtn">✨ Доступ и стиль</button>'
   +'<button type="button" class="agy-btn" id="agyReloginBtn">🔑 Войти заново (Google)</button>'
   +'</div></div>';
 
@@ -628,6 +647,7 @@ function openSettings(anchor){
  $i('agyRestartBtn').onclick=async function(){var r=await apiPost('agy/console/restart',{});sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);loadAll(false);};
  $i('agyStopBtn').onclick=async function(){var r=await apiPost('agy/console/stop',{});sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);loadAll(false);};
  $i('agyRefLimBtn').onclick=async function(){sToast('🔄 Обновляю квоты Antigravity...');await loadAll(true);sToast('✅ Квоты обновлены');};
+ $i('agyBootstrapBtn').onclick=async function(){var r=await apiPost('agy/bootstrap',{});sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);};
  $i('agyReloginBtn').onclick=function(e){e.stopPropagation();openInstallWizard($i('agyGear')||anchor,true);};
 
  p.hidden=false;

@@ -240,6 +240,37 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         ok, _ = cc_agy.login_submit("")
         self.assertFalse(ok)
 
+    def test_bootstrap_config_and_onboarding_action(self):
+        with tempfile.TemporaryDirectory(prefix="test-agy-boot-") as td:
+            sp = Path(td) / "settings.json"
+            jp = Path(td) / "jetski_state.pbtxt"
+            gp = Path(td) / "config" / "GEMINI.md"
+            gp.parent.mkdir(parents=True, exist_ok=True)
+            gp.write_text("# My Custom Rule\n- keep me\n", encoding="utf-8")
+            with mock.patch.object(cc_agy, "SETTINGS_PATH", sp), \
+                 mock.patch.object(cc_agy, "JETSKI_STATE_PATH", jp), \
+                 mock.patch.object(cc_agy, "GEMINI_MD_PATH", gp):
+                ok, changed = cc_agy.ensure_bootstrap_config(workdir=td)
+                self.assertTrue(ok)
+                self.assertEqual(set(changed), {"settings.json", "jetski_state.pbtxt", "GEMINI.md"})
+                cfg = json.loads(sp.read_text(encoding="utf-8"))
+                self.assertTrue(cfg["allowNonWorkspaceAccess"])
+                self.assertEqual(cfg["toolPermission"], "always-proceed")
+                self.assertEqual(cfg["artifactReviewPolicy"], "always-proceed")
+                self.assertIn(td, cfg["trustedWorkspaces"])
+                self.assertIn("POST_ONBOARDING_STEP_TYPE_ADD_WORKSPACE", jp.read_text(encoding="utf-8"))
+                md = gp.read_text(encoding="utf-8")
+                self.assertIn("# My Custom Rule", md)
+                self.assertIn(cc_agy.TELEGRAM_GUIDELINES_MARKER, md)
+                # Second call is idempotent
+                ok2, changed2 = cc_agy.ensure_bootstrap_config(workdir=td)
+                self.assertTrue(ok2)
+                self.assertEqual(changed2, [])
+
+        self.assertEqual(cc_agy._onboarding_action("Terms of Service\n> Previous   [Done]Confirm"), (b"\x1b[C", b"\r"))
+        self.assertEqual(cc_agy._onboarding_action("Do you trust this workspace?"), (b"\r",))
+        self.assertIsNone(cc_agy._onboarding_action("? for shortcuts"))
+
 
 if __name__ == "__main__":
     unittest.main()

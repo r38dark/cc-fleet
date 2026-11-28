@@ -197,6 +197,10 @@ def _start_locked(conv_id=None, workdir=None, model=None, effort=None, restartin
     cwd = workdir or prev.get("workdir") or WORKDIR()
     if not os.path.isdir(cwd):
         cwd = "/root"
+    try:
+        cc_agy.ensure_bootstrap_config(workdir=cwd)
+    except Exception:
+        pass
     cid = prev.get("conv_id") if conv_id is None else conv_id
     mod = ameta.get("model", "") if model is None else model
     eff = ameta.get("effort", "") if effort is None else effort
@@ -273,7 +277,33 @@ def _start_locked(conv_id=None, workdir=None, model=None, effort=None, restartin
     meta["pid"] = pid
     meta["restarting"] = False
     _save_meta(meta)
+    threading.Thread(target=_auto_pass_onboarding, args=(pid,), daemon=True, name="agy-onboard").start()
     return True, "Консоль Antigravity запущена."
+
+
+def _auto_pass_onboarding(target_pid):
+    """Automatically dismiss any remaining first-run onboarding/trust prompt inside cc-agy."""
+    deadline = time.time() + 22.0
+    steps_sent = 0
+    while time.time() < deadline and steps_sent < 8:
+        time.sleep(0.7)
+        if _pid() != target_pid:
+            return
+        try:
+            raw = Path(_log()).read_text(encoding="utf-8", errors="replace")[-12000:]
+        except OSError:
+            continue
+        clean = _strip_ansi(raw)
+        if "for shortcuts" in clean:
+            return
+        act = cc_agy._onboarding_action(clean)
+        if act:
+            with _paste_lock:
+                for seq in act:
+                    _ctl(["-S", NAME, "-p", "0", "-X", "stuff", seq.decode("latin1")])
+                    time.sleep(0.18)
+            steps_sent += 1
+            time.sleep(0.5)
 
 
 def start(conv_id=None, workdir=None, model=None, effort=None):
@@ -443,7 +473,15 @@ def interrupt():
 
 
 def send_key(key):
-    keys = {"escape": "\x1b", "enter": "\r", "up": "\x1b[A", "down": "\x1b[B"}
+    keys = {
+        "escape": "\x1b",
+        "enter": "\r",
+        "up": "\x1b[A",
+        "down": "\x1b[B",
+        "right": "\x1b[C",
+        "left": "\x1b[D",
+        "tab": "\t",
+    }
     if key not in keys:
         return False, "Неизвестная клавиша."
     if key != "escape" and quota_paused():

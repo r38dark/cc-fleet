@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.1",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Автонастройка Antigravity: пропуск мастера, полный доступ и стиль ответов",
+        "p": [
+          "При установке, входе и запуске консоли Antigravity автоматически прописываются полный доступ (always-proceed, allowNonWorkspaceAccess, trustedWorkspaces) и пропуск первичного мастера (jetski_state.pbtxt + авто-подтверждение оставшихся экранов [Next]/[Done]).",
+          "Автоматически переносятся правила оформления ответов и работы с картинками в Telegram (~/.gemini/config/GEMINI.md) без затирания пользовательских правил.",
+          "В веб-консоли Antigravity добавлены кнопки стрелок ← и →, а в настройках — кнопка «✨ Доступ и стиль» для повторного применения в один клик."
+        ]
+      },
+      "en": {
+        "t": "Antigravity auto-bootstrap: skip onboarding, full access, and response style",
+        "p": [
+          "Installing, signing in, or launching Antigravity now pre-configures full access (always-proceed, allowNonWorkspaceAccess, trustedWorkspaces) and automatically bypasses the first-run onboarding wizard ([Next]/[Done]).",
+          "Automatically installs Telegram media and concise formatting rules (~/.gemini/config/GEMINI.md) while preserving existing user rules.",
+          "Added ← and → arrow keys to the Antigravity web console toolbar and a one-click «Access & Style» bootstrap button in settings."
+        ]
+      }
+    },
+    {
       "v": "2.1.0",
       "date": "2026-11-28",
       "ru": {

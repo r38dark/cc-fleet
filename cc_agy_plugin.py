@@ -236,6 +236,19 @@ def install(ns):
                 if path == "/api/agy/login/cancel":
                     ok, msg = cc_agy.login_cancel()
                     return self._send(200, dict(cc_agy.login_status(), ok=ok, message=msg))
+                if path == "/api/agy/bootstrap":
+                    wd = cc_agy_bridge.load().get("workdir") or cc_agy_console.WORKDIR()
+                    ok, changed = cc_agy.ensure_bootstrap_config(workdir=wd, force_full_access=True)
+                    msg = (
+                        "Полный доступ, пропуск мастера и стиль ответов применены (" + ", ".join(changed) + ")."
+                        if changed
+                        else "Все настройки полного доступа, пропуска мастера и стиля уже применены."
+                    )
+                    return self._send(200, {"ok": ok, "changed": changed, "message": msg})
+                if path == "/api/agy/console/key":
+                    key = str(body.get("key") or "").strip().lower()
+                    ok, msg = cc_agy_console.send_key(key)
+                    return self._send(200, {"ok": ok, "message": msg})
                 return self._send(404, {"ok": False, "message": "unknown agy route"})
             except Exception as exc:
                 return self._send(500, {"ok": False, "message": "Ошибка Antigravity: " + type(exc).__name__})
