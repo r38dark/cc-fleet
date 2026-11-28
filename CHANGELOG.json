@@ -2,6 +2,22 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.5",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Исправлен «(пустой ответ)» при автоповторе в Antigravity",
+        "p": [
+          "Мост Telegram больше не обрывает ожидание на пустом промежуточном событии PLANNER_RESPONSE перед автоматическим повтором CLI, а дожидается настоящего финального ответа."
+        ]
+      },
+      "en": {
+        "t": "Fix «(пустой ответ)» on transient Antigravity CLI retries",
+        "p": [
+          "The Antigravity Telegram bridge now ignores empty transient PLANNER_RESPONSE frames emitted before an automatic CLI retry and waits for the real final response."
+        ]
+      }
+    },
+    {
       "v": "2.1.4",
       "date": "2026-11-28",
       "ru": {

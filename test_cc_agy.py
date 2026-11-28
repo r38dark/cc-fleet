@@ -295,6 +295,11 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         self.assertIn("agy/models/check", out)
         self.assertIn("'gemini-4-hydrogen-high':'4 Hydrogen'", out)
 
+    def test_ask_skips_empty_transient_planner_response_before_retry(self):
+        import cc_agy_console
+        src = Path(cc_agy_console.__file__).read_text(encoding="utf-8")
+        self.assertIn('if ev.get("status") == "DONE" and not tcs and content:', src)
+
 
 if __name__ == "__main__":
     unittest.main()

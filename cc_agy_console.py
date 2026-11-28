@@ -711,16 +711,14 @@ def ask(prompt, abort=None, timeout=600, workdir=None, conv_id=None, on_conv_id=
                         continue
                     if ev_type == "PLANNER_RESPONSE":
                         tcs = ev.get("tool_calls") or []
-                        if ev.get("status") == "DONE" and not tcs:
+                        content = (ev.get("content") or "").strip()
+                        # Ignore empty transient PLANNER_RESPONSE frames emitted right before an auto-retry ERROR_MESSAGE
+                        if ev.get("status") == "DONE" and not tcs and content:
                             step_idx = int(ev.get("step_index") or 0)
-                            if _watcher["conv_id"] != active_cid:
-                                _watcher["conv_id"] = active_cid
-                                _watcher["offset"] = 0
-                                _watcher["last_step"] = step_idx
-                            else:
-                                _watcher["last_step"] = max(_watcher["last_step"], step_idx)
-                            content = (ev.get("content") or "").strip()
-                            return (content or "(пустой ответ)"), active_cid
+                            _watcher["conv_id"] = active_cid
+                            _watcher["offset"] = offset
+                            _watcher["last_step"] = max(int(_watcher.get("last_step") or -1), step_idx)
+                            return content, active_cid
 
             if not seen_input:
                 if not retried_enter and now > sent_at + ENTER_RETRY:
