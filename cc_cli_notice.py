@@ -44,6 +44,8 @@ def _restart_hint(key, v):
         return ""
     if key == "codex@local":
         return "\nКонсоль Codex работает на старой версии — кнопка «Перезапустить консоль Codex» в панели (разговор продолжится)."
+    if key == "agy@local":
+        return "\nКонсоль Antigravity работает на старой версии — кнопка «Перезапустить консоль Antigravity» в панели (разговор продолжится)."
     where = "на PROD" if key == "claude@remote" else ""
     return "\nЗапущенный Claude %s работает на старой версии — кнопка «Перезапустить Claude» в панели (начнётся новая сессия)." % where
 

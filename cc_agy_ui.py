@@ -2,6 +2,8 @@
 
 CSS = r"""
 :root{--fleet-agy:#8b9cf7;--fleet-agy-soft:#232844}
+#agyPause:not([hidden]){display:block;padding:0;overflow:visible;margin:0 0 8px}
+html.conly #agyPause{display:none!important}
 .fleet-console-toolbar #ctAgy::before{background:var(--fleet-agy)}
 .tpmd[data-m="agy"]{background:var(--fleet-agy)}
 .dchip.dx.agy .ddot{background:var(--fleet-agy)}
@@ -82,7 +84,7 @@ JS = r"""
 // [agy] Antigravity (agy) independent 3rd executor: console tab, overview tile, account card, pause/override banner, modals.
 (function(){try{
 var base=(typeof API!=='undefined'?API:location.origin+'/cc-hook/'),tok=(typeof TOKEN!=='undefined'?TOKEN:'');
-var agySnap=null,agyLim=null,agyBr=null,agyWrap=null,agyModalsBound=false;
+var agySnap=null,agyLim=null,agyBr=null,agyCli=null,agyWrap=null,agyModalsBound=false,agyPauseOpen=false;
 var WD=new Intl.DateTimeFormat('ru',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ});
 var CK=new Intl.DateTimeFormat('ru',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:window.FLEET_TZ});
 var DY=new Intl.DateTimeFormat('ru',{day:'2-digit',month:'2-digit',timeZone:window.FLEET_TZ});
@@ -622,9 +624,13 @@ function openSettings(anchor){
   +'<button type="button" class="agy-btn" id="agyRestartBtn">🔄 Перезапустить</button>'
   +'<button type="button" class="agy-btn danger" id="agyStopBtn">⏹ Остановить</button>'
   +'<button type="button" class="agy-btn" id="agyRefLimBtn">📊 Обновить квоты</button>'
+  +'<button type="button" class="agy-btn" id="agyCheckModBtn">🔍 Проверить модели Gemini</button>'
+  +'<button type="button" class="agy-btn" id="agyCheckCliBtn">⬆ Проверить CLI'+(agyCli&&agyCli.version?' ('+esc(agyCli.version)+')':'')+'</button>'
   +'<button type="button" class="agy-btn" id="agyBootstrapBtn">✨ Доступ и стиль</button>'
   +'<button type="button" class="agy-btn" id="agyReloginBtn">🔑 Войти заново (Google)</button>'
   +'<button type="button" class="agy-btn danger" id="agyUninstallBtn">🗑 Удалить Antigravity</button>'
+  +'</div><div class="agy-msg" id="agyCheckMsg">'
+  +(agyCli&&agyCli.version?('Antigravity CLI '+esc(agyCli.version)+(agyCli.update_available?' · доступна '+esc(agyCli.latest):agyCli.latest?' · актуальна':'')):'')
   +'</div></div>';
 
  $i('agySaveLim').onclick=async function(){
@@ -652,6 +658,27 @@ function openSettings(anchor){
  $i('agyRestartBtn').onclick=async function(){var r=await apiPost('agy/console/restart',{});sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);loadAll(false);};
  $i('agyStopBtn').onclick=async function(){var r=await apiPost('agy/console/stop',{});sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);loadAll(false);};
  $i('agyRefLimBtn').onclick=async function(){sToast('🔄 Обновляю квоты Antigravity...');await loadAll(true);sToast('✅ Квоты обновлены');};
+ $i('agyCheckModBtn').onclick=async function(){
+  var m=$i('agyCheckMsg');if(m)m.textContent='Проверяю каталог моделей Gemini…';
+  await apiPost('agy/models/check',{});
+  for(var i=0;i<15;i++){
+   await new Promise(function(res){setTimeout(res,1000);});
+   var d=await apiGet('agy/models/discovery');
+   if(m&&d.message)m.textContent=d.message;
+   if(!d.checking){sToast(d.ok?'✅ '+d.message:'⚠ '+d.message);loadAll(false);break;}
+  }
+ };
+ $i('agyCheckCliBtn').onclick=async function(){
+  var m=$i('agyCheckMsg');if(m)m.textContent='Проверяю обновления Antigravity CLI…';
+  var d=await apiGet('agy/cli?check=1');
+  agyCli=d;
+  if(typeof ccliData!=='undefined'&&ccliData)ccliData.agy=d;
+  if(typeof ccliBadgeRender==='function')ccliBadgeRender();
+  if(typeof ccliPartVers==='function')ccliPartVers();
+  var txt=d.version?('Antigravity CLI '+d.version+(d.update_available?' → доступна '+d.latest:' (актуальная версия)')):'Не удалось определить версию CLI.';
+  if(m)m.textContent=txt;
+  sToast(d.update_available?'⬆ '+txt:'✅ '+txt);
+ };
  $i('agyBootstrapBtn').onclick=async function(){var r=await apiPost('agy/bootstrap',{});sToast(r.ok?'✅ '+r.message:'⚠ '+r.message);};
  $i('agyReloginBtn').onclick=function(e){e.stopPropagation();openInstallWizard($i('agyGear')||anchor,true);};
  $i('agyUninstallBtn').onclick=async function(e){
@@ -669,7 +696,20 @@ function openSettings(anchor){
  if(window.fleetPlace&&anchor)window.fleetPlace(p,anchor,420);
 }
 
-// Render #agyPause banner (100% hard limit + soft weekly/5h policy pause + "Отключить паузу" override!)
+// Render #agyPause banner — exact same compact layout, typography, and live countdown timer as Claude & Codex!
+function agyLeft(ms){
+ if(typeof ccpLeft==='function')return ccpLeft(ms);
+ var s=Math.max(0,Math.ceil((ms-Date.now())/1000)),d=Math.floor(s/86400);s%=86400;
+ var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+ var p=function(x){return String(x).padStart(2,'0');};
+ return d?(d+' д '+h+' ч'):(p(h)+':'+p(m)+':'+p(sec));
+}
+function agyAt(ms,week){
+ if(!ms)return '';
+ var d=new Date(ms);
+ if(week)return WD.format(d).replace(/,/g,'');
+ return clk(d);
+}
 function renderPauseBanner(){
  var el=$i('agyPause');
  if(!el){
@@ -684,26 +724,52 @@ function renderPauseBanner(){
  var active=n&&n.active;
  document.documentElement.classList.toggle('ag-pause-agy',!!(p&&p.active));
  if(!active){el.hidden=true;el.innerHTML='';return;}
+ var prev=el.querySelector(':scope > details');if(prev)agyPauseOpen=prev.open;
  var isHard=!!n.hard;
  var isPaused=!!(p&&p.active);
  var isOver=!!n.override&&!isPaused;
- el.className='ccpause '+(isHard?'lvl-hard':isOver?'lvl-off':'lvl-pause');
- var wins=(n.window_names||[]).join(' и ')||'лимит';
- var until=n.resume_at?('до '+fmtTs(n.resume_at)):'до сброса окна';
- var title=isHard?('⚠ Лимит Antigravity <b>исчерпан (100%)</b> — '+wins+' '+until)
-  :isOver?('▶ Пауза Antigravity <b>отключена вручную</b> — работа на остатке '+wins+' до 100%')
-  :('⏸ Antigravity на <b>паузе по лимитам</b> ('+wins+' '+until+') — подъём автоматический');
- var sub=isHard?'Настоящий лимит аккаунта исчерпан — отключать паузу бесполезно. Очередь отправится автоматически после сброса окна.'
-  :isOver?'Входящие сообщения идут сразу до реальных 100%. Пауза включится обратно автоматически после сброса окна или по кнопке.'
-  :'Достигнут настроенный порог ('+(agyLim.threshold||90)+'% / '+(agyLim.weekly_cap||99)+'%). Новые сообщения копятся в очереди. Можно отключить паузу, чтобы доработать последние % недели/сессии.';
+ var upMs=(n.resume_at||0)*1000;
+ var mins=n.windows||[];
+ var isWeekOnly=mins.indexOf(10080)>=0&&mins.indexOf(300)<0;
+ var wins=(n.window_names||[]).join(', ')||'лимит';
+ var at=upMs?agyAt(upMs,isWeekOnly):'';
+ var acc=(agySnap&&agySnap.accounts&&agySnap.accounts[0])||{};
+ var wmap={};(acc.windows||[]).forEach(function(w){wmap[w.mins]=w;});
+ var p5=pctVal(wmap[300]),p7=pctVal(wmap[10080]);
+ var mainPct=isWeekOnly?(p7!=null?Math.round(p7)+'%':''):(p5!=null?Math.round(p5)+'%':'');
+ var brief=isHard?('Antigravity · '+wins+' 100%'+(at?' до '+at:''))
+  :isOver?('Antigravity · пауза отключена вручную ('+wins+' до 100%)')
+  :('Antigravity · '+wins+(mainPct?' '+mainPct:'')+(at?' до '+at:''));
+ var fullTitle=isHard?('Лимит Antigravity исчерпан (100%)'+(at?' до '+at:''))
+  :isOver?('Пауза Antigravity отключена вручную — работа до 100%')
+  :('Antigravity на паузе по лимитам'+(at?' до '+at:''));
+ var sub=isHard?'Настоящий лимит аккаунта исчерпан. Очередь отправится автоматически после сброса окна.'
+  :isOver?'Входящие сообщения идут сразу до 100%. Пауза включится обратно автоматически после сброса окна.'
+  :'Достигнут настроенный порог ('+(agyLim.threshold||90)+'% / '+(agyLim.weekly_cap||99)+'%). Новые сообщения копятся в очереди.';
+ var queued=(agyBr&&agyBr.bridge&&agyBr.bridge.queued)||0;
+ var chip='<span class="ccp-chip hot">Antigravity <b>'+(p5==null?'?':Math.round(p5)+'%')+'</b>'+(p7!=null?' · нед <b>'+Math.round(p7)+'%</b>':'')+'</span>';
+ var timer=upMs?'<div class="ccp-timer" data-until="'+upMs+'"><div class="t">'+esc(agyLeft(upMs))+'</div><div class="l">до сброса окна</div></div>':'';
  var btn='';
  if(!isHard&&n.can_override!==false){
   btn=isOver
    ?'<button type="button" class="ccp-btn" id="agyPauseToggle" data-over="0">Включить паузу</button>'
    :'<button type="button" class="ccp-btn" id="agyPauseToggle" data-over="1">Отключить паузу (до 100%)</button>';
  }
- el.innerHTML='<details class="fleet-pause-fold" open><summary class="fleet-pause-summary"><span class="ccp-dot"></span><span>'+title+'</span>'+btn+'</summary><div class="fleet-pause-content"><p>'+esc(sub)+'</p></div></details>';
+ var hint=(queued?'В очереди: '+queued+'. ':'')+(isHard?'Доступность обновится после сброса.':'Можно доработать остаток до 100% или дождаться автосброса.');
+ el.className='ccpause '+(isHard?'lvl-hard':isOver?'lvl-off':'lvl-pause');
+ el.innerHTML='<details class="fleet-pause-fold"'+(agyPauseOpen?' open':'')+'><summary class="fleet-pause-summary">'
+  +'<span class="ccp-dot"></span>'
+  +'<span class="ccp-title">'+esc(brief)+'</span>'
+  +timer
+  +'<svg viewBox="0 0 24 24" class="fleet-pause-chevron" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  +'</summary><div class="fleet-pause-content"><div class="ccp-body">'
+  +'<div class="ccp-title">'+esc(fullTitle)+'</div>'
+  +'<div class="ccp-sub">'+esc(sub)+'</div>'
+  +'<div class="ccp-meta">'+chip+'</div>'
+  +'<div class="ccp-actions">'+btn+'<span class="ccp-hint">'+esc(hint)+'</span></div>'
+  +'</div></div></details>';
  el.hidden=false;
+ el.querySelector('details').addEventListener('toggle',function(e){agyPauseOpen=e.target.open;});
  var tbtn=$i('agyPauseToggle');
  if(tbtn){
   tbtn.onclick=async function(ev){
@@ -715,6 +781,156 @@ function renderPauseBanner(){
   };
  }
 }
+function agyPauseTick(){
+ var t=document.querySelector('#agyPause .ccp-timer');if(!t)return;
+ var until=+t.dataset.until;if(!until)return;
+ var el=t.querySelector('.t');if(el)el.textContent=agyLeft(until);
+}
+setInterval(agyPauseTick,1000);
+
+// Wire translucent console countdown overlay (#ccps) + Active Accounts top-border pill badge (limxBadges) + CLI version badge (#ccliBadge / #ccliPv)
+(function hookLimxAndCli(){
+ if(typeof window.limxState==='function'){
+  var _limxState=window.limxState;
+  window.limxState=function(k){
+   if(k!=='agy')return _limxState(k);
+   try{
+    var p=agyLim&&agyLim.limit_pause,n=agyLim&&agyLim.limit_notice;
+    var acc=(agySnap&&agySnap.accounts&&agySnap.accounts[0])||{};
+    var wins=(acc.windows||[]).map(function(w){
+     var t=w&&w.resets_at?Date.parse(w.resets_at):NaN;
+     return {win:w.mins===300?'5h':w.mins===10080?'week':'',pct:typeof w.pct==='number'?w.pct:null,until:isNaN(t)?0:t};
+    });
+    var pause=null;
+    if(p&&p.active&&!p.hard){pause={until:(+(p.resume_at||0))*1000};}
+    var reported=!!(n&&n.active&&n.hard&&!wins.some(function(w){return w.pct>=100;}));
+    if(typeof limxPick==='function')return limxPick(pause,wins,reported,Date.now());
+    if(pause)return {kind:'pause',win:'',until:pause.until};
+    return null;
+   }catch(e){return null;}
+  };
+ }
+ if(typeof window.limxTitle==='function'){
+  var _limxTitle=window.limxTitle;
+  window.limxTitle=function(k,s){
+   if(k==='agy'&&typeof limxText==='function')return 'Antigravity: '+limxText(s)+'. Новые действия ждут сброса, беседа сохранена.';
+   return _limxTitle(k,s);
+  };
+ }
+ if(typeof window.ccpsWindows==='function'){
+  var _ccpsWindows=window.ccpsWindows;
+  window.ccpsWindows=function(k,s){
+   if(k!=='agy')return _ccpsWindows(k,s);
+   var n=(agyLim&&(agyLim.limit_pause&&agyLim.limit_pause.active?agyLim.limit_pause:agyLim.limit_notice))||{};
+   var mins=n.windows||[];
+   var resets=n.resets||{};
+   var out=mins.map(function(m){
+    return {window:m===300?'5h':m===10080?'week':'',resume_at:resets[m]||resets[String(m)]||(mins.length===1?n.resume_at:0)||0};
+   });
+   if(!out.length)out=[{window:s.win||'',resume_at:(s.until||0)/1000}];
+   return out;
+  };
+ }
+ if(typeof window.ccpsHtml==='function'){
+  var _ccpsHtml=window.ccpsHtml;
+  window.ccpsHtml=function(k){
+   if(k!=='agy')return _ccpsHtml(k);
+   var p=agyLim&&agyLim.limit_pause;
+   if(!(p&&p.active)||p.hard)return '';
+   var upMs=(p.resume_at||0)*1000;
+   return '<b>⏸ Antigravity на паузе</b>'+(upMs?' до '+agyAt(upMs,false)+' ('+agyLeft(upMs)+')':'')+'. Новые сообщения встают в очередь.';
+  };
+ }
+ // Integrate Antigravity CLI version & updates into #ccliBadge, #ccliPop, #ccliBox, and console corner pill (#ccliPv)
+ if(typeof window.ccliLoad==='function'){
+  var _ccliLoad=window.ccliLoad;
+  window.ccliLoad=async function(check){
+   var p1=_ccliLoad(check);
+   var p2=apiGet('agy/cli'+(check?'?check=1':'')).then(function(d){agyCli=d;return d;}).catch(function(){return null;});
+   await Promise.all([p1,p2]);
+   if(typeof ccliData!=='undefined'&&ccliData&&agyCli&&agyCli.kind)ccliData.agy=agyCli;
+   if(typeof ccliRender==='function')ccliRender();
+   if(typeof ccliBadgeRender==='function')ccliBadgeRender();
+   if(typeof ccliPartVers==='function')ccliPartVers();
+  };
+ }
+ if(typeof window.ccliPost==='function'){
+  var _ccliPost=window.ccliPost;
+  window.ccliPost=async function(act,body){
+   if(body&&body.target==='agy'){
+    if(act==='update')return apiPost('agy/cli/update',{version:body.version||'latest'});
+    if(act==='restart')return apiPost('agy/cli/restart',{});
+   }
+   return _ccliPost(act,body);
+  };
+ }
+ if(typeof window.ccliNews==='function'){
+  var _ccliNews=window.ccliNews;
+  window.ccliNews=function(){
+   var list=_ccliNews();
+   var x=(typeof ccliData!=='undefined'&&ccliData&&ccliData.agy)||agyCli;
+   if(x&&x.ok!==false&&x.kind&&!list.some(function(it){return it[0]==='agy';})){
+    var popOn=typeof ccliPopOpen!=='undefined'&&ccliPopOpen;
+    if((x.update_available&&x.can_update)||x.state==='running'||!!(x.restart&&x.restart.stale)||(popOn&&(x.state==='done'||x.state==='failed'))){
+     list=list.concat([['agy',x]]);
+    }
+   }
+   return list;
+  };
+ }
+ if(typeof window.ccliRow==='function'){
+  var _ccliRow=window.ccliRow;
+  window.ccliRow=function(k,d){
+   var html=_ccliRow(k,d);
+   if(k==='agy'){
+    html=html.replace(/Claude Code/g,'Antigravity CLI').replace(/Перезапустить Claude/g,'Перезапустить консоль Antigravity');
+   }
+   return html;
+  };
+ }
+ if(typeof window.ccliRender==='function'){
+  var _ccliRender=window.ccliRender;
+  window.ccliRender=function(){
+   _ccliRender();
+   var box=$i('ccliBox'),scrim=$i('scrim');
+   if(!box||(scrim&&scrim.hidden))return;
+   var x=(typeof ccliData!=='undefined'&&ccliData&&ccliData.agy)||agyCli;
+   if(x&&x.kind&&!box.querySelector('[data-k="agy"]')){
+    var rowHtml=window.ccliRow('agy',x);
+    var hint=box.querySelector('.modalsub:last-child');
+    if(hint)hint.insertAdjacentHTML('beforebegin',rowHtml);
+    else box.insertAdjacentHTML('beforeend',rowHtml);
+   }
+  };
+ }
+ if(typeof window.ccliPopRender==='function'){
+  var _ccliPopRender=window.ccliPopRender;
+  window.ccliPopRender=function(){
+   _ccliPopRender();
+   var pop=$i('ccliPop');
+   if(!pop||pop.hidden)return;
+   pop.querySelectorAll('.cp-row').forEach(function(r){
+    var b=r.querySelector('[data-k="agy"]');
+    if(b){
+     var ttl=r.querySelector('b');if(ttl)ttl.textContent=ttl.textContent.replace('Claude Code','Antigravity CLI');
+     if(b.dataset.ccliPop==='restart')b.textContent='Перезапустить консоль Antigravity';
+    }
+   });
+  };
+ }
+ if(typeof window.ccliPvInfo==='function'){
+  var _ccliPvInfo=window.ccliPvInfo;
+  window.ccliPvInfo=function(s,x){
+   if(s==='agy'){
+    var ax=agyCli||(typeof ccliData!=='undefined'&&ccliData&&ccliData.agy);
+    if(!ax||ax.ok===false||!ax.version)return null;
+    var stale=!!(ax.restart&&ax.restart.stale),old=stale||!!ax.update_available;
+    return {k:'agy',old:old,text:'Antigravity '+ax.version,title:old?(stale?'Консоль Antigravity работает на старой версии — перезапустите её.':'Доступна новая версия Antigravity CLI '+ax.latest):'Актуальная версия Antigravity CLI'};
+   }
+   return _ccliPvInfo(s,x);
+  };
+ }
+})();
 
 function buildAccordionWrap(){
  var rows=$i('fleetLiveRows');
@@ -854,13 +1070,23 @@ function renderTileAndCard(){
 
 async function loadAll(force){
  try{
-  var res=await Promise.all([apiGet('agy'+(force?'?refresh=1':'')),apiGet('agy/limits'),apiGet('agy/bridge')]);
+  var reqs=[apiGet('agy'+(force?'?refresh=1':'')),apiGet('agy/limits'),apiGet('agy/bridge')];
+  if(!agyCli)reqs.push(apiGet('agy/cli').catch(function(){return null;}));
+  var res=await Promise.all(reqs);
   agySnap=res[0];agyLim=res[1];agyBr=res[2];
+  if(res.length>3&&res[3]){
+   agyCli=res[3];
+   if(typeof ccliData!=='undefined'&&ccliData&&agyCli.kind)ccliData.agy=agyCli;
+  }
   try{localStorage.setItem('cc_has_agy',agySnap&&agySnap.available?'1':'0');}catch(e){}
   renderPauseBanner();
   renderTileAndCard();
   syncInstButton();
   if(typeof consTabs==='function')consTabs();
+  if(typeof limxBadges==='function')limxBadges();
+  if(typeof ccpPartStrip==='function')ccpPartStrip();
+  if(typeof ccliBadgeRender==='function')ccliBadgeRender();
+  if(typeof ccliPartVers==='function')ccliPartVers();
  }catch(e){}
 }
 

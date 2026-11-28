@@ -2,6 +2,26 @@
   "_comment": "История изменений для «⚙ Настройки → Обновления». Новые версии сверху. Каждый релиз добавляет сюда запись: v, date, ru/en {t: заголовок, p: до трёх коротких пунктов}.",
   "versions": [
     {
+      "v": "2.1.3",
+      "date": "2026-11-28",
+      "ru": {
+        "t": "Таймер паузы в консоли, компактный баннер и обновления Antigravity CLI / Gemini",
+        "p": [
+          "Баннер паузы Antigravity приведён к аккуратному формату Claude и Codex: компактная строка, живой тикающий таймер до сброса окна и кнопка «Отключить паузу (до 100%)» внутри спойлера.",
+          "На окне консоли Antigravity (включая Split-view) появился полупрозрачный обратный таймер до сброса окна, а на рамке строки в «Активных аккаунтах» — бейдж паузы.",
+          "Добавлены проверка и обновление Antigravity CLI (в значке ↑ шапки, окне версий, уголке консоли и Telegram), фоновый трекер новых моделей Gemini и уведомления в Telegram о смене модели."
+        ]
+      },
+      "en": {
+        "t": "Console pause countdown, compact banner, and Antigravity CLI / Gemini updates",
+        "p": [
+          "Matched the Antigravity pause banner to Claude and Codex: compact single-line summary, live ticking countdown to reset, and the override button inside the collapsible body.",
+          "Added the translucent countdown timer overlay on the Antigravity console window (including Split view) and the pause pill badge on the Active Accounts row.",
+          "Added Antigravity CLI version checks and updates (header ↑ badge, settings, console corner pill, Telegram alerts), Gemini model discovery, and Telegram notifications on model changes."
+        ]
+      }
+    },
+    {
       "v": "2.1.2",
       "date": "2026-11-28",
       "ru": {

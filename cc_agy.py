@@ -3,6 +3,7 @@ import datetime as dt
 import fcntl
 import json
 import os
+import platform
 import pty
 import re
 import select
@@ -14,6 +15,7 @@ import tempfile
 import termios
 import threading
 import time
+import urllib.request
 import uuid
 from pathlib import Path
 
@@ -1079,3 +1081,284 @@ def uninstall():
         _inst["message"] = ""
         _inst["log"] = []
     return True, "Antigravity удалён. Можно установить заново через «Antigravity +»."
+
+
+# ---------- CLI version check / updater (same contract as claude_cli.py) & Gemini model discovery ----------
+
+MANIFEST_BASE_URL = "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests"
+CLI_LATEST_TTL = 1800.0
+_cli_lock = threading.Lock()
+_cli_ver_cache = {"path": "", "mtime": 0.0, "version": ""}
+_cli_state = {
+    "state": "idle",       # idle | running | done | failed
+    "op": "",
+    "target": "",
+    "from_version": "",
+    "version_after": "",
+    "latest": "",
+    "checked": 0.0,
+    "started": 0.0,
+    "finished": 0.0,
+    "err": "",
+    "log": "",
+}
+_disc_lock = threading.Lock()
+_disc = {
+    "ok": True,
+    "checking": False,
+    "checked_at": None,
+    "models": [],
+    "new_ids": [],
+    "message": "",
+}
+
+
+def _cli_state_path():
+    return os.path.join(BASE, "agy_cli_state.json")
+
+
+def _load_cli_state():
+    saved = jload(_cli_state_path(), {})
+    if isinstance(saved, dict):
+        with _cli_lock:
+            for k in ("latest", "checked", "from_version", "version_after", "finished", "state", "op", "err"):
+                if k in saved and _cli_state["state"] != "running":
+                    _cli_state[k] = saved[k]
+
+
+def _save_cli_state_locked():
+    try:
+        jsave(
+            _cli_state_path(),
+            {k: _cli_state[k] for k in ("latest", "checked", "from_version", "version_after", "finished", "state", "op", "err")},
+            mode=0o600,
+        )
+    except Exception:
+        pass
+
+
+def _vtuple(v):
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", str(v or ""))
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+
+def _platform_manifest_name():
+    mach = (platform.machine() or "").lower()
+    arch = "arm64" if mach in ("aarch64", "arm64") else "amd64"
+    return f"linux_{arch}.json"
+
+
+def cli_version(binary=None):
+    """Return installed `agy` semver (cached by binary path + mtime)."""
+    b = binary if binary is not None else find_bin()
+    if not b or not os.path.isfile(b):
+        return ""
+    try:
+        mtime = os.path.getmtime(b)
+    except OSError:
+        mtime = 0.0
+    with _cli_lock:
+        if _cli_ver_cache["path"] == b and _cli_ver_cache["mtime"] == mtime and _cli_ver_cache["version"]:
+            return _cli_ver_cache["version"]
+    try:
+        res = subprocess.run([b, "--version"], capture_output=True, text=True, timeout=8, check=False)
+        raw = (res.stdout or res.stderr or "").strip()
+        m = re.search(r"\d+\.\d+\.\d+", raw)
+        ver = m.group(0) if m else ""
+    except Exception:
+        ver = ""
+    if ver:
+        with _cli_lock:
+            _cli_ver_cache.update({"path": b, "mtime": mtime, "version": ver})
+    return ver
+
+
+def cli_fetch_latest(timeout=10.0):
+    """Fetch latest available Antigravity CLI version from official manifest."""
+    url = f"{MANIFEST_BASE_URL}/{_platform_manifest_name()}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "cc-fleet-cli/1"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        ver = str((data or {}).get("version") or "").strip()
+        m = re.search(r"\d+\.\d+\.\d+", ver)
+        return m.group(0) if m else ""
+    except Exception:
+        return ""
+
+
+def cli_status(check=False, running=False, busy=False, started_version=""):
+    """Return status dict matching claude_cli.status() contract for header badge, settings, and cc_cli_notice."""
+    _load_cli_state()
+    b = find_bin()
+    ver = cli_version(b) if b else ""
+    now = time.time()
+    need_check = False
+    with _cli_lock:
+        if check or (b and (now - float(_cli_state.get("checked") or 0)) > CLI_LATEST_TTL):
+            need_check = True
+    if need_check and b:
+        lat = cli_fetch_latest()
+        with _cli_lock:
+            if lat:
+                _cli_state["latest"] = lat
+            _cli_state["checked"] = time.time()
+            _save_cli_state_locked()
+
+    with _cli_lock:
+        lat = _cli_state.get("latest") or ""
+        vt_cur = _vtuple(ver)
+        vt_lat = _vtuple(lat)
+        upd_avail = bool(vt_cur and vt_lat and vt_lat > vt_cur)
+        vt_start = _vtuple(started_version)
+        stale = bool(running and vt_cur and vt_start and vt_cur != vt_start)
+        return {
+            "ok": True,
+            "kind": "native" if b else None,
+            "path": b or "",
+            "version": ver,
+            "latest": lat,
+            "update_available": upd_avail,
+            "can_update": bool(b),
+            "prev_version": "",
+            "state": _cli_state.get("state") or "idle",
+            "op": _cli_state.get("op") or "",
+            "target": _cli_state.get("target") or "",
+            "from_version": _cli_state.get("from_version") or "",
+            "version_after": _cli_state.get("version_after") or "",
+            "started": _cli_state.get("started") or 0,
+            "finished": _cli_state.get("finished") or 0,
+            "err": _cli_state.get("err") or "",
+            "log": _cli_state.get("log") or "",
+            "checked": _cli_state.get("checked") or 0,
+            "ttl": int(CLI_LATEST_TTL),
+            "restart": {"running": bool(running), "busy": bool(busy), "stale": stale},
+        }
+
+
+def cli_update(target="latest", on_done=None):
+    """Update Antigravity CLI in background without interrupting running console session."""
+    b = find_bin()
+    if not b:
+        return False, "Antigravity CLI (agy) не установлен."
+    cur = cli_version(b)
+    with _cli_lock:
+        if _cli_state["state"] == "running":
+            return True, "Обновление Antigravity CLI уже выполняется."
+        _cli_state.update({
+            "state": "running",
+            "op": "update",
+            "target": str(target or "latest"),
+            "from_version": cur,
+            "version_after": "",
+            "started": time.time(),
+            "finished": 0.0,
+            "err": "",
+            "log": "",
+        })
+        _save_cli_state_locked()
+
+    def _work():
+        env = dict(os.environ)
+        env["HOME"] = "/root"
+        env["NO_COLOR"] = "1"
+        env["PATH"] = "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        lines = []
+        try:
+            proc = subprocess.Popen(
+                ["bash", "-c", f"curl -fsSL {INSTALL_SCRIPT_URL} | bash"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=env,
+                start_new_session=True,
+            )
+            for line in proc.stdout or []:
+                clean = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", line).strip()
+                if clean:
+                    lines.append(clean[-200:])
+                    lines = lines[-30:]
+                    with _cli_lock:
+                        _cli_state["log"] = "\n".join(lines)
+            rc = proc.wait(timeout=300)
+            with _cli_lock:
+                _cli_ver_cache.update({"path": "", "mtime": 0.0, "version": ""})
+            after = cli_version()
+            with _cli_lock:
+                _cli_state["finished"] = time.time()
+                _cli_state["version_after"] = after
+                _cli_state["log"] = "\n".join(lines)
+                if rc == 0 and after:
+                    _cli_state["state"] = "done"
+                    _cli_state["latest"] = after
+                    _cli_state["err"] = ""
+                else:
+                    _cli_state["state"] = "failed"
+                    _cli_state["err"] = f"Код выхода {rc}"
+                _save_cli_state_locked()
+        except Exception as exc:
+            with _cli_lock:
+                _cli_state["state"] = "failed"
+                _cli_state["finished"] = time.time()
+                _cli_state["err"] = str(exc)[:200]
+                _save_cli_state_locked()
+        if callable(on_done):
+            try:
+                on_done()
+            except Exception:
+                pass
+
+    threading.Thread(target=_work, daemon=True, name="agy-cli-update").start()
+    return True, "Обновление Antigravity CLI запущено."
+
+
+def gemini_models_only(models):
+    return [m for m in (models or []) if isinstance(m, dict) and str(m.get("id") or "").startswith("gemini-")]
+
+
+def models_discovery_status():
+    with _disc_lock:
+        return dict(_disc, models=list(_disc["models"]), new_ids=list(_disc["new_ids"]))
+
+
+def models_discovery_start(binary=None, notify_cb=None):
+    """Background check for new Gemini models via `agy models` (same UX as cc_codex_models.Discovery)."""
+    b = binary if binary is not None else find_bin()
+    if not b:
+        return {"ok": False, "checking": False, "message": "Antigravity CLI (agy) не установлен."}
+    with _disc_lock:
+        if _disc["checking"]:
+            return dict(_disc, models=list(_disc["models"]), new_ids=list(_disc["new_ids"]))
+        _disc.update({"ok": True, "checking": True, "message": "Проверяю каталог моделей Gemini…"})
+
+    def _work():
+        try:
+            all_m = fetch_models(b, force=True)
+            gem = gemini_models_only(all_m)
+            meta = load_meta()
+            known = list(meta.get("known_gemini_models") or [])
+            cur_ids = [m["id"] for m in gem]
+            added = [m for m in gem if m["id"] not in known] if known else []
+            if cur_ids:
+                save_meta({"known_gemini_models": cur_ids})
+            if added:
+                names = ", ".join(m.get("name") or m["id"] for m in added)
+                msg = f"Найдено новых моделей Gemini ({len(added)}): {names}"
+                if callable(notify_cb):
+                    try:
+                        notify_cb(f"🆕 Новые модели Gemini в Antigravity: {names}\nВыбрать модель можно в панели балансера или командой /model.")
+                    except Exception:
+                        pass
+            else:
+                msg = f"Список моделей Gemini актуален ({len(gem)})."
+            res = {"ok": True, "checking": False, "checked_at": time.time(), "models": gem, "new_ids": [m["id"] for m in added], "message": msg}
+        except Exception:
+            res = {"ok": False, "checking": False, "checked_at": time.time(), "message": "Не удалось проверить каталог моделей Gemini."}
+        with _disc_lock:
+            _disc.update(res)
+
+    threading.Thread(target=_work, daemon=True, name="agy-models-discovery").start()
+    return models_discovery_status()

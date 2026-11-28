@@ -158,6 +158,7 @@ def status():
         "effort": meta.get("effort") or "",
         "pending_settings": meta.get("pending_settings") or {},
         "started": meta.get("started") or 0,
+        "started_version": meta.get("started_version") or "",
     }
 
 
@@ -223,6 +224,7 @@ def _start_locked(conv_id=None, workdir=None, model=None, effort=None, restartin
         "model": mod or "",
         "effort": eff or "",
         "started": time.time(),
+        "started_version": cc_agy.cli_version(b),
         "restarting": bool(restarting),
         "pending_settings": {},
     }

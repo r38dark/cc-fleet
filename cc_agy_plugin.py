@@ -2,6 +2,7 @@
 import json
 import os
 import threading
+import time
 from urllib.parse import parse_qs, urlparse
 
 import cc_agy
@@ -10,6 +11,8 @@ import cc_agy_console
 import cc_agy_limits
 import cc_agy_quota
 import cc_agy_ui
+import cc_cli_notice
+import cc_model_notice
 
 
 def _agy_bin(ns):
@@ -41,6 +44,43 @@ def install(ns):
     cc_agy_bridge.LIMIT_PAUSE = limits.limit_pause
     cc_agy_bridge.LIMIT_PUBLIC = limits.public
     cc_agy_bridge.LIMIT_CONFIGURE = limits.configure
+
+    # Register Antigravity in cc_cli_notice & cc_model_notice (same mechanics as Claude & Codex)
+    cc_cli_notice.NAMES["agy@local"] = ("agy", "Antigravity CLI")
+    cc_cli_notice.SEND["agy"] = cc_agy_bridge.notify
+    cc_model_notice.SEND["agy"] = cc_agy_bridge.notify
+
+    def _agy_cli_view(check=False):
+        st = cc_agy_console.status()
+        return cc_agy.cli_status(
+            check=check,
+            running=st.get("running"),
+            busy=st.get("busy"),
+            started_version=st.get("started_version") or "",
+        )
+
+    def _agy_cli_tick(check=False):
+        try:
+            view = _agy_cli_view(check=check)
+            cc_cli_notice.tick({"agy@local": view})
+            return view
+        except Exception:
+            return {"ok": False}
+
+    def _agy_updates_watcher():
+        last_models_ts = 0.0
+        time.sleep(25)
+        while True:
+            try:
+                if _agy_bin(ns):
+                    _agy_cli_tick(check=True)
+                    now = time.time()
+                    if now - last_models_ts >= 6 * 3600:
+                        last_models_ts = now
+                        cc_agy.models_discovery_start(_agy_bin(ns), notify_cb=cc_agy_bridge.notify)
+            except Exception:
+                pass
+            time.sleep(1800)
 
     # Cross-register Telegram bot tokens so Claude, Codex, and Antigravity never collide (409)
     codex_bridge = ns.get("cc_codex_bridge")
@@ -134,7 +174,7 @@ def install(ns):
                     resp = dict(cc_agy_console.status(), **snap)
                     resp["session"] = "agy"
                     return self._send(200, resp)
-            if parsed.path in ("/api/agy", "/api/agy/limits", "/api/agy/bridge", "/api/agy/models", "/api/agy/install", "/api/agy/login"):
+            if parsed.path in ("/api/agy", "/api/agy/limits", "/api/agy/bridge", "/api/agy/models", "/api/agy/models/discovery", "/api/agy/cli", "/api/agy/install", "/api/agy/login"):
                 if not self._authed():
                     return self._send(403, {"ok": False, "message": "forbidden"})
                 if parsed.path == "/api/agy":
@@ -148,11 +188,16 @@ def install(ns):
                         200,
                         {"ok": True, "available": bool(_agy_bin(ns)), "bridge": cc_agy_bridge.public()},
                     )
+                if parsed.path == "/api/agy/cli":
+                    chk = bool(parse_qs(parsed.query).get("check"))
+                    return self._send(200, _agy_cli_tick(check=chk))
+                if parsed.path == "/api/agy/models/discovery":
+                    return self._send(200, cc_agy.models_discovery_status())
                 if parsed.path == "/api/agy/install":
                     return self._send(200, cc_agy.install_status())
                 if parsed.path == "/api/agy/login":
                     return self._send(200, cc_agy.login_status())
-                models = cc_agy.fetch_models(_agy_bin(ns), force=False)
+                models = cc_agy.gemini_models_only(cc_agy.fetch_models(_agy_bin(ns), force=False))
                 return self._send(200, {"ok": True, "models": models})
             return original.do_GET(self)
 
@@ -177,6 +222,11 @@ def install(ns):
                     ok, msg = limits.configure(body)
                     return self._send(200, {"ok": ok, "message": msg, "state": limits.public()})
                 if path == "/api/agy/prefs":
+                    before_meta = cc_agy.load_meta()
+                    before_info = {
+                        "model": before_meta.get("model") or cc_agy.cli_default_model(),
+                        "effort": before_meta.get("effort") or "",
+                    }
                     ok, msg = cc_agy.set_prefs(
                         model=body.get("model"),
                         effort=body.get("effort"),
@@ -184,11 +234,17 @@ def install(ns):
                         label=body.get("label"),
                     )
                     pending = False
-                    if ok and ("model" in body or "effort" in body) and cc_agy_console._pid():
-                        meta = cc_agy.load_meta()
-                        ok, msg, pending = cc_agy_console.request_settings(
-                            {"model": meta.get("model", ""), "effort": meta.get("effort", "")}
-                        )
+                    if ok and ("model" in body or "effort" in body):
+                        after_meta = cc_agy.load_meta()
+                        after_info = {
+                            "model": after_meta.get("model") or cc_agy.cli_default_model(),
+                            "effort": after_meta.get("effort") or "",
+                        }
+                        cc_model_notice.changed("Antigravity", "agy", before_info, after_info)
+                        if cc_agy_console._pid():
+                            ok, msg, pending = cc_agy_console.request_settings(
+                                {"model": after_meta.get("model", ""), "effort": after_meta.get("effort", "")}
+                            )
                     limits.refresh(force=False)
                     return self._send(200, {"ok": ok, "message": msg, "pending": pending})
                 if path == "/api/agy/console/start":
@@ -219,8 +275,17 @@ def install(ns):
                     ok, msg = cc_agy_bridge.clear_token()
                     return self._send(200, {"ok": ok, "message": msg, "bridge": cc_agy_bridge.public()})
                 if path == "/api/agy/models/check":
-                    models = cc_agy.fetch_models(_agy_bin(ns), force=True)
-                    return self._send(200, {"ok": True, "models": models})
+                    res = cc_agy.models_discovery_start(_agy_bin(ns), notify_cb=cc_agy_bridge.notify)
+                    return self._send(200, res)
+                if path == "/api/agy/cli/update":
+                    ok, msg = cc_agy.cli_update(
+                        target=body.get("version") or "latest",
+                        on_done=lambda: _agy_cli_tick(check=False),
+                    )
+                    return self._send(200, dict(_agy_cli_view(check=False), ok=ok, message=msg))
+                if path == "/api/agy/cli/restart":
+                    ok, msg = cc_agy_console.restart()
+                    return self._send(200, dict(_agy_cli_view(check=False), ok=ok, message=msg))
                 if path == "/api/agy/install/start":
                     ok, msg = cc_agy.install_start()
                     return self._send(200, dict(cc_agy.install_status(), ok=ok, message=msg))
@@ -275,3 +340,4 @@ def install(ns):
     if ns.get("__name__") == "__main__":
         limits.start()
         cc_agy_bridge.BRIDGE.sync()
+        threading.Thread(target=_agy_updates_watcher, daemon=True, name="agy-updates-watch").start()

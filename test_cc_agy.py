@@ -276,6 +276,24 @@ class TestAgyBridgeAndUI(unittest.TestCase):
         self.assertEqual(cc_agy._onboarding_action("Do you trust this workspace?"), (b"\r",))
         self.assertIsNone(cc_agy._onboarding_action("? for shortcuts"))
 
+    def test_cli_status_and_gemini_model_filter(self):
+        self.assertEqual(cc_agy._vtuple("1.5.19"), (1, 5, 19))
+        self.assertTrue(cc_agy._vtuple("1.6.0") > cc_agy._vtuple("1.5.19"))
+        filtered = cc_agy.gemini_models_only([
+            {"id": "gemini-4-neon-high", "name": "Gemini 4 Neon"},
+            {"id": "claude-opus-5", "name": "Claude Opus 5"},
+            {"id": "gpt-oss-120b", "name": "GPT"},
+        ])
+        self.assertEqual([m["id"] for m in filtered], ["gemini-4-neon-high"])
+        st = cc_agy.cli_status(check=False, running=True, busy=False, started_version="1.5.18")
+        self.assertTrue(st["ok"])
+        self.assertIn("restart", st)
+        out = cc_agy_ui.inject("<html><head></head><body></body></html>")
+        self.assertIn("window.limxState", out)
+        self.assertIn("window.ccpsWindows", out)
+        self.assertIn("window.ccliPvInfo", out)
+        self.assertIn("agy/models/check", out)
+
 
 if __name__ == "__main__":
     unittest.main()

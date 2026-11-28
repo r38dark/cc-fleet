@@ -1357,3 +1357,14 @@ class Bridge:
 
 
 BRIDGE = Bridge()
+
+
+def notify(text):
+    """Send an asynchronous status/update notification to the configured Antigravity Telegram chat."""
+    if not text:
+        return False
+    cfg = load()
+    if not (cfg.get("enabled") and cfg.get("token") and cfg.get("chat_id")):
+        return False
+    BRIDGE._notice_async(str(text))
+    return True
