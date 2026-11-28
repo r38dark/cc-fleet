@@ -81,8 +81,14 @@ html:root:root.ag-pause-agy .fleet-console-toolbar #ctAgy::before{
 .agy-url-link:hover{background:color-mix(in srgb,var(--fleet-agy) 30%,var(--bg))}
 html.agy-desk-fill:not(.conly):root:root #termBox{height:var(--agy-desk-term-h,600px)!important;min-height:240px!important;max-height:none!important}
 html.agy-desk-fill:not(.conly):root:root .termwrap.tsplit .fleet-console-viewport{height:var(--agy-desk-split-h,639px)!important;min-height:260px!important;max-height:none!important}
-html:root:root .fleet-console-toolbar #cTabs{gap:12px}
-html:root:root .fleet-console-toolbar .ctab{gap:7px;padding:0 6px}
+@media(min-width:641px){
+ html:root:root .fleet-console-toolbar{flex-wrap:wrap;gap:4px 10px;padding:0 14px}
+ html:root:root .fleet-console-toolbar #cTabs{flex:1 1 auto;min-width:min-content;max-width:100%;gap:8px;flex-wrap:wrap;row-gap:4px}
+ html:root:root .fleet-console-toolbar .ctab{gap:5px;padding:0 4px;min-height:36px}
+ html:root:root .fleet-console-toolbar .ctacts,
+ html:root:root .fleet-console-toolbar .tzoom{flex:none}
+ html:root:root .fleet-console-toolbar .ctacts{margin-left:6px}
+}
 .agy-tab-nm{white-space:nowrap}
 .agy-tab-lim{display:inline-flex;align-items:center;gap:4px;flex:none}
 .agy-tab-lim:empty{display:none}
@@ -99,8 +105,10 @@ html:root:root .fleet-console-toolbar .ctab.on .agy-tl{border-color:rgba(var(--t
 html:root:root .fleet-console-toolbar .ctab.on .agy-tl-v{color:#eef4fb}
 html:root:root .fleet-console-toolbar .ctab.on .agy-tl.warn .agy-tl-v{color:#f5cc5c}
 html:root:root .fleet-console-toolbar .ctab.on .agy-tl.bad .agy-tl-v{color:#ff8f8f}
-@media(max-width:960px){
+@media(min-width:641px) and (max-width:1120px){
+ html:root:root .fleet-console-toolbar{padding:0 12px;gap:4px 8px}
  html:root:root .fleet-console-toolbar #cTabs{gap:6px}
+ .agy-tab-lim{gap:3px}
  .agy-tl{padding:0 4px 2px;font-size:9.5px;gap:2px}
 }
 @media(max-width:640px){
