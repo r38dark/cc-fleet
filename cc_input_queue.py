@@ -91,7 +91,8 @@ class InputQueue:
 
     def _expire(self, entry):
         if entry.state in ('collecting', 'pending', 'preparing') and time.monotonic() >= entry.deadline:
-            entry.error = 'Загрузка картинки не завершилась вовремя. Пришли её ещё раз.'
+            entry.error = ('Загрузка файла не завершилась вовремя. Пришли его ещё раз.' if entry.kind == 'document'
+                           else 'Загрузка картинки не завершилась вовремя. Пришли её ещё раз.')
             entry.state = 'failed'
             entry.cancelled.set()
 
@@ -112,7 +113,7 @@ class InputQueue:
                 files = tuple(files)
             except Exception as exc:
                 # Preparation supplies safe user-facing errors. Unknown errors never expose URLs/tokens.
-                error = getattr(exc, 'public_message', None) or 'Не удалось подготовить картинку: '+type(exc).__name__
+                error = getattr(exc, 'public_message', None) or 'Не удалось подготовить вложение: '+type(exc).__name__
             discard = False
             with self._condition:
                 self._expire(entry)

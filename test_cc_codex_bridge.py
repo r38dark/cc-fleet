@@ -1404,7 +1404,7 @@ class ImagesBase(Base):
             return inner(token, method, payload, timeout)
         br.tg_api = api
 
-        def download(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
+        def download(token, file_path, limit=br.TG_FILE_MAX_BYTES, **kwargs):
             self.downloads.append(file_path)
             for fid, (fp, data) in self.files.items():
                 if fp == file_path:
@@ -1477,21 +1477,42 @@ class Images(ImagesBase):
         self.assertNotIn("evil", " ".join(self.imgs()), "присланное имя в путь не попадает")
         self.assertEqual(len(self.runs()), 2)
 
-    def test_non_image_document_refused_without_codex(self):
-        self.photo("pdf", doc={"file_id": "fid-big", "mime_type": "application/pdf"})
-        self.assertEqual(self.runs(), [])
-        self.assertEqual(self.api, [])
-        self.assertIn("не принимаю", self.sent[-1])
+    def test_pdf_document_arrives_with_caption_and_readable_path(self):
+        self.files["fid-pdf"] = ("documents/test.pdf", b"%PDF-1.4 fixture")
+        self.photo("прочитай документ", doc={"file_id": "fid-pdf", "mime_type": "application/pdf",
+                                             "file_name": "../../смета.pdf"})
+        folder = os.path.join(self.ex, "inbox", "files")
+        (name,) = os.listdir(folder)
+        path = os.path.join(folder, name)
+        self.assertTrue(name.endswith("_смета.pdf"))
+        self.assertEqual(get_bytes(path), b"%PDF-1.4 fixture")
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        self.assertEqual(os.stat(folder).st_mode & 0o777, 0o700)
+        prompt = self.runs()[0]["argv"][-1]
+        self.assertTrue(prompt.startswith("прочитай документ"))
+        self.assertIn(path, prompt)
+        self.assertNotIn("view_image", prompt)
 
-    def test_fake_image_content_refused(self):
-        self.photo("подделка", doc={"file_id": "fid-text", "mime_type": "image/png"})
-        self.assertEqual(self.runs(), [])
+    def test_mime_does_not_limit_document_and_caption_is_optional(self):
+        self.photo(doc={"file_id": "fid-text", "mime_type": "image/png", "file_name": "method.log"})
         self.assertEqual(self.imgs(), [])
-        self.assertIn("Это не JPEG", self.sent[-1])
+        prompt = self.runs()[0]["argv"][-1]
+        self.assertIn("вложение без подписи", prompt)
+        self.assertIn("_method.log", prompt)
+
+    def test_document_does_not_follow_inbox_symlink(self):
+        os.makedirs(self.ex, exist_ok=True)
+        other = os.path.join(self.tmp, "different-directory")
+        os.makedirs(other, exist_ok=True)
+        os.symlink(other, os.path.join(self.ex, "inbox"))
+        self.photo(doc={"file_id": "fid-text", "file_name": "any.bin"})
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(os.listdir(other), [])
+        self.assertIn("Не удалось сохранить вложение", self.sent[-1])
 
     def test_other_attachment_is_not_silent(self):
-        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "voice": {"file_id": "v"}}})
-        self.assertIn("картинки", self.sent[-1])
+        br.BRIDGE.handle_update({"update_id": 1, "message": {"chat": {"id": 100200300}, "contact": {"first_name": "Тест"}}})
+        self.assertIn("не содержит текста, фото или файла", self.sent[-1])
         self.assertEqual(self.runs(), [])
 
     def test_plain_text_unchanged(self):
@@ -1500,11 +1521,11 @@ class Images(ImagesBase):
         self.assertEqual(self.api, [])
 
     def test_too_big_is_reported(self):
-        self.photo("огромное", sizes=[{"file_id": "fid-big", "width": 9000, "height": 9000, "file_size": br.IMG_MAX_BYTES + 1}])
+        self.photo("огромное", sizes=[{"file_id": "fid-big", "width": 9000, "height": 9000, "file_size": br.TG_FILE_MAX_BYTES + 1}])
         self.assertEqual(self.runs(), [])
         self.assertEqual(self.api, [])
         self.assertIn("не принимаю", self.sent[-1])
-        self.photo("большой документ", doc={"file_id": "fid-png", "mime_type": "image/png", "file_size": br.IMG_MAX_BYTES + 1})
+        self.photo("большой документ", doc={"file_id": "fid-png", "mime_type": "image/png", "file_size": br.TG_FILE_MAX_BYTES + 1})
         self.assertIn("не принимаю", self.sent[-1])
 
     def test_download_failures_are_explicit_and_token_free(self):
@@ -1651,7 +1672,7 @@ class ChatActionIndicator(ImagesBase):
         os.environ["FAKE_SLEEP"] = "0.5"
         real = br.tg_download
 
-        def slow(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
+        def slow(token, file_path, limit=br.TG_FILE_MAX_BYTES, **kwargs):
             time.sleep(0.45)  # «долгая» закачка
             return real(token, file_path, limit)
         br.tg_download = slow
@@ -1670,7 +1691,7 @@ class ChatActionIndicator(ImagesBase):
         br.ACTION_EVERY = 30
         real = br.tg_download
 
-        def slow(token, file_path, limit=br.IMG_MAX_BYTES, **kwargs):
+        def slow(token, file_path, limit=br.TG_FILE_MAX_BYTES, **kwargs):
             time.sleep(0.4)
             return real(token, file_path, limit)
         br.tg_download = slow
@@ -1692,7 +1713,7 @@ class ChatActionIndicator(ImagesBase):
             self.assertFalse(indicator.t.is_alive(), "поток индикатора ждёт тик после конца хода")
 
     def test_refused_image_stops_indicator(self):
-        self.photo("текст", doc={"file_id": "fid-text", "mime_type": "image/png"})
+        self.photo("текст", sizes=[{"file_id": "fid-text", "width": 20, "height": 20}])
         self.assertIn("⚠️", self.sent[-1])
         self.assertIn("upload_photo", self.names())
         self.assert_quiet_after_end()
@@ -1779,6 +1800,25 @@ class Albums(ImagesBase):
             self.assertIn(p, prompt)
         self.assertEqual(len(self.sent), 1)
         self.assertNotIn("не принял", self.sent[0])
+
+    def test_album_mixes_documents_and_images_in_one_prompt(self):
+        self.files["fid-pdf"] = ("documents/report.pdf", b"%PDF-1.4 fixture")
+        br.BRIDGE.handle_update({"update_id": 1, "message": {
+            "chat": {"id": 100200300}, "media_group_id": "mixed",
+            "document": {"file_id": "fid-pdf", "file_name": "отчёт.pdf"}}})
+        br.BRIDGE.handle_update({"update_id": 2, "message": {
+            "chat": {"id": 100200300}, "media_group_id": "mixed",
+            "photo": [{"file_id": "fid-a", "width": 10, "height": 10}], "caption": "сравни"}})
+        worker = br.BRIDGE.worker
+        br.BRIDGE.flush_album("mixed")
+        if worker:
+            worker.join(20)
+        (run,) = self.runs()
+        prompt = run["argv"][-1]
+        self.assertTrue(prompt.startswith("сравни"))
+        self.assertIn("Файл: ", prompt)
+        self.assertIn("_отчёт.pdf", prompt)
+        self.assertIn("Изображение (view_image): ", prompt)
 
     def test_album_caption_on_last_photo_is_used(self):
         self.album(["fid-a", "fid-b"], [None, "что тут?"])
